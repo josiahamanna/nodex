@@ -5,6 +5,7 @@ import { rollup } from "rollup";
 import nodeResolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
 import esbuildPlugin from "rollup-plugin-esbuild";
+import { pluginCacheManager } from "./plugin-cache-manager";
 import type { PluginManifest } from "./plugin-loader";
 import type { Plugin as EsbuildPlugin } from "esbuild";
 
@@ -83,6 +84,17 @@ function readManifest(pluginPath: string): PluginManifest {
   return JSON.parse(raw) as PluginManifest;
 }
 
+/** Resolve extra node_modules from ~/.nodex/plugin-cache/<name>/ (Epic 3.1). */
+function cacheNodeModulesPath(pluginPath: string): string | undefined {
+  try {
+    const manifest = readManifest(pluginPath);
+    const nm = pluginCacheManager.getNodeModulesPath(manifest.name);
+    return fs.existsSync(nm) ? nm : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export class PluginBundler {
   /**
    * Synchronous UI bundle for development iframe (no Rollup). React comes from Nodex bridge.
@@ -93,6 +105,7 @@ export class PluginBundler {
       throw new Error(`UI entry not found: ${uiRelative}`);
     }
 
+    const cacheNm = cacheNodeModulesPath(pluginPath);
     const result = esbuild.buildSync({
       absWorkingDir: pluginPath,
       entryPoints: [uiEntry],
@@ -106,6 +119,7 @@ export class PluginBundler {
       jsxFragment: "React.Fragment",
       plugins: [nodexReactShimPlugins()],
       logLevel: "silent",
+      ...(cacheNm ? { nodePaths: [cacheNm] } : {}),
     });
 
     if (!result.outputFiles?.length) {
@@ -153,6 +167,7 @@ export class PluginBundler {
 
     const mainOut = path.join(distDir, "main.bundle.js");
     const bundleRoot = path.dirname(distDir);
+    const cacheNm = cacheNodeModulesPath(pluginPath);
     progress("Bundling backend (esbuild)…");
 
     try {
@@ -167,6 +182,7 @@ export class PluginBundler {
         sourcemap,
         logLevel: "silent",
         external: ["electron"],
+        ...(cacheNm ? { nodePaths: [cacheNm] } : {}),
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -201,6 +217,7 @@ export class PluginBundler {
             nodeResolve({
               extensions: [".js", ".jsx", ".ts", ".tsx", ".json"],
               preferBuiltins: false,
+              ...(cacheNm ? { modulePaths: [cacheNm] } : {}),
             }),
             commonjs(),
             esbuildPlugin({

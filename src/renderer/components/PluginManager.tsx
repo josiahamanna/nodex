@@ -1,12 +1,28 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 interface PluginManagerProps {
   onPluginsChanged?: () => void;
 }
 
+function formatBytes(n: number): string {
+  if (n < 1024) {
+    return `${n} B`;
+  }
+  if (n < 1024 * 1024) {
+    return `${(n / 1024).toFixed(1)} KB`;
+  }
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
   const [plugins, setPlugins] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
+  const [working, setWorking] = useState<string | null>(null);
+  const [cacheStats, setCacheStats] = useState<{
+    root: string;
+    totalBytes: number;
+    plugins: { name: string; bytes: number }[];
+  } | null>(null);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -17,9 +33,15 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
     setPlugins(installed);
   };
 
+  const refreshCacheStats = useCallback(async () => {
+    const stats = await window.Nodex.getPluginCacheStats();
+    setCacheStats(stats);
+  }, []);
+
   useEffect(() => {
     loadPlugins();
-  }, []);
+    refreshCacheStats();
+  }, [refreshCacheStats]);
 
   const handleImport = async () => {
     try {
@@ -100,6 +122,74 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
         text: error instanceof Error ? error.message : "Export failed",
       });
     }
+  };
+
+  const handleInstallDeps = async (pluginName: string) => {
+    setMessage(null);
+    setWorking(`install:${pluginName}`);
+    try {
+      const result = await window.Nodex.installPluginDependencies(pluginName);
+      if (result.success) {
+        setMessage({
+          type: "success",
+          text: `Dependencies installed for ${pluginName} (see terminal for npm log).`,
+        });
+        await refreshCacheStats();
+      } else {
+        setMessage({
+          type: "error",
+          text: result.error || "npm install failed",
+        });
+      }
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "npm install failed",
+      });
+    } finally {
+      setWorking(null);
+    }
+  };
+
+  const handleClearPluginCache = async (pluginName: string) => {
+    setMessage(null);
+    try {
+      const result = await window.Nodex.clearPluginDependencyCache(pluginName);
+      if (result.success) {
+        setMessage({
+          type: "success",
+          text: `Cleared dependency cache for ${pluginName}.`,
+        });
+        await refreshCacheStats();
+      } else {
+        setMessage({
+          type: "error",
+          text: result.error || "Clear cache failed",
+        });
+      }
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Clear cache failed",
+      });
+    }
+  };
+
+  const handleClearAllCaches = async () => {
+    if (
+      !confirm(
+        "Remove all ~/.nodex/plugin-cache data? Bundles will need reinstalling.",
+      )
+    ) {
+      return;
+    }
+    setMessage(null);
+    await window.Nodex.clearAllPluginDependencyCaches();
+    setMessage({
+      type: "success",
+      text: "All plugin dependency caches cleared.",
+    });
+    await refreshCacheStats();
   };
 
   const handleBundleLocal = async (pluginName: string) => {
@@ -227,14 +317,34 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
                     </button>
                     <button
                       type="button"
+                      onClick={() => handleInstallDeps(plugin)}
+                      disabled={working !== null}
+                      className="px-3 py-1 text-sm bg-emerald-100 text-emerald-900 rounded hover:bg-emerald-200 font-medium disabled:opacity-50"
+                    >
+                      {working === `install:${plugin}`
+                        ? "Installing…"
+                        : "Install deps"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleClearPluginCache(plugin)}
+                      disabled={working !== null}
+                      className="px-3 py-1 text-sm bg-stone-100 text-stone-800 rounded hover:bg-stone-200 font-medium disabled:opacity-50"
+                    >
+                      Clear dep cache
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleBundleLocal(plugin)}
-                      className="px-3 py-1 text-sm bg-amber-100 text-amber-900 rounded hover:bg-amber-200 font-medium"
+                      disabled={working !== null}
+                      className="px-3 py-1 text-sm bg-amber-100 text-amber-900 rounded hover:bg-amber-200 font-medium disabled:opacity-50"
                     >
                       Bundle to dist/
                     </button>
                     <button
                       type="button"
                       onClick={() => handleUninstall(plugin)}
+                      disabled={working !== null}
                       className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 font-medium"
                     >
                       Uninstall
@@ -244,6 +354,42 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
               ))}
             </div>
           )}
+        </div>
+
+        <div className="mt-10 pt-6 border-t border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">
+            Dependency cache (Epic 3.1)
+          </h3>
+          <p className="text-sm text-gray-600 mb-3">
+            npm packages install under{" "}
+            <code className="text-xs bg-gray-100 px-1 rounded">
+              {cacheStats?.root ?? "~/.nodex/plugin-cache"}
+            </code>
+            . Bundling resolves modules from there when present.
+          </p>
+          {cacheStats && (
+            <p className="text-sm text-gray-700 mb-3">
+              Total: <strong>{formatBytes(cacheStats.totalBytes)}</strong>
+              {cacheStats.plugins.length > 0 && (
+                <span className="text-gray-500">
+                  {" "}
+                  —{" "}
+                  {cacheStats.plugins
+                    .filter((p) => p.bytes > 0)
+                    .map((p) => `${p.name}: ${formatBytes(p.bytes)}`)
+                    .join("; ")}
+                </span>
+              )}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={handleClearAllCaches}
+            disabled={working !== null}
+            className="px-3 py-1 text-sm bg-orange-100 text-orange-900 rounded hover:bg-orange-200 font-medium disabled:opacity-50"
+          >
+            Clear all dependency caches
+          </button>
         </div>
       </div>
     </div>

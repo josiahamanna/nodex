@@ -5,6 +5,7 @@ import { Registry } from "./registry";
 import { isSafePluginName } from "../shared/validators";
 import { manifestValidator } from "./manifest-validator";
 import { packageManager } from "./package-manager";
+import { pluginCacheManager } from "./plugin-cache-manager";
 import { pluginBundler } from "./plugin-bundler";
 
 const zipHandler = require("./zip-handler");
@@ -78,6 +79,29 @@ export class PluginLoader {
 
   constructor(pluginsDir: string) {
     this.pluginsDir = pluginsDir;
+  }
+
+  /** Epic 1.1 — validate declared entry files exist before activation. */
+  private assertPluginFilesExist(
+    pluginPath: string,
+    manifest: PluginManifest,
+  ): void {
+    const mainAbs = path.join(pluginPath, manifest.main);
+    if (!fs.existsSync(mainAbs)) {
+      throw new Error(`Main entry not found: ${manifest.main}`);
+    }
+    if (manifest.ui) {
+      const uiAbs = path.join(pluginPath, manifest.ui);
+      if (!fs.existsSync(uiAbs)) {
+        throw new Error(`UI entry not found: ${manifest.ui}`);
+      }
+    }
+    if (manifest.html) {
+      const htmlAbs = path.join(pluginPath, manifest.html);
+      if (!fs.existsSync(htmlAbs)) {
+        throw new Error(`HTML entry not found: ${manifest.html}`);
+      }
+    }
   }
 
   private copyPluginProductionAssets(
@@ -161,12 +185,15 @@ export class PluginLoader {
       });
     }
 
-    const mainFile = path.join(pluginPath, manifest.main);
-
-    if (!fs.existsSync(mainFile)) {
-      console.error(`[PluginLoader] Main file not found: ${mainFile}`);
-      return;
+    if (folder !== manifest.name) {
+      console.warn(
+        `[PluginLoader] Plugin folder "${folder}" differs from manifest name "${manifest.name}" (cache uses manifest name).`,
+      );
     }
+
+    this.assertPluginFilesExist(pluginPath, manifest);
+
+    const mainFile = path.join(pluginPath, manifest.main);
 
     try {
       // Use dynamic require to prevent webpack from bundling plugin code
@@ -525,5 +552,124 @@ export class PluginLoader {
     }
 
     return { success: true, warnings: result.warnings };
+  }
+
+  /** Epic 3.1 / 3.2 — install npm deps into ~/.nodex/plugin-cache/<manifest.name>/ */
+  async installPluginDependencies(pluginName: string): Promise<{
+    success: boolean;
+    error?: string;
+    log?: string;
+  }> {
+    if (!isSafePluginName(pluginName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+
+    const pluginPath = path.join(this.pluginsDir, pluginName);
+    if (!fs.existsSync(pluginPath)) {
+      return { success: false, error: `Plugin ${pluginName} not found` };
+    }
+
+    const manifest: PluginManifest = JSON.parse(
+      fs.readFileSync(path.join(pluginPath, "manifest.json"), "utf8"),
+    );
+
+    if (!isSafePluginName(manifest.name)) {
+      return { success: false, error: "Invalid manifest name" };
+    }
+
+    pluginCacheManager.ensureRoot();
+    const lines: string[] = [];
+
+    try {
+      pluginCacheManager.syncPackageJsonToCache(pluginPath, {
+        name: manifest.name,
+        version: manifest.version,
+        dependencies: manifest.dependencies,
+      });
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+
+    const result = await pluginCacheManager.runNpmInstall(
+      manifest.name,
+      (line) => lines.push(line),
+    );
+
+    if (result.ok) {
+      for (const key of [...this.devUiBundleCache.keys()]) {
+        if (key.startsWith(`${pluginPath}:`)) {
+          this.devUiBundleCache.delete(key);
+        }
+      }
+    }
+
+    return {
+      success: result.ok,
+      error: result.error,
+      log: lines.join("\n"),
+    };
+  }
+
+  clearPluginDependencyCache(installedFolderName: string): {
+    success: boolean;
+    error?: string;
+  } {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+
+    const pluginPath = path.join(this.pluginsDir, installedFolderName);
+    if (!fs.existsSync(pluginPath)) {
+      return { success: false, error: "Plugin not found" };
+    }
+
+    try {
+      const manifest: PluginManifest = JSON.parse(
+        fs.readFileSync(path.join(pluginPath, "manifest.json"), "utf8"),
+      );
+      if (isSafePluginName(manifest.name)) {
+        pluginCacheManager.clearPlugin(manifest.name);
+      }
+      return { success: true };
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  }
+
+  getPluginCacheStats(): {
+    root: string;
+    totalBytes: number;
+    plugins: { name: string; bytes: number }[];
+  } {
+    pluginCacheManager.ensureRoot();
+    const root = pluginCacheManager.getRoot();
+    const plugins: { name: string; bytes: number }[] = [];
+
+    if (!fs.existsSync(root)) {
+      return { root, totalBytes: 0, plugins: [] };
+    }
+
+    for (const name of fs.readdirSync(root)) {
+      const p = path.join(root, name);
+      if (fs.statSync(p).isDirectory()) {
+        plugins.push({
+          name,
+          bytes: pluginCacheManager.getPluginCacheSizeBytes(name),
+        });
+      }
+    }
+
+    const totalBytes = plugins.reduce((acc, x) => acc + x.bytes, 0);
+    return { root, totalBytes, plugins };
+  }
+
+  clearAllPluginDependencyCaches(): void {
+    pluginCacheManager.clearAll();
   }
 }

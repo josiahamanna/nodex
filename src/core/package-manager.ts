@@ -43,6 +43,26 @@ export class PackageManager {
       );
     }
 
+    const pkgOnDisk = path.join(pluginPath, "package.json");
+    const hasPkgOnDisk = fs.existsSync(pkgOnDisk);
+    let generatedPkgJson: string | null = null;
+    if (
+      !hasPkgOnDisk &&
+      manifest.dependencies &&
+      Object.keys(manifest.dependencies).length > 0
+    ) {
+      generatedPkgJson = JSON.stringify(
+        {
+          name: `@nodex-plugin/${manifest.name}`,
+          version: manifest.version,
+          private: true,
+          dependencies: { ...manifest.dependencies },
+        },
+        null,
+        2,
+      );
+    }
+
     // Create zip file
     const zip = new AdmZip();
     const outputFile = path.join(
@@ -60,6 +80,10 @@ export class PackageManager {
       if (stat.isFile()) {
         zip.addLocalFile(fullPath, path.dirname(file));
       }
+    }
+
+    if (generatedPkgJson) {
+      zip.addFile("package.json", Buffer.from(generatedPkgJson, "utf8"));
     }
 
     // Write zip file

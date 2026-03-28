@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import * as path from "path";
+import { pluginCacheManager } from "./core/plugin-cache-manager";
 import { PluginLoader } from "./core/plugin-loader";
 import { registry } from "./core/registry";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
@@ -43,6 +44,8 @@ const createWindow = (): void => {
 };
 
 app.on("ready", () => {
+  pluginCacheManager.ensureRoot();
+
   const userDataPath = app.getPath("userData");
   const pluginsPath = path.join(userDataPath, "plugins");
   console.log("[Main] Loading plugins from:", pluginsPath);
@@ -265,6 +268,39 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(
+  IPC_CHANNELS.INSTALL_PLUGIN_DEPENDENCIES,
+  async (_event, pluginName: string) => {
+    if (!isSafePluginName(pluginName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    const result = await pluginLoader.installPluginDependencies(pluginName);
+    if (result.log) {
+      console.log("[Main] npm install log:\n", result.log);
+    }
+    return result;
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.CLEAR_PLUGIN_DEPENDENCY_CACHE,
+  async (_event, pluginName: string) => {
+    if (!isSafePluginName(pluginName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    return pluginLoader.clearPluginDependencyCache(pluginName);
+  },
+);
+
+ipcMain.handle(IPC_CHANNELS.CLEAR_ALL_PLUGIN_DEPENDENCY_CACHES, async () => {
+  pluginLoader.clearAllPluginDependencyCaches();
+  return { success: true };
+});
+
+ipcMain.handle(IPC_CHANNELS.GET_PLUGIN_CACHE_STATS, async () => {
+  return pluginLoader.getPluginCacheStats();
+});
+
 ipcMain.handle(IPC_CHANNELS.IMPORT_PLUGIN, async (_event, zipPath: string) => {
   try {
     await pluginLoader.importFromZip(zipPath, registry);
@@ -288,6 +324,9 @@ ipcMain.handle(IPC_CHANNELS.GET_INSTALLED_PLUGINS, async () => {
 ipcMain.handle(
   IPC_CHANNELS.UNINSTALL_PLUGIN,
   async (_event, pluginName: string) => {
+    if (!isSafePluginName(pluginName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
     try {
       pluginLoader.uninstallPlugin(pluginName, registry);
       return { success: true };

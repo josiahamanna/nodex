@@ -27,6 +27,18 @@ declare global {
         error?: string;
         warnings?: string[];
       }>;
+      installPluginDependencies: (
+        pluginName: string,
+      ) => Promise<{ success: boolean; error?: string; log?: string }>;
+      clearPluginDependencyCache: (
+        pluginName: string,
+      ) => Promise<{ success: boolean; error?: string }>;
+      clearAllPluginDependencyCaches: () => Promise<{ success: boolean }>;
+      getPluginCacheStats: () => Promise<{
+        root: string;
+        totalBytes: number;
+        plugins: { name: string; bytes: number }[];
+      }>;
       onPluginsChanged: (callback: () => void) => () => void;
     };
   }

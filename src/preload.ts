@@ -53,6 +53,21 @@ contextBridge.exposeInMainWorld("Nodex", {
     error?: string;
     warnings?: string[];
   }> => ipcRenderer.invoke(IPC_CHANNELS.BUNDLE_PLUGIN_LOCAL, pluginName),
+  installPluginDependencies: (
+    pluginName: string,
+  ): Promise<{ success: boolean; error?: string; log?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.INSTALL_PLUGIN_DEPENDENCIES, pluginName),
+  clearPluginDependencyCache: (
+    pluginName: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CLEAR_PLUGIN_DEPENDENCY_CACHE, pluginName),
+  clearAllPluginDependencyCaches: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CLEAR_ALL_PLUGIN_DEPENDENCY_CACHES),
+  getPluginCacheStats: (): Promise<{
+    root: string;
+    totalBytes: number;
+    plugins: { name: string; bytes: number }[];
+  }> => ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_CACHE_STATS),
   onPluginsChanged: (callback: () => void) => {
     ipcRenderer.on("plugins-changed", callback);
     return () => ipcRenderer.removeListener("plugins-changed", callback);
