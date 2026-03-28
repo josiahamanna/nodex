@@ -1,10 +1,18 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import * as ReactDOM from "react-dom";
+import { loader } from "@monaco-editor/react";
 import { Provider } from "react-redux";
 import { store } from "./store";
 import App from "./App";
 import "./styles.css";
+
+/** Load Monaco from CDN so webpack does not bundle editor.main (avoids vs/nls.messages-loader). */
+loader.config({
+  paths: {
+    vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs",
+  },
+});
 import * as TiptapReact from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 

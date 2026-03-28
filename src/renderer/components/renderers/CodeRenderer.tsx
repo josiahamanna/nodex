@@ -1,9 +1,6 @@
 import React from "react";
-import Editor, { loader } from "@monaco-editor/react";
-import * as monaco from "monaco-editor";
+import Editor from "@monaco-editor/react";
 import { Note } from "../../../preload";
-
-loader.config({ monaco });
 
 interface CodeRendererProps {
   note: Note;

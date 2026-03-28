@@ -19,6 +19,20 @@ export function isSafePluginName(name: unknown): name is string {
   );
 }
 
+/** Relative path inside a plugin folder (no traversal). */
+export function isSafeRelativePluginSourcePath(rel: unknown): rel is string {
+  if (typeof rel !== "string" || rel.length === 0 || rel.length > 500) {
+    return false;
+  }
+  if (rel.includes("..") || rel.includes("\0")) {
+    return false;
+  }
+  if (rel.startsWith("/") || rel.startsWith("\\")) {
+    return false;
+  }
+  return true;
+}
+
 export function sanitizeHtml(html: string): string {
   return html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')

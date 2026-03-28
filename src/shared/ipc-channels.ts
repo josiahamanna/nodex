@@ -22,6 +22,11 @@ export const IPC_CHANNELS = {
   RUN_PLUGIN_CACHE_NPM: "plugin:cache-npm",
   GET_PLUGIN_LOAD_ISSUES: "plugin:load-issues",
   VALIDATE_PLUGIN_ZIP: "plugin:validate-zip",
+  PLUGIN_LIST_WORKSPACE_FOLDERS: "plugin:list-workspace-folders",
+  PLUGIN_LIST_SOURCE_FILES: "plugin:list-source-files",
+  PLUGIN_READ_SOURCE_FILE: "plugin:read-source-file",
+  PLUGIN_WRITE_SOURCE_FILE: "plugin:write-source-file",
+  PLUGIN_RELOAD_REGISTRY: "plugin:reload-registry",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

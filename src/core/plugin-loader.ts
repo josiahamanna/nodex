@@ -4,7 +4,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { Registry } from "./registry";
-import { isSafePluginName } from "../shared/validators";
+import {
+  isSafePluginName,
+  isSafeRelativePluginSourcePath,
+} from "../shared/validators";
 import { manifestValidator } from "./manifest-validator";
 import { packageManager } from "./package-manager";
 import { pluginCacheManager } from "./plugin-cache-manager";
@@ -1116,5 +1119,110 @@ export class PluginLoader {
 
   clearAllPluginDependencyCaches(): void {
     pluginCacheManager.clearAll();
+  }
+
+  /** All folder names under the plugins directory (for IDE picker). */
+  listPluginWorkspaceFolders(): string[] {
+    if (!fs.existsSync(this.pluginsDir)) {
+      return [];
+    }
+    return fs
+      .readdirSync(this.pluginsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && isSafePluginName(e.name))
+      .map((e) => e.name)
+      .sort();
+  }
+
+  private readonly sourceSkipDirs = new Set([
+    "node_modules",
+    "dist",
+    ".git",
+  ]);
+
+  private resolvePluginSourceFile(
+    installedFolderName: string,
+    relativePath: string,
+  ): string {
+    if (!isSafePluginName(installedFolderName)) {
+      throw new Error("Invalid plugin name");
+    }
+    if (!isSafeRelativePluginSourcePath(relativePath)) {
+      throw new Error("Invalid file path");
+    }
+    const pluginPath = path.join(this.pluginsDir, installedFolderName);
+    if (!fs.existsSync(pluginPath)) {
+      throw new Error("Plugin not found");
+    }
+    const abs = path.resolve(pluginPath, relativePath);
+    const relToPlugin = path.relative(pluginPath, abs);
+    if (relToPlugin.startsWith("..") || path.isAbsolute(relToPlugin)) {
+      throw new Error("Path escapes plugin directory");
+    }
+    return abs;
+  }
+
+  /** Epic 4 — list editable source files (excludes node_modules, dist, .git). */
+  listPluginSourceFiles(installedFolderName: string): string[] {
+    if (!isSafePluginName(installedFolderName)) {
+      throw new Error("Invalid plugin name");
+    }
+    const pluginPath = path.join(this.pluginsDir, installedFolderName);
+    if (!fs.existsSync(pluginPath)) {
+      throw new Error("Plugin not found");
+    }
+    const out: string[] = [];
+    const walk = (dir: string): void => {
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (this.sourceSkipDirs.has(ent.name)) {
+          continue;
+        }
+        const full = path.join(dir, ent.name);
+        if (ent.isDirectory()) {
+          walk(full);
+        } else if (ent.isFile()) {
+          const rel = path.relative(pluginPath, full);
+          if (!rel.startsWith("..") && !path.isAbsolute(rel)) {
+            out.push(rel.split(path.sep).join("/"));
+          }
+        }
+      }
+    };
+    walk(pluginPath);
+    out.sort();
+    return out;
+  }
+
+  readPluginSourceFile(
+    installedFolderName: string,
+    relativePath: string,
+  ): string {
+    const abs = this.resolvePluginSourceFile(installedFolderName, relativePath);
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+      throw new Error("File not found");
+    }
+    return fs.readFileSync(abs, "utf8");
+  }
+
+  writePluginSourceFile(
+    installedFolderName: string,
+    relativePath: string,
+    content: string,
+  ): void {
+    if (typeof content !== "string") {
+      throw new Error("Invalid content");
+    }
+    if (content.length > 5_000_000) {
+      throw new Error("File too large");
+    }
+    const abs = this.resolvePluginSourceFile(installedFolderName, relativePath);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, content, "utf8");
+
+    const pluginPath = path.join(this.pluginsDir, installedFolderName);
+    for (const key of [...this.devUiBundleCache.keys()]) {
+      if (key.startsWith(`${pluginPath}:`)) {
+        this.devUiBundleCache.delete(key);
+      }
+    }
   }
 }

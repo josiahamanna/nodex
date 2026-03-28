@@ -6,6 +6,7 @@ interface SidebarProps {
   currentNoteId?: string;
   onNoteSelect: (noteId: string) => void;
   onPluginManagerOpen: () => void;
+  onPluginIdeOpen: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -13,6 +14,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   currentNoteId,
   onNoteSelect,
   onPluginManagerOpen,
+  onPluginIdeOpen,
 }) => {
   const getTypeColor = (type: string): string => {
     switch (type) {
@@ -65,6 +67,14 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       <div className="p-4 border-t border-gray-200">
         <button
+          type="button"
+          onClick={onPluginIdeOpen}
+          className="w-full px-3 py-2 bg-indigo-700 text-white rounded-lg hover:bg-indigo-800 text-sm font-medium mb-2"
+        >
+          Plugin IDE
+        </button>
+        <button
+          type="button"
           onClick={onPluginManagerOpen}
           className="w-full px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 text-sm font-medium mb-3"
         >

@@ -410,6 +410,75 @@ ipcMain.handle(IPC_CHANNELS.GET_PLUGIN_LOAD_ISSUES, async () => {
   return pluginLoader.getPluginLoadIssues();
 });
 
+ipcMain.handle(IPC_CHANNELS.PLUGIN_LIST_WORKSPACE_FOLDERS, async () => {
+  return pluginLoader.listPluginWorkspaceFolders();
+});
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_LIST_SOURCE_FILES,
+  async (_event, installedFolderName: string) => {
+    if (!isSafePluginName(installedFolderName)) {
+      throw new Error("Invalid plugin name");
+    }
+    return pluginLoader.listPluginSourceFiles(installedFolderName);
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_READ_SOURCE_FILE,
+  async (_event, installedFolderName: string, relativePath: string) => {
+    if (!isSafePluginName(installedFolderName)) {
+      throw new Error("Invalid plugin name");
+    }
+    return pluginLoader.readPluginSourceFile(
+      installedFolderName,
+      relativePath,
+    );
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_WRITE_SOURCE_FILE,
+  async (
+    _event,
+    installedFolderName: string,
+    relativePath: string,
+    content: string,
+  ) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    try {
+      pluginLoader.writePluginSourceFile(
+        installedFolderName,
+        relativePath,
+        content,
+      );
+      return { success: true };
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_RELOAD_REGISTRY, async () => {
+  try {
+    pluginLoader.reload(registry);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.PLUGINS_CHANGED);
+    }
+    return { success: true };
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+});
+
 ipcMain.handle(IPC_CHANNELS.GET_INSTALLED_PLUGINS, async () => {
   return pluginLoader.getLoadedPlugins();
 });

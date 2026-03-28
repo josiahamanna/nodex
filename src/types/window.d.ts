@@ -80,6 +80,18 @@ declare global {
         npmArgs: string[],
       ) => Promise<{ success: boolean; error?: string; log?: string }>;
       getPluginLoadIssues: () => Promise<{ folder: string; error: string }[]>;
+      listPluginWorkspaceFolders: () => Promise<string[]>;
+      listPluginSourceFiles: (installedFolderName: string) => Promise<string[]>;
+      readPluginSourceFile: (
+        installedFolderName: string,
+        relativePath: string,
+      ) => Promise<string>;
+      writePluginSourceFile: (
+        installedFolderName: string,
+        relativePath: string,
+        content: string,
+      ) => Promise<{ success: boolean; error?: string }>;
+      reloadPluginRegistry: () => Promise<{ success: boolean; error?: string }>;
     };
   }
 }

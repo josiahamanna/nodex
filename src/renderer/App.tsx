@@ -5,6 +5,7 @@ import { fetchNote, fetchAllNotes } from "./store/notesSlice";
 import Sidebar from "./components/Sidebar";
 import NoteViewer from "./components/NoteViewer";
 import PluginManager from "./components/PluginManager";
+import PluginIDE from "./components/PluginIDE";
 
 const App: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -12,6 +13,7 @@ const App: React.FC = () => {
     (state: RootState) => state.notes,
   );
   const [showPluginManager, setShowPluginManager] = useState(false);
+  const [showPluginIde, setShowPluginIde] = useState(false);
 
   useEffect(() => {
     dispatch(fetchAllNotes());
@@ -28,11 +30,18 @@ const App: React.FC = () => {
 
   const handleNoteSelect = (noteId: string) => {
     setShowPluginManager(false);
+    setShowPluginIde(false);
     dispatch(fetchNote(noteId));
   };
 
   const handlePluginManagerOpen = () => {
+    setShowPluginIde(false);
     setShowPluginManager(true);
+  };
+
+  const handlePluginIdeOpen = () => {
+    setShowPluginManager(false);
+    setShowPluginIde(true);
   };
 
   const handlePluginsChanged = () => {
@@ -47,9 +56,12 @@ const App: React.FC = () => {
         currentNoteId={currentNote?.id}
         onNoteSelect={handleNoteSelect}
         onPluginManagerOpen={handlePluginManagerOpen}
+        onPluginIdeOpen={handlePluginIdeOpen}
       />
       <main className="flex-1 overflow-hidden">
-        {showPluginManager ? (
+        {showPluginIde ? (
+          <PluginIDE onPluginsChanged={handlePluginsChanged} />
+        ) : showPluginManager ? (
           <PluginManager onPluginsChanged={handlePluginsChanged} />
         ) : loading ? (
           <div className="flex items-center justify-center h-full">

@@ -133,4 +133,33 @@ contextBridge.exposeInMainWorld("Nodex", {
     ),
   getPluginLoadIssues: (): Promise<{ folder: string; error: string }[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_LOAD_ISSUES),
+  listPluginWorkspaceFolders: (): Promise<string[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_LIST_WORKSPACE_FOLDERS),
+  listPluginSourceFiles: (installedFolderName: string): Promise<string[]> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_LIST_SOURCE_FILES,
+      installedFolderName,
+    ),
+  readPluginSourceFile: (
+    installedFolderName: string,
+    relativePath: string,
+  ): Promise<string> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_READ_SOURCE_FILE,
+      installedFolderName,
+      relativePath,
+    ),
+  writePluginSourceFile: (
+    installedFolderName: string,
+    relativePath: string,
+    content: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_WRITE_SOURCE_FILE,
+      installedFolderName,
+      relativePath,
+      content,
+    ),
+  reloadPluginRegistry: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_RELOAD_REGISTRY),
 });
