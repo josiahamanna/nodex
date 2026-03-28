@@ -1,0 +1,1 @@
+I want a new markdown pluggin written in typescript. It should have both editing mode and preview mode.

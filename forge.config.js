@@ -3,6 +3,12 @@ const path = require("path");
 module.exports = {
   packagerConfig: {
     asar: true,
+    /** Basenames become `Resources/<name>` — see `resolveBundledCorePluginsDir` and `seed-user-plugins`. */
+    extraResource: [
+      path.resolve(__dirname, "plugins/core"),
+      path.resolve(__dirname, "plugins/markdown"),
+      path.resolve(__dirname, "plugins/tiptap"),
+    ],
   },
   rebuildConfig: {},
   makers: [

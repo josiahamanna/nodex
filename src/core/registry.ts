@@ -1,6 +1,6 @@
 interface PluginRenderer {
   pluginName: string;
-  render: (note: any) => string;
+  render: (note: any) => string | Promise<string>;
   onMessage?: (message: any) => void;
 }
 

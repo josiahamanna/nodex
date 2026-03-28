@@ -1,13 +1,13 @@
 function activate(context, api) {
   if (typeof api.getUiBootstrap !== "function") {
     throw new Error(
-      "[tiptap] Manifest must declare ui (hybrid plugin) for this loader.",
+      "[code] Manifest must declare ui (hybrid plugin) for this loader.",
     );
   }
 
-  const disposable = api.registerNoteRenderer("text", {
-    render: (note) => {
-      const ui = api.getUiBootstrap();
+  const disposable = api.registerNoteRenderer("code", {
+    render: async (note) => {
+      const ui = await api.getUiBootstrap();
       return `
         window.__NODEX_NOTE__ = ${JSON.stringify(note)};
         ${ui}
@@ -16,11 +16,11 @@ function activate(context, api) {
   });
 
   context.subscriptions.push(disposable);
-  console.log("[Plugin: tiptap] Activated");
+  console.log("[Plugin: code] Activated (Monaco, bundled core)");
 }
 
 function deactivate() {
-  console.log("[Plugin: tiptap] Deactivated");
+  console.log("[Plugin: code] Deactivated");
 }
 
 module.exports = { activate, deactivate };

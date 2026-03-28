@@ -1,12 +1,15 @@
 import { app, BrowserWindow, ipcMain } from "electron";
+import * as fs from "fs";
 import * as path from "path";
 import { appendPluginAudit } from "./core/plugin-audit";
 import { pluginCacheManager } from "./core/plugin-cache-manager";
 import { PluginLoader } from "./core/plugin-loader";
+import { seedSamplePluginsToUserDir } from "./core/seed-user-plugins";
 import { setPluginProgressSink } from "./core/plugin-progress";
 import { packageManager } from "./core/package-manager";
 import { registry } from "./core/registry";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
+import { toFileUri } from "./shared/file-uri";
 import {
   isSafePluginName,
   isValidNoteId,
@@ -21,6 +24,24 @@ let pluginLoader: PluginLoader;
 
 function getDialogParent(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined;
+}
+
+/** Shipped mandatory plugins (folder is copied to `Resources/core` when packaged). */
+function resolveBundledCorePluginsDir(): string | null {
+  if (app.isPackaged) {
+    const candidates = [
+      path.join(process.resourcesPath, "core"),
+      path.join(process.resourcesPath, "plugins", "core"),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) {
+        return c;
+      }
+    }
+    return null;
+  }
+  const devCore = path.join(__dirname, "../../plugins/core");
+  return fs.existsSync(devCore) ? devCore : null;
 }
 
 const createWindow = (): void => {
@@ -47,13 +68,79 @@ const createWindow = (): void => {
 };
 
 app.on("ready", () => {
+  ipcMain.handle(IPC_CHANNELS.NPM_REGISTRY_SEARCH, async (_event, query: string) => {
+    if (typeof query !== "string" || query.length > 200) {
+      return {
+        success: false,
+        error: "Invalid query",
+        results: [] as {
+          name: string;
+          version: string;
+          description: string;
+          popularity: number;
+        }[],
+      };
+    }
+    const q = query.trim();
+    if (q.length === 0) {
+      return { success: true, results: [] };
+    }
+    try {
+      const url = `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(q)}&size=20`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        return {
+          success: false,
+          error: `HTTP ${res.status}`,
+          results: [],
+        };
+      }
+      const data = (await res.json()) as {
+        objects?: Array<{
+          package: {
+            name: string;
+            version: string;
+            description?: string;
+          };
+          score?: { detail?: { popularity?: number } };
+        }>;
+      };
+      const results = (data.objects ?? [])
+        .map((o) => ({
+          name: o.package.name,
+          version: o.package.version,
+          description: o.package.description ?? "",
+          popularity: o.score?.detail?.popularity ?? 0,
+        }))
+        .sort((a, b) => b.popularity - a.popularity);
+      return { success: true, results };
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+        results: [],
+      };
+    }
+  });
+
   pluginCacheManager.ensureRoot();
 
   const userDataPath = app.getPath("userData");
   const pluginsPath = path.join(userDataPath, "plugins");
-  console.log("[Main] Loading plugins from:", pluginsPath);
+  const bundledCore = resolveBundledCorePluginsDir();
+  const bundledRoots = bundledCore ? [bundledCore] : [];
+  console.log("[Main] User plugins dir:", pluginsPath);
+  if (bundledCore) {
+    console.log("[Main] Bundled core plugins:", bundledCore);
+  } else if (!app.isPackaged) {
+    console.warn(
+      "[Main] No bundled core plugins dir (expected ./plugins/core for dev).",
+    );
+  }
 
-  pluginLoader = new PluginLoader(pluginsPath);
+  seedSamplePluginsToUserDir(pluginsPath);
+
+  pluginLoader = new PluginLoader(pluginsPath, bundledRoots);
 
   createWindow();
 
@@ -168,7 +255,7 @@ ipcMain.handle(
     }
 
     try {
-      const html = renderer.render(note);
+      const html = await Promise.resolve(renderer.render(note));
       return html;
     } catch (error) {
       console.error(
@@ -461,6 +548,196 @@ ipcMain.handle(
         error: e instanceof Error ? e.message : String(e),
       };
     }
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_MKDIR_SOURCE,
+  async (_event, installedFolderName: string, relativeDir: string) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    try {
+      pluginLoader.mkdirPluginSourceDir(installedFolderName, relativeDir);
+      return { success: true };
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_CREATE_SOURCE_FILE,
+  async (
+    _event,
+    installedFolderName: string,
+    relativePath: string,
+    content?: string,
+  ) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    try {
+      pluginLoader.createPluginSourceFile(
+        installedFolderName,
+        relativePath,
+        typeof content === "string" ? content : "",
+      );
+      return { success: true };
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_DELETE_SOURCE_PATH,
+  async (_event, installedFolderName: string, relativePath: string) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    try {
+      pluginLoader.deletePluginSourcePath(installedFolderName, relativePath);
+      return { success: true };
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_SELECT_IMPORT_FILES, async () => {
+  const { dialog } = require("electron");
+  const result = await dialog.showOpenDialog(getDialogParent(), {
+    properties: ["openFile", "multiSelections"],
+    title: "Import files into plugin workspace",
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths;
+});
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_SELECT_IMPORT_DIRECTORY, async () => {
+  const { dialog } = require("electron");
+  const result = await dialog.showOpenDialog(getDialogParent(), {
+    properties: ["openDirectory"],
+    title: "Import folder into plugin workspace",
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths[0];
+});
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_IMPORT_FILES_INTO_WORKSPACE,
+  async (
+    _event,
+    installedFolderName: string,
+    absolutePaths: string[],
+    destRelativeBase?: string,
+  ) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    if (!Array.isArray(absolutePaths)) {
+      return { success: false, error: "Invalid paths" };
+    }
+    return pluginLoader.importExternalFilesIntoWorkspace(
+      installedFolderName,
+      absolutePaths,
+      typeof destRelativeBase === "string" ? destRelativeBase : "",
+    );
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_IMPORT_DIRECTORY_INTO_WORKSPACE,
+  async (
+    _event,
+    installedFolderName: string,
+    absoluteDir: string,
+    destRelativeBase?: string,
+  ) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    if (typeof absoluteDir !== "string") {
+      return { success: false, error: "Invalid directory" };
+    }
+    return pluginLoader.importExternalDirectoryIntoWorkspace(
+      installedFolderName,
+      absoluteDir,
+      typeof destRelativeBase === "string" ? destRelativeBase : "",
+    );
+  },
+);
+
+function toFileUriForMonaco(absPath: string): string {
+  return toFileUri(absPath);
+}
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_TYPECHECK, async (_event, pluginName: string) => {
+  if (!isSafePluginName(pluginName)) {
+    return {
+      success: false,
+      error: "Invalid plugin name",
+      diagnostics: [] as {
+        relativePath: string;
+        line: number;
+        column: number;
+        message: string;
+        category: "error" | "warning" | "suggestion";
+        code: number | undefined;
+      }[],
+    };
+  }
+  try {
+    return pluginLoader.runTypecheckOnPluginWorkspace(pluginName);
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : String(e),
+      diagnostics: [],
+    };
+  }
+});
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_IDE_TYPINGS, async () => {
+  const libs: { fileName: string; content: string }[] = [];
+  const tryAdd = (request: string) => {
+    try {
+      const resolved = require.resolve(request);
+      const content = fs.readFileSync(resolved, "utf8");
+      libs.push({
+        fileName: toFileUriForMonaco(resolved),
+        content,
+      });
+    } catch {
+      // optional typings
+    }
+  };
+  tryAdd("@types/react/index.d.ts");
+  tryAdd("@types/react-dom/index.d.ts");
+  return { libs };
+});
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_IDE_PLUGIN_TYPINGS,
+  async (_event, pluginName: string) => {
+    if (!isSafePluginName(pluginName)) {
+      return null;
+    }
+    return pluginLoader.getIdePluginVirtualTypings(pluginName);
   },
 );
 

@@ -160,6 +160,108 @@ contextBridge.exposeInMainWorld("Nodex", {
       relativePath,
       content,
     ),
+  mkdirPluginSource: (
+    installedFolderName: string,
+    relativeDir: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_MKDIR_SOURCE,
+      installedFolderName,
+      relativeDir,
+    ),
+  createPluginSourceFile: (
+    installedFolderName: string,
+    relativePath: string,
+    content?: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_CREATE_SOURCE_FILE,
+      installedFolderName,
+      relativePath,
+      content ?? "",
+    ),
+  deletePluginSourcePath: (
+    installedFolderName: string,
+    relativePath: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_DELETE_SOURCE_PATH,
+      installedFolderName,
+      relativePath,
+    ),
+  selectImportFiles: (): Promise<string[] | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_SELECT_IMPORT_FILES),
+  selectImportDirectory: (): Promise<string | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_SELECT_IMPORT_DIRECTORY),
+  importFilesIntoWorkspace: (
+    installedFolderName: string,
+    absolutePaths: string[],
+    destRelativeBase?: string,
+  ): Promise<{
+    success: boolean;
+    imported?: string[];
+    error?: string;
+  }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_IMPORT_FILES_INTO_WORKSPACE,
+      installedFolderName,
+      absolutePaths,
+      destRelativeBase ?? "",
+    ),
+  importDirectoryIntoWorkspace: (
+    installedFolderName: string,
+    absoluteDir: string,
+    destRelativeBase?: string,
+  ): Promise<{
+    success: boolean;
+    imported?: string[];
+    error?: string;
+  }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_IMPORT_DIRECTORY_INTO_WORKSPACE,
+      installedFolderName,
+      absoluteDir,
+      destRelativeBase ?? "",
+    ),
+  npmRegistrySearch: (
+    query: string,
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    results: {
+      name: string;
+      version: string;
+      description: string;
+      popularity: number;
+    }[];
+  }> => ipcRenderer.invoke(IPC_CHANNELS.NPM_REGISTRY_SEARCH, query),
+  runPluginTypecheck: (
+    pluginName: string,
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    diagnostics: {
+      relativePath: string;
+      line: number;
+      column: number;
+      message: string;
+      category: "error" | "warning" | "suggestion";
+      code: number | undefined;
+    }[];
+  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_TYPECHECK, pluginName),
+  getIdeTypings: (): Promise<{
+    libs: { fileName: string; content: string }[];
+  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_IDE_TYPINGS),
+  getIdePluginTypings: (
+    installedFolderName: string,
+  ): Promise<{
+    workspaceRootFileUri: string;
+    libs: { fileName: string; content: string }[];
+  } | null> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_IDE_PLUGIN_TYPINGS,
+      installedFolderName,
+    ),
   reloadPluginRegistry: (): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_RELOAD_REGISTRY),
 });

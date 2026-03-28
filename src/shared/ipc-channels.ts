@@ -27,6 +27,17 @@ export const IPC_CHANNELS = {
   PLUGIN_READ_SOURCE_FILE: "plugin:read-source-file",
   PLUGIN_WRITE_SOURCE_FILE: "plugin:write-source-file",
   PLUGIN_RELOAD_REGISTRY: "plugin:reload-registry",
+  PLUGIN_MKDIR_SOURCE: "plugin:mkdir-source",
+  PLUGIN_CREATE_SOURCE_FILE: "plugin:create-source-file",
+  PLUGIN_DELETE_SOURCE_PATH: "plugin:delete-source-path",
+  PLUGIN_SELECT_IMPORT_FILES: "plugin:select-import-files",
+  PLUGIN_SELECT_IMPORT_DIRECTORY: "plugin:select-import-directory",
+  PLUGIN_IMPORT_FILES_INTO_WORKSPACE: "plugin:import-files-into-workspace",
+  PLUGIN_IMPORT_DIRECTORY_INTO_WORKSPACE: "plugin:import-directory-into-workspace",
+  NPM_REGISTRY_SEARCH: "plugin:npm-registry-search",
+  PLUGIN_TYPECHECK: "plugin:typecheck",
+  PLUGIN_IDE_TYPINGS: "plugin:ide-typings",
+  PLUGIN_IDE_PLUGIN_TYPINGS: "plugin:ide-plugin-typings",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

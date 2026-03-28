@@ -91,6 +91,74 @@ declare global {
         relativePath: string,
         content: string,
       ) => Promise<{ success: boolean; error?: string }>;
+      mkdirPluginSource: (
+        installedFolderName: string,
+        relativeDir: string,
+      ) => Promise<{ success: boolean; error?: string }>;
+      createPluginSourceFile: (
+        installedFolderName: string,
+        relativePath: string,
+        content?: string,
+      ) => Promise<{ success: boolean; error?: string }>;
+      deletePluginSourcePath: (
+        installedFolderName: string,
+        relativePath: string,
+      ) => Promise<{ success: boolean; error?: string }>;
+      selectImportFiles: () => Promise<string[] | null>;
+      selectImportDirectory: () => Promise<string | null>;
+      importFilesIntoWorkspace: (
+        installedFolderName: string,
+        absolutePaths: string[],
+        destRelativeBase?: string,
+      ) => Promise<{
+        success: boolean;
+        imported?: string[];
+        error?: string;
+      }>;
+      importDirectoryIntoWorkspace: (
+        installedFolderName: string,
+        absoluteDir: string,
+        destRelativeBase?: string,
+      ) => Promise<{
+        success: boolean;
+        imported?: string[];
+        error?: string;
+      }>;
+      npmRegistrySearch: (
+        query: string,
+      ) => Promise<{
+        success: boolean;
+        error?: string;
+        results: {
+          name: string;
+          version: string;
+          description: string;
+          popularity: number;
+        }[];
+      }>;
+      runPluginTypecheck: (
+        pluginName: string,
+      ) => Promise<{
+        success: boolean;
+        error?: string;
+        diagnostics: {
+          relativePath: string;
+          line: number;
+          column: number;
+          message: string;
+          category: "error" | "warning" | "suggestion";
+          code: number | undefined;
+        }[];
+      }>;
+      getIdeTypings: () => Promise<{
+        libs: { fileName: string; content: string }[];
+      }>;
+      getIdePluginTypings: (
+        installedFolderName: string,
+      ) => Promise<{
+        workspaceRootFileUri: string;
+        libs: { fileName: string; content: string }[];
+      } | null>;
       reloadPluginRegistry: () => Promise<{ success: boolean; error?: string }>;
     };
   }

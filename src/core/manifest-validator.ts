@@ -353,10 +353,14 @@ export class ManifestValidator {
 
     // Validate file extensions
     if (manifest.main) {
-      if (manifest.mode === "development" && !manifest.main.endsWith(".js")) {
+      if (
+        manifest.mode === "development" &&
+        !manifest.main.endsWith(".js") &&
+        !manifest.main.endsWith(".ts")
+      ) {
         warnings.push({
           field: "main",
-          message: "Development mode backend should use .js extension",
+          message: "Development mode backend should use .js or .ts extension",
           severity: "warning",
         });
       }
@@ -373,10 +377,14 @@ export class ManifestValidator {
     }
 
     if (manifest.ui) {
-      if (manifest.mode === "development" && !manifest.ui.endsWith(".jsx")) {
+      if (
+        manifest.mode === "development" &&
+        !manifest.ui.endsWith(".jsx") &&
+        !manifest.ui.endsWith(".tsx")
+      ) {
         warnings.push({
           field: "ui",
-          message: "Development mode frontend should use .jsx extension",
+          message: "Development mode frontend should use .jsx or .tsx extension",
           severity: "warning",
         });
       }

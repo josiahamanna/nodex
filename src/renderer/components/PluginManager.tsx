@@ -319,7 +319,11 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
   };
 
   const handleUninstall = async (pluginName: string) => {
-    if (!confirm(`Are you sure you want to uninstall ${pluginName}?`)) {
+    if (
+      !confirm(
+        `Remove the bundled copy of "${pluginName}" from bin/? Plugin sources under sources/ stay on disk.`,
+      )
+    ) {
       return;
     }
 
@@ -329,7 +333,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
       if (result.success) {
         setMessage({
           type: "success",
-          text: `Plugin ${pluginName} uninstalled successfully!`,
+          text: `Removed ${pluginName} from bin/. Sources preserved; app will use sources if present.`,
         });
         await loadPlugins();
         await refreshLoadIssues();

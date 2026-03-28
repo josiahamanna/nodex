@@ -40,8 +40,8 @@ export interface NodexPluginAPI {
 }
 
 export interface NoteRenderer {
-  // Return HTML content to render in sandboxed iframe
-  render(note: Note): string;
+  /** HTML (or script body) injected into the sandboxed iframe. May be async when using `getUiBootstrap`. */
+  render(note: Note): string | Promise<string>;
 
   // Optional: Handle messages from the iframe
   onMessage?(message: any): void;

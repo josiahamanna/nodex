@@ -4,6 +4,7 @@ import * as esbuild from "esbuild";
 import { rollup } from "rollup";
 import nodeResolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
+import replace from "@rollup/plugin-replace";
 import esbuildPlugin from "rollup-plugin-esbuild";
 import { pluginCacheManager } from "./plugin-cache-manager";
 import { emitPluginProgress } from "./plugin-progress";
@@ -15,6 +16,10 @@ export interface BundleOptions {
   sourcemap?: boolean;
   /** Where to write `main.bundle.js` / `ui.bundle.js` (default: `<pluginPath>/dist`) */
   distDir?: string;
+  /**
+   * Root used for manifest-relative paths (main/ui). Default: parent of `dist` when `distDir` ends with `dist`, else `distDir` (flat output e.g. `bin/<name>`).
+   */
+  bundleOutputRoot?: string;
   /** Emit progress lines for logging / IPC */
   onProgress?: (message: string) => void;
 }
@@ -29,6 +34,75 @@ export interface BundleResult {
 }
 
 const REACT_EXTERNALS = ["react", "react-dom", "react-dom/client"] as const;
+
+/** Same ESM entry as host webpack (avoids CJS `min/vs` + nls loader issues). */
+function resolveMonacoEditorEsm(pluginPath: string): string | undefined {
+  const local = path.join(
+    pluginPath,
+    "node_modules",
+    "monaco-editor",
+    "esm",
+    "vs",
+    "editor",
+    "editor.main.js",
+  );
+  if (fs.existsSync(local)) {
+    return local;
+  }
+  try {
+    return require.resolve("monaco-editor/esm/vs/editor/editor.main.js");
+  } catch {
+    return undefined;
+  }
+}
+
+function monacoEditorAliasEsbuildPlugin(pluginPath: string): EsbuildPlugin {
+  const target = resolveMonacoEditorEsm(pluginPath);
+  return {
+    name: "monaco-editor-esm-alias",
+    setup(build) {
+      if (!target) {
+        return;
+      }
+      build.onResolve({ filter: /^monaco-editor$/ }, () => ({ path: target }));
+    },
+  };
+}
+
+function monacoEditorAliasRollupPlugin(pluginPath: string): {
+  name: string;
+  resolveId(id: string): string | null;
+} {
+  const target = resolveMonacoEditorEsm(pluginPath);
+  return {
+    name: "monaco-editor-esm-alias",
+    resolveId(id: string) {
+      if (!target || id !== "monaco-editor") {
+        return null;
+      }
+      return target;
+    },
+  };
+}
+
+/** Monaco (and others) ship `.css` / font imports Rollup must not choke on. */
+function rollupStubAssetImports(): {
+  name: string;
+  load(id: string): string | null;
+} {
+  return {
+    name: "stub-asset-imports",
+    load(id: string) {
+      if (id.endsWith(".css")) {
+        return "export default {}";
+      }
+      if (/\.(ttf|woff2?|woff|eot)$/i.test(id)) {
+        return "export default ''";
+      }
+      return null;
+    },
+  };
+}
 
 /** Dev-only: bundle UI for iframe; `react` maps to `window.Nodex.React` at runtime. */
 function nodexReactShimPlugins(): EsbuildPlugin {
@@ -98,16 +172,21 @@ function cacheNodeModulesPath(pluginPath: string): string | undefined {
 
 export class PluginBundler {
   /**
-   * Synchronous UI bundle for development iframe (no Rollup). React comes from Nodex bridge.
+   * UI bundle for development iframe (esbuild async API; plugins require async `esbuild.build`).
+   * React comes from Nodex bridge.
    */
-  bundleUiForDevIframe(pluginPath: string, uiRelative: string, minify = false): string {
+  async bundleUiForDevIframe(
+    pluginPath: string,
+    uiRelative: string,
+    minify = false,
+  ): Promise<string> {
     const uiEntry = path.join(pluginPath, uiRelative);
     if (!fs.existsSync(uiEntry)) {
       throw new Error(`UI entry not found: ${uiRelative}`);
     }
 
     const cacheNm = cacheNodeModulesPath(pluginPath);
-    const result = esbuild.buildSync({
+    const result = await esbuild.build({
       absWorkingDir: pluginPath,
       entryPoints: [uiEntry],
       bundle: true,
@@ -115,10 +194,25 @@ export class PluginBundler {
       format: "iife",
       write: false,
       minify,
+      /** Use React's production jsx-runtime (no `require("react")` inside jsx-runtime). */
+      define: {
+        "process.env.NODE_ENV": JSON.stringify("production"),
+      },
       jsx: "transform",
       jsxFactory: "React.createElement",
       jsxFragment: "React.Fragment",
-      plugins: [nodexReactShimPlugins()],
+      loader: {
+        ".ts": "ts",
+        ".tsx": "tsx",
+        ".css": "empty",
+        ".ttf": "empty",
+        ".woff": "empty",
+        ".woff2": "empty",
+      },
+      plugins: [
+        monacoEditorAliasEsbuildPlugin(pluginPath),
+        nodexReactShimPlugins(),
+      ],
       logLevel: "silent",
       ...(cacheNm ? { nodePaths: [cacheNm] } : {}),
     });
@@ -140,6 +234,11 @@ export class PluginBundler {
     const minify = options.minify !== false;
     const sourcemap = options.sourcemap !== false;
     const distDir = options.distDir ?? path.join(pluginPath, "dist");
+    const bundleOutputRoot =
+      options.bundleOutputRoot ??
+      (path.basename(distDir) === "dist"
+        ? path.dirname(distDir)
+        : distDir);
     let pluginLabel = path.basename(pluginPath);
 
     let manifest: PluginManifest;
@@ -186,7 +285,6 @@ export class PluginBundler {
     }
 
     const mainOut = path.join(distDir, "main.bundle.js");
-    const bundleRoot = path.dirname(distDir);
     const cacheNm = cacheNodeModulesPath(pluginPath);
     progress("Bundling backend (esbuild)…");
 
@@ -211,7 +309,7 @@ export class PluginBundler {
     }
 
     const mainRelative = path
-      .relative(bundleRoot, mainOut)
+      .relative(bundleOutputRoot, mainOut)
       .split(path.sep)
       .join("/");
     let uiRelative: string | undefined;
@@ -234,6 +332,14 @@ export class PluginBundler {
           input: uiEntry,
           external: [...REACT_EXTERNALS],
           plugins: [
+            monacoEditorAliasRollupPlugin(pluginPath),
+            rollupStubAssetImports(),
+            replace({
+              preventAssignment: true,
+              values: {
+                "process.env.NODE_ENV": JSON.stringify("production"),
+              },
+            }),
             nodeResolve({
               extensions: [".js", ".jsx", ".ts", ".tsx", ".json"],
               preferBuiltins: false,
@@ -261,6 +367,7 @@ export class PluginBundler {
           file: uiOut,
           format: "iife",
           sourcemap,
+          inlineDynamicImports: true,
           globals: {
             react: "Nodex.React",
             "react-dom": "Nodex.ReactDOM",
@@ -274,7 +381,10 @@ export class PluginBundler {
         return { success: false, errors, warnings };
       }
 
-      uiRelative = path.relative(bundleRoot, uiOut).split(path.sep).join("/");
+      uiRelative = path
+        .relative(bundleOutputRoot, uiOut)
+        .split(path.sep)
+        .join("/");
     }
 
     if (manifest.workers?.length) {

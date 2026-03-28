@@ -14,6 +14,12 @@ import { pluginCacheManager } from "./plugin-cache-manager";
 import { npmPackageExistsOnRegistry } from "./npm-registry-stub";
 import { emitPluginProgress } from "./plugin-progress";
 import { pluginBundler } from "./plugin-bundler";
+import * as esbuild from "esbuild";
+import {
+  typecheckPluginWorkspace,
+  type TypecheckDiagnostic,
+} from "./plugin-typecheck";
+import { toFileUri } from "../shared/file-uri";
 
 const zipHandler = require("./zip-handler");
 
@@ -81,14 +87,148 @@ export interface Plugin {
 }
 
 export class PluginLoader {
-  private pluginsDir: string;
+  /** User-installed plugins (import, IDE edits, uninstall). */
+  private userPluginsDir: string;
+  /**
+   * Read-only roots scanned before userPluginsDir (e.g. shipped `plugins/core`).
+   * Same note `type` registered later wins — user plugins override bundled.
+   */
+  private bundledCoreRoots: string[];
   private loadedPlugins: Set<string> = new Set();
   private devUiBundleCache: Map<string, { mtime: number; code: string }> =
     new Map();
   private loadIssues: { folder: string; error: string }[] = [];
 
-  constructor(pluginsDir: string) {
-    this.pluginsDir = pluginsDir;
+  constructor(userPluginsDir: string, bundledCoreRoots: string[] = []) {
+    this.userPluginsDir = userPluginsDir;
+    this.bundledCoreRoots = bundledCoreRoots.filter(
+      (p) => typeof p === "string" && p.length > 0 && fs.existsSync(p),
+    );
+  }
+
+  private static readonly RESERVED_TOP_LEVEL = new Set(["sources", "bin"]);
+
+  private userSourcesRoot(): string {
+    return path.join(this.userPluginsDir, "sources");
+  }
+
+  private userBinRoot(): string {
+    return path.join(this.userPluginsDir, "bin");
+  }
+
+  /**
+   * Editable plugin tree: `sources/<name>` if present, else legacy flat `userData/plugins/<name>`.
+   */
+  private tryResolvePluginWorkspacePath(
+    installedFolderName: string,
+  ): string | null {
+    if (!isSafePluginName(installedFolderName)) {
+      return null;
+    }
+    const fromSources = path.join(this.userSourcesRoot(), installedFolderName);
+    if (fs.existsSync(path.join(fromSources, "manifest.json"))) {
+      return fromSources;
+    }
+    if (PluginLoader.RESERVED_TOP_LEVEL.has(installedFolderName)) {
+      return null;
+    }
+    const legacy = path.join(this.userPluginsDir, installedFolderName);
+    if (fs.existsSync(path.join(legacy, "manifest.json"))) {
+      return legacy;
+    }
+    return null;
+  }
+
+  /** Prefer `bin/<name>` (bundled production), else sources, else legacy flat. */
+  private resolvePluginRuntimePath(installedFolderName: string): string | null {
+    if (!isSafePluginName(installedFolderName)) {
+      return null;
+    }
+    const binP = path.join(this.userBinRoot(), installedFolderName);
+    if (fs.existsSync(path.join(binP, "manifest.json"))) {
+      return binP;
+    }
+    return this.tryResolvePluginWorkspacePath(installedFolderName);
+  }
+
+  /** Folder with a production `manifest.json` (prefer `bin/<name>`). */
+  private resolveProductionPluginRoot(pluginName: string): string | null {
+    if (!isSafePluginName(pluginName)) {
+      return null;
+    }
+    const candidates = [
+      path.join(this.userBinRoot(), pluginName),
+      path.join(this.userPluginsDir, pluginName),
+    ];
+    for (const c of candidates) {
+      const mp = path.join(c, "manifest.json");
+      if (!fs.existsSync(mp)) {
+        continue;
+      }
+      try {
+        const m = JSON.parse(fs.readFileSync(mp, "utf8")) as PluginManifest;
+        if (m.mode === "production") {
+          return c;
+        }
+      } catch {
+        /* skip */
+      }
+    }
+    return null;
+  }
+
+  private collectUserPluginIds(): string[] {
+    const names = new Set<string>();
+    const addFromDir = (root: string): void => {
+      if (!fs.existsSync(root)) {
+        return;
+      }
+      for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+        if (!ent.isDirectory() || ent.name.startsWith(".")) {
+          continue;
+        }
+        const p = path.join(root, ent.name);
+        if (fs.existsSync(path.join(p, "manifest.json"))) {
+          names.add(ent.name);
+        }
+      }
+    };
+    addFromDir(this.userSourcesRoot());
+    addFromDir(this.userBinRoot());
+    if (fs.existsSync(this.userPluginsDir)) {
+      for (const ent of fs.readdirSync(this.userPluginsDir, {
+        withFileTypes: true,
+      })) {
+        if (!ent.isDirectory() || ent.name.startsWith(".")) {
+          continue;
+        }
+        if (PluginLoader.RESERVED_TOP_LEVEL.has(ent.name)) {
+          continue;
+        }
+        const p = path.join(this.userPluginsDir, ent.name);
+        if (fs.existsSync(path.join(p, "manifest.json"))) {
+          names.add(ent.name);
+        }
+      }
+    }
+    return Array.from(names).sort();
+  }
+
+  private loadUserPlugins(registry: Registry): void {
+    for (const id of this.collectUserPluginIds()) {
+      const loadPath = this.resolvePluginRuntimePath(id);
+      if (!loadPath) {
+        continue;
+      }
+      try {
+        this.loadPluginAt(loadPath, registry);
+      } catch (error) {
+        const msg =
+          error instanceof Error ? error.message : String(error);
+        console.error(`[PluginLoader] Failed to load plugin ${id}:`, error);
+        this.loadIssues.push({ folder: id, error: msg });
+      }
+    }
   }
 
   /** Epic 1.1 — validate declared entry files exist before activation. */
@@ -112,6 +252,78 @@ export class PluginLoader {
         throw new Error(`HTML entry not found: ${manifest.html}`);
       }
     }
+  }
+
+  /**
+   * Node cannot require() raw `.ts`. Compile to a cached `.cjs` beside user plugins
+   * when `manifest.main` ends with `.ts`.
+   */
+  private resolvePluginMainRequirePath(
+    pluginPath: string,
+    manifest: PluginManifest,
+  ): string {
+    const mainAbs = path.join(pluginPath, manifest.main);
+    if (!manifest.main.endsWith(".ts")) {
+      return mainAbs;
+    }
+
+    const cacheRoot = path.join(this.userPluginsDir, ".plugin-main-cache");
+    fs.mkdirSync(cacheRoot, { recursive: true });
+    const st = fs.statSync(mainAbs);
+    const id = crypto
+      .createHash("sha256")
+      .update(mainAbs)
+      .digest("hex")
+      .slice(0, 32);
+    const outFile = path.join(cacheRoot, `${id}.cjs`);
+    const metaFile = path.join(cacheRoot, `${id}.json`);
+    let needBuild = true;
+    if (fs.existsSync(metaFile) && fs.existsSync(outFile)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaFile, "utf8")) as {
+          mtimeMs: number;
+        };
+        if (meta.mtimeMs === st.mtimeMs) {
+          needBuild = false;
+        }
+      } catch {
+        /* rebuild */
+      }
+    }
+    if (needBuild) {
+      const nodePaths: string[] = [];
+      const localNm = path.join(pluginPath, "node_modules");
+      if (fs.existsSync(localNm)) {
+        nodePaths.push(localNm);
+      }
+      const cacheNm = pluginCacheManager.getNodeModulesPath(manifest.name);
+      if (fs.existsSync(cacheNm)) {
+        nodePaths.push(cacheNm);
+      }
+      try {
+        esbuild.buildSync({
+          absWorkingDir: pluginPath,
+          entryPoints: [mainAbs],
+          outfile: outFile,
+          bundle: true,
+          platform: "node",
+          format: "cjs",
+          target: ["node18"],
+          logLevel: "silent",
+          external: ["electron"],
+          ...(nodePaths.length > 0 ? { nodePaths } : {}),
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new Error(`[PluginLoader] Failed to compile ${manifest.main}: ${msg}`);
+      }
+      fs.writeFileSync(
+        metaFile,
+        JSON.stringify({ mtimeMs: st.mtimeMs }),
+        "utf8",
+      );
+    }
+    return outFile;
   }
 
   private copyPluginProductionAssets(
@@ -146,24 +358,40 @@ export class PluginLoader {
   loadAll(registry: Registry): void {
     this.loadIssues = [];
 
-    if (!fs.existsSync(this.pluginsDir)) {
-      console.log(
-        `[PluginLoader] Plugins directory not found: ${this.pluginsDir}`,
-      );
-      fs.mkdirSync(this.pluginsDir, { recursive: true });
+    fs.mkdirSync(this.userPluginsDir, { recursive: true });
+
+    for (const root of this.bundledCoreRoots) {
+      this.loadPluginsInDirectory(root, registry);
+    }
+    this.loadUserPlugins(registry);
+  }
+
+  /** Each immediate child directory with a manifest.json is one plugin. */
+  private loadPluginsInDirectory(parentDir: string, registry: Registry): void {
+    if (!fs.existsSync(parentDir)) {
       return;
     }
 
-    const pluginFolders = fs.readdirSync(this.pluginsDir);
-
-    for (const folder of pluginFolders) {
+    const entries = fs.readdirSync(parentDir, { withFileTypes: true });
+    for (const ent of entries) {
+      if (!ent.isDirectory() || ent.name.startsWith(".")) {
+        continue;
+      }
+      const pluginPath = path.join(parentDir, ent.name);
+      const manifestPath = path.join(pluginPath, "manifest.json");
+      if (!fs.existsSync(manifestPath)) {
+        continue;
+      }
       try {
-        this.loadPlugin(folder, registry);
+        this.loadPluginAt(pluginPath, registry);
       } catch (error) {
         const msg =
           error instanceof Error ? error.message : String(error);
-        console.error(`[PluginLoader] Failed to load plugin ${folder}:`, error);
-        this.loadIssues.push({ folder, error: msg });
+        console.error(
+          `[PluginLoader] Failed to load plugin ${ent.name}:`,
+          error,
+        );
+        this.loadIssues.push({ folder: ent.name, error: msg });
       }
     }
   }
@@ -172,8 +400,8 @@ export class PluginLoader {
     return [...this.loadIssues];
   }
 
-  private loadPlugin(folder: string, registry: Registry): void {
-    const pluginPath = path.join(this.pluginsDir, folder);
+  private loadPluginAt(pluginPath: string, registry: Registry): void {
+    const folder = path.basename(pluginPath);
     const manifestPath = path.join(pluginPath, "manifest.json");
 
     if (!fs.existsSync(manifestPath)) {
@@ -214,7 +442,7 @@ export class PluginLoader {
 
     this.assertPluginFilesExist(pluginPath, manifest);
 
-    const mainFile = path.join(pluginPath, manifest.main);
+    const mainFile = this.resolvePluginMainRequirePath(pluginPath, manifest);
 
     try {
       // Use dynamic require to prevent webpack from bundling plugin code
@@ -243,7 +471,7 @@ export class PluginLoader {
           dispose: () => void;
         };
         getNote: () => null;
-        getUiBootstrap?: () => string;
+        getUiBootstrap?: () => Promise<string>;
       } = {
         registerNoteRenderer: (type: string, renderer: any) => {
           registry.registerRenderer(manifest.name, type, renderer);
@@ -261,7 +489,7 @@ export class PluginLoader {
       };
 
       if (manifest.ui) {
-        api.getUiBootstrap = () => {
+        api.getUiBootstrap = async () => {
           const uiPath = path.join(pluginPath, manifest.ui!);
           if (manifest.mode === "production") {
             if (!fs.existsSync(uiPath)) {
@@ -281,7 +509,7 @@ export class PluginLoader {
             }
             let code: string;
             try {
-              code = pluginBundler.bundleUiForDevIframe(
+              code = await pluginBundler.bundleUiForDevIframe(
                 pluginPath,
                 manifest.ui!,
                 false,
@@ -355,9 +583,16 @@ export class PluginLoader {
         `[PluginLoader] Importing ${packageInfo.mode} package: ${packageInfo.name} v${packageInfo.version}`,
       );
 
-      const pluginDir = path.join(this.pluginsDir, packageInfo.name);
+      fs.mkdirSync(this.userSourcesRoot(), { recursive: true });
+      const pluginDir = path.join(this.userSourcesRoot(), packageInfo.name);
+      const legacyDir = path.join(this.userPluginsDir, packageInfo.name);
+      const binDir = path.join(this.userBinRoot(), packageInfo.name);
 
-      if (fs.existsSync(pluginDir)) {
+      if (
+        fs.existsSync(pluginDir) ||
+        fs.existsSync(legacyDir) ||
+        fs.existsSync(binDir)
+      ) {
         throw new Error(
           `Plugin ${packageInfo.name} already exists. Please remove it first.`,
         );
@@ -368,8 +603,10 @@ export class PluginLoader {
       // Extract package
       await packageManager.extractPackage(zipPath, pluginDir);
 
-      // Load plugin
-      this.loadPlugin(packageInfo.name, registry);
+      const loadPath = this.resolvePluginRuntimePath(packageInfo.name);
+      if (loadPath) {
+        this.loadPluginAt(loadPath, registry);
+      }
 
       console.log(
         `[PluginLoader] Successfully imported ${packageInfo.mode} plugin: ${packageInfo.name}`,
@@ -403,18 +640,22 @@ export class PluginLoader {
       throw new Error("Invalid plugin name");
     }
 
-    const pluginPath = path.join(this.pluginsDir, pluginName);
-
-    if (!fs.existsSync(pluginPath)) {
-      throw new Error(`Plugin ${pluginName} not found`);
+    const binPath = path.join(this.userBinRoot(), pluginName);
+    if (!fs.existsSync(binPath)) {
+      throw new Error(
+        `No bundled plugin in bin/ for "${pluginName}". Sources under sources/ were not removed.`,
+      );
     }
 
-    fs.rmSync(pluginPath, { recursive: true, force: true });
+    fs.rmSync(binPath, { recursive: true, force: true });
+
     this.loadedPlugins.delete(pluginName);
 
     this.reload(registry);
 
-    console.log(`[PluginLoader] Uninstalled plugin: ${pluginName}`);
+    console.log(
+      `[PluginLoader] Removed bundled plugin from bin: ${pluginName} (sources preserved)`,
+    );
   }
 
   async exportPluginAsDev(
@@ -425,9 +666,9 @@ export class PluginLoader {
       throw new Error("Invalid plugin name");
     }
 
-    const pluginPath = path.join(this.pluginsDir, pluginName);
+    const pluginPath = this.tryResolvePluginWorkspacePath(pluginName);
 
-    if (!fs.existsSync(pluginPath)) {
+    if (!pluginPath) {
       throw new Error(`Plugin ${pluginName} not found`);
     }
 
@@ -488,9 +729,8 @@ export class PluginLoader {
       throw new Error("Invalid plugin name");
     }
 
-    const pluginPath = path.join(this.pluginsDir, pluginName);
-
-    if (!fs.existsSync(pluginPath)) {
+    const pluginPath = this.resolveProductionPluginRoot(pluginName);
+    if (!pluginPath) {
       throw new Error(`Plugin ${pluginName} not found`);
     }
 
@@ -531,9 +771,11 @@ export class PluginLoader {
       throw new Error("Invalid plugin name");
     }
 
-    const pluginPath = path.join(this.pluginsDir, pluginName);
+    const workspacePath = this.tryResolvePluginWorkspacePath(pluginName);
+    const prodPath = this.resolveProductionPluginRoot(pluginName);
+    const pluginPath = prodPath ?? workspacePath;
 
-    if (!fs.existsSync(pluginPath)) {
+    if (!pluginPath) {
       throw new Error(`Plugin ${pluginName} not found`);
     }
 
@@ -568,10 +810,11 @@ export class PluginLoader {
     }
 
     if (manifest.mode === "development") {
+      const devRoot = workspacePath ?? pluginPath;
       const staging = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-prod-"));
       try {
         const distStaging = path.join(staging, "dist");
-        const result = await pluginBundler.bundle(pluginPath, {
+        const result = await pluginBundler.bundle(devRoot, {
           distDir: distStaging,
           minify: true,
           sourcemap: true,
@@ -615,7 +858,7 @@ export class PluginLoader {
           JSON.stringify(prodManifest, null, 2),
         );
 
-        this.copyPluginProductionAssets(pluginPath, staging, manifest);
+        this.copyPluginProductionAssets(devRoot, staging, manifest);
 
         const packagePath = await packageManager.createProductionPackage({
           pluginPath: staging,
@@ -656,23 +899,31 @@ export class PluginLoader {
       return { success: false, error: "Invalid plugin name" };
     }
 
-    const pluginPath = path.join(this.pluginsDir, pluginName);
-    if (!fs.existsSync(pluginPath)) {
-      return { success: false, error: `Plugin ${pluginName} not found` };
+    const sourcePath = this.tryResolvePluginWorkspacePath(pluginName);
+    if (!sourcePath) {
+      return {
+        success: false,
+        error: `Plugin sources not found for ${pluginName} (expected sources/${pluginName} or legacy folder).`,
+      };
     }
 
     const man = JSON.parse(
-      fs.readFileSync(path.join(pluginPath, "manifest.json"), "utf8"),
+      fs.readFileSync(path.join(sourcePath, "manifest.json"), "utf8"),
     ) as PluginManifest;
+
+    const binOut = path.join(this.userBinRoot(), pluginName);
+    fs.mkdirSync(this.userBinRoot(), { recursive: true });
+    fs.mkdirSync(binOut, { recursive: true });
 
     emitPluginProgress({
       op: "bundle",
       phase: "start",
-      message: `Bundle to dist/: ${man.name}`,
+      message: `Bundle to bin/${pluginName}: ${man.name}`,
       pluginName: man.name,
     });
 
-    const result = await pluginBundler.bundle(pluginPath, {
+    const result = await pluginBundler.bundle(sourcePath, {
+      distDir: binOut,
       minify: false,
       sourcemap: true,
       onProgress: (m) => {
@@ -700,10 +951,37 @@ export class PluginLoader {
       };
     }
 
+    const prodManifest: PluginManifest = {
+      ...man,
+      mode: "production",
+      main: result.mainBundle!,
+    };
+    if (result.uiBundle) {
+      prodManifest.ui = result.uiBundle;
+    } else {
+      delete prodManifest.ui;
+    }
+    delete prodManifest.dependencies;
+    delete prodManifest.devDependencies;
+
+    fs.writeFileSync(
+      path.join(binOut, "manifest.json"),
+      JSON.stringify(prodManifest, null, 2),
+      "utf8",
+    );
+
+    this.copyPluginProductionAssets(sourcePath, binOut, man);
+
+    for (const key of [...this.devUiBundleCache.keys()]) {
+      if (key.startsWith(`${sourcePath}:`)) {
+        this.devUiBundleCache.delete(key);
+      }
+    }
+
     emitPluginProgress({
       op: "bundle",
       phase: "done",
-      message: `Bundled ${man.name}`,
+      message: `Bundled ${man.name} → bin/${pluginName}`,
       pluginName: man.name,
     });
 
@@ -720,8 +998,8 @@ export class PluginLoader {
       return { success: false, error: "Invalid plugin name" };
     }
 
-    const pluginPath = path.join(this.pluginsDir, pluginName);
-    if (!fs.existsSync(pluginPath)) {
+    const pluginPath = this.tryResolvePluginWorkspacePath(pluginName);
+    if (!pluginPath) {
       return { success: false, error: `Plugin ${pluginName} not found` };
     }
 
@@ -862,8 +1140,8 @@ export class PluginLoader {
       throw new Error("Invalid plugin name");
     }
 
-    const pluginPath = path.join(this.pluginsDir, installedFolderName);
-    if (!fs.existsSync(pluginPath)) {
+    const pluginPath = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!pluginPath) {
       throw new Error("Plugin not found");
     }
 
@@ -928,8 +1206,8 @@ export class PluginLoader {
       return { declared: {}, resolved: {}, error: "Invalid plugin name" };
     }
 
-    const pluginPath = path.join(this.pluginsDir, installedFolderName);
-    if (!fs.existsSync(pluginPath)) {
+    const pluginPath = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!pluginPath) {
       return { declared: {}, resolved: {}, error: "Plugin not found" };
     }
 
@@ -993,7 +1271,11 @@ export class PluginLoader {
       return { success: false, error: "Invalid plugin name" };
     }
 
-    const pluginPath = path.join(this.pluginsDir, installedFolderName);
+    const pluginPath = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!pluginPath) {
+      return { success: false, error: "Plugin not found" };
+    }
+
     const manifest: PluginManifest = JSON.parse(
       fs.readFileSync(path.join(pluginPath, "manifest.json"), "utf8"),
     );
@@ -1069,8 +1351,8 @@ export class PluginLoader {
       return { success: false, error: "Invalid plugin name" };
     }
 
-    const pluginPath = path.join(this.pluginsDir, installedFolderName);
-    if (!fs.existsSync(pluginPath)) {
+    const pluginPath = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!pluginPath) {
       return { success: false, error: "Plugin not found" };
     }
 
@@ -1121,22 +1403,18 @@ export class PluginLoader {
     pluginCacheManager.clearAll();
   }
 
-  /** All folder names under the plugins directory (for IDE picker). */
+  /** Plugin IDs that have editable sources (`sources/<id>` or legacy flat). */
   listPluginWorkspaceFolders(): string[] {
-    if (!fs.existsSync(this.pluginsDir)) {
-      return [];
-    }
-    return fs
-      .readdirSync(this.pluginsDir, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && isSafePluginName(e.name))
-      .map((e) => e.name)
-      .sort();
+    return this.collectUserPluginIds().filter(
+      (id) => this.tryResolvePluginWorkspacePath(id) !== null,
+    );
   }
 
   private readonly sourceSkipDirs = new Set([
     "node_modules",
     "dist",
     ".git",
+    "bin",
   ]);
 
   private resolvePluginSourceFile(
@@ -1149,8 +1427,8 @@ export class PluginLoader {
     if (!isSafeRelativePluginSourcePath(relativePath)) {
       throw new Error("Invalid file path");
     }
-    const pluginPath = path.join(this.pluginsDir, installedFolderName);
-    if (!fs.existsSync(pluginPath)) {
+    const pluginPath = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!pluginPath) {
       throw new Error("Plugin not found");
     }
     const abs = path.resolve(pluginPath, relativePath);
@@ -1166,8 +1444,8 @@ export class PluginLoader {
     if (!isSafePluginName(installedFolderName)) {
       throw new Error("Invalid plugin name");
     }
-    const pluginPath = path.join(this.pluginsDir, installedFolderName);
-    if (!fs.existsSync(pluginPath)) {
+    const pluginPath = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!pluginPath) {
       throw new Error("Plugin not found");
     }
     const out: string[] = [];
@@ -1218,11 +1496,440 @@ export class PluginLoader {
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, content, "utf8");
 
-    const pluginPath = path.join(this.pluginsDir, installedFolderName);
+    const pluginPath = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (pluginPath) {
+      for (const key of [...this.devUiBundleCache.keys()]) {
+        if (key.startsWith(`${pluginPath}:`)) {
+          this.devUiBundleCache.delete(key);
+        }
+      }
+    }
+  }
+
+  mkdirPluginSourceDir(
+    installedFolderName: string,
+    relativeDir: string,
+  ): void {
+    if (!isSafeRelativePluginSourcePath(relativeDir)) {
+      throw new Error("Invalid directory path");
+    }
+    const base = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!base) {
+      throw new Error("Plugin not found");
+    }
+    const abs = path.resolve(base, relativeDir);
+    const rel = path.relative(base, abs);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error("Path escapes plugin directory");
+    }
+    fs.mkdirSync(abs, { recursive: true });
+  }
+
+  createPluginSourceFile(
+    installedFolderName: string,
+    relativePath: string,
+    content = "",
+  ): void {
+    if (!isSafeRelativePluginSourcePath(relativePath)) {
+      throw new Error("Invalid file path");
+    }
+    const abs = this.resolvePluginSourceFile(installedFolderName, relativePath);
+    if (fs.existsSync(abs)) {
+      throw new Error("File already exists");
+    }
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, content, "utf8");
+
+    const pluginPath = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (pluginPath) {
+      for (const key of [...this.devUiBundleCache.keys()]) {
+        if (key.startsWith(`${pluginPath}:`)) {
+          this.devUiBundleCache.delete(key);
+        }
+      }
+    }
+  }
+
+  deletePluginSourcePath(
+    installedFolderName: string,
+    relativePath: string,
+  ): void {
+    if (!isSafeRelativePluginSourcePath(relativePath)) {
+      throw new Error("Invalid path");
+    }
+    const base = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!base) {
+      throw new Error("Plugin not found");
+    }
+    const abs = path.resolve(base, relativePath);
+    const rel = path.relative(base, abs);
+    if (rel.startsWith("..") || path.isAbsolute(rel) || rel === "") {
+      throw new Error("Invalid path");
+    }
+    if (!fs.existsSync(abs)) {
+      throw new Error("Path not found");
+    }
+    const st = fs.statSync(abs);
+    if (st.isDirectory()) {
+      fs.rmSync(abs, { recursive: true, force: true });
+    } else {
+      fs.unlinkSync(abs);
+    }
+    const pluginPath = base;
     for (const key of [...this.devUiBundleCache.keys()]) {
       if (key.startsWith(`${pluginPath}:`)) {
         this.devUiBundleCache.delete(key);
       }
     }
+  }
+
+  private invalidateDevUiCacheForWorkspace(workspaceRoot: string): void {
+    for (const key of [...this.devUiBundleCache.keys()]) {
+      if (key.startsWith(`${workspaceRoot}:`)) {
+        this.devUiBundleCache.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Copy user-selected files from disk into the plugin workspace (e.g. after a file dialog).
+   */
+  importExternalFilesIntoWorkspace(
+    installedFolderName: string,
+    absoluteFilePaths: string[],
+    destRelativeBase = "",
+  ): { success: boolean; imported?: string[]; error?: string } {
+    const base = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!base) {
+      return { success: false, error: "Plugin not found" };
+    }
+    const normBase = destRelativeBase
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/\/+$/, "");
+    if (normBase && !isSafeRelativePluginSourcePath(normBase)) {
+      return { success: false, error: "Invalid destination base" };
+    }
+    const imported: string[] = [];
+    for (const fp of absoluteFilePaths) {
+      if (typeof fp !== "string" || !path.isAbsolute(fp)) {
+        return { success: false, error: "Invalid source path" };
+      }
+      const resolved = path.resolve(fp);
+      if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+        return { success: false, error: `Not a file: ${fp}` };
+      }
+      const bn = path.basename(resolved);
+      const rel = normBase ? `${normBase}/${bn}` : bn;
+      if (!isSafeRelativePluginSourcePath(rel)) {
+        return { success: false, error: `Invalid path: ${rel}` };
+      }
+      const destAbs = path.join(base, rel);
+      const relCheck = path.relative(base, destAbs);
+      if (relCheck.startsWith("..") || path.isAbsolute(relCheck)) {
+        return { success: false, error: "Path escapes workspace" };
+      }
+      fs.mkdirSync(path.dirname(destAbs), { recursive: true });
+      fs.copyFileSync(resolved, destAbs);
+      imported.push(rel.split(path.sep).join("/"));
+    }
+    this.invalidateDevUiCacheForWorkspace(base);
+    return { success: true, imported };
+  }
+
+  /**
+   * Recursively copy a directory tree into the workspace (skips node_modules, dist, .git, bin).
+   */
+  importExternalDirectoryIntoWorkspace(
+    installedFolderName: string,
+    absoluteDir: string,
+    destRelativeBase = "",
+  ): { success: boolean; imported?: string[]; error?: string } {
+    const base = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!base) {
+      return { success: false, error: "Plugin not found" };
+    }
+    if (typeof absoluteDir !== "string" || !path.isAbsolute(absoluteDir)) {
+      return { success: false, error: "Invalid directory path" };
+    }
+    const rootDir = path.resolve(absoluteDir);
+    if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
+      return { success: false, error: "Not a directory" };
+    }
+    const normBase = destRelativeBase
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/\/+$/, "");
+    if (normBase && !isSafeRelativePluginSourcePath(normBase)) {
+      return { success: false, error: "Invalid destination base" };
+    }
+    const imported: string[] = [];
+    const walk = (dir: string): void => {
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (this.sourceSkipDirs.has(ent.name)) {
+          continue;
+        }
+        const full = path.join(dir, ent.name);
+        const relFromRoot = path.relative(rootDir, full);
+        const relDest = normBase
+          ? path.join(normBase, relFromRoot)
+          : relFromRoot;
+        const relPosix = relDest.split(path.sep).join("/");
+        if (!isSafeRelativePluginSourcePath(relPosix)) {
+          throw new Error(`Invalid path in tree: ${relPosix}`);
+        }
+        if (ent.isDirectory()) {
+          walk(full);
+        } else if (ent.isFile()) {
+          const destAbs = path.join(base, relPosix);
+          const relCheck = path.relative(base, destAbs);
+          if (relCheck.startsWith("..") || path.isAbsolute(relCheck)) {
+            throw new Error("Path escapes workspace");
+          }
+          fs.mkdirSync(path.dirname(destAbs), { recursive: true });
+          fs.copyFileSync(full, destAbs);
+          imported.push(relPosix);
+        }
+      }
+    };
+    try {
+      walk(rootDir);
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+    this.invalidateDevUiCacheForWorkspace(base);
+    return { success: true, imported };
+  }
+
+  /**
+   * Monaco cannot see ~/.nodex/plugin-cache deps when the workspace has no
+   * local node_modules. Register virtual file:// entries under
+   * `<workspace>/node_modules/...` backed by cache (or local) package files.
+   */
+  getIdePluginVirtualTypings(installedFolderName: string): {
+    workspaceRootFileUri: string;
+    libs: { fileName: string; content: string }[];
+  } | null {
+    if (!isSafePluginName(installedFolderName)) {
+      return null;
+    }
+    const workspaceRoot = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!workspaceRoot) {
+      return null;
+    }
+
+    let manifest: PluginManifest;
+    try {
+      const raw = fs.readFileSync(
+        path.join(workspaceRoot, "manifest.json"),
+        "utf8",
+      );
+      manifest = JSON.parse(raw) as PluginManifest;
+    } catch {
+      return {
+        workspaceRootFileUri: toFileUri(workspaceRoot),
+        libs: [],
+      };
+    }
+
+    const cacheNm = pluginCacheManager.getNodeModulesPath(manifest.name);
+    const localNm = path.join(workspaceRoot, "node_modules");
+
+    const seed = new Set<string>();
+    try {
+      const pkgJsonPath = path.join(workspaceRoot, "package.json");
+      if (fs.existsSync(pkgJsonPath)) {
+        const pkg = JSON.parse(
+          fs.readFileSync(pkgJsonPath, "utf8"),
+        ) as {
+          dependencies?: Record<string, string>;
+          devDependencies?: Record<string, string>;
+        };
+        for (const k of Object.keys(pkg.dependencies ?? {})) {
+          seed.add(k);
+        }
+        for (const k of Object.keys(pkg.devDependencies ?? {})) {
+          seed.add(k);
+        }
+      }
+    } catch {
+      /* optional */
+    }
+    for (const k of Object.keys(manifest.dependencies ?? {})) {
+      seed.add(k);
+    }
+
+    const pkgNames = this.collectTransitiveNpmPackageNames(
+      seed,
+      localNm,
+      cacheNm,
+      96,
+    );
+    const libs: { fileName: string; content: string }[] = [];
+    const seenUri = new Set<string>();
+
+    for (const name of pkgNames) {
+      const physicalRoot = this.resolveNpmPackageRoot(name, localNm, cacheNm);
+      if (!physicalRoot) {
+        continue;
+      }
+      const virtualBase = path.join(workspaceRoot, "node_modules", ...name.split("/"));
+      const pkgJsonReal = path.join(physicalRoot, "package.json");
+      if (fs.existsSync(pkgJsonReal)) {
+        const v = path.join(virtualBase, "package.json");
+        const u = toFileUri(v);
+        if (!seenUri.has(u)) {
+          seenUri.add(u);
+          libs.push({
+            fileName: u,
+            content: fs.readFileSync(pkgJsonReal, "utf8"),
+          });
+        }
+      }
+      const dtsFiles = new Map<string, string>();
+      this.collectDeclarationFilesUnderDir(physicalRoot, dtsFiles, 200);
+      for (const [abs, content] of dtsFiles) {
+        const rel = path.relative(physicalRoot, abs);
+        const virt = path.join(virtualBase, rel);
+        const uri = toFileUri(virt);
+        if (seenUri.has(uri)) {
+          continue;
+        }
+        seenUri.add(uri);
+        libs.push({ fileName: uri, content });
+      }
+    }
+
+    return {
+      workspaceRootFileUri: toFileUri(workspaceRoot),
+      libs,
+    };
+  }
+
+  private resolveNpmPackageRoot(
+    name: string,
+    localNm: string,
+    cacheNm: string,
+  ): string | null {
+    const parts = name.split("/");
+    const tryNm = (nmRoot: string) => {
+      const p = path.join(nmRoot, ...parts);
+      return fs.existsSync(path.join(p, "package.json")) ? p : null;
+    };
+    return tryNm(localNm) ?? tryNm(cacheNm);
+  }
+
+  private collectTransitiveNpmPackageNames(
+    seed: Set<string>,
+    localNm: string,
+    cacheNm: string,
+    maxPackages: number,
+  ): string[] {
+    const seen = new Set<string>();
+    const queue: string[] = [...seed];
+    while (queue.length > 0 && seen.size < maxPackages) {
+      const name = queue.shift()!;
+      if (seen.has(name)) {
+        continue;
+      }
+      const root = this.resolveNpmPackageRoot(name, localNm, cacheNm);
+      if (!root) {
+        continue;
+      }
+      seen.add(name);
+      try {
+        const pkg = JSON.parse(
+          fs.readFileSync(path.join(root, "package.json"), "utf8"),
+        ) as {
+          dependencies?: Record<string, string>;
+          peerDependencies?: Record<string, string>;
+        };
+        const next = {
+          ...pkg.dependencies,
+          ...pkg.peerDependencies,
+        };
+        for (const dep of Object.keys(next)) {
+          if (!seen.has(dep)) {
+            queue.push(dep);
+          }
+        }
+      } catch {
+        /* skip */
+      }
+    }
+    return [...seen];
+  }
+
+  private collectDeclarationFilesUnderDir(
+    dir: string,
+    out: Map<string, string>,
+    maxFiles: number,
+  ): void {
+    const walk = (d: string): void => {
+      if (out.size >= maxFiles) {
+        return;
+      }
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(d, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const ent of entries) {
+        if (out.size >= maxFiles) {
+          return;
+        }
+        if (ent.name === "node_modules") {
+          continue;
+        }
+        const full = path.join(d, ent.name);
+        if (ent.isDirectory()) {
+          walk(full);
+        } else if (/\.d\.(ts|mts|cts)$/.test(ent.name)) {
+          try {
+            out.set(full, fs.readFileSync(full, "utf8"));
+          } catch {
+            /* skip */
+          }
+        }
+      }
+    };
+    walk(dir);
+  }
+
+  /** CLI-accurate `tsc`-style check on the plugin workspace (on-disk files). */
+  runTypecheckOnPluginWorkspace(installedFolderName: string): {
+    success: boolean;
+    error?: string;
+    diagnostics: TypecheckDiagnostic[];
+  } {
+    const base = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!base) {
+      return { success: false, error: "Plugin not found", diagnostics: [] };
+    }
+    let extraTypesRoots: string[] | undefined;
+    try {
+      const raw = fs.readFileSync(path.join(base, "manifest.json"), "utf8");
+      const manifest = JSON.parse(raw) as { name: string };
+      const cacheNm = pluginCacheManager.getNodeModulesPath(manifest.name);
+      const roots: string[] = [];
+      const a = path.join(base, "node_modules", "@types");
+      const b = path.join(cacheNm, "@types");
+      if (fs.existsSync(a)) {
+        roots.push(a);
+      }
+      if (fs.existsSync(b)) {
+        roots.push(b);
+      }
+      if (roots.length > 0) {
+        extraTypesRoots = roots;
+      }
+    } catch {
+      // optional
+    }
+    return typecheckPluginWorkspace(base, extraTypesRoots);
   }
 }

@@ -27,13 +27,13 @@ Nodex plugins are modular extensions that add custom note renderers, editors, an
 
 ### Key Principles
 
-- ✅ **No hardcoded UI strings** - UI defined in separate HTML files
-- ✅ **React Bridge Pattern** - Shared React instance via message-based API (no bundling needed)
-- ✅ **Sandboxed execution** - Backend runs in separate Node.js child processes, frontend in iframes
-- ✅ **State persistence** - Both per-note and global state support
-- ✅ **Secure communication** - Structured message passing via plugin loader bridge
-- ✅ **Graceful degradation** - Plugins fail safely without crashing the app
-- ✅ **Built-in IDE** - Develop plugins directly inside Nodex with live preview
+-  **No hardcoded UI strings** - UI defined in separate HTML files
+-  **React Bridge Pattern** - Shared React instance via message-based API (no bundling needed)
+-  **Sandboxed execution** - Backend runs in separate Node.js child processes, frontend in iframes
+-  **State persistence** - Both per-note and global state support
+-  **Secure communication** - Structured message passing via plugin loader bridge
+-  **Graceful degradation** - Plugins fail safely without crashing the app
+-  **Built-in IDE** - Develop plugins directly inside Nodex with live preview
 
 ---
 
@@ -699,12 +699,12 @@ The built-in plugin IDE includes a JSX compiler (Babel) that transpiles JSX to `
 
 ### Benefits
 
-✅ **No bundling required** - Plugins don't need to bundle React (saves ~150KB per plugin)  
-✅ **Single React version** - No version conflicts, always uses main app's React  
-✅ **Strict CSP maintained** - Only inline scripts, no `script-src 'self'` needed  
-✅ **Familiar API** - Developers write normal React code  
-✅ **Type safety** - Full TypeScript definitions provided  
-✅ **Redux integration** - Can connect to shared Redux store (opt-in)
+ **No bundling required** - Plugins don't need to bundle React (saves ~150KB per plugin)  
+ **Single React version** - No version conflicts, always uses main app's React  
+ **Strict CSP maintained** - Only inline scripts, no `script-src 'self'` needed  
+ **Familiar API** - Developers write normal React code  
+ **Type safety** - Full TypeScript definitions provided  
+ **Redux integration** - Can connect to shared Redux store (opt-in)
 
 ### Redux Integration (Optional)
 
@@ -1179,11 +1179,11 @@ Nodex.onMessage = (message) => {
 
 ### Security Benefits
 
-✅ **No direct access** - Frontend cannot directly call Node.js APIs  
-✅ **Permission checking** - Bridge validates permissions before routing  
-✅ **Message validation** - All messages are validated and sanitized  
-✅ **Rate limiting** - Prevents message flooding  
-✅ **Audit logging** - All plugin actions are logged  
+ **No direct access** - Frontend cannot directly call Node.js APIs  
+ **Permission checking** - Bridge validates permissions before routing  
+ **Message validation** - All messages are validated and sanitized  
+ **Rate limiting** - Prevents message flooding  
+ **Audit logging** - All plugin actions are logged  
 
 ---
 
@@ -1204,8 +1204,8 @@ connect-src 'none';
 **Implications**:
 - ❌ Cannot load external scripts
 - ❌ Cannot make fetch/XHR requests directly
-- ✅ Can use inline scripts and styles
-- ✅ Can display images from data URLs
+-  Can use inline scripts and styles
+-  Can display images from data URLs
 
 ### Sandboxing
 
@@ -1249,7 +1249,7 @@ connect-src 'none';
    // ❌ Don't do this
    await api.storage.set('apiKey', 'secret-key');
    
-   // ✅ Do this
+   //  Do this
    // Ask user to configure in app settings
    ```
 
@@ -1665,11 +1665,11 @@ pdf-viewer-1.0.0.Nodexplugin-dev
 ```
 
 **Characteristics:**
-- ✅ Editable source code
-- ✅ Hot reload during development
-- ✅ Dependencies fetched on demand
-- ✅ Can be opened in Plugin IDE
-- ✅ Smaller package size (no node_modules)
+-  Editable source code
+-  Hot reload during development
+-  Dependencies fetched on demand
+-  Can be opened in Plugin IDE
+-  Smaller package size (no node_modules)
 - ⚠️ Requires compilation before use
 
 **Example manifest.json:**
@@ -1712,11 +1712,11 @@ pdf-viewer-1.0.0.Nodexplugin
 ```
 
 **Characteristics:**
-- ✅ Pre-compiled and bundled
-- ✅ All dependencies included
-- ✅ Instant loading (no compilation)
-- ✅ Optimized and minified
-- ✅ Ready for distribution
+-  Pre-compiled and bundled
+-  All dependencies included
+-  Instant loading (no compilation)
+-  Optimized and minified
+-  Ready for distribution
 - ❌ Not editable (source not included)
 
 **Example manifest.json:**
@@ -1839,11 +1839,11 @@ Each plugin has its own isolated dependency cache:
 ```
 
 **Benefits:**
-- ✅ **Complete isolation** - No version conflicts between plugins
-- ✅ **Clear ownership** - Each plugin owns its dependencies
-- ✅ **Easy cleanup** - Delete plugin = delete its cache
-- ✅ **Debugging** - Know exactly what each plugin uses
-- ✅ **Security** - Malicious plugin can't affect others
+-  **Complete isolation** - No version conflicts between plugins
+-  **Clear ownership** - Each plugin owns its dependencies
+-  **Easy cleanup** - Delete plugin = delete its cache
+-  **Debugging** - Know exactly what each plugin uses
+-  **Security** - Malicious plugin can't affect others
 
 ### Dependency Installation Flow
 
