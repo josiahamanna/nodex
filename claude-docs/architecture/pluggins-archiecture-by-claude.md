@@ -25,11 +25,15 @@
 
 Nodex plugins are modular extensions that add custom note renderers, editors, and functionality to the application. Plugins follow a **secure-by-design** architecture inspired by VS Code and Trilium, with clear separation between backend (Node.js) and frontend (browser) code.
 
+### Current implementation vs target
+
+The **POC today** loads plugin backends in the **main process** (dynamic `require` of `manifest.main`). The **target architecture** is **one isolated Node.js child process per plugin backend**, with IPC to the main process—same model as [separate-process-architecture.md](./separate-process-architecture.md). Unless a section says otherwise, backend behavior below describes that **target** model.
+
 ### Key Principles
 
 -  **No hardcoded UI strings** - UI defined in separate HTML files
 -  **React Bridge Pattern** - Shared React instance via message-based API (no bundling needed)
--  **Sandboxed execution** - Backend runs in separate Node.js child processes, frontend in iframes
+-  **Sandboxed execution** - **Target:** backend in separate Node.js child processes; frontend in iframes. **Current POC:** backend in main process until Epic 5 lands.
 -  **State persistence** - Both per-note and global state support
 -  **Secure communication** - Structured message passing via plugin loader bridge
 -  **Graceful degradation** - Plugins fail safely without crashing the app
@@ -125,7 +129,7 @@ Declares plugin metadata, capabilities, and entry points.
 
 ### Backend File (REQUIRED)
 
-Backend logic that runs in a separate sandboxed Node.js child process. Filename is specified in `manifest.main` (e.g., `backend.js`, `main.js`).
+Backend logic; **target** is a separate sandboxed Node.js child process (see [separate-process-architecture.md](./separate-process-architecture.md)). **Current POC:** same file loaded in the main process. Filename is specified in `manifest.main` (e.g., `backend.js`, `main.js`).
 
 ```javascript
 // backend.js (or whatever name specified in manifest.main)
@@ -764,7 +768,7 @@ function MyPlugin() {
 
 ## Backend API (main.js)
 
-The backend API runs in a separate **child process** (not worker thread) for complete isolation and provides access to Node.js capabilities.
+**Target:** the backend API runs in a **dedicated child process** (not a worker thread) for isolation and uses Node capabilities via an IPC bridge. **Current POC:** runs in the main process. For lifecycle, limits, IPC message shapes, and hardening options, see [separate-process-architecture.md](./separate-process-architecture.md).
 
 ### PluginContext
 
@@ -1092,6 +1096,8 @@ async function loadSettings() {
 
 Following VS Code and Trilium best practices, Nodex uses a **bridge pattern** for secure communication.
 
+**Deep dive (target backend isolation):** process lifecycle, typed IPC examples, resource limits, optional pooling/lazy load, and debugging—[separate-process-architecture.md](./separate-process-architecture.md).
+
 ### Architecture
 
 ```
@@ -1209,14 +1215,15 @@ connect-src 'none';
 
 ### Sandboxing
 
-**Backend (main.js)**:
-- Runs in separate isolated Node.js process
-- Complete process isolation (separate V8 instance)
-- Limited Node.js API surface via IPC bridge
-- File system access restricted to plugin directory
+**Backend (manifest `main`, e.g. `main.js` / `backend.js`)** — **target** (see [separate-process-architecture.md](./separate-process-architecture.md) for detail):
+- Runs in a **separate** Node.js process with its own V8 isolate
+- Limited Node API surface via IPC bridge (no ad-hoc `require` of app internals)
+- File system access restricted to plugin directory (validated paths)
 - Database access scoped to plugin tables (via IPC)
 - Network requests require permission
-- Resource limits enforced at OS level
+- Resource limits: configurable heap (e.g. Node `execArgv`), optional CPU caps (e.g. cgroups on Linux), optional syscall/filesystem hardening
+
+**Current POC:** backend runs in the main process; treat the bullets above as the **intended** isolation story once child processes ship.
 
 **Frontend (index.js)**:
 - Runs in sandboxed iframe

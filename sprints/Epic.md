@@ -435,11 +435,11 @@ Create a full-featured plugin development environment inside Nodex with Monaco e
 ## Epic 5: Backend Isolation & Child Processes
 
 **Priority**: P2 (Medium)  
-**Estimated Duration**: 2-3 weeks  
+**Estimated Duration**: 3-4 weeks  
 **Dependencies**: Epic 1
 
 ### Goals
-Move plugin backend execution from main process to isolated child processes for security and stability.
+Move plugin backend execution from main process to isolated child processes for security and stability. Non-functional details (limits, IPC taxonomy, debugging) are spelled out in [claude-docs/architecture/separate-process-architecture.md](../claude-docs/architecture/separate-process-architecture.md).
 
 ### User Stories
 
@@ -505,6 +505,57 @@ Move plugin backend execution from main process to isolated child processes for 
 - Build permission request UI
 - Add permission management
 - Test permission boundaries
+
+#### 5.4 Resource limits and OS hardening
+**As a** system administrator  
+**I want** per-plugin CPU/memory boundaries and optional OS-level hardening  
+**So that** runaway or malicious plugins cannot exhaust the machine
+
+**Acceptance Criteria**:
+- [ ] Configurable V8 heap limit per plugin (e.g. Node `execArgv` / `--max-old-space-size`)
+- [ ] Documented strategy for CPU throttling where applicable (e.g. cgroups on Linux; note platform gaps)
+- [ ] Sandboxed FS path validation policy enforced in the bridge (reject escapes outside plugin directory)
+- [ ] Optional future hooks documented for stricter syscall isolation (e.g. seccomp) without blocking MVP
+
+**Technical Tasks**:
+- Wire manifest or defaults for heap limits into process spawn
+- Document CPU-limit approach per OS
+- Centralize path validation for plugin FS API
+- Add security notes to architecture / runbook
+
+#### 5.5 Structured IPC protocol
+**As a** maintainer  
+**I want** a versioned, typed IPC contract between main and plugin host  
+**So that** requests are correlated, timeouts are explicit, and evolutions are safe
+
+**Acceptance Criteria**:
+- [ ] Documented message schema (envelope with `type`, `requestId`, protocol version)
+- [ ] Request/response correlation with timeouts for privileged operations
+- [ ] Backward-compatible versioning story (e.g. host negotiates min/max protocol on `init`)
+- [ ] Reject or log unknown message types safely
+
+**Technical Tasks**:
+- Define TypeScript types or JSON schema for plugin ↔ main messages
+- Implement timeout and cleanup for pending IPC calls
+- Add protocol version field to `init` handshake
+- Integration tests for malformed / stale messages
+
+#### 5.6 Plugin process debugging and lifecycle strategy
+**As a** plugin developer  
+**I want** to attach a debugger to my plugin process and understand start/stop behavior  
+**So that** I can diagnose backend issues and reason about resource use
+
+**Acceptance Criteria**:
+- [ ] Optional `--inspect` (or equivalent) with unique port per plugin when dev/debug flag enabled
+- [ ] Document how to attach from VS Code / Chrome DevTools
+- [ ] Document default model: one process per plugin vs optional pooling (trade-offs recorded)
+- [ ] Optional lazy start / eager stop (or idle timeout) documented and configurable where implemented
+
+**Technical Tasks**:
+- Allocate debug ports without collisions; gate behind dev setting
+- Write developer doc section for backend debugging
+- Decide and document MVP: strict one-process-per-plugin vs pool (defer pool if out of scope)
+- If lazy load: start process on first backend request; stop on unload or idle policy
 
 ---
 

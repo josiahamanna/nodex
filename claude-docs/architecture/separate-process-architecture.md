@@ -71,7 +71,11 @@ Main Process (Plugin Loader)
 class PluginProcessManager {
   private processes: Map<string, ChildProcess> = new Map();
   
-  async startPlugin(pluginId: string, pluginPath: string) {
+  async startPlugin(
+    pluginId: string,
+    pluginPath: string,
+    mainRelative: string // manifest.main, e.g. "backend.js" — relative to pluginPath
+  ) {
     // Spawn separate Node.js process
     const child = fork(
       path.join(__dirname, 'plugin-host.js'),
@@ -81,7 +85,8 @@ class PluginProcessManager {
         env: {
           ...process.env,
           PLUGIN_ID: pluginId,
-          PLUGIN_PATH: pluginPath
+          PLUGIN_PATH: pluginPath,
+          PLUGIN_MAIN: mainRelative
         },
         // Resource limits (Linux)
         execArgv: [
@@ -136,11 +141,14 @@ class PluginProcessManager {
 
 ```javascript
 // plugin-host.js - Runs in separate Node.js process
+const path = require('path');
+
 const pluginId = process.env.PLUGIN_ID;
 const pluginPath = process.env.PLUGIN_PATH;
+const mainRelative = process.env.PLUGIN_MAIN || 'main.js';
 
-// Load plugin
-const plugin = require(path.join(pluginPath, 'main.js'));
+// Load plugin entry (must match manifest.main, paths relative to plugin root)
+const plugin = require(path.join(pluginPath, mainRelative));
 
 // Create sandboxed API
 const api = createPluginAPI(pluginId);
@@ -351,7 +359,11 @@ class PluginProcessManager {
     // Optional: Auto-restart
     if (this.shouldRestart(pluginId)) {
       setTimeout(() => {
-        this.startPlugin(pluginId, this.getPluginPath(pluginId));
+        this.startPlugin(
+          pluginId,
+          this.getPluginPath(pluginId),
+          this.getBackendEntry(pluginId) // manifest.main
+        );
       }, 5000);
     }
   }
@@ -455,7 +467,11 @@ class PluginProcessManager {
   async loadPlugin(pluginId: string) {
     // Don't start process until plugin is actually needed
     if (!this.processes.has(pluginId)) {
-      await this.startPlugin(pluginId, this.getPluginPath(pluginId));
+      await this.startPlugin(
+        pluginId,
+        this.getPluginPath(pluginId),
+        this.getBackendEntry(pluginId)
+      );
     }
   }
   
@@ -477,20 +493,22 @@ class PluginMonitor {
   getStats(pluginId: string) {
     const child = this.processes.get(pluginId);
     if (!child) return null;
-    
+
+    // child.pid identifies the plugin process. RSS/CPU for *that* PID need OS-level
+    // reads (e.g. /proc on Linux, or a helper like pidusage)—not process.memoryUsage()
+    // here, which would report the *parent* (main) process.
     return {
+      pluginId,
       pid: child.pid,
-      memory: process.memoryUsage(),
-      cpu: process.cpuUsage(),
-      uptime: process.uptime()
+      killed: child.killed,
+      // optional: await readProcStat(child.pid) or pidusage(child.pid)
     };
   }
-  
+
   getAllStats() {
-    return Array.from(this.processes.entries()).map(([id, child]) => ({
-      pluginId: id,
-      ...this.getStats(id)
-    }));
+    return Array.from(this.processes.keys())
+      .map((id) => this.getStats(id))
+      .filter(Boolean);
   }
 }
 ```
