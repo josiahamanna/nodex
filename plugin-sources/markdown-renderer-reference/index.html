@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markdown Editor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Toolbar -->
+  <div id="toolbar" class="toolbar">
+    <div class="toolbar-group">
+      <button class="toolbar-btn" data-action="bold" title="Bold (Ctrl+B)">
+        <strong>B</strong>
+      </button>
+      <button class="toolbar-btn" data-action="italic" title="Italic (Ctrl+I)">
+        <em>I</em>
+      </button>
+      <button class="toolbar-btn" data-action="code" title="Code (Ctrl+`)">
+        <code>&lt;/&gt;</code>
+      </button>
+    </div>
+    
+    <div class="toolbar-divider"></div>
+    
+    <div class="toolbar-group">
+      <button class="toolbar-btn" data-action="h1" title="Heading 1">H1</button>
+      <button class="toolbar-btn" data-action="h2" title="Heading 2">H2</button>
+      <button class="toolbar-btn" data-action="h3" title="Heading 3">H3</button>
+    </div>
+    
+    <div class="toolbar-divider"></div>
+    
+    <div class="toolbar-group">
+      <button class="toolbar-btn" data-action="link" title="Link (Ctrl+K)">🔗</button>
+      <button class="toolbar-btn" data-action="list" title="List">• List</button>
+    </div>
+    
+    <div class="toolbar-divider"></div>
+    
+    <div class="toolbar-group">
+      <button class="toolbar-btn" data-action="preview" title="Toggle Preview (Ctrl+P)">👁️ Preview</button>
+    </div>
+    
+    <div class="toolbar-spacer"></div>
+    
+    <div class="toolbar-info" id="stats">
+      <span id="word-count">0 words</span>
+      <span class="separator">•</span>
+      <span id="char-count">0 chars</span>
+    </div>
+  </div>
+  
+  <!-- Editor Container -->
+  <div id="editor-container" class="editor-container">
+    <!-- Edit Mode -->
+    <div id="edit-mode" class="edit-mode">
+      <textarea 
+        id="editor" 
+        class="editor" 
+        placeholder="Start typing your markdown here...
+        
+# Heading 1
+## Heading 2
+
+**Bold text** and *italic text*
+
+- List item 1
+- List item 2
+
+[Link text](https://example.com)
+
+`inline code`"
+        spellcheck="true"
+      ></textarea>
+    </div>
+    
+    <!-- Preview Mode -->
+    <div id="preview-mode" class="preview-mode" style="display: none;">
+      <div id="preview" class="preview"></div>
+    </div>
+  </div>
+  
+  <!-- Status Bar -->
+  <div id="status-bar" class="status-bar">
+    <span id="status-message">Ready</span>
+    <span class="separator">•</span>
+    <span id="save-status">Saved</span>
+  </div>
+  
+  <!-- Load frontend logic -->
+  <script src="index.js"></script>
+</body>
+</html>

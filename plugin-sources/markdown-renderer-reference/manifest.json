@@ -1,0 +1,25 @@
+{
+  "name": "markdown-renderer-reference",
+  "version": "1.0.0",
+  "displayName": "Markdown Renderer (Reference)",
+  "description": "Reference implementation of a markdown editor following the new plugin architecture",
+  "author": "Modux Team",
+  "license": "MIT",
+  
+  "type": "ui",
+  "main": "main.js",
+  "ui": "index.html",
+  
+  "noteTypes": ["markdown", "md"],
+  
+  "permissions": [
+    "storage.read",
+    "storage.write"
+  ],
+  
+  "activationEvents": [
+    "onNoteType:markdown"
+  ],
+  
+  "icon": "assets/icon.png"
+}
