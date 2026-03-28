@@ -1,4 +1,4 @@
-# RFC: Programmable Knowledge System (Modux)
+# RFC: Programmable Knowledge System (Nodex)
 
 ## Status
 Draft
@@ -115,7 +115,7 @@ plugin/
 ## Lifecycle
 
 ```
-activate(modux)
+activate(Nodex)
 deactivate()
 ```
 
@@ -126,7 +126,7 @@ deactivate()
 ## Context Object
 
 ```
-modux = {
+Nodex = {
   notes,
   ui,
   events,

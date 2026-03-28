@@ -1,8 +1,8 @@
-# Modux Plugin System
+# Nodex Plugin System
 
 ## Overview
 
-Modux is now a fully plugin-driven note-taking application. All note types are handled by plugins, and the note list is dynamically generated based on installed plugins.
+Nodex is now a fully plugin-driven note-taking application. All note types are handled by plugins, and the note list is dynamically generated based on installed plugins.
 
 ## How It Works
 
@@ -33,8 +33,8 @@ plugin-name/
 
 **index.js:**
 ```javascript
-function activate(modux) {
-  modux.ui.registerComponent('note-type', `
+function activate(Nodex) {
+  Nodex.ui.registerComponent('note-type', `
     // React component code using window.React
     const MyComponent = () => {
       return React.createElement('div', {}, 'Hello from plugin!');
@@ -114,8 +114,8 @@ Three plugins are included by default:
 
 ```javascript
 // index.js
-function activate(modux) {
-  modux.ui.registerComponent('simple', `
+function activate(Nodex) {
+  Nodex.ui.registerComponent('simple', `
     const React = window.React;
     
     const SimpleNote = () => {

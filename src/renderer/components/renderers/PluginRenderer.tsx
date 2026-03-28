@@ -14,7 +14,7 @@ const PluginRenderer: React.FC<PluginRendererProps> = ({ note }) => {
   useEffect(() => {
     const renderWithPlugin = async () => {
       try {
-        const componentCode = await window.modux.getComponent(note.type);
+        const componentCode = await window.Nodex.getComponent(note.type);
 
         if (!componentCode) {
           setError(`No plugin found for type: ${note.type}`);

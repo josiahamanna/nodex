@@ -18,7 +18,7 @@ const App: React.FC = () => {
     dispatch(fetchNote());
 
     // Listen for plugin changes from main process
-    const unsubscribe = window.modux.onPluginsChanged(() => {
+    const unsubscribe = window.Nodex.onPluginsChanged(() => {
       dispatch(fetchAllNotes());
       dispatch(fetchNote());
     });

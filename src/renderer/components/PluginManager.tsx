@@ -13,7 +13,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
   } | null>(null);
 
   const loadPlugins = async () => {
-    const installed = await window.modux.getInstalledPlugins();
+    const installed = await window.Nodex.getInstalledPlugins();
     setPlugins(installed);
   };
 
@@ -26,13 +26,13 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
       setImporting(true);
       setMessage(null);
 
-      const zipPath = await window.modux.selectZipFile();
+      const zipPath = await window.Nodex.selectZipFile();
       if (!zipPath) {
         setImporting(false);
         return;
       }
 
-      const result = await window.modux.importPlugin(zipPath);
+      const result = await window.Nodex.importPlugin(zipPath);
 
       if (result.success) {
         setMessage({ type: "success", text: "Plugin imported successfully!" });
@@ -62,7 +62,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
     }
 
     try {
-      const result = await window.modux.uninstallPlugin(pluginName);
+      const result = await window.Nodex.uninstallPlugin(pluginName);
 
       if (result.success) {
         setMessage({
@@ -91,7 +91,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
     <div className="h-full flex flex-col bg-white">
       <header className="border-b border-gray-200 p-4">
         <h2 className="text-2xl font-bold text-gray-800">Plugin Manager</h2>
-        <p className="text-sm text-gray-600 mt-1">Manage your Modux plugins</p>
+        <p className="text-sm text-gray-600 mt-1">Manage your Nodex plugins</p>
       </header>
 
       <div className="flex-1 overflow-auto p-6">

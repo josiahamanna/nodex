@@ -19,10 +19,10 @@ export interface Note {
 
 // Message types for iframe communication
 export enum MessageType {
-  RENDER = 'render',
-  READY = 'ready',
-  UPDATE = 'update',
-  ACTION = 'action',
+  RENDER = "render",
+  READY = "ready",
+  UPDATE = "update",
+  ACTION = "action",
 }
 
 export interface PluginMessage {
@@ -31,10 +31,10 @@ export interface PluginMessage {
 }
 
 // Plugin API that will be available to plugins
-export interface ModuxPluginAPI {
+export interface NodexPluginAPI {
   // Register a renderer for a note type
   registerNoteRenderer(type: string, renderer: NoteRenderer): Disposable;
-  
+
   // Get current note being rendered
   getNote(): Note | null;
 }
@@ -42,13 +42,16 @@ export interface ModuxPluginAPI {
 export interface NoteRenderer {
   // Return HTML content to render in sandboxed iframe
   render(note: Note): string;
-  
+
   // Optional: Handle messages from the iframe
   onMessage?(message: any): void;
 }
 
 // Plugin activation function signature
-export type ActivateFunction = (context: PluginContext, api: ModuxPluginAPI) => void | Promise<void>;
+export type ActivateFunction = (
+  context: PluginContext,
+  api: NodexPluginAPI,
+) => void | Promise<void>;
 
 export interface Plugin {
   activate: ActivateFunction;

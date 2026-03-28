@@ -1,10 +1,10 @@
-# Modux - Programmable Knowledge System POC
+# Nodex - Programmable Knowledge System POC
 
 A production-grade proof of concept for a plugin-driven, programmable knowledge system built with Electron, React, and TypeScript.
 
 ## Overview
 
-Modux demonstrates how to build a secure, extensible Electron application with a plugin architecture that allows dynamic note type registration without modifying core code.
+Nodex demonstrates how to build a secure, extensible Electron application with a plugin architecture that allows dynamic note type registration without modifying core code.
 
 ## Features
 
@@ -116,8 +116,8 @@ plugins/your-plugin/
 ### Plugin Implementation
 
 ```javascript
-function activate(modux) {
-  modux.ui.registerComponent('your-type', `
+function activate(Nodex) {
+  Nodex.ui.registerComponent('your-type', `
     const text = note.content;
     
     // Your rendering logic here
@@ -138,9 +138,9 @@ module.exports = { activate, deactivate };
 
 ### Plugin API
 
-**Available in `modux` object:**
+**Available in `Nodex` object:**
 
-- `modux.ui.registerComponent(type, componentCode)` - Register a note renderer
+- `Nodex.ui.registerComponent(type, componentCode)` - Register a note renderer
 
 **Component Code Requirements:**
 

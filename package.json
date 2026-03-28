@@ -1,7 +1,7 @@
 {
   "name": "poc-electron-plugin-arch",
   "version": "1.0.0",
-  "description": "Modux - Programmable Knowledge System POC",
+  "description": "Nodex - Programmable Knowledge System POC",
   "main": ".webpack/main",
   "scripts": {
     "start": "ELECTRON_DISABLE_SANDBOX=1 electron-forge start",
@@ -13,7 +13,7 @@
   "keywords": [
     "electron",
     "plugin",
-    "modux"
+    "Nodex"
   ],
   "author": "",
   "license": "ISC",

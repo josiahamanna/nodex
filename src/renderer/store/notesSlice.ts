@@ -1,5 +1,5 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { Note, NoteListItem } from '../../preload';
+import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
+import { Note, NoteListItem } from "../../preload";
 
 interface NotesState {
   currentNote: Note | null;
@@ -16,21 +16,21 @@ const initialState: NotesState = {
 };
 
 export const fetchNote = createAsyncThunk(
-  'notes/fetchNote',
+  "notes/fetchNote",
   async (noteId?: string) => {
-    return await window.modux.getNote(noteId);
-  }
+    return await window.Nodex.getNote(noteId);
+  },
 );
 
 export const fetchAllNotes = createAsyncThunk(
-  'notes/fetchAllNotes',
+  "notes/fetchAllNotes",
   async () => {
-    return await window.modux.getAllNotes();
-  }
+    return await window.Nodex.getAllNotes();
+  },
 );
 
 const notesSlice = createSlice({
-  name: 'notes',
+  name: "notes",
   initialState,
   reducers: {
     setCurrentNote: (state, action: PayloadAction<Note>) => {
@@ -52,7 +52,7 @@ const notesSlice = createSlice({
       })
       .addCase(fetchNote.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message || 'Failed to fetch note';
+        state.error = action.error.message || "Failed to fetch note";
       })
       .addCase(fetchAllNotes.pending, (state) => {
         state.loading = true;
@@ -64,7 +64,7 @@ const notesSlice = createSlice({
       })
       .addCase(fetchAllNotes.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message || 'Failed to fetch notes list';
+        state.error = action.error.message || "Failed to fetch notes list";
       });
   },
 });

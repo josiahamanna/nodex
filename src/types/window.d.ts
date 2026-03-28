@@ -2,7 +2,7 @@ import { Note, NoteListItem } from "../preload";
 
 declare global {
   interface Window {
-    modux: {
+    Nodex: {
       getNote: (noteId?: string) => Promise<Note>;
       getAllNotes: () => Promise<NoteListItem[]>;
       getComponent: (type: string) => Promise<string | null>;

@@ -3,14 +3,14 @@
 
 function activate(context, api) {
   // Register renderer for 'code' note type
-  const disposable = api.registerNoteRenderer('code', {
+  const disposable = api.registerNoteRenderer("code", {
     render: (note) => {
       // This function runs in the main process (Node.js)
       // Returns JavaScript code that will run in sandboxed iframe
-      
+
       // For this POC, we'll use a simple code editor with syntax highlighting
       // In a real implementation, you'd load Monaco Editor library
-      
+
       return `
         const root = document.getElementById('plugin-root');
         
@@ -38,7 +38,7 @@ function activate(context, api) {
         });
         
         // Listen for note updates
-        modux.onMessage = (message) => {
+        Nodex.onMessage = (message) => {
           if (message.type === 'update' || message.type === 'render') {
             const note = message.payload;
             editor.value = note.content;
@@ -47,21 +47,21 @@ function activate(context, api) {
         
         // Optional: Send content changes back to parent
         editor.addEventListener('input', () => {
-          modux.postMessage({
+          Nodex.postMessage({
             type: 'contentChanged',
             content: editor.value
           });
         });
       `;
-    }
+    },
   });
-  
+
   context.subscriptions.push(disposable);
-  console.log('[Plugin: monaco-editor] Activated (secure mode)');
+  console.log("[Plugin: monaco-editor] Activated (secure mode)");
 }
 
 function deactivate() {
-  console.log('[Plugin: monaco-editor] Deactivated');
+  console.log("[Plugin: monaco-editor] Deactivated");
 }
 
 module.exports = { activate, deactivate };

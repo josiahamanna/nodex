@@ -1,12 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Note } from '../../../preload';
-import { MessageType, PluginMessage } from '../../../shared/plugin-api';
+import React, { useEffect, useRef, useState } from "react";
+import { Note } from "../../../preload";
+import { MessageType, PluginMessage } from "../../../shared/plugin-api";
 
 interface SecurePluginRendererProps {
   note: Note;
 }
 
-const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({ note }) => {
+const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
+  note,
+}) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,28 +17,28 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({ note }) => 
     const handleMessage = (event: MessageEvent) => {
       // Security: Verify origin if needed
       // For now, we trust messages from our own iframes
-      
+
       const message: PluginMessage = event.data;
-      
+
       switch (message.type) {
         case MessageType.READY:
           setIsReady(true);
           // Send initial note data
           sendMessageToPlugin({ type: MessageType.RENDER, payload: note });
           break;
-          
+
         case MessageType.ACTION:
           // Handle actions from plugin (e.g., edit note, navigate, etc.)
-          console.log('[Plugin Action]', message.payload);
+          console.log("[Plugin Action]", message.payload);
           break;
-          
+
         default:
-          console.warn('[Unknown message type]', message);
+          console.warn("[Unknown message type]", message);
       }
     };
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, [note]);
 
   useEffect(() => {
@@ -47,14 +49,14 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({ note }) => 
 
   const sendMessageToPlugin = (message: PluginMessage) => {
     if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(message, '*');
+      iframeRef.current.contentWindow.postMessage(message, "*");
     }
   };
 
   const loadPluginContent = async () => {
     try {
-      const htmlContent = await window.modux.getPluginHTML(note.type, note);
-      
+      const htmlContent = await window.Nodex.getPluginHTML(note.type, note);
+
       if (!htmlContent) {
         setError(`No plugin renderer found for type: ${note.type}`);
         return;
@@ -62,12 +64,12 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({ note }) => 
 
       // Create sandboxed HTML document
       const sandboxedHTML = createSandboxedHTML(htmlContent);
-      
+
       if (iframeRef.current) {
         iframeRef.current.srcdoc = sandboxedHTML;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load plugin');
+      setError(err instanceof Error ? err.message : "Failed to load plugin");
     }
   };
 
@@ -121,7 +123,7 @@ function createSandboxedHTML(pluginHTML: string): string {
   <div id="plugin-root"></div>
   <script>
     // Plugin communication API
-    const modux = {
+    const Nodex = {
       postMessage: (data) => {
         window.parent.postMessage({ type: 'action', payload: data }, '*');
       },
@@ -130,8 +132,8 @@ function createSandboxedHTML(pluginHTML: string): string {
 
     // Listen for messages from parent
     window.addEventListener('message', (event) => {
-      if (modux.onMessage) {
-        modux.onMessage(event.data);
+      if (Nodex.onMessage) {
+        Nodex.onMessage(event.data);
       }
     });
 

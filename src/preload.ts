@@ -15,7 +15,7 @@ export interface NoteListItem {
   title: string;
 }
 
-contextBridge.exposeInMainWorld("modux", {
+contextBridge.exposeInMainWorld("Nodex", {
   getNote: (noteId?: string): Promise<Note> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_NOTE, noteId),
   getAllNotes: (): Promise<NoteListItem[]> =>

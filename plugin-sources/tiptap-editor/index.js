@@ -3,14 +3,14 @@
 
 function activate(context, api) {
   // Register renderer for 'text' note type
-  const disposable = api.registerNoteRenderer('text', {
+  const disposable = api.registerNoteRenderer("text", {
     render: (note) => {
       // This function runs in the main process (Node.js)
       // Returns JavaScript code that will run in sandboxed iframe
-      
+
       // Note: In a real implementation, you'd want to include Tiptap libraries
       // For this POC, we'll use a simple contenteditable div
-      
+
       return `
         const root = document.getElementById('plugin-root');
         
@@ -30,7 +30,7 @@ function activate(context, api) {
               <button data-cmd="insertUnorderedList" style="padding: 0.375rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.25rem; background: white; cursor: pointer; font-size: 0.875rem; font-weight: 500;">• List</button>
               <button data-cmd="insertOrderedList" style="padding: 0.375rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.25rem; background: white; cursor: pointer; font-size: 0.875rem; font-weight: 500;">1. List</button>
             </div>
-            <div id="editor" contenteditable="true" style="padding: 1.5rem; min-height: 400px; outline: none; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.75;">${note.content.replace(/\n/g, '<br>')}</div>
+            <div id="editor" contenteditable="true" style="padding: 1.5rem; min-height: 400px; outline: none; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.75;">${note.content.replace(/\n/g, "<br>")}</div>
           </div>
         \`;
         
@@ -50,7 +50,7 @@ function activate(context, api) {
         });
         
         // Listen for note updates
-        modux.onMessage = (message) => {
+        Nodex.onMessage = (message) => {
           if (message.type === 'update' || message.type === 'render') {
             const note = message.payload;
             editor.innerHTML = note.content.replace(/\\n/g, '<br>');
@@ -59,21 +59,21 @@ function activate(context, api) {
         
         // Optional: Send content changes back to parent
         editor.addEventListener('input', () => {
-          modux.postMessage({
+          Nodex.postMessage({
             type: 'contentChanged',
             content: editor.innerHTML
           });
         });
       `;
-    }
+    },
   });
-  
+
   context.subscriptions.push(disposable);
-  console.log('[Plugin: tiptap-editor] Activated (secure mode)');
+  console.log("[Plugin: tiptap-editor] Activated (secure mode)");
 }
 
 function deactivate() {
-  console.log('[Plugin: tiptap-editor] Deactivated');
+  console.log("[Plugin: tiptap-editor] Deactivated");
 }
 
 module.exports = { activate, deactivate };

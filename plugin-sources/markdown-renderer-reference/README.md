@@ -1,6 +1,6 @@
 # Markdown Renderer - Reference Implementation
 
-This is a **reference implementation** demonstrating the new Modux plugin architecture.
+This is a **reference implementation** demonstrating the new Nodex plugin architecture.
 
 ## Features
 
@@ -39,7 +39,7 @@ markdown-renderer-reference/
 - Runs in sandboxed iframe
 - Handles user interaction
 - Manages per-note state
-- Communicates via `modux` API
+- Communicates via `Nodex` API
 - Auto-saves content
 
 ### State Persistence
@@ -106,7 +106,7 @@ UI updated with save status
 To modify this plugin:
 
 1. Edit files in this directory
-2. Enable development mode in Modux
+2. Enable development mode in Nodex
 3. Changes auto-reload on save
 4. Check DevTools for debugging
 

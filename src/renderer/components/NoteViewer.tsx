@@ -12,7 +12,7 @@ const NoteViewer: React.FC<NoteViewerProps> = ({ note }) => {
   useEffect(() => {
     const checkPlugin = async () => {
       // Check both old and new plugin systems
-      const types = await window.modux.getRegisteredTypes();
+      const types = await window.Nodex.getRegisteredTypes();
       setHasPlugin(types.includes(note.type));
     };
     checkPlugin();

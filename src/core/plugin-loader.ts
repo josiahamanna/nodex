@@ -2,24 +2,68 @@ import * as fs from "fs";
 import * as path from "path";
 import { Registry } from "./registry";
 import { validatePluginCode } from "../shared/validators";
+import { manifestValidator } from "./manifest-validator";
 
 const zipHandler = require("./zip-handler");
 
-export interface PluginManifest {
-  name: string;
-  version?: string;
-  main: string;
-  description?: string;
+export type PluginMode = "development" | "production";
+export type PluginType = "ui" | "backend" | "hybrid";
+
+export type Permission =
+  | "storage.read"
+  | "storage.write"
+  | "db.read"
+  | "db.write"
+  | "fs.read"
+  | "fs.write"
+  | "network.http"
+  | "ui.panel"
+  | "ui.toolbar";
+
+export interface NetworkConfig {
+  whitelist?: string[];
+  requestApproval?: boolean;
+  rateLimit?: {
+    requestsPerMinute?: number;
+    requestsPerHour?: number;
+  };
 }
 
-export interface ModuxAPI {
+export interface PluginManifest {
+  // Required fields
+  name: string;
+  version: string;
+  type: PluginType;
+  main: string;
+  mode: PluginMode;
+
+  // Optional fields
+  displayName?: string;
+  description?: string;
+  author?: string;
+  license?: string;
+  ui?: string;
+  html?: string;
+  rootId?: string;
+  noteTypes?: string[];
+  permissions?: Permission[];
+  activationEvents?: string[];
+  icon?: string;
+  engines?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  assets?: string[];
+  network?: NetworkConfig;
+}
+
+export interface NodexAPI {
   ui: {
     registerComponent: (type: string, componentCode: string) => void;
   };
 }
 
 export interface Plugin {
-  activate?: (modux: ModuxAPI) => void;
+  activate?: (Nodex: NodexAPI) => void;
   deactivate?: () => void;
 }
 
@@ -63,8 +107,24 @@ export class PluginLoader {
     const manifestContent = fs.readFileSync(manifestPath, "utf8");
     const manifest: PluginManifest = JSON.parse(manifestContent);
 
-    if (!manifest.name || !manifest.main) {
-      throw new Error("Invalid manifest: missing name or main field");
+    // Validate manifest
+    const validationResult = manifestValidator.validate(manifest);
+    if (!validationResult.valid) {
+      const errorMessage = manifestValidator.formatErrors(validationResult);
+      console.error(
+        `[PluginLoader] Invalid manifest for ${folder}:\n${errorMessage}`,
+      );
+      throw new Error(
+        `Invalid manifest: ${validationResult.errors[0]?.message || "validation failed"}`,
+      );
+    }
+
+    // Log warnings if any
+    if (validationResult.warnings.length > 0) {
+      console.warn(`[PluginLoader] Manifest warnings for ${folder}:`);
+      validationResult.warnings.forEach((w) => {
+        console.warn(`  - [${w.field}] ${w.message}`);
+      });
     }
 
     const mainFile = path.join(pluginPath, manifest.main);

@@ -1,6 +1,6 @@
 # Plugin Sources
 
-This directory contains the **source code** for Modux plugins during development.
+This directory contains the **source code** for Nodex plugins during development.
 
 ## Directory Structure
 
@@ -44,7 +44,7 @@ cd plugin-sources
 ```
 
 ### 3. **Import Plugin**
-- Open Modux app
+- Open Nodex app
 - Click "Manage Plugins"
 - Click "Import Plugin from ZIP"
 - Select `plugin-sources/your-plugin/your-plugin.zip`
@@ -71,8 +71,8 @@ mkdir plugin-sources/my-plugin
 
 3. Create `index.js`:
 ```javascript
-function activate(modux) {
-  modux.ui.registerComponent('my-type', `
+function activate(Nodex) {
+  Nodex.ui.registerComponent('my-type', `
     const React = window.React;
     // Your plugin code here
     return React.createElement('div', {}, 'Hello from my plugin!');

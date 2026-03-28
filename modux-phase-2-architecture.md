@@ -1,8 +1,8 @@
-# Modux Phase 2 Architecture: Production-Ready Live Scripting System
+# Nodex Phase 2 Architecture: Production-Ready Live Scripting System
 
 ## Executive Summary
 
-This document outlines the Phase 2 architecture for Modux, combining the best extensibility features from **VS Code** (security & sandboxing), **Emacs** (live coding & introspection), and **Trilium Notes** (in-app scripting & widgets) to create a production-ready, secure, and highly extensible note-taking application with live scripting capabilities.
+This document outlines the Phase 2 architecture for Nodex, combining the best extensibility features from **VS Code** (security & sandboxing), **Emacs** (live coding & introspection), and **Trilium Notes** (in-app scripting & widgets) to create a production-ready, secure, and highly extensible note-taking application with live scripting capabilities.
 
 ---
 
@@ -20,7 +20,7 @@ This document outlines the Phase 2 architecture for Modux, combining the best ex
 
 ## Feature Comparison Matrix
 
-| Feature | VS Code | Emacs | Trilium | Modux Phase 2 |
+| Feature | VS Code | Emacs | Trilium | Nodex Phase 2 |
 |---------|---------|-------|---------|---------------|
 | **Live Code Editing** | ❌ Requires reload | ✅ Instant eval | ✅ In-app editor | ✅ Monaco + hot reload |
 | **Security Model** | ✅ Process isolation | ⚠️ Full access | ⚠️ eval() based | ✅ Sandboxed iframes |
@@ -407,7 +407,7 @@ function validatePluginCode(code: string): ValidationResult {
 ```typescript
 // Available in sandboxed iframe via postMessage
 
-interface ModuxUIAPI {
+interface NodexUIAPI {
   // Rendering
   render(noteId: string, content: string): void;
   update(element: string, content: string): void;
@@ -430,7 +430,7 @@ interface ModuxUIAPI {
 
 // Usage in plugin
 window.addEventListener('message', (event) => {
-  if (event.data.type === 'modux:api') {
+  if (event.data.type === 'Nodex:api') {
     const api = event.data.api;
     
     api.onNoteChange((note) => {
@@ -447,7 +447,7 @@ window.addEventListener('message', (event) => {
 ```typescript
 // Available in worker thread
 
-interface ModuxBackendAPI {
+interface NodexBackendAPI {
   // Database
   db: {
     query(sql: string, params?: any[]): Promise<any[]>;
@@ -484,7 +484,7 @@ interface ModuxBackendAPI {
 }
 
 // Usage in plugin
-export function activate(context: PluginContext, api: ModuxBackendAPI) {
+export function activate(context: PluginContext, api: NodexBackendAPI) {
   // Listen for note creation
   api.events.on('note:created', async (note) => {
     // Auto-tag based on content
@@ -497,7 +497,7 @@ export function activate(context: PluginContext, api: ModuxBackendAPI) {
 ### 3. Introspection API (Emacs-inspired)
 
 ```typescript
-interface ModuxIntrospectionAPI {
+interface NodexIntrospectionAPI {
   // Plugin discovery
   listPlugins(): Promise<PluginInfo[]>;
   getPluginInfo(pluginId: string): Promise<PluginInfo>;
@@ -523,7 +523,7 @@ interface ModuxIntrospectionAPI {
 ### Features
 
 1. **Syntax Highlighting**: JavaScript/TypeScript with plugin API types
-2. **IntelliSense**: Auto-completion for Modux API
+2. **IntelliSense**: Auto-completion for Nodex API
 3. **Error Detection**: Real-time linting and validation
 4. **Code Formatting**: Prettier integration
 5. **Multi-file Support**: Edit manifest, main, UI files in tabs
@@ -544,10 +544,10 @@ class PluginEditor {
       automaticLayout: true,
     });
     
-    // Add Modux API types
+    // Add Nodex API types
     monaco.languages.typescript.typescriptDefaults.addExtraLib(
-      moduxAPITypes,
-      'modux.d.ts'
+      NodexAPITypes,
+      'Nodex.d.ts'
     );
     
     // Auto-save on change
@@ -651,7 +651,7 @@ class HotReloadManager {
 // Plugin can implement these hooks
 export interface PluginLifecycle {
   // Called when plugin is first loaded
-  activate(context: PluginContext, api: ModuxAPI): void | Promise<void>;
+  activate(context: PluginContext, api: NodexAPI): void | Promise<void>;
   
   // Called before plugin is unloaded
   deactivate(): void | Promise<void>;
@@ -936,7 +936,7 @@ interface PluginMarketplace {
 
 ## Conclusion
 
-Modux Phase 2 combines:
+Nodex Phase 2 combines:
 
 ✅ **VS Code's security model** - Sandboxed execution, permission system  
 ✅ **Emacs's live coding** - Hot reload, introspection, middleware  

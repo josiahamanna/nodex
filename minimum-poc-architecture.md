@@ -1,4 +1,4 @@
-# Minimum POC Architecture for Modux
+# Minimum POC Architecture for Nodex
 
 ## Goal
 
@@ -45,7 +45,7 @@ Validate the core concept: **Can plugins dynamically register and render custom 
 ## Architecture
 
 ```
-poc-modux/
+poc-Nodex/
 ├── main.js              # Electron main process
 ├── preload.js           # Bridge between main and renderer
 ├── renderer/
@@ -71,7 +71,7 @@ poc-modux/
 2. Plugin loader scans plugins/ folder
 3. Load manifest.json from each plugin
 4. Execute plugin's index.js with context API
-5. Plugin registers component via modux.ui.registerComponent()
+5. Plugin registers component via Nodex.ui.registerComponent()
 6. Renderer requests note data
 7. Core returns note with type="markdown"
 8. Renderer looks up "markdown" in registry
@@ -166,7 +166,7 @@ class PluginLoader {
       const mainFile = path.join(pluginPath, manifest.main);
       
       // Create context API
-      const modux = {
+      const Nodex = {
         ui: {
           registerComponent: (type, componentCode) => {
             registry.register(type, componentCode);
@@ -177,7 +177,7 @@ class PluginLoader {
       // Load and execute plugin
       const plugin = require(mainFile);
       if (plugin.activate) {
-        plugin.activate(modux);
+        plugin.activate(Nodex);
       }
     }
   }
@@ -225,7 +225,7 @@ module.exports = new Registry();
 ```javascript
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('modux', {
+contextBridge.exposeInMainWorld('Nodex', {
   getNote: () => ipcRenderer.invoke('get-note'),
   getComponent: (type) => ipcRenderer.invoke('get-component', type)
 });
@@ -244,10 +244,10 @@ contextBridge.exposeInMainWorld('modux', {
 ```javascript
 async function loadNote() {
   // Get note data
-  const note = await window.modux.getNote();
+  const note = await window.Nodex.getNote();
   
   // Get component for this note type
-  const componentCode = await window.modux.getComponent(note.type);
+  const componentCode = await window.Nodex.getComponent(note.type);
   
   if (!componentCode) {
     document.getElementById('content').innerHTML = 
@@ -275,13 +275,13 @@ loadNote();
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Modux POC</title>
+  <title>Nodex POC</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="app">
     <header>
-      <h1>Modux POC</h1>
+      <h1>Nodex POC</h1>
     </header>
     <main id="content">
       Loading...
@@ -314,9 +314,9 @@ loadNote();
 
 **Code:**
 ```javascript
-function activate(modux) {
+function activate(Nodex) {
   // Register component for "markdown" type
-  modux.ui.registerComponent('markdown', `
+  Nodex.ui.registerComponent('markdown', `
     // This code runs in renderer context
     const marked = window.marked || simpleMarkdown;
     return marked ? marked(note.content) : note.content;

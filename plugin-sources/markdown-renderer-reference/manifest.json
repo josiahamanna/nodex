@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "displayName": "Markdown Renderer (Reference)",
   "description": "Reference implementation of a markdown editor following the new plugin architecture",
-  "author": "Modux Team",
+  "author": "Nodex Team",
   "license": "MIT",
   
   "type": "ui",

@@ -1,6 +1,6 @@
 # Security Implementation
 
-This document outlines the security measures implemented in the Modux POC to follow production-grade best practices.
+This document outlines the security measures implemented in the Nodex POC to follow production-grade best practices.
 
 ## Security Features Implemented
 
