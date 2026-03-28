@@ -16,6 +16,17 @@ declare global {
       uninstallPlugin: (
         pluginName: string,
       ) => Promise<{ success: boolean; error?: string }>;
+      exportPluginDev: (
+        pluginName: string,
+      ) => Promise<{ success: boolean; path?: string; error?: string }>;
+      exportPluginProduction: (
+        pluginName: string,
+      ) => Promise<{ success: boolean; path?: string; error?: string }>;
+      bundlePluginLocal: (pluginName: string) => Promise<{
+        success: boolean;
+        error?: string;
+        warnings?: string[];
+      }>;
       onPluginsChanged: (callback: () => void) => () => void;
     };
   }

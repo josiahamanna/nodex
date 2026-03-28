@@ -38,6 +38,21 @@ contextBridge.exposeInMainWorld("Nodex", {
     pluginName: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.UNINSTALL_PLUGIN, pluginName),
+  exportPluginDev: (
+    pluginName: string,
+  ): Promise<{ success: boolean; path?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.EXPORT_PLUGIN_DEV, pluginName),
+  exportPluginProduction: (
+    pluginName: string,
+  ): Promise<{ success: boolean; path?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.EXPORT_PLUGIN_PRODUCTION, pluginName),
+  bundlePluginLocal: (
+    pluginName: string,
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    warnings?: string[];
+  }> => ipcRenderer.invoke(IPC_CHANNELS.BUNDLE_PLUGIN_LOCAL, pluginName),
   onPluginsChanged: (callback: () => void) => {
     ipcRenderer.on("plugins-changed", callback);
     return () => ipcRenderer.removeListener("plugins-changed", callback);

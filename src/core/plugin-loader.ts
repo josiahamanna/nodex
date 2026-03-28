@@ -2,9 +2,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { Registry } from "./registry";
-import { isSafePluginName, validatePluginCode } from "../shared/validators";
+import { isSafePluginName } from "../shared/validators";
 import { manifestValidator } from "./manifest-validator";
-import { jsxCompiler } from "./jsx-compiler";
 import { packageManager } from "./package-manager";
 import { pluginBundler } from "./plugin-bundler";
 
@@ -74,35 +73,11 @@ export interface Plugin {
 export class PluginLoader {
   private pluginsDir: string;
   private loadedPlugins: Set<string> = new Set();
-  private compiledCache: Map<string, string> = new Map();
   private devUiBundleCache: Map<string, { mtime: number; code: string }> =
     new Map();
 
   constructor(pluginsDir: string) {
     this.pluginsDir = pluginsDir;
-  }
-
-  private compileJSXIfNeeded(filePath: string): string {
-    if (filePath.endsWith(".jsx") || filePath.endsWith(".tsx")) {
-      // Check cache first
-      if (this.compiledCache.has(filePath)) {
-        return this.compiledCache.get(filePath)!;
-      }
-
-      console.log(`[PluginLoader] Compiling JSX file: ${filePath}`);
-      const result = jsxCompiler.compile(filePath);
-
-      if (!result.success) {
-        throw new Error(`JSX compilation failed: ${result.error}`);
-      }
-
-      // Cache the compiled code
-      this.compiledCache.set(filePath, result.code!);
-      return result.code!;
-    }
-
-    // For .js files, just read the content
-    return fs.readFileSync(filePath, "utf8");
   }
 
   private copyPluginProductionAssets(
@@ -283,7 +258,6 @@ export class PluginLoader {
 
   reload(registry: Registry): void {
     this.loadedPlugins.clear();
-    this.compiledCache.clear();
     this.devUiBundleCache.clear();
     registry.clear();
     this.loadAll(registry);

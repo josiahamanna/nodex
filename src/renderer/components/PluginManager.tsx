@@ -56,6 +56,79 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
     }
   };
 
+  const handleExportDev = async (pluginName: string) => {
+    setMessage(null);
+    try {
+      const result = await window.Nodex.exportPluginDev(pluginName);
+      if (result.success && result.path) {
+        setMessage({
+          type: "success",
+          text: `Dev package created: ${result.path}`,
+        });
+      } else {
+        setMessage({
+          type: "error",
+          text: result.error || "Export failed",
+        });
+      }
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Export failed",
+      });
+    }
+  };
+
+  const handleExportProduction = async (pluginName: string) => {
+    setMessage(null);
+    try {
+      const result = await window.Nodex.exportPluginProduction(pluginName);
+      if (result.success && result.path) {
+        setMessage({
+          type: "success",
+          text: `Production package created: ${result.path}`,
+        });
+      } else {
+        setMessage({
+          type: "error",
+          text: result.error || "Export failed",
+        });
+      }
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Export failed",
+      });
+    }
+  };
+
+  const handleBundleLocal = async (pluginName: string) => {
+    setMessage(null);
+    try {
+      const result = await window.Nodex.bundlePluginLocal(pluginName);
+      if (result.success) {
+        const w =
+          result.warnings?.length && result.warnings.length > 0
+            ? ` (${result.warnings.length} Rollup warnings — see main log)`
+            : "";
+        setMessage({
+          type: "success",
+          text: `Wrote dist/*.bundle.js under plugin folder.${w}`,
+        });
+      } else {
+        setMessage({
+          type: "error",
+          text: result.error || "Bundle failed",
+        });
+      }
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Bundle failed",
+      });
+    }
+  };
+
   const handleUninstall = async (pluginName: string) => {
     if (!confirm(`Are you sure you want to uninstall ${pluginName}?`)) {
       return;
@@ -113,7 +186,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
             disabled={importing}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
           >
-            {importing ? "Importing..." : "Import Plugin from ZIP"}
+            {importing ? "Importing..." : "Import plugin (.Nodexplugin / .zip)"}
           </button>
         </div>
 
@@ -131,18 +204,42 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
               {plugins.map((plugin) => (
                 <div
                   key={plugin}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200"
+                  className="flex flex-col gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div>
                     <h4 className="font-medium text-gray-800">{plugin}</h4>
                     <p className="text-sm text-gray-600">Active</p>
                   </div>
-                  <button
-                    onClick={() => handleUninstall(plugin)}
-                    className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 font-medium"
-                  >
-                    Uninstall
-                  </button>
+                  <div className="flex flex-wrap gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleExportDev(plugin)}
+                      className="px-3 py-1 text-sm bg-slate-100 text-slate-800 rounded hover:bg-slate-200 font-medium"
+                    >
+                      Export dev
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExportProduction(plugin)}
+                      className="px-3 py-1 text-sm bg-indigo-100 text-indigo-800 rounded hover:bg-indigo-200 font-medium"
+                    >
+                      Export production
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBundleLocal(plugin)}
+                      className="px-3 py-1 text-sm bg-amber-100 text-amber-900 rounded hover:bg-amber-200 font-medium"
+                    >
+                      Bundle to dist/
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUninstall(plugin)}
+                      className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 font-medium"
+                    >
+                      Uninstall
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

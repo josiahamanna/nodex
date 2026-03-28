@@ -190,19 +190,6 @@ ipcMain.handle(IPC_CHANNELS.SELECT_ZIP_FILE, async () => {
   return result.filePaths[0];
 });
 
-ipcMain.handle(IPC_CHANNELS.SELECT_OUTPUT_DIRECTORY, async () => {
-  const { dialog } = require("electron");
-  const result = await dialog.showOpenDialog(getDialogParent(), {
-    properties: ["openDirectory", "createDirectory"],
-  });
-
-  if (result.canceled || result.filePaths.length === 0) {
-    return null;
-  }
-
-  return result.filePaths[0];
-});
-
 ipcMain.handle(
   IPC_CHANNELS.EXPORT_PLUGIN_DEV,
   async (_event, pluginName: string) => {
