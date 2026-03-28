@@ -1,0 +1,138 @@
+/**
+ * Semantic design tokens (HSL components for hsl(var(--name))).
+ * Keep in sync with themeing-layout-architecture.md.
+ * Imported as ?raw for plugin iframe injection.
+ */
+
+:root {
+  --background: 210 20% 99%;
+  --foreground: 222.2 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 47% 11%;
+  --primary: 239 64% 48%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 35% 96%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 35% 96%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 35% 96%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 28% 90%;
+  --input: 214.3 28% 90%;
+  --ring: 239 64% 48%;
+  --radius: 0.5rem;
+
+  --sidebar-background: 210 24% 98%;
+  --sidebar-foreground: 222.2 47% 11%;
+  --sidebar-primary: 239 64% 48%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 210 40% 96.1%;
+  --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+  --sidebar-border: 214.3 31.8% 91.4%;
+  --sidebar-ring: 222.2 84% 4.9%;
+
+  --editor-background: 0 0% 100%;
+  --editor-foreground: 222.2 84% 4.9%;
+  --editor-muted-foreground: 215.4 16.3% 46.9%;
+  --editor-border: 214.3 31.8% 91.4%;
+  --editor-line-highlight: 210 40% 96.1%;
+  --editor-selection: 217.2 91.2% 59.8%;
+  --editor-selection-foreground: 210 40% 98%;
+  --code-background: 210 40% 96.1%;
+  --code-foreground: 222.2 47.4% 11.2%;
+
+  /* Splitter: neutral like VS Code (avoid saturated “accent” drag line) */
+  --resize-handle: 214.3 18% 88%;
+  --resize-handle-hover: 214.3 14% 72%;
+  --resize-handle-active: 214.3 14% 58%;
+
+  --titlebar-background: 0 0% 100%;
+  --titlebar-foreground: 222.2 84% 4.9%;
+
+  --scrollbar-thumb: 215.4 16.3% 65%;
+  --scrollbar-track: 210 40% 96.1%;
+
+  --transition-duration: 150ms;
+  --transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Note-type badges (light) */
+  --badge-markdown-bg: 214.3 95% 93%;
+  --badge-markdown-fg: 224.3 76% 48%;
+  --badge-text-bg: 142 76% 92%;
+  --badge-text-fg: 142 72% 29%;
+  --badge-code-bg: 270 95% 93%;
+  --badge-code-fg: 271 81% 36%;
+  --badge-default-bg: 210 40% 96.1%;
+  --badge-default-fg: 222.2 47.4% 11.2%;
+}
+
+.dark {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --card: 222.2 84% 4.9%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222.2 84% 4.9%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 234 86% 70%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 234 86% 70%;
+
+  --sidebar-background: 222.2 84% 4.9%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-primary: 234 86% 70%;
+  --sidebar-primary-foreground: 222.2 47.4% 11.2%;
+  --sidebar-accent: 217.2 32.6% 17.5%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-border: 217.2 32.6% 17.5%;
+  --sidebar-ring: 212.7 26.8% 83.9%;
+
+  --editor-background: 222.2 84% 4.9%;
+  --editor-foreground: 210 40% 98%;
+  --editor-muted-foreground: 215 20.2% 65.1%;
+  --editor-border: 217.2 32.6% 17.5%;
+  --editor-line-highlight: 217.2 32.6% 17.5%;
+  --editor-selection: 217.2 91.2% 59.8%;
+  --editor-selection-foreground: 222.2 47.4% 11.2%;
+  --code-background: 217.2 32.6% 17.5%;
+  --code-foreground: 210 40% 98%;
+
+  --resize-handle: 217.2 18% 28%;
+  --resize-handle-hover: 217.2 14% 42%;
+  --resize-handle-active: 217.2 14% 55%;
+
+  --titlebar-background: 222.2 84% 4.9%;
+  --titlebar-foreground: 210 40% 98%;
+
+  --scrollbar-thumb: 215 20.2% 45%;
+  --scrollbar-track: 217.2 32.6% 12%;
+
+  --badge-markdown-bg: 224.3 76% 20%;
+  --badge-markdown-fg: 213.3 97% 87%;
+  --badge-text-bg: 142 40% 18%;
+  --badge-text-fg: 142 70% 75%;
+  --badge-code-bg: 271 50% 22%;
+  --badge-code-fg: 270 95% 90%;
+  --badge-default-bg: 217.2 32.6% 17.5%;
+  --badge-default-fg: 210 40% 98%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  .dark {
+    --transition-duration: 0ms;
+  }
+}

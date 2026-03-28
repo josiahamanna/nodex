@@ -40,12 +40,12 @@ function MenuBar({ editor }: { editor: Editor | null }) {
 
   const items: [string, () => void, () => boolean][] = [
     [
-      "Boldddssssd",
+      "Bold",
       () => editor.chain().focus().toggleBold().run(),
       () => editor.isActive("bold"),
     ],
     [
-      "Italsssssssssssssssssssssssssssssssssic",
+      "Italic",
       () => editor.chain().focus().toggleItalic().run(),
       () => editor.isActive("italic"),
     ],
