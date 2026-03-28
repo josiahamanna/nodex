@@ -1,0 +1,19 @@
+node_modules/
+.webpack/
+out/
+dist/
+
+# Plugin zips (generated)
+plugin-sources/**/*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*

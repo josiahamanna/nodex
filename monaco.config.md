@@ -1,0 +1,1 @@
+mkae sure monaco is not loaded from cdn

@@ -1,0 +1,6 @@
+{
+  "name": "markdown-note",
+  "version": "1.0.0",
+  "main": "index.js",
+  "description": "Renders markdown notes with custom styling"
+}

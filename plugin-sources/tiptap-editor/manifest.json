@@ -1,0 +1,6 @@
+{
+  "name": "tiptap-editor",
+  "version": "1.0.0",
+  "main": "index.js",
+  "description": "Rich text editor using Tiptap"
+}

@@ -1,0 +1,61 @@
+{
+  "name": "poc-electron-plugin-arch",
+  "version": "1.0.0",
+  "description": "Modux - Programmable Knowledge System POC",
+  "main": ".webpack/main",
+  "scripts": {
+    "start": "ELECTRON_DISABLE_SANDBOX=1 electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "eslint --ext .ts,.tsx ."
+  },
+  "keywords": [
+    "electron",
+    "plugin",
+    "modux"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-deb": "^7.11.1",
+    "@electron-forge/maker-rpm": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
+    "@electron-forge/plugin-webpack": "^7.11.1",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "@vercel/webpack-asset-relocator-loader": "^1.10.0",
+    "autoprefixer": "^10.4.27",
+    "copy-webpack-plugin": "^14.0.0",
+    "css-loader": "^7.1.4",
+    "electron": "^41.1.0",
+    "fork-ts-checker-webpack-plugin": "^9.1.0",
+    "monaco-editor-webpack-plugin": "^7.1.1",
+    "node-loader": "^2.1.0",
+    "postcss": "^8.5.8",
+    "postcss-loader": "^8.2.1",
+    "style-loader": "^4.0.0",
+    "tailwindcss": "^4.2.2",
+    "ts-loader": "^9.5.4",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@reduxjs/toolkit": "^2.11.2",
+    "@tiptap/pm": "^3.21.0",
+    "@tiptap/react": "^3.21.0",
+    "@tiptap/starter-kit": "^3.21.0",
+    "@types/dompurify": "^3.0.5",
+    "adm-zip": "^0.5.16",
+    "dompurify": "^3.3.3",
+    "monaco-editor": "^0.55.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-redux": "^9.2.0"
+  }
+}

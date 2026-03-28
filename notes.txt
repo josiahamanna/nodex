@@ -1,0 +1,29 @@
+npm init -y
+npm install --save-dev electron @electron-forge/cli @electron-forge/maker-squirrel @electron-forge/maker-zip @electron-forge/maker-deb @electron-forge/maker-rpm @electron-forge/plugin-webpack typescript @typescript-eslint/eslint-plugin @typescript-eslint/parser @vercel/webpack-asset-relocator-loader css-loader node-loader style-loader ts-loader fork-ts-checker-webpack-plugin
+npm install react react-dom @reduxjs/toolkit react-redux
+npm install --save-dev @types/react @types/react-dom
+npm install --save-dev tailwindcss postcss autoprefixer postcss-loader
+npm install @tiptap/react @tiptap/starter-kit @tiptap/pm @monaco-editor/react
+
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020", "DOM"],
+    "jsx": "react",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+
+
+
