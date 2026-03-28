@@ -1,7 +1,10 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import * as path from "path";
+import { appendPluginAudit } from "./core/plugin-audit";
 import { pluginCacheManager } from "./core/plugin-cache-manager";
 import { PluginLoader } from "./core/plugin-loader";
+import { setPluginProgressSink } from "./core/plugin-progress";
+import { packageManager } from "./core/package-manager";
 import { registry } from "./core/registry";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
 import {
@@ -51,9 +54,16 @@ app.on("ready", () => {
   console.log("[Main] Loading plugins from:", pluginsPath);
 
   pluginLoader = new PluginLoader(pluginsPath);
-  pluginLoader.loadAll(registry);
 
   createWindow();
+
+  setPluginProgressSink((payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.PLUGIN_PROGRESS, payload);
+    }
+  });
+
+  pluginLoader.loadAll(registry);
 });
 
 app.on("window-all-closed", () => {
@@ -274,10 +284,17 @@ ipcMain.handle(
     if (!isSafePluginName(pluginName)) {
       return { success: false, error: "Invalid plugin name" };
     }
+    const userDataPath = app.getPath("userData");
     const result = await pluginLoader.installPluginDependencies(pluginName);
     if (result.log) {
       console.log("[Main] npm install log:\n", result.log);
     }
+    appendPluginAudit(userDataPath, {
+      action: "install-deps",
+      pluginName,
+      ok: result.success,
+      detail: result.error,
+    });
     return result;
   },
 );
@@ -288,12 +305,25 @@ ipcMain.handle(
     if (!isSafePluginName(pluginName)) {
       return { success: false, error: "Invalid plugin name" };
     }
-    return pluginLoader.clearPluginDependencyCache(pluginName);
+    const userDataPath = app.getPath("userData");
+    const result = pluginLoader.clearPluginDependencyCache(pluginName);
+    appendPluginAudit(userDataPath, {
+      action: "clear-dep-cache",
+      pluginName,
+      ok: result.success,
+      detail: result.error,
+    });
+    return result;
   },
 );
 
 ipcMain.handle(IPC_CHANNELS.CLEAR_ALL_PLUGIN_DEPENDENCY_CACHES, async () => {
+  const userDataPath = app.getPath("userData");
   pluginLoader.clearAllPluginDependencyCaches();
+  appendPluginAudit(userDataPath, {
+    action: "clear-all-dep-caches",
+    ok: true,
+  });
   return { success: true };
 });
 
@@ -302,19 +332,82 @@ ipcMain.handle(IPC_CHANNELS.GET_PLUGIN_CACHE_STATS, async () => {
 });
 
 ipcMain.handle(IPC_CHANNELS.IMPORT_PLUGIN, async (_event, zipPath: string) => {
+  const userDataPath = app.getPath("userData");
   try {
-    await pluginLoader.importFromZip(zipPath, registry);
+    const { warnings } = await pluginLoader.importFromZip(zipPath, registry);
 
-    // Notify renderer to refresh plugin list
+    appendPluginAudit(userDataPath, {
+      action: "import",
+      detail: path.basename(zipPath),
+      ok: true,
+    });
+
     if (mainWindow) {
-      mainWindow.webContents.send("plugins-changed");
+      mainWindow.webContents.send(IPC_CHANNELS.PLUGINS_CHANGED);
     }
 
-    return { success: true };
+    return { success: true, warnings };
   } catch (error: any) {
     console.error("[Main] Plugin import failed:", error);
+    appendPluginAudit(userDataPath, {
+      action: "import",
+      detail: path.basename(zipPath),
+      ok: false,
+    });
     return { success: false, error: error.message };
   }
+});
+
+ipcMain.handle(IPC_CHANNELS.VALIDATE_PLUGIN_ZIP, async (_event, zipPath: string) => {
+  return packageManager.validatePackage(zipPath);
+});
+
+ipcMain.handle(
+  IPC_CHANNELS.GET_PLUGIN_INSTALL_PLAN,
+  async (_event, installedFolderName: string) => {
+    if (!isSafePluginName(installedFolderName)) {
+      throw new Error("Invalid plugin name");
+    }
+    return pluginLoader.getPluginInstallPlan(installedFolderName);
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.GET_PLUGIN_RESOLVED_DEPS,
+  async (_event, installedFolderName: string) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return { declared: {}, resolved: {}, error: "Invalid plugin name" };
+    }
+    return pluginLoader.getPluginResolvedDeps(installedFolderName);
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.RUN_PLUGIN_CACHE_NPM,
+  async (_event, installedFolderName: string, npmArgs: string[]) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    if (!Array.isArray(npmArgs) || npmArgs.length === 0) {
+      return { success: false, error: "npm args required" };
+    }
+    const userDataPath = app.getPath("userData");
+    const result = await pluginLoader.runNpmOnPluginCache(
+      installedFolderName,
+      npmArgs,
+    );
+    appendPluginAudit(userDataPath, {
+      action: "npm-cache",
+      pluginName: installedFolderName,
+      detail: npmArgs.join(" "),
+      ok: result.success,
+    });
+    return result;
+  },
+);
+
+ipcMain.handle(IPC_CHANNELS.GET_PLUGIN_LOAD_ISSUES, async () => {
+  return pluginLoader.getPluginLoadIssues();
 });
 
 ipcMain.handle(IPC_CHANNELS.GET_INSTALLED_PLUGINS, async () => {
@@ -327,11 +420,24 @@ ipcMain.handle(
     if (!isSafePluginName(pluginName)) {
       return { success: false, error: "Invalid plugin name" };
     }
+    const userDataPath = app.getPath("userData");
     try {
       pluginLoader.uninstallPlugin(pluginName, registry);
+      appendPluginAudit(userDataPath, {
+        action: "uninstall",
+        pluginName,
+        ok: true,
+      });
       return { success: true };
     } catch (error) {
       console.error("[Main] Plugin uninstall failed:", error);
+      appendPluginAudit(userDataPath, {
+        action: "uninstall",
+        pluginName,
+        ok: false,
+        detail:
+          error instanceof Error ? error.message : "Unknown error",
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",

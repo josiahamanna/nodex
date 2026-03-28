@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Note } from "../../../preload";
 import { MessageType, PluginMessage } from "../../../shared/plugin-api";
-import { generateReactBridge } from "../../../shared/react-bridge";
+import { attachReactToPluginWindow } from "../../../shared/react-bridge";
 
 interface SecurePluginRendererProps {
   note: Note;
 }
+
+const BRIDGE_REQUEST = "nodex-request-bridge";
+const BRIDGE_READY = "nodex-bridge-ready";
 
 const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   note,
@@ -16,25 +19,31 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Security: Verify origin if needed
-      // For now, we trust messages from our own iframes
+      const iframeWin = iframeRef.current?.contentWindow;
+      if (!iframeWin || event.source !== iframeWin) {
+        return;
+      }
+
+      if (event.data?.type === BRIDGE_REQUEST) {
+        attachReactToPluginWindow(iframeWin);
+        iframeWin.postMessage({ type: BRIDGE_READY }, "*");
+        return;
+      }
 
       const message: PluginMessage = event.data;
 
       switch (message.type) {
         case MessageType.READY:
           setIsReady(true);
-          // Send initial note data
           sendMessageToPlugin({ type: MessageType.RENDER, payload: note });
           break;
 
         case MessageType.ACTION:
-          // Handle actions from plugin (e.g., edit note, navigate, etc.)
           console.log("[Plugin Action]", message.payload);
           break;
 
         default:
-          console.warn("[Unknown message type]", message);
+          break;
       }
     };
 
@@ -63,7 +72,6 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
         return;
       }
 
-      // Create sandboxed HTML document
       const sandboxedHTML = createSandboxedHTML(htmlContent);
 
       if (iframeRef.current) {
@@ -92,7 +100,7 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   return (
     <iframe
       ref={iframeRef}
-      sandbox="allow-scripts"
+      sandbox="allow-scripts allow-same-origin"
       className="w-full h-full border-0"
       title={`Plugin renderer for ${note.type}`}
     />
@@ -100,10 +108,6 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
 };
 
 function createSandboxedHTML(pluginHTML: string): string {
-  // Generate React bridge code
-  const reactBridge = generateReactBridge();
-
-  // Create a secure HTML document with strict CSP
   return `
 <!DOCTYPE html>
 <html>
@@ -112,11 +116,7 @@ function createSandboxedHTML(pluginHTML: string): string {
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
       padding: 1rem;
@@ -126,32 +126,32 @@ function createSandboxedHTML(pluginHTML: string): string {
 <body>
   <div id="plugin-root"></div>
   <script>
-    // Inject React Bridge
-    ${reactBridge}
-    
-    // Plugin communication API
-    if (!window.Nodex) {
-      window.Nodex = {};
-    }
-    
-    window.Nodex.postMessage = (data) => {
-      window.parent.postMessage({ type: 'action', payload: data }, '*');
-    };
-    
-    window.Nodex.onMessage = null;
-
-    // Listen for messages from parent
-    window.addEventListener('message', (event) => {
-      if (window.Nodex.onMessage) {
-        window.Nodex.onMessage(event.data);
-      }
-    });
-
-    // Notify parent that iframe is ready
-    window.parent.postMessage({ type: 'ready' }, '*');
-
-    // Plugin content will be injected here
-    ${pluginHTML}
+    (function () {
+      window.Nodex = window.Nodex || {};
+      window.Nodex.postMessage = function (data) {
+        window.parent.postMessage({ type: 'action', payload: data }, '*');
+      };
+      window.Nodex.onMessage = null;
+      window.addEventListener('message', function (event) {
+        var d = event.data;
+        if (d && d.type === '${BRIDGE_READY}') return;
+        if (window.Nodex.onMessage) {
+          window.Nodex.onMessage(d);
+        }
+      });
+      window.addEventListener('message', function onBridgeReady(ev) {
+        if (ev.data && ev.data.type === '${BRIDGE_READY}') {
+          window.removeEventListener('message', onBridgeReady);
+          try {
+            ${pluginHTML}
+          } catch (e) {
+            console.error('[Plugin]', e);
+          }
+          window.parent.postMessage({ type: '${MessageType.READY}' }, '*');
+        }
+      });
+      window.parent.postMessage({ type: '${BRIDGE_REQUEST}' }, '*');
+    })();
   </script>
 </body>
 </html>

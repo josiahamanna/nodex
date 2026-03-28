@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { PluginManifest } from "./plugin-loader";
+import { manifestValidator } from "./manifest-validator";
 
 const AdmZip = require("adm-zip");
 
@@ -263,6 +264,7 @@ export class PackageManager {
       /manifest\.json$/,
       /\.bundle\.js$/,
       /\.bundle\.js\.map$/,
+      /^dist\/workers\//,
       /\.html$/,
       /\.css$/,
       /\.woff2?$/,
@@ -312,21 +314,27 @@ export class PackageManager {
   async validatePackage(packagePath: string): Promise<{
     valid: boolean;
     errors: string[];
+    warnings: string[];
   }> {
     const errors: string[] = [];
+    const warnings: string[] = [];
 
     try {
       // Check file exists
       if (!fs.existsSync(packagePath)) {
         errors.push("Package file not found");
-        return { valid: false, errors };
+        return { valid: false, errors, warnings };
       }
 
       // Check extension
       const ext = path.extname(packagePath);
-      if (ext !== ".Nodexplugin" && ext !== ".Nodexplugin-dev") {
+      const extOk =
+        ext === ".Nodexplugin" ||
+        ext === ".Nodexplugin-dev" ||
+        ext === ".zip";
+      if (!extOk) {
         errors.push(
-          "Invalid package extension. Must be .Nodexplugin or .Nodexplugin-dev",
+          "Invalid package extension. Use .Nodexplugin, .Nodexplugin-dev, or .zip",
         );
       }
 
@@ -340,40 +348,40 @@ export class PackageManager {
       );
       if (!hasManifest) {
         errors.push("Package does not contain manifest.json");
-        return { valid: false, errors };
+        return { valid: false, errors, warnings };
       }
 
-      // Read and validate manifest
       const manifestEntry = zip.getEntry("manifest.json");
       const manifestContent = zip.readAsText(manifestEntry);
       const manifest = JSON.parse(manifestContent);
 
-      // Basic manifest validation
-      if (!manifest.name) {
-        errors.push("Manifest missing required field: name");
+      const vr = manifestValidator.validate(manifest);
+      if (!vr.valid) {
+        for (const e of vr.errors) {
+          errors.push(`[${e.field}] ${e.message}`);
+        }
       }
-      if (!manifest.version) {
-        errors.push("Manifest missing required field: version");
-      }
-      if (!manifest.mode) {
-        errors.push("Manifest missing required field: mode");
+      for (const w of vr.warnings) {
+        warnings.push(`[${w.field}] ${w.message}`);
       }
 
-      // Check mode matches extension
+      // Check mode matches extension (.zip treated like dev archive)
       const expectedMode =
-        ext === ".Nodexplugin-dev" ? "development" : "production";
-      if (manifest.mode !== expectedMode) {
+        ext === ".Nodexplugin-dev" || ext === ".zip"
+          ? "development"
+          : "production";
+      if (extOk && manifest.mode !== expectedMode) {
         errors.push(
           `Manifest mode (${manifest.mode}) doesn't match package extension (${ext})`,
         );
       }
 
-      return { valid: errors.length === 0, errors };
+      return { valid: errors.length === 0, errors, warnings };
     } catch (error) {
       errors.push(
         `Package validation failed: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return { valid: false, errors };
+      return { valid: false, errors, warnings };
     }
   }
 

@@ -1,9 +1,13 @@
+import Ajv, { type ValidateFunction } from "ajv";
+import * as fs from "fs";
+import * as path from "path";
 import {
   PluginManifest,
   PluginMode,
   PluginType,
   Permission,
 } from "./plugin-loader";
+import { MANIFEST_JSON_SCHEMA } from "./manifest-schema";
 
 export interface ValidationError {
   field: string;
@@ -17,10 +21,107 @@ export interface ValidationResult {
   warnings: ValidationError[];
 }
 
+export function inferPluginTypeFromDisk(
+  pluginPath: string,
+  manifest: PluginManifest,
+): PluginType {
+  const mainPath = path.join(pluginPath, manifest.main);
+  const mainOk = fs.existsSync(mainPath);
+
+  const uiOk =
+    Boolean(manifest.ui) && fs.existsSync(path.join(pluginPath, manifest.ui!));
+  const htmlOk =
+    Boolean(manifest.html) &&
+    fs.existsSync(path.join(pluginPath, manifest.html!));
+
+  let looseJsx = false;
+  try {
+    const entries = fs.readdirSync(pluginPath, { withFileTypes: true });
+    const mainBase = path.basename(manifest.main);
+    for (const e of entries) {
+      if (!e.isFile()) {
+        continue;
+      }
+      if (/\.(jsx|tsx)$/.test(e.name) && e.name !== mainBase) {
+        looseJsx = true;
+        break;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const hasFrontendHint = uiOk || htmlOk || looseJsx;
+  if (hasFrontendHint && mainOk) {
+    return "hybrid";
+  }
+  if (hasFrontendHint) {
+    return "ui";
+  }
+  return "backend";
+}
+
 export class ManifestValidator {
+  private readonly ajvValidate: ValidateFunction;
+
+  constructor() {
+    const ajv = new Ajv({ allErrors: true, strict: false });
+    this.ajvValidate = ajv.compile(MANIFEST_JSON_SCHEMA as object);
+  }
+
+  /**
+   * Schema + rules + on-disk type inference (Epic 1.1 / 1.4).
+   */
+  validateForLoad(manifest: any, pluginPath: string): ValidationResult {
+    const base = this.validate(manifest);
+    if (!base.valid) {
+      return base;
+    }
+    const warnings = [...base.warnings];
+    try {
+      const inferred = inferPluginTypeFromDisk(
+        pluginPath,
+        manifest as PluginManifest,
+      );
+      if (manifest.type && inferred !== manifest.type) {
+        warnings.push({
+          field: "type",
+          message: `Declared type "${manifest.type}" but project layout suggests "${inferred}". See sprints/PLUGIN_MIGRATION.md.`,
+          severity: "warning",
+        });
+      }
+    } catch (e) {
+      warnings.push({
+        field: "type",
+        message: `Could not infer type from disk: ${e instanceof Error ? e.message : String(e)}`,
+        severity: "warning",
+      });
+    }
+    return { ...base, warnings };
+  }
+
   validate(manifest: any): ValidationResult {
     const errors: ValidationError[] = [];
     const warnings: ValidationError[] = [];
+
+    const schemaOk = this.ajvValidate(manifest);
+    if (!schemaOk && this.ajvValidate.errors) {
+      for (const err of this.ajvValidate.errors) {
+        const field =
+          err.instancePath && err.instancePath.length > 0
+            ? err.instancePath.replace(/^\//, "").replace(/\//g, ".")
+            : "manifest";
+        errors.push({
+          field,
+          message: err.message ?? "JSON Schema validation failed",
+          severity: "error",
+        });
+      }
+    }
+
+    if (errors.length > 0) {
+      return { valid: false, errors, warnings };
+    }
 
     // Validate required fields
     this.validateRequired(manifest, errors);
@@ -124,6 +225,14 @@ export class ManifestValidator {
       errors.push({
         field: "assets",
         message: "Field 'assets' must be an array",
+        severity: "error",
+      });
+    }
+
+    if (manifest.workers !== undefined && !Array.isArray(manifest.workers)) {
+      errors.push({
+        field: "workers",
+        message: "Field 'workers' must be an array of file paths",
         severity: "error",
       });
     }

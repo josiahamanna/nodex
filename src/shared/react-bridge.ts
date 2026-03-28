@@ -1,169 +1,91 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
+import { createRoot, hydrateRoot } from "react-dom/client";
 
 /**
- * React Bridge API for Plugins
- *
- * This module provides a message-based React API that allows plugins
- * to use the main app's React instance without bundling their own.
- *
- * The bridge works by:
- * 1. Injecting React API into plugin iframes via window.Nodex.React
- * 2. Converting React API calls to postMessage communications
- * 3. Executing React operations in the main app context
+ * React bridge for plugin iframes (Epic 1.3).
+ * The parent attaches the real React/ReactDOM objects after a short postMessage
+ * handshake so plugin code never reads `window.parent` (CSP / isolation friendly).
  */
+export function attachReactToPluginWindow(w: Window): void {
+  const target = w as Window & {
+    Nodex?: Record<string, unknown>;
+    React?: unknown;
+    ReactDOM?: unknown;
+  };
 
-export interface ReactBridgeAPI {
-  // Core React functions
-  createElement: typeof React.createElement;
-  useState: typeof React.useState;
-  useEffect: typeof React.useEffect;
-  useCallback: typeof React.useCallback;
-  useMemo: typeof React.useMemo;
-  useRef: typeof React.useRef;
-  useContext: typeof React.useContext;
-  useReducer: typeof React.useReducer;
+  target.Nodex = target.Nodex ?? {};
+  const R = React;
+  const RD = ReactDOM;
 
-  // React DOM
-  render: (element: React.ReactElement, container: Element) => void;
+  target.Nodex.React = {
+    createElement: R.createElement.bind(R),
+    useState: R.useState.bind(R),
+    useEffect: R.useEffect.bind(R),
+    useCallback: R.useCallback.bind(R),
+    useMemo: R.useMemo.bind(R),
+    useRef: R.useRef.bind(R),
+    useContext: R.useContext.bind(R),
+    useReducer: R.useReducer.bind(R),
+    useLayoutEffect: R.useLayoutEffect?.bind(R),
+    useImperativeHandle: R.useImperativeHandle?.bind(R),
+    useDebugValue: R.useDebugValue?.bind(R),
+    useDeferredValue: R.useDeferredValue?.bind(R),
+    useTransition: R.useTransition?.bind(R),
+    useId: R.useId?.bind(R),
+    Fragment: R.Fragment,
+    Component: R.Component,
+    PureComponent: R.PureComponent,
+    memo: R.memo?.bind(R),
+    createContext: R.createContext?.bind(R),
+    createRef: R.createRef?.bind(R),
+    forwardRef: R.forwardRef?.bind(R),
+    lazy: R.lazy?.bind(R),
+    Suspense: R.Suspense,
+    isValidElement: R.isValidElement?.bind(R),
+    Children: R.Children,
+  };
 
-  // Fragment
-  Fragment: typeof React.Fragment;
+  const rd = RD as Record<string, unknown>;
+
+  target.Nodex.ReactDOM = {
+    render:
+      typeof rd.render === "function"
+        ? (rd.render as (...a: unknown[]) => unknown).bind(RD)
+        : undefined,
+    createRoot,
+    hydrateRoot,
+    unmountComponentAtNode:
+      typeof rd.unmountComponentAtNode === "function"
+        ? (rd.unmountComponentAtNode as (...a: unknown[]) => unknown).bind(RD)
+        : undefined,
+    findDOMNode:
+      typeof rd.findDOMNode === "function"
+        ? (rd.findDOMNode as (...a: unknown[]) => unknown).bind(RD)
+        : undefined,
+    createPortal: RD.createPortal?.bind(RD),
+    flushSync: RD.flushSync?.bind(RD),
+  };
+
+  target.React = target.Nodex.React;
+  target.ReactDOM = target.Nodex.ReactDOM;
 }
 
-/**
- * Generates the React bridge code to be injected into plugin iframes
- */
+/** @deprecated Inline bootstrap in SecurePluginRenderer uses postMessage + attachReactToPluginWindow. */
 export function generateReactBridge(): string {
-  return `
-    // React Bridge API for Plugins
-    (function() {
-      'use strict';
-      
-      // Get React from parent window
-      const parentReact = window.parent.React;
-      const parentReactDOM = window.parent.ReactDOM;
-      
-      if (!parentReact || !parentReactDOM) {
-        console.error('[React Bridge] React or ReactDOM not found in parent window');
-        return;
-      }
-      
-      // Create Nodex namespace if it doesn't exist
-      if (!window.Nodex) {
-        window.Nodex = {};
-      }
-      
-      // Expose React API
-      window.Nodex.React = {
-        // Core React
-        createElement: parentReact.createElement.bind(parentReact),
-        useState: parentReact.useState.bind(parentReact),
-        useEffect: parentReact.useEffect.bind(parentReact),
-        useCallback: parentReact.useCallback.bind(parentReact),
-        useMemo: parentReact.useMemo.bind(parentReact),
-        useRef: parentReact.useRef.bind(parentReact),
-        useContext: parentReact.useContext.bind(parentReact),
-        useReducer: parentReact.useReducer.bind(parentReact),
-        Fragment: parentReact.Fragment,
-        
-        // Additional hooks
-        useLayoutEffect: parentReact.useLayoutEffect?.bind(parentReact),
-        useImperativeHandle: parentReact.useImperativeHandle?.bind(parentReact),
-        useDebugValue: parentReact.useDebugValue?.bind(parentReact),
-        useDeferredValue: parentReact.useDeferredValue?.bind(parentReact),
-        useTransition: parentReact.useTransition?.bind(parentReact),
-        useId: parentReact.useId?.bind(parentReact),
-        
-        // Component types
-        Component: parentReact.Component,
-        PureComponent: parentReact.PureComponent,
-        memo: parentReact.memo?.bind(parentReact),
-        
-        // Context
-        createContext: parentReact.createContext?.bind(parentReact),
-        
-        // Refs
-        createRef: parentReact.createRef?.bind(parentReact),
-        forwardRef: parentReact.forwardRef?.bind(parentReact),
-        
-        // Lazy loading
-        lazy: parentReact.lazy?.bind(parentReact),
-        Suspense: parentReact.Suspense,
-        
-        // Error boundaries
-        isValidElement: parentReact.isValidElement?.bind(parentReact),
-        Children: parentReact.Children,
-      };
-      
-      // Expose ReactDOM API
-      window.Nodex.ReactDOM = {
-        render: parentReactDOM.render?.bind(parentReactDOM),
-        createRoot: parentReactDOM.createRoot?.bind(parentReactDOM),
-        hydrateRoot: parentReactDOM.hydrateRoot?.bind(parentReactDOM),
-        unmountComponentAtNode: parentReactDOM.unmountComponentAtNode?.bind(parentReactDOM),
-        findDOMNode: parentReactDOM.findDOMNode?.bind(parentReactDOM),
-        createPortal: parentReactDOM.createPortal?.bind(parentReactDOM),
-        flushSync: parentReactDOM.flushSync?.bind(parentReactDOM),
-      };
-      
-      // Convenience aliases
-      window.React = window.Nodex.React;
-      window.ReactDOM = window.Nodex.ReactDOM;
-      
-      console.log('[React Bridge] React API injected successfully');
-    })();
-  `;
+  return "/* deprecated: use attachReactToPluginWindow from parent */";
 }
 
-/**
- * TypeScript definitions for the React Bridge API
- */
 export const reactBridgeTypes = `
 declare global {
   interface Window {
     Nodex: {
-      React: {
-        createElement: typeof React.createElement;
-        useState: typeof React.useState;
-        useEffect: typeof React.useEffect;
-        useCallback: typeof React.useCallback;
-        useMemo: typeof React.useMemo;
-        useRef: typeof React.useRef;
-        useContext: typeof React.useContext;
-        useReducer: typeof React.useReducer;
-        useLayoutEffect: typeof React.useLayoutEffect;
-        useImperativeHandle: typeof React.useImperativeHandle;
-        useDebugValue: typeof React.useDebugValue;
-        useDeferredValue: typeof React.useDeferredValue;
-        useTransition: typeof React.useTransition;
-        useId: typeof React.useId;
-        Fragment: typeof React.Fragment;
-        Component: typeof React.Component;
-        PureComponent: typeof React.PureComponent;
-        memo: typeof React.memo;
-        createContext: typeof React.createContext;
-        createRef: typeof React.createRef;
-        forwardRef: typeof React.forwardRef;
-        lazy: typeof React.lazy;
-        Suspense: typeof React.Suspense;
-        isValidElement: typeof React.isValidElement;
-        Children: typeof React.Children;
-      };
-      ReactDOM: {
-        render: typeof ReactDOM.render;
-        createRoot: typeof ReactDOM.createRoot;
-        hydrateRoot: typeof ReactDOM.hydrateRoot;
-        unmountComponentAtNode: typeof ReactDOM.unmountComponentAtNode;
-        findDOMNode: typeof ReactDOM.findDOMNode;
-        createPortal: typeof ReactDOM.createPortal;
-        flushSync: typeof ReactDOM.flushSync;
-      };
+      React: Record<string, unknown>;
+      ReactDOM: Record<string, unknown>;
     };
     React: typeof Nodex.React;
     ReactDOM: typeof Nodex.ReactDOM;
   }
 }
-
 export {};
 `;

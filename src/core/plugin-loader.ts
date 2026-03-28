@@ -1,3 +1,5 @@
+import { execFileSync, spawn } from "child_process";
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -6,6 +8,8 @@ import { isSafePluginName } from "../shared/validators";
 import { manifestValidator } from "./manifest-validator";
 import { packageManager } from "./package-manager";
 import { pluginCacheManager } from "./plugin-cache-manager";
+import { npmPackageExistsOnRegistry } from "./npm-registry-stub";
+import { emitPluginProgress } from "./plugin-progress";
 import { pluginBundler } from "./plugin-bundler";
 
 const zipHandler = require("./zip-handler");
@@ -57,6 +61,8 @@ export interface PluginManifest {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   assets?: string[];
+  /** Relative paths copied/bundled to dist/workers/ (Epic 2.3). */
+  workers?: string[];
   network?: NetworkConfig;
 }
 
@@ -76,6 +82,7 @@ export class PluginLoader {
   private loadedPlugins: Set<string> = new Set();
   private devUiBundleCache: Map<string, { mtime: number; code: string }> =
     new Map();
+  private loadIssues: { folder: string; error: string }[] = [];
 
   constructor(pluginsDir: string) {
     this.pluginsDir = pluginsDir;
@@ -134,6 +141,8 @@ export class PluginLoader {
   }
 
   loadAll(registry: Registry): void {
+    this.loadIssues = [];
+
     if (!fs.existsSync(this.pluginsDir)) {
       console.log(
         `[PluginLoader] Plugins directory not found: ${this.pluginsDir}`,
@@ -148,9 +157,16 @@ export class PluginLoader {
       try {
         this.loadPlugin(folder, registry);
       } catch (error) {
+        const msg =
+          error instanceof Error ? error.message : String(error);
         console.error(`[PluginLoader] Failed to load plugin ${folder}:`, error);
+        this.loadIssues.push({ folder, error: msg });
       }
     }
+  }
+
+  getPluginLoadIssues(): { folder: string; error: string }[] {
+    return [...this.loadIssues];
   }
 
   private loadPlugin(folder: string, registry: Registry): void {
@@ -165,8 +181,10 @@ export class PluginLoader {
     const manifestContent = fs.readFileSync(manifestPath, "utf8");
     const manifest: PluginManifest = JSON.parse(manifestContent);
 
-    // Validate manifest
-    const validationResult = manifestValidator.validate(manifest);
+    const validationResult = manifestValidator.validateForLoad(
+      manifest,
+      pluginPath,
+    );
     if (!validationResult.valid) {
       const errorMessage = manifestValidator.formatErrors(validationResult);
       console.error(
@@ -258,11 +276,24 @@ export class PluginLoader {
             if (hit && hit.mtime === stat.mtimeMs) {
               return hit.code;
             }
-            const code = pluginBundler.bundleUiForDevIframe(
-              pluginPath,
-              manifest.ui!,
-              false,
-            );
+            let code: string;
+            try {
+              code = pluginBundler.bundleUiForDevIframe(
+                pluginPath,
+                manifest.ui!,
+                false,
+              );
+            } catch (err) {
+              const msg =
+                err instanceof Error ? err.message : String(err);
+              emitPluginProgress({
+                op: "bundle",
+                phase: "error",
+                message: msg,
+                pluginName: manifest.name,
+              });
+              throw err;
+            }
             this.devUiBundleCache.set(cacheKey, {
               mtime: stat.mtimeMs,
               code,
@@ -276,10 +307,12 @@ export class PluginLoader {
       // Activate plugin
       pluginModule.activate(context, api);
     } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       console.error(
         `[PluginLoader] Failed to load plugin ${manifest.name}:`,
         error,
       );
+      this.loadIssues.push({ folder: manifest.name, error: msg });
     }
   }
 
@@ -290,13 +323,24 @@ export class PluginLoader {
     this.loadAll(registry);
   }
 
-  async importFromZip(zipPath: string, registry: Registry): Promise<void> {
+  async importFromZip(
+    zipPath: string,
+    registry: Registry,
+  ): Promise<{ warnings: string[] }> {
     try {
+      emitPluginProgress({
+        op: "import",
+        phase: "start",
+        message: `Importing ${path.basename(zipPath)}`,
+      });
+
       // Validate package first
       const validation = await packageManager.validatePackage(zipPath);
       if (!validation.valid) {
         throw new Error(`Invalid package: ${validation.errors.join(", ")}`);
       }
+
+      const importWarnings = [...validation.warnings];
 
       // Get package info
       const packageInfo = await packageManager.getPackageInfo(zipPath);
@@ -327,8 +371,22 @@ export class PluginLoader {
       console.log(
         `[PluginLoader] Successfully imported ${packageInfo.mode} plugin: ${packageInfo.name}`,
       );
+
+      emitPluginProgress({
+        op: "import",
+        phase: "done",
+        message: `Imported ${packageInfo.name}`,
+        pluginName: packageInfo.name,
+      });
+
+      return { warnings: importWarnings };
     } catch (error) {
       console.error("[PluginLoader] Failed to import plugin from zip:", error);
+      emitPluginProgress({
+        op: "import",
+        phase: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
@@ -382,17 +440,41 @@ export class PluginLoader {
       );
     }
 
-    const packagePath = await packageManager.createDevPackage({
-      pluginPath,
-      outputPath: outputDir,
-      mode: "development",
+    emitPluginProgress({
+      op: "export",
+      phase: "start",
+      message: `Export dev package: ${manifest.name}`,
+      pluginName: manifest.name,
     });
 
-    console.log(
-      `[PluginLoader] Exported ${pluginName} as dev package: ${packagePath}`,
-    );
+    try {
+      const packagePath = await packageManager.createDevPackage({
+        pluginPath,
+        outputPath: outputDir,
+        mode: "development",
+      });
 
-    return packagePath;
+      console.log(
+        `[PluginLoader] Exported ${pluginName} as dev package: ${packagePath}`,
+      );
+
+      emitPluginProgress({
+        op: "export",
+        phase: "done",
+        message: `Dev export: ${path.basename(packagePath)}`,
+        pluginName: manifest.name,
+      });
+
+      return packagePath;
+    } catch (e) {
+      emitPluginProgress({
+        op: "export",
+        phase: "error",
+        message: e instanceof Error ? e.message : String(e),
+        pluginName: manifest.name,
+      });
+      throw e;
+    }
   }
 
   async exportPluginAsProduction(
@@ -457,6 +539,13 @@ export class PluginLoader {
       fs.readFileSync(manifestPath, "utf8"),
     );
 
+    emitPluginProgress({
+      op: "export",
+      phase: "start",
+      message: `Export production: ${manifest.name}`,
+      pluginName: manifest.name,
+    });
+
     if (manifest.mode === "production") {
       const packagePath = await packageManager.createProductionPackage({
         pluginPath,
@@ -466,6 +555,12 @@ export class PluginLoader {
       console.log(
         `[PluginLoader] Exported ${pluginName} as production package: ${packagePath}`,
       );
+      emitPluginProgress({
+        op: "export",
+        phase: "done",
+        message: `Production export: ${path.basename(packagePath)}`,
+        pluginName: manifest.name,
+      });
       return packagePath;
     }
 
@@ -477,12 +572,26 @@ export class PluginLoader {
           distDir: distStaging,
           minify: true,
           sourcemap: true,
-          onProgress: (m) =>
-            console.log(`[PluginLoader] Bundle: ${m}`),
+          onProgress: (m) => {
+            console.log(`[PluginLoader] Bundle: ${m}`);
+            emitPluginProgress({
+              op: "export",
+              phase: "progress",
+              message: m,
+              pluginName: manifest.name,
+            });
+          },
         });
 
         if (!result.success) {
-          throw new Error(result.errors.join("\n"));
+          const errText = result.errors.join("\n");
+          emitPluginProgress({
+            op: "export",
+            phase: "error",
+            message: errText,
+            pluginName: manifest.name,
+          });
+          throw new Error(errText);
         }
 
         const prodManifest: PluginManifest = {
@@ -514,12 +623,24 @@ export class PluginLoader {
         console.log(
           `[PluginLoader] Bundled and exported ${pluginName}: ${packagePath}`,
         );
+        emitPluginProgress({
+          op: "export",
+          phase: "done",
+          message: `Production export: ${path.basename(packagePath)}`,
+          pluginName: manifest.name,
+        });
         return packagePath;
       } finally {
         fs.rmSync(staging, { recursive: true, force: true });
       }
     }
 
+    emitPluginProgress({
+      op: "export",
+      phase: "error",
+      message: `Unsupported manifest mode: ${manifest.mode}`,
+      pluginName: manifest.name,
+    });
     throw new Error(`Unsupported manifest mode: ${manifest.mode}`);
   }
 
@@ -537,19 +658,51 @@ export class PluginLoader {
       return { success: false, error: `Plugin ${pluginName} not found` };
     }
 
+    const man = JSON.parse(
+      fs.readFileSync(path.join(pluginPath, "manifest.json"), "utf8"),
+    ) as PluginManifest;
+
+    emitPluginProgress({
+      op: "bundle",
+      phase: "start",
+      message: `Bundle to dist/: ${man.name}`,
+      pluginName: man.name,
+    });
+
     const result = await pluginBundler.bundle(pluginPath, {
       minify: false,
       sourcemap: true,
-      onProgress: (m) => console.log(`[PluginLoader] Bundle: ${m}`),
+      onProgress: (m) => {
+        console.log(`[PluginLoader] Bundle: ${m}`);
+        emitPluginProgress({
+          op: "bundle",
+          phase: "progress",
+          message: m,
+          pluginName: man.name,
+        });
+      },
     });
 
     if (!result.success) {
+      emitPluginProgress({
+        op: "bundle",
+        phase: "error",
+        message: result.errors.join("\n"),
+        pluginName: man.name,
+      });
       return {
         success: false,
         error: result.errors.join("\n"),
         warnings: result.warnings,
       };
     }
+
+    emitPluginProgress({
+      op: "bundle",
+      phase: "done",
+      message: `Bundled ${man.name}`,
+      pluginName: man.name,
+    });
 
     return { success: true, warnings: result.warnings };
   }
@@ -580,6 +733,269 @@ export class PluginLoader {
     pluginCacheManager.ensureRoot();
     const lines: string[] = [];
 
+    emitPluginProgress({
+      op: "npm",
+      phase: "start",
+      message: `npm install (${manifest.name})`,
+      pluginName: manifest.name,
+    });
+
+    try {
+      pluginCacheManager.syncPackageJsonToCache(pluginPath, {
+        name: manifest.name,
+        version: manifest.version,
+        dependencies: manifest.dependencies,
+      });
+    } catch (e) {
+      emitPluginProgress({
+        op: "npm",
+        phase: "error",
+        message: e instanceof Error ? e.message : String(e),
+        pluginName: manifest.name,
+      });
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+
+    const result = await pluginCacheManager.runNpmInstall(
+      manifest.name,
+      (line) => {
+        lines.push(line);
+        emitPluginProgress({
+          op: "npm",
+          phase: "log",
+          message: line,
+          pluginName: manifest.name,
+        });
+      },
+    );
+
+    if (result.ok) {
+      for (const key of [...this.devUiBundleCache.keys()]) {
+        if (key.startsWith(`${pluginPath}:`)) {
+          this.devUiBundleCache.delete(key);
+        }
+      }
+      this.writeDepsSnapshot(pluginPath, manifest);
+      emitPluginProgress({
+        op: "npm",
+        phase: "done",
+        message: `npm install finished (${manifest.name})`,
+        pluginName: manifest.name,
+      });
+    } else {
+      emitPluginProgress({
+        op: "npm",
+        phase: "error",
+        message: result.error ?? "npm install failed",
+        pluginName: manifest.name,
+      });
+    }
+
+    return {
+      success: result.ok,
+      error: result.error,
+      log: lines.join("\n"),
+    };
+  }
+
+  private getDepsSnapshotPath(pluginPath: string): string {
+    return path.join(pluginPath, ".nodex-deps-snapshot.json");
+  }
+
+  private computeDepsIntentHash(
+    pluginPath: string,
+    manifest: PluginManifest,
+  ): string {
+    const pj = path.join(pluginPath, "package.json");
+    const pkg = fs.existsSync(pj) ? fs.readFileSync(pj, "utf8") : "";
+    return crypto
+      .createHash("sha256")
+      .update(pkg)
+      .update("|")
+      .update(JSON.stringify(manifest.dependencies ?? {}))
+      .digest("hex");
+  }
+
+  private readDepsSnapshotHash(pluginPath: string): string | null {
+    const p = this.getDepsSnapshotPath(pluginPath);
+    if (!fs.existsSync(p)) {
+      return null;
+    }
+    try {
+      const j = JSON.parse(fs.readFileSync(p, "utf8")) as { hash?: string };
+      return j.hash ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private writeDepsSnapshot(
+    pluginPath: string,
+    manifest: PluginManifest,
+  ): void {
+    const hash = this.computeDepsIntentHash(pluginPath, manifest);
+    fs.writeFileSync(
+      this.getDepsSnapshotPath(pluginPath),
+      JSON.stringify({ hash, updated: Date.now() }, null, 2),
+      "utf8",
+    );
+  }
+
+  async getPluginInstallPlan(installedFolderName: string): Promise<{
+    manifestName: string;
+    cacheDir: string;
+    dependencies: Record<string, string>;
+    dependencyCount: number;
+    warnManyDeps: boolean;
+    warnLargePackageJson: boolean;
+    depsChangedSinceLastInstall: boolean;
+    hadSnapshot: boolean;
+    registryNotes: string[];
+  }> {
+    if (!isSafePluginName(installedFolderName)) {
+      throw new Error("Invalid plugin name");
+    }
+
+    const pluginPath = path.join(this.pluginsDir, installedFolderName);
+    if (!fs.existsSync(pluginPath)) {
+      throw new Error("Plugin not found");
+    }
+
+    const manifest: PluginManifest = JSON.parse(
+      fs.readFileSync(path.join(pluginPath, "manifest.json"), "utf8"),
+    );
+
+    if (!isSafePluginName(manifest.name)) {
+      throw new Error("Invalid manifest name");
+    }
+
+    const pj = path.join(pluginPath, "package.json");
+    let dependencies: Record<string, string> = {
+      ...(manifest.dependencies ?? {}),
+    };
+
+    if (fs.existsSync(pj)) {
+      const pkg = JSON.parse(fs.readFileSync(pj, "utf8")) as {
+        dependencies?: Record<string, string>;
+      };
+      dependencies = { ...dependencies, ...(pkg.dependencies ?? {}) };
+    }
+
+    const dependencyCount = Object.keys(dependencies).length;
+    const pkgLen = fs.existsSync(pj) ? fs.readFileSync(pj, "utf8").length : 0;
+    const warnLargePackageJson = pkgLen > 50_000;
+
+    const prev = this.readDepsSnapshotHash(pluginPath);
+    const cur = this.computeDepsIntentHash(pluginPath, manifest);
+    const hadSnapshot = prev !== null;
+
+    const registryNotes: string[] = [];
+    const probe = Object.keys(dependencies).slice(0, 6);
+    for (const name of probe) {
+      const ok = await npmPackageExistsOnRegistry(name);
+      if (!ok) {
+        registryNotes.push(
+          `${name}: registry HEAD did not return 200 (offline, private scope, or typo)`,
+        );
+      }
+    }
+
+    return {
+      manifestName: manifest.name,
+      cacheDir: pluginCacheManager.getPluginCacheDir(manifest.name),
+      dependencies,
+      dependencyCount,
+      warnManyDeps: dependencyCount > 25,
+      warnLargePackageJson,
+      depsChangedSinceLastInstall: hadSnapshot ? prev !== cur : true,
+      hadSnapshot,
+      registryNotes,
+    };
+  }
+
+  getPluginResolvedDeps(installedFolderName: string): {
+    declared: Record<string, string>;
+    resolved: Record<string, string>;
+    error?: string;
+  } {
+    if (!isSafePluginName(installedFolderName)) {
+      return { declared: {}, resolved: {}, error: "Invalid plugin name" };
+    }
+
+    const pluginPath = path.join(this.pluginsDir, installedFolderName);
+    if (!fs.existsSync(pluginPath)) {
+      return { declared: {}, resolved: {}, error: "Plugin not found" };
+    }
+
+    const manifest: PluginManifest = JSON.parse(
+      fs.readFileSync(path.join(pluginPath, "manifest.json"), "utf8"),
+    );
+
+    const cacheDir = pluginCacheManager.getPluginCacheDir(manifest.name);
+    const cachePkg = path.join(cacheDir, "package.json");
+
+    let declared: Record<string, string> = {};
+    if (fs.existsSync(cachePkg)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(cachePkg, "utf8")) as {
+          dependencies?: Record<string, string>;
+        };
+        declared = { ...(pkg.dependencies ?? {}) };
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const resolved: Record<string, string> = {};
+    if (!fs.existsSync(path.join(cacheDir, "node_modules"))) {
+      return { declared, resolved };
+    }
+
+    try {
+      const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+      const out = execFileSync(npmCmd, ["ls", "--json", "--depth=0"], {
+        cwd: cacheDir,
+        encoding: "utf8",
+        maxBuffer: 32 * 1024 * 1024,
+      });
+      const j = JSON.parse(out) as {
+        dependencies?: Record<string, { version?: string }>;
+      };
+      const depTree = j.dependencies ?? {};
+      for (const k of Object.keys(depTree)) {
+        const v = depTree[k]?.version;
+        if (v) {
+          resolved[k] = v;
+        }
+      }
+    } catch (e) {
+      return {
+        declared,
+        resolved,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+
+    return { declared, resolved };
+  }
+
+  async runNpmOnPluginCache(
+    installedFolderName: string,
+    npmArgs: string[],
+  ): Promise<{ success: boolean; error?: string; log?: string }> {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+
+    const pluginPath = path.join(this.pluginsDir, installedFolderName);
+    const manifest: PluginManifest = JSON.parse(
+      fs.readFileSync(path.join(pluginPath, "manifest.json"), "utf8"),
+    );
+
+    pluginCacheManager.ensureRoot();
     try {
       pluginCacheManager.syncPackageJsonToCache(pluginPath, {
         name: manifest.name,
@@ -593,24 +1009,53 @@ export class PluginLoader {
       };
     }
 
-    const result = await pluginCacheManager.runNpmInstall(
-      manifest.name,
-      (line) => lines.push(line),
-    );
+    const cwd = pluginCacheManager.getPluginCacheDir(manifest.name);
+    const lines: string[] = [];
+    const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+    const args = [...npmArgs, "--ignore-scripts", "--no-fund", "--no-audit"];
 
-    if (result.ok) {
-      for (const key of [...this.devUiBundleCache.keys()]) {
-        if (key.startsWith(`${pluginPath}:`)) {
-          this.devUiBundleCache.delete(key);
+    return await new Promise((resolve) => {
+      const child = spawn(npmCmd, args, {
+        cwd,
+        env: process.env,
+        shell: process.platform === "win32",
+      });
+
+      const drain = (chunk: Buffer, isErr: boolean) => {
+        const text = chunk.toString();
+        for (const line of text.split(/\r?\n/)) {
+          if (!line.trim()) {
+            continue;
+          }
+          const msg = isErr ? `[stderr] ${line}` : line;
+          lines.push(msg);
+          emitPluginProgress({
+            op: "npm",
+            phase: "log",
+            message: msg,
+            pluginName: manifest.name,
+          });
         }
-      }
-    }
+      };
 
-    return {
-      success: result.ok,
-      error: result.error,
-      log: lines.join("\n"),
-    };
+      child.stdout?.on("data", (c: Buffer) => drain(c, false));
+      child.stderr?.on("data", (c: Buffer) => drain(c, true));
+      child.on("error", (err: Error) => {
+        resolve({ success: false, error: err.message, log: lines.join("\n") });
+      });
+      child.on("close", (code: number) => {
+        if (code === 0) {
+          this.writeDepsSnapshot(pluginPath, manifest);
+          resolve({ success: true, log: lines.join("\n") });
+        } else {
+          resolve({
+            success: false,
+            error: `npm exited with code ${code}`,
+            log: lines.join("\n"),
+          });
+        }
+      });
+    });
   }
 
   clearPluginDependencyCache(installedFolderName: string): {

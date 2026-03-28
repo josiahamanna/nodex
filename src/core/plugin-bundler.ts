@@ -6,6 +6,7 @@ import nodeResolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
 import esbuildPlugin from "rollup-plugin-esbuild";
 import { pluginCacheManager } from "./plugin-cache-manager";
+import { emitPluginProgress } from "./plugin-progress";
 import type { PluginManifest } from "./plugin-loader";
 import type { Plugin as EsbuildPlugin } from "esbuild";
 
@@ -139,7 +140,7 @@ export class PluginBundler {
     const minify = options.minify !== false;
     const sourcemap = options.sourcemap !== false;
     const distDir = options.distDir ?? path.join(pluginPath, "dist");
-    const progress = options.onProgress ?? (() => {});
+    let pluginLabel = path.basename(pluginPath);
 
     let manifest: PluginManifest;
     try {
@@ -153,6 +154,25 @@ export class PluginBundler {
         warnings,
       };
     }
+
+    pluginLabel = manifest.name;
+
+    const progress = (m: string) => {
+      options.onProgress?.(m);
+      emitPluginProgress({
+        op: "bundle",
+        phase: "progress",
+        message: m,
+        pluginName: pluginLabel,
+      });
+    };
+
+    emitPluginProgress({
+      op: "bundle",
+      phase: "start",
+      message: "Bundle started",
+      pluginName: pluginLabel,
+    });
 
     fs.mkdirSync(distDir, { recursive: true });
 
@@ -257,7 +277,55 @@ export class PluginBundler {
       uiRelative = path.relative(bundleRoot, uiOut).split(path.sep).join("/");
     }
 
+    if (manifest.workers?.length) {
+      const workersDir = path.join(distDir, "workers");
+      fs.mkdirSync(workersDir, { recursive: true });
+      progress("Processing worker entries…");
+
+      for (const w of manifest.workers) {
+        const srcAbs = path.join(pluginPath, w);
+        if (!fs.existsSync(srcAbs)) {
+          errors.push(`Worker file not found: ${w}`);
+          return { success: false, errors, warnings };
+        }
+
+        const base = path.basename(w);
+        if (/\.(tsx?|jsx?)$/i.test(w)) {
+          const outFile = path.join(
+            workersDir,
+            base.replace(/\.(tsx?|jsx?)$/i, ".bundle.js"),
+          );
+          try {
+            await esbuild.build({
+              absWorkingDir: pluginPath,
+              entryPoints: [srcAbs],
+              bundle: true,
+              platform: "browser",
+              format: "esm",
+              outfile: outFile,
+              minify,
+              sourcemap,
+              logLevel: "silent",
+              ...(cacheNm ? { nodePaths: [cacheNm] } : {}),
+            });
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            errors.push(`esbuild (worker ${w}): ${msg}`);
+            return { success: false, errors, warnings };
+          }
+        } else {
+          fs.copyFileSync(srcAbs, path.join(workersDir, base));
+        }
+      }
+    }
+
     progress("Bundle complete.");
+    emitPluginProgress({
+      op: "bundle",
+      phase: "done",
+      message: "Bundle complete",
+      pluginName: pluginLabel,
+    });
     return {
       success: true,
       errors,

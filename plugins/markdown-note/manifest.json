@@ -9,5 +9,6 @@
   "description": "Renders markdown notes with custom styling",
   "author": "Nodex Team",
   "license": "MIT",
-  "permissions": ["storage.read"]
+  "permissions": ["storage.read"],
+  "workers": ["workers/echo-worker.js"]
 }

@@ -30,8 +30,11 @@ contextBridge.exposeInMainWorld("Nodex", {
     ipcRenderer.invoke(IPC_CHANNELS.SELECT_ZIP_FILE),
   importPlugin: (
     zipPath: string,
-  ): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.IMPORT_PLUGIN, zipPath),
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    warnings?: string[];
+  }> => ipcRenderer.invoke(IPC_CHANNELS.IMPORT_PLUGIN, zipPath),
   getInstalledPlugins: (): Promise<string[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_INSTALLED_PLUGINS),
   uninstallPlugin: (
@@ -69,7 +72,65 @@ contextBridge.exposeInMainWorld("Nodex", {
     plugins: { name: string; bytes: number }[];
   }> => ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_CACHE_STATS),
   onPluginsChanged: (callback: () => void) => {
-    ipcRenderer.on("plugins-changed", callback);
-    return () => ipcRenderer.removeListener("plugins-changed", callback);
+    ipcRenderer.on(IPC_CHANNELS.PLUGINS_CHANGED, callback);
+    return () =>
+      ipcRenderer.removeListener(IPC_CHANNELS.PLUGINS_CHANGED, callback);
   },
+  onPluginProgress: (
+    callback: (payload: {
+      op: string;
+      phase: string;
+      message: string;
+      pluginName?: string;
+    }) => void,
+  ) => {
+    const ch = IPC_CHANNELS.PLUGIN_PROGRESS;
+    const fn = (_e: unknown, p: unknown) =>
+      callback(p as Parameters<typeof callback>[0]);
+    ipcRenderer.on(ch, fn);
+    return () => ipcRenderer.removeListener(ch, fn);
+  },
+  validatePluginZip: (
+    zipPath: string,
+  ): Promise<{ valid: boolean; errors: string[]; warnings: string[] }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.VALIDATE_PLUGIN_ZIP, zipPath),
+  getPluginInstallPlan: (
+    installedFolderName: string,
+  ): Promise<{
+    manifestName: string;
+    cacheDir: string;
+    dependencies: Record<string, string>;
+    dependencyCount: number;
+    warnManyDeps: boolean;
+    warnLargePackageJson: boolean;
+    depsChangedSinceLastInstall: boolean;
+    hadSnapshot: boolean;
+    registryNotes: string[];
+  }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.GET_PLUGIN_INSTALL_PLAN,
+      installedFolderName,
+    ),
+  getPluginResolvedDeps: (
+    installedFolderName: string,
+  ): Promise<{
+    declared: Record<string, string>;
+    resolved: Record<string, string>;
+    error?: string;
+  }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.GET_PLUGIN_RESOLVED_DEPS,
+      installedFolderName,
+    ),
+  runPluginCacheNpm: (
+    installedFolderName: string,
+    npmArgs: string[],
+  ): Promise<{ success: boolean; error?: string; log?: string }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.RUN_PLUGIN_CACHE_NPM,
+      installedFolderName,
+      npmArgs,
+    ),
+  getPluginLoadIssues: (): Promise<{ folder: string; error: string }[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_LOAD_ISSUES),
 });

@@ -11,7 +11,11 @@ declare global {
       selectZipFile: () => Promise<string | null>;
       importPlugin: (
         zipPath: string,
-      ) => Promise<{ success: boolean; error?: string }>;
+      ) => Promise<{
+        success: boolean;
+        error?: string;
+        warnings?: string[];
+      }>;
       getInstalledPlugins: () => Promise<string[]>;
       uninstallPlugin: (
         pluginName: string,
@@ -40,6 +44,42 @@ declare global {
         plugins: { name: string; bytes: number }[];
       }>;
       onPluginsChanged: (callback: () => void) => () => void;
+      onPluginProgress: (
+        callback: (payload: {
+          op: string;
+          phase: string;
+          message: string;
+          pluginName?: string;
+        }) => void,
+      ) => () => void;
+      validatePluginZip: (
+        zipPath: string,
+      ) => Promise<{ valid: boolean; errors: string[]; warnings: string[] }>;
+      getPluginInstallPlan: (
+        installedFolderName: string,
+      ) => Promise<{
+        manifestName: string;
+        cacheDir: string;
+        dependencies: Record<string, string>;
+        dependencyCount: number;
+        warnManyDeps: boolean;
+        warnLargePackageJson: boolean;
+        depsChangedSinceLastInstall: boolean;
+        hadSnapshot: boolean;
+        registryNotes: string[];
+      }>;
+      getPluginResolvedDeps: (
+        installedFolderName: string,
+      ) => Promise<{
+        declared: Record<string, string>;
+        resolved: Record<string, string>;
+        error?: string;
+      }>;
+      runPluginCacheNpm: (
+        installedFolderName: string,
+        npmArgs: string[],
+      ) => Promise<{ success: boolean; error?: string; log?: string }>;
+      getPluginLoadIssues: () => Promise<{ folder: string; error: string }[]>;
     };
   }
 }

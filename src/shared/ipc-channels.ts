@@ -16,6 +16,12 @@ export const IPC_CHANNELS = {
   CLEAR_ALL_PLUGIN_DEPENDENCY_CACHES: "plugin:clear-all-dependency-caches",
   GET_PLUGIN_CACHE_STATS: "plugin:cache-stats",
   PLUGINS_CHANGED: "plugin:changed",
+  PLUGIN_PROGRESS: "plugin:progress",
+  GET_PLUGIN_INSTALL_PLAN: "plugin:install-plan",
+  GET_PLUGIN_RESOLVED_DEPS: "plugin:resolved-deps",
+  RUN_PLUGIN_CACHE_NPM: "plugin:cache-npm",
+  GET_PLUGIN_LOAD_ISSUES: "plugin:load-issues",
+  VALIDATE_PLUGIN_ZIP: "plugin:validate-zip",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
