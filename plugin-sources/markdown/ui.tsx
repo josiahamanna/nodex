@@ -30,23 +30,24 @@ function sanitizeMarkdownHtml(markdown: string): string {
   return DOMPurify.sanitize(raw);
 }
 
+/** Use Nodex-injected semantic tokens so preview matches host light/dark theme */
 const previewStyles = `
-  .nodex-md-preview { color: #374151; line-height: 1.75; }
-  .nodex-md-preview h1 { font-size: 2rem; font-weight: 700; margin: 1.25rem 0 0.75rem; color: #111827; }
-  .nodex-md-preview h2 { font-size: 1.5rem; font-weight: 700; margin: 1.5rem 0 0.75rem; color: #1f2937; }
-  .nodex-md-preview h3 { font-size: 1.25rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: #1f2937; }
+  .nodex-md-preview { color: hsl(var(--editor-foreground, 222.2 84% 4.9%)); line-height: 1.75; }
+  .nodex-md-preview h1 { font-size: 2rem; font-weight: 700; margin: 1.25rem 0 0.75rem; color: hsl(var(--foreground, 222.2 84% 4.9%)); }
+  .nodex-md-preview h2 { font-size: 1.5rem; font-weight: 700; margin: 1.5rem 0 0.75rem; color: hsl(var(--foreground, 222.2 84% 4.9%)); }
+  .nodex-md-preview h3 { font-size: 1.25rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: hsl(var(--foreground, 222.2 84% 4.9%)); }
   .nodex-md-preview p { margin: 0 0 1rem; }
   .nodex-md-preview ul, .nodex-md-preview ol { margin: 0 0 1rem 1.5rem; }
   .nodex-md-preview li { margin-bottom: 0.35rem; }
-  .nodex-md-preview code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.875em; background: #f3f4f6; padding: 0.15em 0.35em; border-radius: 4px; }
-  .nodex-md-preview pre { background: #1f2937; color: #f9fafb; padding: 1rem; border-radius: 8px; overflow: auto; margin: 0 0 1rem; }
+  .nodex-md-preview code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.875em; background: hsl(var(--code-background, 210 40% 96.1%)); color: hsl(var(--code-foreground, 222.2 47.4% 11.2%)); padding: 0.15em 0.35em; border-radius: 4px; }
+  .nodex-md-preview pre { background: hsl(var(--code-background, 222.2 84% 4.9%)); color: hsl(var(--code-foreground, 210 40% 98%)); padding: 1rem; border-radius: 8px; overflow: auto; margin: 0 0 1rem; border: 1px solid hsl(var(--border, 214.3 31.8% 91.4%)); }
   .nodex-md-preview pre code { background: transparent; padding: 0; color: inherit; }
-  .nodex-md-preview blockquote { border-left: 4px solid #d1d5db; margin: 0 0 1rem; padding-left: 1rem; color: #6b7280; }
-  .nodex-md-preview a { color: #2563eb; }
-  .nodex-md-preview hr { border: 0; border-top: 1px solid #e5e7eb; margin: 1.5rem 0; }
+  .nodex-md-preview blockquote { border-left: 4px solid hsl(var(--border, 214.3 31.8% 91.4%)); margin: 0 0 1rem; padding-left: 1rem; color: hsl(var(--muted-foreground, 215.4 16.3% 46.9%)); }
+  .nodex-md-preview a { color: hsl(var(--primary, 222.2 47.4% 11.2%)); }
+  .nodex-md-preview hr { border: 0; border-top: 1px solid hsl(var(--border, 214.3 31.8% 91.4%)); margin: 1.5rem 0; }
   .nodex-md-preview table { border-collapse: collapse; width: 100%; margin: 0 0 1rem; font-size: 0.9375rem; }
-  .nodex-md-preview th, .nodex-md-preview td { border: 1px solid #e5e7eb; padding: 0.5rem 0.75rem; text-align: left; }
-  .nodex-md-preview th { background: #f9fafb; font-weight: 600; }
+  .nodex-md-preview th, .nodex-md-preview td { border: 1px solid hsl(var(--border, 214.3 31.8% 91.4%)); padding: 0.5rem 0.75rem; text-align: left; }
+  .nodex-md-preview th { background: hsl(var(--muted, 210 40% 96.1%)); font-weight: 600; color: hsl(var(--foreground, 222.2 84% 4.9%)); }
 `;
 
 function App() {
@@ -54,8 +55,7 @@ function App() {
     typeof window !== "undefined" && window.__NODEX_NOTE__
       ? window.__NODEX_NOTE__.content
       : "";
-  const initial__ = "#Jehu"
-  const [content, setContent] = useState(initial__);
+  const [content, setContent] = useState(initial);
   const [mode, setMode] = useState<ViewMode>("split");
 
   useEffect(() => {
@@ -80,10 +80,13 @@ function App() {
       "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     fontSize: "0.875rem",
     lineHeight: 1.5,
-    border: "1px solid #e5e7eb",
+    border: "1px solid hsl(var(--editor-border, 214.3 31.8% 91.4%))",
     borderRadius: "6px",
     resize: "none" as const,
     boxSizing: "border-box" as const,
+    background: "hsl(var(--editor-background, 0 0% 100%))",
+    color: "hsl(var(--editor-foreground, 222.2 84% 4.9%))",
+    outline: "none" as const,
   };
 
   const editPane = (grow: boolean) => (
@@ -124,9 +127,15 @@ function App() {
           style={{
             padding: "0.35rem 0.75rem",
             borderRadius: "6px",
-            border: "1px solid #d1d5db",
-            background: mode === m ? "#111827" : "#fff",
-            color: mode === m ? "#fff" : "#374151",
+            border: "1px solid hsl(var(--border, 214.3 31.8% 91.4%))",
+            background:
+              mode === m
+                ? "hsl(var(--primary, 222.2 47.4% 11.2%))"
+                : "hsl(var(--muted, 210 40% 96.1%))",
+            color:
+              mode === m
+                ? "hsl(var(--primary-foreground, 210 40% 98%))"
+                : "hsl(var(--foreground, 222.2 84% 4.9%))",
             cursor: "pointer",
             fontSize: "0.8125rem",
             textTransform: "capitalize",

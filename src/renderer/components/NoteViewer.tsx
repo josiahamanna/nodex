@@ -11,7 +11,6 @@ const NoteViewer: React.FC<NoteViewerProps> = ({ note }) => {
 
   useEffect(() => {
     const checkPlugin = async () => {
-      // Check both old and new plugin systems
       const types = await window.Nodex.getRegisteredTypes();
       setHasPlugin(types.includes(note.type));
     };
@@ -24,34 +23,38 @@ const NoteViewer: React.FC<NoteViewerProps> = ({ note }) => {
     }
 
     return (
-      <div className="p-8">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-yellow-800">
-            No plugin installed for type: <strong>{note.type}</strong>
-          </p>
-          <p className="text-sm text-yellow-600 mt-2">
-            Install a plugin to handle this note type from the Plugin Manager.
-          </p>
-        </div>
+      <div className="rounded-sm border border-amber-500/30 bg-amber-500/10 p-4">
+        <p className="text-amber-950 dark:text-amber-100">
+          No plugin installed for type: <strong>{note.type}</strong>
+        </p>
+        <p className="mt-2 text-sm text-amber-900/80 dark:text-amber-200/90">
+          Install a plugin to handle this note type from the Plugin Manager.
+        </p>
       </div>
     );
   };
 
   return (
-    <div className="h-full flex flex-col bg-white">
-      <header className="border-b border-gray-200 p-4">
-        <h2 className="text-2xl font-bold text-gray-800">{note.title}</h2>
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-xs text-gray-500">Type:</span>
-          <span className="text-xs font-medium text-gray-700">{note.type}</span>
-          {hasPlugin && (
-            <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-              Plugin Active
+    <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
+      <header className="shrink-0 border-b border-border px-6 py-4">
+        <h2 className="text-[13px] font-semibold leading-tight text-foreground">
+          {note.title}
+        </h2>
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="flex items-center gap-2 text-[12px]">
+            <span className="text-muted-foreground">Type</span>
+            <span className="font-mono text-foreground">{note.type}</span>
+          </div>
+          {hasPlugin ? (
+            <span className="rounded-sm bg-badge-text-bg px-2 py-0.5 font-medium text-[11px] text-badge-text-fg">
+              Plugin active
             </span>
-          )}
+          ) : null}
         </div>
       </header>
-      <div className="flex-1 overflow-auto">{renderNote()}</div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto p-6">
+        <div className="min-h-0 flex-1">{renderNote()}</div>
+      </div>
     </div>
   );
 };

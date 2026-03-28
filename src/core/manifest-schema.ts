@@ -52,5 +52,7 @@ export const MANIFEST_JSON_SCHEMA = {
         },
       },
     },
+    theme: { type: "string", enum: ["inherit", "isolated"] },
+    designSystemVersion: { type: "string" },
   },
 } as const;

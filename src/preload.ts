@@ -320,4 +320,26 @@ contextBridge.exposeInMainWorld("Nodex", {
   },
   reloadPluginRegistry: (): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_RELOAD_REGISTRY),
+  getNativeThemeDark: (): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.UI_GET_NATIVE_THEME_DARK),
+  onNativeThemeChanged: (callback: (isDark: boolean) => void) => {
+    const ch = IPC_CHANNELS.UI_NATIVE_THEME_CHANGED;
+    const fn = (_e: unknown, dark: boolean) => callback(dark);
+    ipcRenderer.on(ch, fn);
+    return () => ipcRenderer.removeListener(ch, fn);
+  },
+  getPluginRendererUiMeta: (
+    noteType: string,
+  ): Promise<{
+    theme?: "inherit" | "isolated";
+    designSystemVersion?: string;
+  } | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_RENDERER_UI_META, noteType),
+  getPluginManifestUi: (
+    pluginName: string,
+  ): Promise<{
+    theme: "inherit" | "isolated";
+    designSystemVersion?: string;
+    designSystemWarning: string | null;
+  } | null> => ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_MANIFEST_UI, pluginName),
 });

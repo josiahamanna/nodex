@@ -1,4 +1,8 @@
 export const IPC_CHANNELS = {
+  UI_GET_NATIVE_THEME_DARK: "ui:native-theme-dark",
+  UI_NATIVE_THEME_CHANGED: "ui:native-theme-changed",
+  GET_PLUGIN_RENDERER_UI_META: "plugin:get-renderer-ui-meta",
+  GET_PLUGIN_MANIFEST_UI: "plugin:get-manifest-ui",
   GET_NOTE: "note:get",
   GET_ALL_NOTES: "note:get-all",
   GET_COMPONENT: "plugin:get-component",

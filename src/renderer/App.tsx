@@ -55,47 +55,60 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 min-h-0">
-      <PanelGroup
-        direction="horizontal"
-        autoSaveId="nodex-sidebar"
-        className="flex-1 min-h-0 min-w-0"
-      >
-        <Panel
-          defaultSize={20}
-          minSize={12}
-          maxSize={40}
-          className="min-h-0 min-w-0"
+    <div className="box-border flex h-screen min-h-0 flex-col bg-muted/45 p-3 text-foreground sm:p-4 dark:bg-muted/25">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-sm">
+        <PanelGroup
+          direction="horizontal"
+          autoSaveId="nodex-sidebar"
+          className="min-h-0 min-w-0 flex-1"
         >
-          <Sidebar
-            notes={notesList}
-            currentNoteId={currentNote?.id}
-            onNoteSelect={handleNoteSelect}
-            onPluginManagerOpen={handlePluginManagerOpen}
-            onPluginIdeOpen={handlePluginIdeOpen}
-          />
-        </Panel>
-        <PanelResizeHandle className="w-1.5 shrink-0 bg-gray-200 hover:bg-indigo-300 data-[panel-resize-handle-active=true]:bg-indigo-400 transition-colors" />
-        <Panel defaultSize={80} minSize={55} className="min-h-0 min-w-0">
-          <main className="h-full overflow-hidden">
-            {showPluginIde ? (
-              <PluginIDE onPluginsChanged={handlePluginsChanged} />
-            ) : showPluginManager ? (
-              <PluginManager onPluginsChanged={handlePluginsChanged} />
-            ) : loading ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-gray-500">Loading...</div>
-              </div>
-            ) : currentNote ? (
-              <NoteViewer note={currentNote} />
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-gray-500">No note selected</div>
-              </div>
-            )}
-          </main>
-        </Panel>
-      </PanelGroup>
+          <Panel
+            defaultSize={20}
+            minSize={12}
+            maxSize={40}
+            className="min-h-0 min-w-0"
+          >
+            <Sidebar
+              notes={notesList}
+              currentNoteId={currentNote?.id}
+              activeSidebarTool={
+                showPluginIde
+                  ? "plugin-ide"
+                  : showPluginManager
+                    ? "plugin-manager"
+                    : null
+              }
+              onNoteSelect={handleNoteSelect}
+              onPluginManagerOpen={handlePluginManagerOpen}
+              onPluginIdeOpen={handlePluginIdeOpen}
+            />
+          </Panel>
+          <PanelResizeHandle className="nodex-panel-sash relative w-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-y-0 before:left-1/2 before:z-10 before:w-px before:-translate-x-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
+          <Panel defaultSize={80} minSize={55} className="min-h-0 min-w-0">
+            <main className="h-full overflow-hidden">
+              {showPluginIde ? (
+                <PluginIDE onPluginsChanged={handlePluginsChanged} />
+              ) : showPluginManager ? (
+                <PluginManager onPluginsChanged={handlePluginsChanged} />
+              ) : loading ? (
+                <div className="flex h-full items-center justify-center p-8">
+                  <div className="text-[12px] text-muted-foreground">
+                    Loading…
+                  </div>
+                </div>
+              ) : currentNote ? (
+                <NoteViewer note={currentNote} />
+              ) : (
+                <div className="flex h-full items-center justify-center p-8">
+                  <div className="text-[12px] text-muted-foreground">
+                    No note selected
+                  </div>
+                </div>
+              )}
+            </main>
+          </Panel>
+        </PanelGroup>
+      </div>
     </div>
   );
 };

@@ -20,6 +20,7 @@ import {
 import { Note } from "../../preload";
 import { joinFileUri } from "../../shared/file-uri";
 import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
+import { useTheme } from "../theme/ThemeContext";
 
 const PLUGIN_IDE_FILES_COLLAPSED_KEY = "plugin-ide-files-collapsed";
 const PLUGIN_IDE_TSC_ON_SAVE_KEY = "plugin-ide-tsc-on-save";
@@ -27,6 +28,9 @@ const PLUGIN_IDE_RELOAD_ON_SAVE_KEY = "plugin-ide-reload-on-save";
 const PLUGIN_IDE_SNAPSHOT_KEY = "plugin-ide-workspace-snapshot-v1";
 const PLUGIN_IDE_MAX_SNAPSHOT_FILE_BYTES = 500 * 1024;
 const NPM_DEBOUNCE_MS = 280;
+
+const IDE_SHORTCUT_KBD =
+  "inline rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px] text-foreground/90 shadow-sm";
 
 interface OpenTab {
   relativePath: string;
@@ -195,6 +199,9 @@ function sampleNoteForType(type: string): Note {
 }
 
 const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
+  const { resolvedDark } = useTheme();
+  const monacoTheme = resolvedDark ? "vs-dark" : "vs";
+
   const [folders, setFolders] = useState<string[]>([]);
   const [pluginFolder, setPluginFolder] = useState<string>("");
   /** Absolute workspace as file:// so Monaco resolves imports like runtime (cache-backed virtual node_modules). */
@@ -1500,16 +1507,16 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-white">
-      <header className="border-b border-gray-200 shrink-0">
-        <div className="px-4 py-2 flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold text-gray-800 mr-2">
+    <div className="flex h-full flex-col bg-background text-foreground">
+      <header className="shrink-0 border-b border-border">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
+          <h2 className="mr-1 text-[13px] font-semibold text-foreground">
             Plugin IDE
           </h2>
-          <label className="text-sm text-gray-600 flex items-center gap-1">
+          <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
             Plugin
             <select
-              className="border border-gray-300 rounded px-2 py-1 text-sm max-w-[12rem]"
+              className="max-w-[14rem] rounded-sm border border-input bg-background px-2.5 py-1.5 text-[12px] shadow-sm"
               value={pluginFolder}
               onChange={(e) => {
                 setPluginFolder(e.target.value);
@@ -1530,7 +1537,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             <div className="relative">
               <button
                 type="button"
-                className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50"
+                className="min-h-7 rounded-sm border border-input bg-background px-2.5 py-1 text-[12px] text-foreground hover:bg-muted/50"
                 aria-expanded={toolbarMenu === "file"}
                 aria-haspopup="true"
                 onClick={() =>
@@ -1541,14 +1548,14 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
               </button>
               {toolbarMenu === "file" ? (
                 <div
-                  className="absolute left-0 top-full z-[70] mt-1 min-w-[12rem] rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+                  className="absolute left-0 top-full z-[70] mt-1 min-w-[12rem] rounded-md border border-border bg-background py-1 shadow-lg"
                   role="menu"
                 >
                   <button
                     type="button"
                     role="menuitem"
                     disabled={!activeTab || busy}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void saveActive();
@@ -1560,7 +1567,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     type="button"
                     role="menuitem"
                     disabled={!pluginFolder || busy || dirtyTabCount === 0}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void saveAllDirtyTabs();
@@ -1572,7 +1579,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     type="button"
                     role="menuitem"
                     disabled={!pluginFolder || busy}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       setPathModal({ kind: "newFile", value: "newfile.js" });
@@ -1584,7 +1591,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     type="button"
                     role="menuitem"
                     disabled={!pluginFolder || busy}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       setPathModal({ kind: "newFolder", value: "lib" });
@@ -1596,7 +1603,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     type="button"
                     role="menuitem"
                     disabled={!pluginFolder || busy}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void onImportFiles();
@@ -1608,7 +1615,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     type="button"
                     role="menuitem"
                     disabled={!pluginFolder || busy}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void onImportFolder();
@@ -1632,7 +1639,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     type="button"
                     role="menuitem"
                     disabled={!pluginFolder || !activePath || busy}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       openRenameModal();
@@ -1644,7 +1651,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     type="button"
                     role="menuitem"
                     disabled={!pluginFolder || !activePath || busy}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void copyToInternalClipboard();
@@ -1656,7 +1663,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     type="button"
                     role="menuitem"
                     disabled={!pluginFolder || busy}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void pasteFromInternalClipboard();
@@ -1669,7 +1676,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     role="menuitem"
                     disabled={!pluginFolder || busy}
                     title="Copy dist/ contents via folder picker"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void copyDistToFolder();
@@ -1683,7 +1690,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             <div className="relative">
               <button
                 type="button"
-                className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50"
+                className="min-h-7 rounded-sm border border-input bg-background px-2.5 py-1 text-[12px] text-foreground hover:bg-muted/50"
                 aria-expanded={toolbarMenu === "build"}
                 aria-haspopup="true"
                 onClick={() =>
@@ -1694,7 +1701,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
               </button>
               {toolbarMenu === "build" ? (
                 <div
-                  className="absolute left-0 top-full z-[70] mt-1 min-w-[13rem] rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+                  className="absolute left-0 top-full z-[70] mt-1 min-w-[13rem] rounded-md border border-border bg-background py-1 shadow-lg"
                   role="menu"
                 >
                   <button
@@ -1702,7 +1709,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     role="menuitem"
                     disabled={busy}
                     title="Pick parent folder; register subfolders with .nodexplugin"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void loadNodexFromParent();
@@ -1727,7 +1734,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     type="button"
                     role="menuitem"
                     disabled={!pluginFolder || busy}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void bundleLocalOnly();
@@ -1739,7 +1746,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     type="button"
                     role="menuitem"
                     disabled={!pluginFolder || busy}
-                    className="w-full text-left px-3 py-2 text-sm bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50"
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-accent/80 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void bundleAndReload();
@@ -1751,7 +1758,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     type="button"
                     role="menuitem"
                     disabled={busy}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void reloadOnly();
@@ -1764,22 +1771,75 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             </div>
           </div>
         </div>
-        <div className="px-4 pb-2 text-xs text-gray-500 leading-snug">
-          ⌘/Ctrl+S save · ⌘/Ctrl+⇧S save all · ⇧T types · ⇧B bundle · ⇧L reload · ⇧E
-          bundle+reload · ⇧O import · ⇧N new file · ⇧P parent · ⇧D copy dist ·
-          ⇧C/⇧V copy/paste · ⇧M rename · F2 rename · ⇧I npm install · ⇧⌫ delete
-        </div>
+        <details className="group border-t border-border/80 bg-muted/20 [&_summary::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer select-none items-center gap-2 px-5 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground">
+            <span className="inline-block w-3 text-center text-muted-foreground/70 transition-transform group-open:rotate-90">
+              ›
+            </span>
+            Keyboard shortcuts
+          </summary>
+          <div className="border-t border-border/70 px-5 py-3">
+            <ul className="grid grid-cols-1 gap-x-10 gap-y-2 text-[11px] text-muted-foreground sm:grid-cols-2">
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⌘/Ctrl+S</kbd> Save
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⌘/Ctrl+⇧S</kbd> Save all
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⇧T</kbd> Types
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⇧B</kbd> Bundle
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⇧L</kbd> Reload registry
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⇧E</kbd> Bundle + reload
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⇧O</kbd> Import
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⇧N</kbd> New file
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⇧P</kbd> Parent folder
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⇧D</kbd> Copy dist
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⇧C</kbd> /{" "}
+                <kbd className={IDE_SHORTCUT_KBD}>⇧V</kbd> Copy / paste path
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⇧M</kbd> /{" "}
+                <kbd className={IDE_SHORTCUT_KBD}>F2</kbd> Rename
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⇧I</kbd> npm install
+              </li>
+              <li>
+                <kbd className={IDE_SHORTCUT_KBD}>⇧⌫</kbd> Delete
+              </li>
+            </ul>
+          </div>
+        </details>
       </header>
 
-      <div className="border-b border-gray-200 px-4 py-2 flex flex-wrap items-center gap-3 shrink-0 bg-gray-50">
-        <span className="text-sm font-medium text-gray-700">Dependencies</span>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-border bg-muted/30 px-5 py-3">
+        <span className="text-[12px] font-semibold text-foreground">
+          Dependencies
+        </span>
         <div
           ref={npmWrapRef}
           className="relative z-[80] isolate flex-1 min-w-[14rem] max-w-xl"
         >
           <input
             type="search"
-            className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white"
+            className="w-full rounded-sm border border-input bg-background px-3 py-2 text-[12px]"
             placeholder="Search npm (2+ chars) or installed packages…"
             value={npmQuery}
             onChange={(e) => setNpmQuery(e.target.value)}
@@ -1787,20 +1847,20 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             disabled={!pluginFolder || busy}
           />
           {npmMenuOpen && pluginFolder && (
-            <div className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-72 overflow-auto rounded-md border border-gray-200 bg-white shadow-xl text-sm">
+            <div className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-72 overflow-auto rounded-md border border-border bg-background shadow-xl text-sm">
               {filteredInstalled.length > 0 && (
-                <div className="p-2 border-b border-gray-200 bg-white">
-                  <div className="text-xs font-semibold text-gray-500 uppercase mb-1">
+                <div className="p-2 border-b border-border bg-background">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">
                     Installed
                   </div>
                   <ul>
                     {filteredInstalled.map((p) => (
                       <li
                         key={`${p.name}-${p.dev ? "d" : "p"}`}
-                        className="px-2 py-1 text-gray-800 font-mono text-xs"
+                        className="px-2 py-1 text-foreground font-mono text-xs"
                       >
                         {p.name}
-                        <span className="text-gray-500">
+                        <span className="text-muted-foreground">
                           @{p.range}
                           {p.dev ? " (dev)" : ""}
                         </span>
@@ -1810,16 +1870,16 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                 </div>
               )}
               {npmQuery.trim().length >= 2 && (
-                <div className="p-2 bg-white">
-                  <div className="text-xs font-semibold text-gray-500 uppercase mb-1">
+                <div className="p-2 bg-background">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">
                     npm registry
                   </div>
                   {npmLoading ? (
-                    <div className="text-gray-500 text-xs px-2 py-2">
+                    <div className="text-muted-foreground text-xs px-2 py-2">
                       Searching…
                     </div>
                   ) : npmResults.length === 0 ? (
-                    <div className="text-gray-500 text-xs px-2 py-2">
+                    <div className="text-muted-foreground text-xs px-2 py-2">
                       No results
                     </div>
                   ) : (
@@ -1828,18 +1888,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                         <li key={r.name}>
                           <button
                             type="button"
-                            className="w-full text-left px-2 py-1.5 rounded hover:bg-indigo-50 flex flex-col gap-0.5"
+                            className="flex w-full flex-col gap-0.5 rounded px-2 py-1.5 text-left hover:bg-accent/50"
                             onClick={() => void addRegistryDependency(r)}
                             disabled={busy}
                           >
-                            <span className="font-mono text-gray-900">
+                            <span className="font-mono text-foreground">
                               {r.name}
-                              <span className="text-gray-500 font-normal">
+                              <span className="text-muted-foreground font-normal">
                                 @{r.version}
                               </span>
                             </span>
                             {r.description ? (
-                              <span className="text-xs text-gray-600 line-clamp-2">
+                              <span className="text-xs text-muted-foreground line-clamp-2">
                                 {r.description}
                               </span>
                             ) : null}
@@ -1853,11 +1913,12 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             </div>
           )}
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+        <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
           <input
             type="checkbox"
             checked={addAsDevDep}
             onChange={(e) => setAddAsDevDep(e.target.checked)}
+            className="h-3.5 w-3.5 rounded-sm border-border"
           />
           devDependency
         </label>
@@ -1865,11 +1926,11 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
           type="button"
           disabled={!pluginFolder || busy}
           onClick={() => void runTypecheck()}
-          className="px-3 py-1 text-sm bg-violet-600 text-white rounded hover:bg-violet-700 disabled:opacity-50"
+          className="min-h-7 rounded-sm border border-border bg-background px-3 py-1.5 text-[12px] font-medium text-foreground shadow-sm transition-colors hover:bg-muted/60 disabled:opacity-50"
         >
           Check types
         </button>
-        <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+        <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
           <input
             type="checkbox"
             checked={tscOnSave}
@@ -1882,10 +1943,11 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                 localStorage.removeItem(PLUGIN_IDE_TSC_ON_SAVE_KEY);
               }
             }}
+            className="h-3.5 w-3.5 rounded-sm border-border"
           />
           Typecheck on save
         </label>
-        <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+        <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
           <input
             type="checkbox"
             checked={reloadOnSave}
@@ -1898,6 +1960,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                 localStorage.removeItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY);
               }
             }}
+            className="h-3.5 w-3.5 rounded-sm border-border"
           />
           Reload registry on save
         </label>
@@ -1905,7 +1968,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
           type="button"
           disabled={!pluginFolder || busy}
           onClick={() => void runInstallDependencies()}
-          className="px-3 py-1 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50"
+          className="min-h-7 rounded-sm bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-92 disabled:opacity-50"
         >
           Install dependencies
         </button>
@@ -1914,14 +1977,14 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
       {pathModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
           <div
-            className="bg-white rounded-lg shadow-xl max-w-md w-full p-5 border border-gray-200"
+            className="bg-background rounded-lg shadow-xl max-w-md w-full p-5 border border-border"
             role="dialog"
             aria-modal="true"
             aria-labelledby="path-modal-title"
           >
             <h3
               id="path-modal-title"
-              className="text-lg font-semibold text-gray-900 mb-2"
+              className="text-lg font-semibold text-foreground mb-2"
             >
               {pathModal.kind === "newFile"
                 ? "New file"
@@ -1929,20 +1992,20 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                   ? "New folder"
                   : "Rename"}
             </h3>
-            <p className="text-sm text-gray-600 mb-3">
+            <p className="text-sm text-muted-foreground mb-3">
               {pathModal.kind === "rename"
                 ? "New path relative to plugin root."
                 : (
                     <>
                       Path relative to plugin root (use{" "}
-                      <code className="text-xs bg-gray-100 px-1">/</code> for
+                      <code className="text-xs bg-muted px-1">/</code> for
                       subfolders).
                     </>
                   )}
             </p>
             <input
               type="text"
-              className="w-full border border-gray-300 rounded px-2 py-2 text-sm font-mono mb-4"
+              className="w-full border border-input rounded px-2 py-2 text-sm font-mono mb-4"
               value={pathModal.value}
               onChange={(e) =>
                 setPathModal({
@@ -1961,14 +2024,14 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
-                className="px-3 py-1.5 text-sm rounded bg-gray-100 text-gray-800 hover:bg-gray-200"
+                className="px-3 py-1.5 text-sm rounded bg-muted text-foreground hover:bg-muted"
                 onClick={() => setPathModal(null)}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50"
                 disabled={busy}
                 onClick={() => void submitPathModal()}
               >
@@ -1986,11 +2049,11 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
       )}
 
       {tscDiagnostics.length > 0 && (
-        <div className="px-4 py-2 text-xs border-b border-gray-200 bg-rose-50/50 max-h-36 overflow-y-auto shrink-0">
-          <div className="font-semibold text-gray-700 mb-1">
+        <div className="max-h-40 shrink-0 overflow-y-auto border-b border-border bg-rose-50/50 px-5 py-3 text-[11px] dark:bg-rose-950/20">
+          <div className="mb-2 font-semibold text-foreground">
             Problems ({tscDiagnostics.length})
           </div>
-          <ul className="space-y-0.5 text-gray-800">
+          <ul className="space-y-1 text-foreground">
             {tscDiagnostics.map((d, i) => (
               <li key={`${d.relativePath}-${d.line}-${d.column}-${i}`}>
                 <button
@@ -2034,14 +2097,14 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             localStorage.removeItem(PLUGIN_IDE_FILES_COLLAPSED_KEY)
           }
         >
-          <aside className="h-full border-r border-gray-200 overflow-y-auto bg-gray-50 flex flex-col">
-            <div className="p-2 flex items-center justify-between gap-1 shrink-0 border-b border-gray-200/80">
-              <span className="text-xs font-medium text-gray-500 uppercase">
+          <aside className="flex h-full flex-col overflow-y-auto border-r border-border bg-sidebar">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Files
               </span>
               <button
                 type="button"
-                className="text-gray-500 hover:text-gray-800 p-1 rounded hover:bg-gray-200 text-xs"
+                className="rounded-sm p-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
                 title="Collapse or expand file list"
                 aria-label="Toggle file sidebar"
                 onClick={toggleFilesPanel}
@@ -2049,16 +2112,16 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                 ◀▶
               </button>
             </div>
-            <ul className="text-sm flex-1 min-h-0 overflow-y-auto">
+            <ul className="min-h-0 flex-1 overflow-y-auto py-1">
               {fileList.map((f) => (
                 <li key={f}>
                   <button
                     type="button"
                     onClick={() => void openFile(f)}
-                    className={`w-full text-left px-2 py-1.5 truncate hover:bg-white ${
+                    className={`w-full truncate border-l-2 py-[5px] pl-4 pr-3 text-left font-mono text-[13px] leading-snug transition-colors hover:bg-muted/50 ${
                       activePath === f
-                        ? "bg-white font-medium text-indigo-800"
-                        : "text-gray-700"
+                        ? "border-primary bg-muted/60 font-medium text-foreground"
+                        : "border-transparent text-foreground"
                     }`}
                     title={f}
                   >
@@ -2070,12 +2133,12 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
           </aside>
         </Panel>
 
-        <PanelResizeHandle className="w-1.5 bg-gray-200 hover:bg-indigo-300 data-[panel-resize-handle-active]:bg-indigo-400 shrink-0 transition-colors" />
+        <PanelResizeHandle className="nodex-panel-sash relative w-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-y-0 before:left-1/2 before:z-10 before:w-px before:-translate-x-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
 
         <Panel defaultSize={52} minSize={30} className="min-w-0">
           <div className="h-full flex flex-col min-h-0">
             <div
-              className="flex border-b border-gray-200 overflow-x-auto shrink-0 bg-gray-100"
+              className="flex shrink-0 overflow-x-auto border-b border-border bg-muted/80"
               role="tablist"
             >
               {tabs.map((t) => {
@@ -2089,10 +2152,10 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                         ? `${t.relativePath} (unsaved)`
                         : t.relativePath
                     }
-                    className={`flex items-center gap-1 px-2 py-1 border-r border-gray-200 text-sm cursor-pointer whitespace-nowrap ${
+                    className={`flex cursor-pointer items-center gap-1.5 whitespace-nowrap border-r border-border px-3 py-2 font-mono text-[12px] ${
                       activePath === t.relativePath
-                        ? "bg-white text-gray-900"
-                        : "bg-gray-100 text-gray-600"
+                        ? "border-b-transparent bg-background text-foreground"
+                        : "bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground"
                     }`}
                     onClick={() => setActivePath(t.relativePath)}
                     role="tab"
@@ -2105,7 +2168,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     </span>
                     <button
                       type="button"
-                      className="text-gray-400 hover:text-red-600 px-1"
+                      className="px-1 text-muted-foreground hover:text-destructive"
                       aria-label="Close tab"
                       onClick={(e) => closeTab(t.relativePath, e)}
                     >
@@ -2116,7 +2179,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
               })}
             </div>
             {dirtyTabCount > 0 ? (
-              <div className="px-2 py-0.5 text-xs text-amber-800 bg-amber-50 border-b border-amber-100 shrink-0">
+              <div className="shrink-0 border-b border-orange-500/25 bg-orange-500/10 px-4 py-1.5 text-[11px] text-orange-950 dark:border-orange-400/20 dark:bg-orange-400/10 dark:text-orange-50">
                 {dirtyTabCount} unsaved file
                 {dirtyTabCount === 1 ? "" : "s"}
               </div>
@@ -2124,9 +2187,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             <div className="flex-1 min-h-0">
               {activeTab ? (
                 <Editor
-                  key={`${workspaceRootFileUri}:${activeTab.relativePath}`}
+                  key={`${workspaceRootFileUri}:${activeTab.relativePath}:${monacoTheme}`}
                   height="100%"
-                  theme="vs-light"
+                  theme={monacoTheme}
                   path={
                     workspaceRootFileUri
                       ? joinFileUri(
@@ -2154,7 +2217,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                   }}
                 />
               ) : (
-                <div className="h-full flex items-center justify-center text-gray-400 text-sm">
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
                   Select a plugin and open a file
                 </div>
               )}
@@ -2162,16 +2225,16 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
           </div>
         </Panel>
 
-        <PanelResizeHandle className="w-1.5 bg-gray-200 hover:bg-indigo-300 data-[panel-resize-handle-active]:bg-indigo-400 shrink-0 transition-colors" />
+        <PanelResizeHandle className="nodex-panel-sash relative w-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-y-0 before:left-1/2 before:z-10 before:w-px before:-translate-x-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
 
         <Panel defaultSize={30} minSize={18} className="min-w-0">
-          <aside className="h-full border-l border-gray-200 flex flex-col min-h-0 bg-gray-50">
-            <div className="p-2 border-b border-gray-200 shrink-0">
-              <label className="text-xs font-medium text-gray-600 block mb-1">
+          <aside className="flex h-full min-h-0 flex-col border-l border-border bg-sidebar">
+            <div className="shrink-0 border-b border-border px-4 py-3">
+              <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Preview note type
               </label>
               <select
-                className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                className="w-full rounded-sm border border-input bg-background px-2.5 py-2 text-[12px]"
                 value={previewType}
                 onChange={(e) => setPreviewType(e.target.value)}
               >
@@ -2193,7 +2256,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                   note={previewNote}
                 />
               ) : (
-                <div className="p-4 text-xs text-gray-500">
+                <div className="px-4 py-4 text-[11px] leading-relaxed text-muted-foreground">
                   Reload registry after bundling to register types, then pick a
                   type to preview.
                 </div>

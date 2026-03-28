@@ -1,7 +1,12 @@
-interface PluginRenderer {
+export type PluginThemeMode = "inherit" | "isolated";
+
+export interface PluginRenderer {
   pluginName: string;
   render: (note: any) => string | Promise<string>;
   onMessage?: (message: any) => void;
+  /** Iframe UI: inherit host CSS variables vs isolated styling */
+  theme?: PluginThemeMode;
+  designSystemVersion?: string;
 }
 
 export class Registry {
@@ -15,11 +20,18 @@ export class Registry {
   }
 
   // New method for secure plugin system
-  registerRenderer(pluginName: string, type: string, renderer: any): void {
+  registerRenderer(
+    pluginName: string,
+    type: string,
+    renderer: any,
+    uiMeta?: { theme?: PluginThemeMode; designSystemVersion?: string },
+  ): void {
     this.renderers.set(type, {
       pluginName,
       render: renderer.render,
       onMessage: renderer.onMessage,
+      theme: uiMeta?.theme ?? "inherit",
+      designSystemVersion: uiMeta?.designSystemVersion,
     });
     console.log(
       `[Registry] Registered renderer: ${type} (plugin: ${pluginName})`,

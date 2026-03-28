@@ -6,6 +6,7 @@ import * as monaco from "monaco-editor";
 import { Provider } from "react-redux";
 import { store } from "./store";
 import App from "./App";
+import { ThemeProvider } from "./theme/ThemeContext";
 import "./styles.css";
 
 /** Ship Monaco inside the app bundle (see monaco-editor-webpack-plugin in webpack.renderer.config.js). */
@@ -22,8 +23,10 @@ if (!container) {
 const root = createRoot(container);
 root.render(
   <React.StrictMode>
-    <Provider store={store}>
-      <App />
-    </Provider>
+    <ThemeProvider>
+      <Provider store={store}>
+        <App />
+      </Provider>
+    </ThemeProvider>
   </React.StrictMode>,
 );

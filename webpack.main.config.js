@@ -5,7 +5,11 @@ module.exports = {
   target: "electron-main",
   entry: "./src/main.ts",
   module: {
-    rules: require("./webpack.rules"),
+    rules: [
+      /** Monaco ESM pulls .css; main bundle does not need styles—avoid parse errors. */
+      { test: /\.css$/i, type: "asset/source" },
+      ...require("./webpack.rules"),
+    ],
   },
   resolve: {
     extensions: [".js", ".ts", ".jsx", ".tsx", ".css", ".json"],

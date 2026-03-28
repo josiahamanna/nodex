@@ -20,6 +20,20 @@ function CodeApp() {
   const initial = readNoteMeta();
   const [value, setValue] = React.useState(initial.content);
   const [language, setLanguage] = React.useState(initial.language);
+  const [monacoDark, setMonacoDark] = React.useState(() =>
+    typeof document !== "undefined"
+      ? document.documentElement.classList.contains("dark")
+      : false,
+  );
+
+  React.useEffect(() => {
+    const el = document.documentElement;
+    const sync = () => setMonacoDark(el.classList.contains("dark"));
+    const obs = new MutationObserver(sync);
+    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
+    sync();
+    return () => obs.disconnect();
+  }, []);
 
   React.useEffect(() => {
     Nodex.onMessage = (message) => {
@@ -39,7 +53,7 @@ function CodeApp() {
       style={{
         height: "100%",
         minHeight: "420px",
-        border: "1px solid #e5e7eb",
+        border: "1px solid hsl(var(--border, 214.3 31.8% 91.4%))",
         borderRadius: "0.5rem",
         overflow: "hidden",
       }}
@@ -47,7 +61,7 @@ function CodeApp() {
       <Editor
         height="100%"
         language={language}
-        theme="vs-light"
+        theme={monacoDark ? "vs-dark" : "vs"}
         value={value}
         onChange={(v) => setValue(v ?? "")}
         options={{

@@ -1,4 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  nativeTheme,
+} from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import { appendPluginAudit } from "./core/plugin-audit";
@@ -71,6 +77,15 @@ function getDialogParent(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined;
 }
 
+function broadcastNativeThemeToRenderers(): void {
+  const dark = nativeTheme.shouldUseDarkColors;
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.UI_NATIVE_THEME_CHANGED, dark);
+    }
+  }
+}
+
 /** Shipped mandatory plugins (folder is copied to `Resources/core` when packaged). */
 function resolveBundledCorePluginsDir(): string | null {
   if (app.isPackaged) {
@@ -113,6 +128,12 @@ const createWindow = (): void => {
 };
 
 app.on("ready", () => {
+  nativeTheme.on("updated", broadcastNativeThemeToRenderers);
+
+  ipcMain.handle(IPC_CHANNELS.UI_GET_NATIVE_THEME_DARK, () => {
+    return nativeTheme.shouldUseDarkColors;
+  });
+
   ipcMain.handle(IPC_CHANNELS.NPM_REGISTRY_SEARCH, async (_event, query: string) => {
     if (typeof query !== "string" || query.length > 200) {
       return {
@@ -186,6 +207,30 @@ app.on("ready", () => {
   seedSamplePluginsToUserDir(pluginsPath);
 
   pluginLoader = new PluginLoader(pluginsPath, bundledRoots);
+
+  ipcMain.handle(
+    IPC_CHANNELS.GET_PLUGIN_RENDERER_UI_META,
+    (_e, noteType: string) => {
+      if (!isValidNoteType(noteType)) {
+        return null;
+      }
+      const r = registry.getRenderer(noteType);
+      if (!r) {
+        return null;
+      }
+      return {
+        theme: r.theme ?? "inherit",
+        designSystemVersion: r.designSystemVersion,
+      };
+    },
+  );
+
+  ipcMain.handle(IPC_CHANNELS.GET_PLUGIN_MANIFEST_UI, (_e, name: string) => {
+    if (typeof name !== "string" || name.trim().length === 0) {
+      return null;
+    }
+    return pluginLoader.getManifestUiFields(name.trim());
+  });
 
   createWindow();
 

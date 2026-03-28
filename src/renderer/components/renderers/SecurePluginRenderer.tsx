@@ -1,7 +1,12 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Note } from "../../../preload";
 import { MessageType, PluginMessage } from "../../../shared/plugin-api";
 import { attachReactToPluginWindow } from "../../../shared/react-bridge";
+import { useTheme } from "../../theme/ThemeContext";
+import {
+  buildIframeThemeCss,
+  NODEX_IFRAME_THEME_MESSAGE,
+} from "../../theme/iframe-theme";
 
 interface SecurePluginRendererProps {
   note: Note;
@@ -10,15 +15,25 @@ interface SecurePluginRendererProps {
 const BRIDGE_REQUEST = "nodex-request-bridge";
 const BRIDGE_READY = "nodex-bridge-ready";
 
+/** DevTools + webpack dev server fetch source maps over http/ws; without connect-src, default-src 'none' blocks them. */
+const PLUGIN_IFRAME_CSP_CONNECT_DEV =
+  process.env.NODE_ENV === "development"
+    ? " connect-src http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss://localhost:* wss://127.0.0.1:*"
+    : "";
+
 const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   note,
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const noteRef = useRef(note);
+  noteRef.current = note;
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { resolvedDark } = useTheme();
+  const inheritThemeRef = useRef(true);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
+  const handleMessage = useCallback(
+    (event: MessageEvent) => {
       const iframeWin = iframeRef.current?.contentWindow;
       if (!iframeWin || event.source !== iframeWin) {
         return;
@@ -35,7 +50,10 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
       switch (message.type) {
         case MessageType.READY:
           setIsReady(true);
-          sendMessageToPlugin({ type: MessageType.RENDER, payload: note });
+          sendMessageToPlugin({
+            type: MessageType.RENDER,
+            payload: noteRef.current,
+          });
           break;
 
         case MessageType.ACTION:
@@ -45,17 +63,20 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
         default:
           break;
       }
-    };
+    },
+    [],
+  );
 
+  useEffect(() => {
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [note]);
+  }, [handleMessage]);
 
   useEffect(() => {
     if (isReady && iframeRef.current) {
       sendMessageToPlugin({ type: MessageType.UPDATE, payload: note });
     }
-  }, [note, isReady]);
+  }, [isReady, note]);
 
   const sendMessageToPlugin = (message: PluginMessage) => {
     if (iframeRef.current?.contentWindow) {
@@ -63,35 +84,75 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
     }
   };
 
-  const loadPluginContent = async () => {
+  const pushThemeToIframe = useCallback(() => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win || !inheritThemeRef.current) {
+      return;
+    }
+    const css = buildIframeThemeCss(true);
+    win.postMessage(
+      {
+        type: NODEX_IFRAME_THEME_MESSAGE,
+        css,
+        dark: resolvedDark,
+      },
+      "*",
+    );
+  }, [resolvedDark]);
+
+  useEffect(() => {
+    const onResolved = () => pushThemeToIframe();
+    window.addEventListener("nodex-theme-resolved", onResolved);
+    return () => window.removeEventListener("nodex-theme-resolved", onResolved);
+  }, [pushThemeToIframe]);
+
+  useEffect(() => {
+    if (isReady) {
+      pushThemeToIframe();
+    }
+  }, [isReady, pushThemeToIframe]);
+
+  const loadPluginContent = useCallback(async () => {
+    const n = noteRef.current;
     try {
-      const htmlContent = await window.Nodex.getPluginHTML(note.type, note);
+      setError(null);
+      const htmlContent = await window.Nodex.getPluginHTML(n.type, n);
 
       if (!htmlContent) {
-        setError(`No plugin renderer found for type: ${note.type}`);
+        setError(`No plugin renderer found for type: ${n.type}`);
         return;
       }
 
-      const sandboxedHTML = createSandboxedHTML(htmlContent);
+      const meta = await window.Nodex.getPluginRendererUiMeta(n.type);
+      const inherit = (meta?.theme ?? "inherit") !== "isolated";
+      inheritThemeRef.current = inherit;
+
+      const themeCss = buildIframeThemeCss(inherit);
+      const sandboxedHTML = createSandboxedHTML(htmlContent, {
+        themeCss,
+        dark: resolvedDark,
+        inheritTheme: inherit,
+      });
 
       if (iframeRef.current) {
         iframeRef.current.srcdoc = sandboxedHTML;
+        setIsReady(false);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load plugin");
     }
-  };
+  }, [note.id, note.type, resolvedDark]);
 
   useEffect(() => {
-    loadPluginContent();
-  }, [note.type]);
+    void loadPluginContent();
+  }, [loadPluginContent]);
 
   if (error) {
     return (
-      <div className="p-8">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800 font-medium">Plugin Error</p>
-          <p className="text-sm text-red-600 mt-2">{error}</p>
+      <div className="p-6">
+        <div className="rounded-sm border border-destructive/30 bg-destructive/10 p-4">
+          <p className="font-medium text-destructive">Plugin Error</p>
+          <p className="mt-2 text-sm text-destructive/90">{error}</p>
         </div>
       </div>
     );
@@ -101,25 +162,55 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
     <iframe
       ref={iframeRef}
       sandbox="allow-scripts allow-same-origin"
-      className="w-full h-full border-0"
+      className="h-full w-full border-0"
       title={`Plugin renderer for ${note.type}`}
     />
   );
 };
 
-function createSandboxedHTML(pluginHTML: string): string {
+function createSandboxedHTML(
+  pluginHTML: string,
+  opts: {
+    themeCss: string;
+    dark: boolean;
+    inheritTheme: boolean;
+  },
+): string {
+  const { themeCss, dark, inheritTheme } = opts;
+  const themeStyle =
+    inheritTheme && themeCss.length > 0
+      ? `<style id="nodex-theme">${escapeForInlineStyle(themeCss)}</style>`
+      : "";
+  const themeListener = inheritTheme
+    ? `
+      window.addEventListener('message', function (e) {
+        var d = e.data;
+        if (!d || d.type !== '${NODEX_IFRAME_THEME_MESSAGE}') return;
+        if (typeof d.css === 'string') {
+          var el = document.getElementById('nodex-theme');
+          if (el) el.textContent = d.css;
+        }
+        if (d.dark === true) document.documentElement.classList.add('dark');
+        else if (d.dark === false) document.documentElement.classList.remove('dark');
+      });
+    `
+    : "";
+
   return `
 <!DOCTYPE html>
-<html>
+<html class="${dark ? "dark" : ""}">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline' blob:; img-src data: blob:; font-src data: blob:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline' blob:; img-src data: blob:; font-src data: blob:;${PLUGIN_IFRAME_CSP_CONNECT_DEV}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${themeStyle}
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
       padding: 1rem;
+      background: hsl(var(--background, 0 0% 100%));
+      color: hsl(var(--foreground, 222.2 84% 4.9%));
     }
   </style>
 </head>
@@ -127,6 +218,7 @@ function createSandboxedHTML(pluginHTML: string): string {
   <div id="plugin-root"></div>
   <script>
     (function () {
+      ${themeListener}
       window.Nodex = window.Nodex || {};
       window.Nodex.postMessage = function (data) {
         window.parent.postMessage({ type: 'action', payload: data }, '*');
@@ -156,6 +248,11 @@ function createSandboxedHTML(pluginHTML: string): string {
 </body>
 </html>
   `.trim();
+}
+
+/** Avoid breaking out of &lt;style&gt; if token file ever contained &lt;/style&gt; */
+function escapeForInlineStyle(css: string): string {
+  return css.replace(/<\/style/gi, "<\\/style");
 }
 
 export default SecurePluginRenderer;

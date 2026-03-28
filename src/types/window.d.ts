@@ -191,6 +191,23 @@ declare global {
       ) => Promise<{ success: boolean }>;
       onIdeWorkspaceFsChanged: (callback: () => void) => () => void;
       reloadPluginRegistry: () => Promise<{ success: boolean; error?: string }>;
+      getNativeThemeDark: () => Promise<boolean>;
+      onNativeThemeChanged: (
+        callback: (isDark: boolean) => void,
+      ) => () => void;
+      getPluginRendererUiMeta: (
+        noteType: string,
+      ) => Promise<{
+        theme?: "inherit" | "isolated";
+        designSystemVersion?: string;
+      } | null>;
+      getPluginManifestUi: (
+        pluginName: string,
+      ) => Promise<{
+        theme: "inherit" | "isolated";
+        designSystemVersion?: string;
+        designSystemWarning: string | null;
+      } | null>;
     };
   }
 }

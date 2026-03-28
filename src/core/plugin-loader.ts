@@ -20,6 +20,7 @@ import {
   type TypecheckDiagnostic,
 } from "./plugin-typecheck";
 import { toFileUri } from "../shared/file-uri";
+import { designSystemWarning } from "../shared/design-system";
 
 const zipHandler = require("./zip-handler");
 
@@ -73,6 +74,10 @@ export interface PluginManifest {
   /** Relative paths copied/bundled to dist/workers/ (Epic 2.3). */
   workers?: string[];
   network?: NetworkConfig;
+  /** Iframe: use host-injected theme tokens (default) or isolated styling */
+  theme?: "inherit" | "isolated";
+  /** Declared compatibility with Nodex design system / @nodex/plugin-ui */
+  designSystemVersion?: string;
 }
 
 export interface NodexAPI {
@@ -635,7 +640,11 @@ export class PluginLoader {
         getUiBootstrap?: () => Promise<string>;
       } = {
         registerNoteRenderer: (type: string, renderer: any) => {
-          registry.registerRenderer(manifest.name, type, renderer);
+          registry.registerRenderer(manifest.name, type, renderer, {
+            theme:
+              manifest.theme === "isolated" ? "isolated" : "inherit",
+            designSystemVersion: manifest.designSystemVersion,
+          });
           this.loadedPlugins.add(manifest.name);
           console.log(
             `[PluginLoader] Loaded plugin: ${manifest.name} (type: ${type})`,
@@ -794,6 +803,65 @@ export class PluginLoader {
 
   getLoadedPlugins(): string[] {
     return Array.from(this.loadedPlugins);
+  }
+
+  /**
+   * UI fields from manifest for a loaded plugin (matched by `manifest.name`).
+   */
+  getManifestUiFields(manifestName: string): {
+    theme: "inherit" | "isolated";
+    designSystemVersion?: string;
+    designSystemWarning: string | null;
+  } | null {
+    const readAt = (root: string) => {
+      const mp = path.join(root, "manifest.json");
+      if (!fs.existsSync(mp)) {
+        return null;
+      }
+      try {
+        const m = JSON.parse(fs.readFileSync(mp, "utf8")) as PluginManifest;
+        if (m.name !== manifestName) {
+          return null;
+        }
+        const theme: "inherit" | "isolated" =
+          m.theme === "isolated" ? "isolated" : "inherit";
+        return {
+          theme,
+          designSystemVersion: m.designSystemVersion,
+          designSystemWarning: designSystemWarning(m.designSystemVersion),
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    for (const id of this.collectUserPluginIds()) {
+      const r = this.resolvePluginRuntimePath(id);
+      if (!r) {
+        continue;
+      }
+      const hit = readAt(r);
+      if (hit) {
+        return hit;
+      }
+    }
+
+    for (const br of this.bundledCoreRoots) {
+      if (!fs.existsSync(br)) {
+        continue;
+      }
+      for (const ent of fs.readdirSync(br, { withFileTypes: true })) {
+        if (!ent.isDirectory()) {
+          continue;
+        }
+        const hit = readAt(path.join(br, ent.name));
+        if (hit) {
+          return hit;
+        }
+      }
+    }
+
+    return null;
   }
 
   uninstallPlugin(pluginName: string, registry: Registry): void {

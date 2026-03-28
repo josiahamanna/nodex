@@ -10,11 +10,19 @@ const rules = baseRules.filter((rule) => {
 });
 
 rules.push({
-  test: /\.css$/,
-  use: [
-    { loader: "style-loader" },
-    { loader: "css-loader" },
-    { loader: "postcss-loader" },
+  test: /\.(css|nodexcss)$/i,
+  oneOf: [
+    {
+      resourceQuery: /raw/,
+      type: "asset/source",
+    },
+    {
+      use: [
+        { loader: "style-loader" },
+        { loader: "css-loader" },
+        { loader: "postcss-loader" },
+      ],
+    },
   ],
 });
 
