@@ -40,6 +40,19 @@ function setChildren(parentId: string | null, ids: string[]): void {
   childOrder.set(orderKey(parentId), ids);
 }
 
+/** Rebuild `childOrder` for the synthetic null parent from `parentId` on records (fixes missing `__root__`). */
+function syncNullChildOrderFromRecords(): void {
+  const roots: string[] = [];
+  for (const n of notes.values()) {
+    if (n.parentId === null) {
+      roots.push(n.id);
+    }
+  }
+  if (roots.length > 0) {
+    setChildren(null, roots);
+  }
+}
+
 export function resetNotesStore(): void {
   notes.clear();
   childOrder.clear();
@@ -121,19 +134,19 @@ export function mergeMultipleRootsIfNeeded(): void {
       roots.push(id);
     }
   }
-  if (roots.length <= 1) {
-    return;
-  }
-  const keeper = roots[0]!;
-  const tail = roots.slice(1);
-  const kids = [...getChildren(keeper), ...tail];
-  setChildren(keeper, kids);
-  for (const id of tail) {
-    const r = notes.get(id);
-    if (r) {
-      r.parentId = keeper;
+  if (roots.length > 1) {
+    const keeper = roots[0]!;
+    const tail = roots.slice(1);
+    const kids = [...getChildren(keeper), ...tail];
+    setChildren(keeper, kids);
+    for (const id of tail) {
+      const r = notes.get(id);
+      if (r) {
+        r.parentId = keeper;
+      }
     }
   }
+  syncNullChildOrderFromRecords();
 }
 
 export function ensureNotesSeeded(registeredTypes: string[]): void {
@@ -169,9 +182,13 @@ export function ensureNotesSeeded(registeredTypes: string[]): void {
     childIds.push(id);
   }
   setChildren(rootId, childIds);
+  setChildren(null, [rootId]);
 }
 
 export function getNotesFlat(): NoteListRow[] {
+  if (notes.size > 0 && getChildren(null).length === 0) {
+    syncNullChildOrderFromRecords();
+  }
   const out: NoteListRow[] = [];
   function walk(parentId: string | null, depth: number): void {
     for (const id of getChildren(parentId)) {
@@ -217,6 +234,193 @@ function removeFromParentList(noteId: string): void {
     list.splice(i, 1);
     setChildren(p, list);
   }
+}
+
+function collectSubtreeIds(rootId: string): string[] {
+  const out: string[] = [];
+  function walk(id: string): void {
+    out.push(id);
+    for (const c of getChildren(id)) {
+      walk(c);
+    }
+  }
+  walk(rootId);
+  return out;
+}
+
+/** Remove a note and its descendants. Cannot delete the workspace root. */
+export function deleteNoteSubtree(noteId: string): void {
+  const workspaceRootId = getTreeRootId();
+  if (!workspaceRootId || noteId === workspaceRootId) {
+    throw new Error("Cannot delete workspace root");
+  }
+  if (!notes.get(noteId)) {
+    throw new Error("Note not found");
+  }
+  const ids = collectSubtreeIds(noteId);
+  removeFromParentList(noteId);
+  for (const id of ids) {
+    childOrder.delete(orderKey(id));
+  }
+  for (const id of ids) {
+    notes.delete(id);
+  }
+  syncNullChildOrderFromRecords();
+}
+
+/**
+ * Delete several subtrees. Accepts any superset of ids; keeps only top-level roots
+ * among the set, then deletes in reverse preorder so nested selections work.
+ */
+export function deleteNoteSubtrees(rootIds: string[]): void {
+  const unique = [...new Set(rootIds)];
+  const uniqueSet = new Set(unique);
+  const minimal = unique.filter((id) => {
+    let p = notes.get(id)?.parentId ?? null;
+    while (p) {
+      if (uniqueSet.has(p)) {
+        return false;
+      }
+      p = notes.get(p)?.parentId ?? null;
+    }
+    return true;
+  });
+  const flat = getNotesFlat();
+  const indexById = new Map(flat.map((r, i) => [r.id, i]));
+  minimal.sort(
+    (a, b) => (indexById.get(b) ?? 0) - (indexById.get(a) ?? 0),
+  );
+  for (const id of minimal) {
+    if (notes.has(id)) {
+      deleteNoteSubtree(id);
+    }
+  }
+}
+
+/**
+ * Move multiple disjoint subtree roots in one step, preserving preorder order within the block.
+ */
+export function moveNotesBulk(
+  noteIds: string[],
+  targetId: string,
+  placement: NoteMovePlacement,
+): void {
+  const workspaceRootId = getTreeRootId();
+  if (!workspaceRootId) {
+    throw new Error("No workspace root");
+  }
+
+  const idSet = new Set(noteIds);
+  const minimal: string[] = [];
+  for (const id of noteIds) {
+    if (id === workspaceRootId) {
+      throw new Error("Cannot move workspace root");
+    }
+    if (!notes.get(id)) {
+      throw new Error("Note not found");
+    }
+    let p: string | null = notes.get(id)?.parentId ?? null;
+    let underSelected = false;
+    while (p) {
+      if (idSet.has(p)) {
+        underSelected = true;
+        break;
+      }
+      p = notes.get(p)?.parentId ?? null;
+    }
+    if (!underSelected) {
+      minimal.push(id);
+    }
+  }
+
+  const uniqueMinimal = [...new Set(minimal)];
+  if (uniqueMinimal.length === 0) {
+    return;
+  }
+
+  const flat = getNotesFlat();
+  const indexById = new Map(flat.map((r, i) => [r.id, i]));
+  uniqueMinimal.sort(
+    (a, b) => (indexById.get(a) ?? 0) - (indexById.get(b) ?? 0),
+  );
+
+  const target = notes.get(targetId);
+  if (!target) {
+    throw new Error("Note not found");
+  }
+
+  for (const r of uniqueMinimal) {
+    if (r === targetId) {
+      throw new Error("Invalid move target");
+    }
+    if (isDescendantOf(r, targetId)) {
+      throw new Error("Cannot move relative to node inside dragged subtree");
+    }
+  }
+
+  if (placement === "into") {
+    for (const r of uniqueMinimal) {
+      if (isDescendantOf(targetId, r)) {
+        throw new Error("Cannot move into own subtree");
+      }
+    }
+  }
+
+  const sortedRemove = [...uniqueMinimal].sort(
+    (a, b) => (indexById.get(b) ?? 0) - (indexById.get(a) ?? 0),
+  );
+  for (const r of sortedRemove) {
+    removeFromParentList(r);
+  }
+
+  const block = uniqueMinimal;
+
+  if (placement === "into") {
+    const kids = [...getChildren(targetId)];
+    for (const r of block) {
+      const rec = notes.get(r);
+      if (rec) {
+        rec.parentId = targetId;
+        kids.push(r);
+      }
+    }
+    setChildren(targetId, kids);
+    return;
+  }
+
+  if (targetId === workspaceRootId) {
+    const kids = [...getChildren(workspaceRootId)];
+    if (placement === "before") {
+      kids.unshift(...block);
+    } else {
+      kids.push(...block);
+    }
+    for (const r of block) {
+      const rec = notes.get(r);
+      if (rec) {
+        rec.parentId = workspaceRootId;
+      }
+    }
+    setChildren(workspaceRootId, kids);
+    return;
+  }
+
+  const parentId = target.parentId ?? workspaceRootId;
+  const siblings = [...getChildren(parentId)];
+  const tIdx = siblings.indexOf(targetId);
+  const ins = placement === "before" ? tIdx : tIdx + 1;
+  for (const r of block) {
+    const rec = notes.get(r);
+    if (rec) {
+      rec.parentId = parentId;
+    }
+  }
+  if (tIdx < 0) {
+    siblings.push(...block);
+  } else {
+    siblings.splice(ins, 0, ...block);
+  }
+  setChildren(parentId, siblings);
 }
 
 export function moveNote(
@@ -389,9 +593,9 @@ export function createNote(opts: {
 
   if (opts.relation === "root") {
     rec.parentId = workspaceRootId;
+    notes.set(id, rec);
     const ch = [...getChildren(workspaceRootId), id];
     setChildren(workspaceRootId, ch);
-    notes.set(id, rec);
     return rec;
   }
 
@@ -406,14 +610,15 @@ export function createNote(opts: {
 
   if (opts.relation === "child") {
     rec.parentId = opts.anchorId;
+    notes.set(id, rec);
     const ch = [...getChildren(opts.anchorId), id];
     setChildren(opts.anchorId, ch);
-    notes.set(id, rec);
     return rec;
   }
 
   const parentId = anchor.parentId ?? workspaceRootId;
   rec.parentId = parentId;
+  notes.set(id, rec);
   const siblings = [...getChildren(parentId)];
   const idx = siblings.indexOf(opts.anchorId);
   if (idx === -1) {
@@ -422,7 +627,6 @@ export function createNote(opts: {
     siblings.splice(idx + 1, 0, id);
   }
   setChildren(parentId, siblings);
-  notes.set(id, rec);
   return rec;
 }
 

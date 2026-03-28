@@ -17,8 +17,14 @@ declare global {
         type: string;
       }) => Promise<{ id: string }>;
       renameNote: (id: string, title: string) => Promise<void>;
+      deleteNotes: (ids: string[]) => Promise<void>;
       moveNote: (
         draggedId: string,
+        targetId: string,
+        placement: NoteMovePlacement,
+      ) => Promise<void>;
+      moveNotesBulk: (
+        ids: string[],
         targetId: string,
         placement: NoteMovePlacement,
       ) => Promise<void>;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   Panel,
@@ -8,9 +8,11 @@ import {
 import { AppDispatch, RootState, store } from "./store";
 import {
   createNote,
+  deleteNotesInTree,
   fetchNote,
   fetchAllNotes,
   moveNoteInTree,
+  moveNotesBulkInTree,
   pasteSubtree,
   renameNote,
 } from "./store/notesSlice";
@@ -26,31 +28,74 @@ import type {
 
 const App: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { currentNote, notesList, loading } = useSelector(
+  const { currentNote, notesList, detailLoading, listLoading } = useSelector(
     (state: RootState) => state.notes,
   );
+  const listSyncAttemptedFor = useRef<string | null>(null);
   const [showPluginManager, setShowPluginManager] = useState(false);
   const [showPluginIde, setShowPluginIde] = useState(false);
   const [registeredTypes, setRegisteredTypes] = useState<string[]>([]);
 
   useEffect(() => {
-    dispatch(fetchAllNotes());
-    dispatch(fetchNote());
+    let cancelled = false;
+    void (async () => {
+      try {
+        await dispatch(fetchAllNotes()).unwrap();
+        if (!cancelled) {
+          await dispatch(fetchNote()).unwrap();
+        }
+      } catch {
+        /* errors land in notes.error */
+      }
+    })();
     void window.Nodex.getRegisteredTypes().then(setRegisteredTypes);
 
     const unsubscribe = window.Nodex.onPluginsChanged(() => {
-      dispatch(fetchAllNotes());
-      dispatch(fetchNote());
+      void (async () => {
+        try {
+          await dispatch(fetchAllNotes()).unwrap();
+          await dispatch(fetchNote()).unwrap();
+        } catch {
+          /* errors land in notes.error */
+        }
+      })();
       void window.Nodex.getRegisteredTypes().then(setRegisteredTypes);
     });
 
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [dispatch]);
+
+  useEffect(() => {
+    const id = currentNote?.id;
+    if (!id) {
+      listSyncAttemptedFor.current = null;
+      return;
+    }
+    if (notesList.some((n) => n.id === id)) {
+      listSyncAttemptedFor.current = null;
+      return;
+    }
+    if (listLoading || listSyncAttemptedFor.current === id) {
+      return;
+    }
+    listSyncAttemptedFor.current = id;
+    void dispatch(fetchAllNotes());
+  }, [currentNote?.id, notesList, listLoading, dispatch]);
 
   const handleNoteSelect = (noteId: string) => {
     setShowPluginManager(false);
     setShowPluginIde(false);
-    dispatch(fetchNote(noteId));
+    void (async () => {
+      try {
+        await dispatch(fetchAllNotes()).unwrap();
+        await dispatch(fetchNote(noteId)).unwrap();
+      } catch {
+        /* errors land in notes.error */
+      }
+    })();
   };
 
   const handlePluginManagerOpen = () => {
@@ -64,8 +109,14 @@ const App: React.FC = () => {
   };
 
   const handlePluginsChanged = () => {
-    dispatch(fetchAllNotes());
-    dispatch(fetchNote());
+    void (async () => {
+      try {
+        await dispatch(fetchAllNotes()).unwrap();
+        await dispatch(fetchNote()).unwrap();
+      } catch {
+        /* errors land in notes.error */
+      }
+    })();
     void window.Nodex.getRegisteredTypes().then(setRegisteredTypes);
   };
 
@@ -77,15 +128,15 @@ const App: React.FC = () => {
     setShowPluginManager(false);
     setShowPluginIde(false);
     const { id } = await dispatch(createNote(payload)).unwrap();
-    await dispatch(fetchAllNotes());
-    dispatch(fetchNote(id));
+    await dispatch(fetchAllNotes()).unwrap();
+    await dispatch(fetchNote(id)).unwrap();
   };
 
   const handleRenameNote = async (id: string, title: string) => {
     await dispatch(renameNote({ id, title })).unwrap();
-    await dispatch(fetchAllNotes());
+    await dispatch(fetchAllNotes()).unwrap();
     if (currentNote?.id === id) {
-      dispatch(fetchNote(id));
+      await dispatch(fetchNote(id)).unwrap();
     }
   };
 
@@ -97,24 +148,57 @@ const App: React.FC = () => {
     placement: NoteMovePlacement;
   }) => {
     await dispatch(moveNoteInTree(payload)).unwrap();
-    await dispatch(fetchAllNotes());
+    await dispatch(fetchAllNotes()).unwrap();
+  };
+
+  const handleMoveNotesBulk = async (payload: {
+    ids: string[];
+    targetId: string;
+    placement: NoteMovePlacement;
+  }) => {
+    await dispatch(moveNotesBulkInTree(payload)).unwrap();
+    await dispatch(fetchAllNotes()).unwrap();
+  };
+
+  const handleDeleteNotes = async (ids: string[]) => {
+    await dispatch(deleteNotesInTree(ids)).unwrap();
+    await dispatch(fetchAllNotes()).unwrap();
+    const s = store.getState().notes;
+    try {
+      if (
+        s.currentNote?.id &&
+        s.notesList.some((n) => n.id === s.currentNote!.id)
+      ) {
+        await dispatch(fetchNote(s.currentNote.id)).unwrap();
+      } else if (s.notesList[0]) {
+        await dispatch(fetchNote(s.notesList[0].id)).unwrap();
+      } else {
+        await dispatch(fetchNote()).unwrap();
+      }
+    } catch {
+      /* errors in notes.error */
+    }
   };
 
   const handlePasteSubtree = async (p: PasteSubtreePayload) => {
     const r = await dispatch(pasteSubtree(p)).unwrap();
-    await dispatch(fetchAllNotes());
+    await dispatch(fetchAllNotes()).unwrap();
     setShowPluginManager(false);
     setShowPluginIde(false);
     const s = store.getState().notes;
-    if (r?.newRootId) {
-      dispatch(fetchNote(r.newRootId));
-    } else if (
-      s.currentNote?.id &&
-      s.notesList.some((n) => n.id === s.currentNote!.id)
-    ) {
-      dispatch(fetchNote(s.currentNote.id));
-    } else if (s.notesList[0]) {
-      dispatch(fetchNote(s.notesList[0].id));
+    try {
+      if (r?.newRootId) {
+        await dispatch(fetchNote(r.newRootId)).unwrap();
+      } else if (
+        s.currentNote?.id &&
+        s.notesList.some((n) => n.id === s.currentNote!.id)
+      ) {
+        await dispatch(fetchNote(s.currentNote.id)).unwrap();
+      } else if (s.notesList[0]) {
+        await dispatch(fetchNote(s.notesList[0].id)).unwrap();
+      }
+    } catch {
+      /* errors in notes.error */
     }
   };
 
@@ -148,6 +232,8 @@ const App: React.FC = () => {
               onCreateNote={handleCreateNote}
               onRenameNote={handleRenameNote}
               onMoveNote={handleMoveNote}
+              onMoveNotesBulk={handleMoveNotesBulk}
+              onDeleteNotes={handleDeleteNotes}
               onPasteSubtree={handlePasteSubtree}
               onPluginManagerOpen={handlePluginManagerOpen}
               onPluginIdeOpen={handlePluginIdeOpen}
@@ -160,7 +246,7 @@ const App: React.FC = () => {
                 <PluginIDE onPluginsChanged={handlePluginsChanged} />
               ) : showPluginManager ? (
                 <PluginManager onPluginsChanged={handlePluginsChanged} />
-              ) : loading ? (
+              ) : detailLoading && !currentNote ? (
                 <div className="flex h-full items-center justify-center p-8">
                   <div className="text-[12px] text-muted-foreground">
                     Loading…

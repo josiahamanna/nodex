@@ -16,6 +16,7 @@ import { packageManager } from "./core/package-manager";
 import { bootstrapNotesTree, saveNotesState } from "./core/notes-persistence";
 import {
   createNote as createNoteInStore,
+  deleteNoteSubtrees,
   duplicateSubtreeAt,
   ensureNotesSeeded,
   getFirstNote,
@@ -23,6 +24,7 @@ import {
   getNotesFlat,
   getTreeRootId,
   moveNote as moveNoteInStore,
+  moveNotesBulk as moveNotesBulkInStore,
   renameNote as renameNoteInStore,
   setNotePluginUiState,
 } from "./core/notes-store";
@@ -263,7 +265,57 @@ app.on("ready", () => {
   bootstrapNotesTree(notesPersistencePath, registry.getRegisteredTypes());
 
   ipcMain.removeHandler(IPC_CHANNELS.MOVE_NOTE);
+  ipcMain.removeHandler(IPC_CHANNELS.MOVE_NOTES_BULK);
+  ipcMain.removeHandler(IPC_CHANNELS.DELETE_NOTES);
   ipcMain.removeHandler(IPC_CHANNELS.PASTE_SUBTREE);
+  ipcMain.handle(
+    IPC_CHANNELS.DELETE_NOTES,
+    async (_event, ids: unknown) => {
+      const registeredTypes = registry.getRegisteredTypes();
+      ensureNotesSeeded(registeredTypes);
+      if (!Array.isArray(ids) || ids.length === 0) {
+        throw new Error("Invalid ids");
+      }
+      for (const id of ids) {
+        if (typeof id !== "string" || !isValidNoteId(id)) {
+          throw new Error("Invalid note id");
+        }
+      }
+      deleteNoteSubtrees(ids as string[]);
+      persistNotes();
+    },
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.MOVE_NOTES_BULK,
+    async (
+      _event,
+      payload: { ids: string[]; targetId: string; placement: string },
+    ) => {
+      const registeredTypes = registry.getRegisteredTypes();
+      ensureNotesSeeded(registeredTypes);
+      if (!payload || typeof payload !== "object") {
+        throw new Error("Invalid payload");
+      }
+      const { ids, targetId } = payload;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        throw new Error("Invalid ids");
+      }
+      for (const id of ids) {
+        if (typeof id !== "string" || !isValidNoteId(id)) {
+          throw new Error("Invalid note id");
+        }
+      }
+      if (typeof targetId !== "string" || !isValidNoteId(targetId)) {
+        throw new Error("Invalid target id");
+      }
+      const p = payload.placement;
+      if (p !== "before" && p !== "after" && p !== "into") {
+        throw new Error("Invalid placement");
+      }
+      moveNotesBulkInStore(ids as string[], targetId, p);
+      persistNotes();
+    },
+  );
   ipcMain.handle(
     IPC_CHANNELS.MOVE_NOTE,
     async (

@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld("Nodex", {
     ipcRenderer.invoke(IPC_CHANNELS.CREATE_NOTE, payload),
   renameNote: (id: string, title: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.RENAME_NOTE, id, title),
+  deleteNotes: (ids: string[]): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DELETE_NOTES, ids),
   moveNote: (
     draggedId: string,
     targetId: string,
@@ -48,6 +50,16 @@ contextBridge.exposeInMainWorld("Nodex", {
   ): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.MOVE_NOTE, {
       draggedId,
+      targetId,
+      placement,
+    }),
+  moveNotesBulk: (
+    ids: string[],
+    targetId: string,
+    placement: NoteMovePlacement,
+  ): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.MOVE_NOTES_BULK, {
+      ids,
       targetId,
       placement,
     }),

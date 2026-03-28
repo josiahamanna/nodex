@@ -11,14 +11,18 @@ import { PLUGIN_UI_METADATA_KEY } from "../../shared/plugin-state-protocol";
 interface NotesState {
   currentNote: Note | null;
   notesList: NoteListItem[];
-  loading: boolean;
+  /** Sidebar / tree list fetch */
+  listLoading: boolean;
+  /** Selected note body fetch */
+  detailLoading: boolean;
   error: string | null;
 }
 
 const initialState: NotesState = {
   currentNote: null,
   notesList: [],
-  loading: false,
+  listLoading: false,
+  detailLoading: false,
   error: null,
 };
 
@@ -70,6 +74,28 @@ export const moveNoteInTree = createAsyncThunk(
   },
 );
 
+export const moveNotesBulkInTree = createAsyncThunk(
+  "notes/moveNotesBulk",
+  async (payload: {
+    ids: string[];
+    targetId: string;
+    placement: NoteMovePlacement;
+  }) => {
+    await window.Nodex.moveNotesBulk(
+      payload.ids,
+      payload.targetId,
+      payload.placement,
+    );
+  },
+);
+
+export const deleteNotesInTree = createAsyncThunk(
+  "notes/deleteNotes",
+  async (ids: string[]) => {
+    await window.Nodex.deleteNotes(ids);
+  },
+);
+
 export const pasteSubtree = createAsyncThunk(
   "notes/pasteSubtree",
   async (payload: PasteSubtreePayload) => {
@@ -99,27 +125,27 @@ const notesSlice = createSlice({
   extraReducers: (builder) => {
     builder
       .addCase(fetchNote.pending, (state) => {
-        state.loading = true;
+        state.detailLoading = true;
         state.error = null;
       })
       .addCase(fetchNote.fulfilled, (state, action) => {
-        state.loading = false;
+        state.detailLoading = false;
         state.currentNote = action.payload ?? null;
       })
       .addCase(fetchNote.rejected, (state, action) => {
-        state.loading = false;
+        state.detailLoading = false;
         state.error = action.error.message || "Failed to fetch note";
       })
       .addCase(fetchAllNotes.pending, (state) => {
-        state.loading = true;
+        state.listLoading = true;
         state.error = null;
       })
       .addCase(fetchAllNotes.fulfilled, (state, action) => {
-        state.loading = false;
-        state.notesList = action.payload;
+        state.listLoading = false;
+        state.notesList = Array.isArray(action.payload) ? action.payload : [];
       })
       .addCase(fetchAllNotes.rejected, (state, action) => {
-        state.loading = false;
+        state.listLoading = false;
         state.error = action.error.message || "Failed to fetch notes list";
       })
       .addCase(createNote.fulfilled, (state) => {
@@ -142,6 +168,12 @@ const notesSlice = createSlice({
       })
       .addCase(moveNoteInTree.rejected, (state, action) => {
         state.error = action.error.message || "Failed to move note";
+      })
+      .addCase(moveNotesBulkInTree.rejected, (state, action) => {
+        state.error = action.error.message || "Failed to move notes";
+      })
+      .addCase(deleteNotesInTree.rejected, (state, action) => {
+        state.error = action.error.message || "Failed to delete notes";
       })
       .addCase(pasteSubtree.rejected, (state, action) => {
         state.error = action.error.message || "Failed to paste";
