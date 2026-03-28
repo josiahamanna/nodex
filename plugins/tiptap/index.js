@@ -1,13 +1,11 @@
-// Markdown Note Plugin — hybrid: main (Node) + ui.jsx (iframe, React via Nodex bridge)
-
 function activate(context, api) {
   if (typeof api.getUiBootstrap !== "function") {
     throw new Error(
-      "[markdown-note] Manifest must declare ui (hybrid plugin) for this loader.",
+      "[tiptap] Manifest must declare ui (hybrid plugin) for this loader.",
     );
   }
 
-  const disposable = api.registerNoteRenderer("markdown", {
+  const disposable = api.registerNoteRenderer("text", {
     render: (note) => {
       const ui = api.getUiBootstrap();
       return `
@@ -18,11 +16,11 @@ function activate(context, api) {
   });
 
   context.subscriptions.push(disposable);
-  console.log("[Plugin: markdown-note] Activated (hybrid + bridge)");
+  console.log("[Plugin: tiptap] Activated");
 }
 
 function deactivate() {
-  console.log("[Plugin: markdown-note] Deactivated");
+  console.log("[Plugin: tiptap] Deactivated");
 }
 
 module.exports = { activate, deactivate };
