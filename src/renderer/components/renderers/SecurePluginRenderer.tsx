@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Note } from "../../../preload";
 import { MessageType, PluginMessage } from "../../../shared/plugin-api";
+import { generateReactBridge } from "../../../shared/react-bridge";
 
 interface SecurePluginRendererProps {
   note: Note;
@@ -99,6 +100,9 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
 };
 
 function createSandboxedHTML(pluginHTML: string): string {
+  // Generate React bridge code
+  const reactBridge = generateReactBridge();
+
   // Create a secure HTML document with strict CSP
   return `
 <!DOCTYPE html>
@@ -122,18 +126,24 @@ function createSandboxedHTML(pluginHTML: string): string {
 <body>
   <div id="plugin-root"></div>
   <script>
+    // Inject React Bridge
+    ${reactBridge}
+    
     // Plugin communication API
-    const Nodex = {
-      postMessage: (data) => {
-        window.parent.postMessage({ type: 'action', payload: data }, '*');
-      },
-      onMessage: null
+    if (!window.Nodex) {
+      window.Nodex = {};
+    }
+    
+    window.Nodex.postMessage = (data) => {
+      window.parent.postMessage({ type: 'action', payload: data }, '*');
     };
+    
+    window.Nodex.onMessage = null;
 
     // Listen for messages from parent
     window.addEventListener('message', (event) => {
-      if (Nodex.onMessage) {
-        Nodex.onMessage(event.data);
+      if (window.Nodex.onMessage) {
+        window.Nodex.onMessage(event.data);
       }
     });
 

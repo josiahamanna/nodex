@@ -1,8 +1,12 @@
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { Registry } from "./registry";
-import { validatePluginCode } from "../shared/validators";
+import { isSafePluginName, validatePluginCode } from "../shared/validators";
 import { manifestValidator } from "./manifest-validator";
+import { jsxCompiler } from "./jsx-compiler";
+import { packageManager } from "./package-manager";
+import { pluginBundler } from "./plugin-bundler";
 
 const zipHandler = require("./zip-handler");
 
@@ -70,9 +74,64 @@ export interface Plugin {
 export class PluginLoader {
   private pluginsDir: string;
   private loadedPlugins: Set<string> = new Set();
+  private compiledCache: Map<string, string> = new Map();
+  private devUiBundleCache: Map<string, { mtime: number; code: string }> =
+    new Map();
 
   constructor(pluginsDir: string) {
     this.pluginsDir = pluginsDir;
+  }
+
+  private compileJSXIfNeeded(filePath: string): string {
+    if (filePath.endsWith(".jsx") || filePath.endsWith(".tsx")) {
+      // Check cache first
+      if (this.compiledCache.has(filePath)) {
+        return this.compiledCache.get(filePath)!;
+      }
+
+      console.log(`[PluginLoader] Compiling JSX file: ${filePath}`);
+      const result = jsxCompiler.compile(filePath);
+
+      if (!result.success) {
+        throw new Error(`JSX compilation failed: ${result.error}`);
+      }
+
+      // Cache the compiled code
+      this.compiledCache.set(filePath, result.code!);
+      return result.code!;
+    }
+
+    // For .js files, just read the content
+    return fs.readFileSync(filePath, "utf8");
+  }
+
+  private copyPluginProductionAssets(
+    pluginPath: string,
+    stagingPath: string,
+    manifest: PluginManifest,
+  ): void {
+    for (const extra of ["README.md", "LICENSE"]) {
+      const from = path.join(pluginPath, extra);
+      if (fs.existsSync(from)) {
+        fs.copyFileSync(from, path.join(stagingPath, extra));
+      }
+    }
+    if (manifest.assets?.length) {
+      for (const a of manifest.assets) {
+        const from = path.join(pluginPath, a);
+        if (!fs.existsSync(from)) {
+          continue;
+        }
+        const to = path.join(stagingPath, a);
+        fs.mkdirSync(path.dirname(to), { recursive: true });
+        const st = fs.statSync(from);
+        if (st.isDirectory()) {
+          fs.cpSync(from, to, { recursive: true });
+        } else {
+          fs.copyFileSync(from, to);
+        }
+      }
+    }
   }
 
   loadAll(registry: Registry): void {
@@ -156,8 +215,13 @@ export class PluginLoader {
         subscriptions: [],
       };
 
-      // Create plugin API
-      const api = {
+      const api: {
+        registerNoteRenderer: (type: string, renderer: any) => {
+          dispose: () => void;
+        };
+        getNote: () => null;
+        getUiBootstrap?: () => string;
+      } = {
         registerNoteRenderer: (type: string, renderer: any) => {
           registry.registerRenderer(manifest.name, type, renderer);
           this.loadedPlugins.add(manifest.name);
@@ -170,8 +234,42 @@ export class PluginLoader {
             },
           };
         },
-        getNote: () => null, // Will be provided by renderer
+        getNote: () => null,
       };
+
+      if (manifest.ui) {
+        api.getUiBootstrap = () => {
+          const uiPath = path.join(pluginPath, manifest.ui!);
+          if (manifest.mode === "production") {
+            if (!fs.existsSync(uiPath)) {
+              throw new Error(`UI bundle not found: ${manifest.ui}`);
+            }
+            return fs.readFileSync(uiPath, "utf8");
+          }
+          if (
+            manifest.ui!.endsWith(".jsx") ||
+            manifest.ui!.endsWith(".tsx")
+          ) {
+            const stat = fs.statSync(uiPath);
+            const cacheKey = `${pluginPath}:${manifest.ui}`;
+            const hit = this.devUiBundleCache.get(cacheKey);
+            if (hit && hit.mtime === stat.mtimeMs) {
+              return hit.code;
+            }
+            const code = pluginBundler.bundleUiForDevIframe(
+              pluginPath,
+              manifest.ui!,
+              false,
+            );
+            this.devUiBundleCache.set(cacheKey, {
+              mtime: stat.mtimeMs,
+              code,
+            });
+            return code;
+          }
+          return fs.readFileSync(uiPath, "utf8");
+        };
+      }
 
       // Activate plugin
       pluginModule.activate(context, api);
@@ -185,43 +283,48 @@ export class PluginLoader {
 
   reload(registry: Registry): void {
     this.loadedPlugins.clear();
+    this.compiledCache.clear();
+    this.devUiBundleCache.clear();
     registry.clear();
     this.loadAll(registry);
   }
 
   async importFromZip(zipPath: string, registry: Registry): Promise<void> {
     try {
-      const manifestContent = await zipHandler.readFileFromZip(
-        zipPath,
-        "manifest.json",
+      // Validate package first
+      const validation = await packageManager.validatePackage(zipPath);
+      if (!validation.valid) {
+        throw new Error(`Invalid package: ${validation.errors.join(", ")}`);
+      }
+
+      // Get package info
+      const packageInfo = await packageManager.getPackageInfo(zipPath);
+      if (!isSafePluginName(packageInfo.name)) {
+        throw new Error("Invalid plugin name in package manifest");
+      }
+
+      console.log(
+        `[PluginLoader] Importing ${packageInfo.mode} package: ${packageInfo.name} v${packageInfo.version}`,
       );
 
-      if (!manifestContent) {
-        throw new Error("No manifest.json found in zip file");
-      }
-
-      const manifest: PluginManifest = JSON.parse(manifestContent);
-
-      if (!manifest.name || !manifest.main) {
-        throw new Error("Invalid manifest: missing name or main field");
-      }
-
-      const pluginDir = path.join(this.pluginsDir, manifest.name);
+      const pluginDir = path.join(this.pluginsDir, packageInfo.name);
 
       if (fs.existsSync(pluginDir)) {
         throw new Error(
-          `Plugin ${manifest.name} already exists. Please remove it first.`,
+          `Plugin ${packageInfo.name} already exists. Please remove it first.`,
         );
       }
 
       fs.mkdirSync(pluginDir, { recursive: true });
 
-      await zipHandler.extractZipToDirectory(zipPath, pluginDir);
+      // Extract package
+      await packageManager.extractPackage(zipPath, pluginDir);
 
-      this.loadPlugin(manifest.name, registry);
+      // Load plugin
+      this.loadPlugin(packageInfo.name, registry);
 
       console.log(
-        `[PluginLoader] Successfully imported plugin: ${manifest.name}`,
+        `[PluginLoader] Successfully imported ${packageInfo.mode} plugin: ${packageInfo.name}`,
       );
     } catch (error) {
       console.error("[PluginLoader] Failed to import plugin from zip:", error);
@@ -234,6 +337,10 @@ export class PluginLoader {
   }
 
   uninstallPlugin(pluginName: string, registry: Registry): void {
+    if (!isSafePluginName(pluginName)) {
+      throw new Error("Invalid plugin name");
+    }
+
     const pluginPath = path.join(this.pluginsDir, pluginName);
 
     if (!fs.existsSync(pluginPath)) {
@@ -246,5 +353,203 @@ export class PluginLoader {
     this.reload(registry);
 
     console.log(`[PluginLoader] Uninstalled plugin: ${pluginName}`);
+  }
+
+  async exportPluginAsDev(
+    pluginName: string,
+    outputDir: string,
+  ): Promise<string> {
+    if (!isSafePluginName(pluginName)) {
+      throw new Error("Invalid plugin name");
+    }
+
+    const pluginPath = path.join(this.pluginsDir, pluginName);
+
+    if (!fs.existsSync(pluginPath)) {
+      throw new Error(`Plugin ${pluginName} not found`);
+    }
+
+    // Read manifest to verify it's in development mode
+    const manifestPath = path.join(pluginPath, "manifest.json");
+    const manifest: PluginManifest = JSON.parse(
+      fs.readFileSync(manifestPath, "utf8"),
+    );
+
+    if (manifest.mode !== "development") {
+      throw new Error(
+        `Plugin ${pluginName} is not in development mode. Cannot export as dev package.`,
+      );
+    }
+
+    const packagePath = await packageManager.createDevPackage({
+      pluginPath,
+      outputPath: outputDir,
+      mode: "development",
+    });
+
+    console.log(
+      `[PluginLoader] Exported ${pluginName} as dev package: ${packagePath}`,
+    );
+
+    return packagePath;
+  }
+
+  async exportPluginAsProduction(
+    pluginName: string,
+    outputDir: string,
+  ): Promise<string> {
+    if (!isSafePluginName(pluginName)) {
+      throw new Error("Invalid plugin name");
+    }
+
+    const pluginPath = path.join(this.pluginsDir, pluginName);
+
+    if (!fs.existsSync(pluginPath)) {
+      throw new Error(`Plugin ${pluginName} not found`);
+    }
+
+    // Read manifest to verify it's in production mode
+    const manifestPath = path.join(pluginPath, "manifest.json");
+    const manifest: PluginManifest = JSON.parse(
+      fs.readFileSync(manifestPath, "utf8"),
+    );
+
+    if (manifest.mode !== "production") {
+      throw new Error(
+        `Plugin ${pluginName} is not in production mode. Cannot export as production package.`,
+      );
+    }
+
+    const packagePath = await packageManager.createProductionPackage({
+      pluginPath,
+      outputPath: outputDir,
+      mode: "production",
+    });
+
+    console.log(
+      `[PluginLoader] Exported ${pluginName} as production package: ${packagePath}`,
+    );
+
+    return packagePath;
+  }
+
+  /**
+   * Build a `.Nodexplugin` from a development plugin (bundle + stage + zip), or re-package an
+   * already production-mode plugin folder.
+   */
+  async exportProductionPackage(
+    pluginName: string,
+    outputDir: string,
+  ): Promise<string> {
+    if (!isSafePluginName(pluginName)) {
+      throw new Error("Invalid plugin name");
+    }
+
+    const pluginPath = path.join(this.pluginsDir, pluginName);
+
+    if (!fs.existsSync(pluginPath)) {
+      throw new Error(`Plugin ${pluginName} not found`);
+    }
+
+    const manifestPath = path.join(pluginPath, "manifest.json");
+    const manifest: PluginManifest = JSON.parse(
+      fs.readFileSync(manifestPath, "utf8"),
+    );
+
+    if (manifest.mode === "production") {
+      const packagePath = await packageManager.createProductionPackage({
+        pluginPath,
+        outputPath: outputDir,
+        mode: "production",
+      });
+      console.log(
+        `[PluginLoader] Exported ${pluginName} as production package: ${packagePath}`,
+      );
+      return packagePath;
+    }
+
+    if (manifest.mode === "development") {
+      const staging = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-prod-"));
+      try {
+        const distStaging = path.join(staging, "dist");
+        const result = await pluginBundler.bundle(pluginPath, {
+          distDir: distStaging,
+          minify: true,
+          sourcemap: true,
+          onProgress: (m) =>
+            console.log(`[PluginLoader] Bundle: ${m}`),
+        });
+
+        if (!result.success) {
+          throw new Error(result.errors.join("\n"));
+        }
+
+        const prodManifest: PluginManifest = {
+          ...manifest,
+          mode: "production",
+          main: result.mainBundle!,
+        };
+        if (result.uiBundle) {
+          prodManifest.ui = result.uiBundle;
+        } else {
+          delete prodManifest.ui;
+        }
+        delete prodManifest.dependencies;
+        delete prodManifest.devDependencies;
+
+        fs.writeFileSync(
+          path.join(staging, "manifest.json"),
+          JSON.stringify(prodManifest, null, 2),
+        );
+
+        this.copyPluginProductionAssets(pluginPath, staging, manifest);
+
+        const packagePath = await packageManager.createProductionPackage({
+          pluginPath: staging,
+          outputPath: outputDir,
+          mode: "production",
+        });
+
+        console.log(
+          `[PluginLoader] Bundled and exported ${pluginName}: ${packagePath}`,
+        );
+        return packagePath;
+      } finally {
+        fs.rmSync(staging, { recursive: true, force: true });
+      }
+    }
+
+    throw new Error(`Unsupported manifest mode: ${manifest.mode}`);
+  }
+
+  async bundlePluginToLocalDist(pluginName: string): Promise<{
+    success: boolean;
+    error?: string;
+    warnings?: string[];
+  }> {
+    if (!isSafePluginName(pluginName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+
+    const pluginPath = path.join(this.pluginsDir, pluginName);
+    if (!fs.existsSync(pluginPath)) {
+      return { success: false, error: `Plugin ${pluginName} not found` };
+    }
+
+    const result = await pluginBundler.bundle(pluginPath, {
+      minify: false,
+      sourcemap: true,
+      onProgress: (m) => console.log(`[PluginLoader] Bundle: ${m}`),
+    });
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.errors.join("\n"),
+        warnings: result.warnings,
+      };
+    }
+
+    return { success: true, warnings: result.warnings };
   }
 }

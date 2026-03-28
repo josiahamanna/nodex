@@ -3,13 +3,21 @@ import * as path from "path";
 import { PluginLoader } from "./core/plugin-loader";
 import { registry } from "./core/registry";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
-import { isValidNoteId, isValidNoteType } from "./shared/validators";
+import {
+  isSafePluginName,
+  isValidNoteId,
+  isValidNoteType,
+} from "./shared/validators";
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 let mainWindow: BrowserWindow | null = null;
 let pluginLoader: PluginLoader;
+
+function getDialogParent(): BrowserWindow | undefined {
+  return BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined;
+}
 
 const createWindow = (): void => {
   mainWindow = new BrowserWindow({
@@ -167,7 +175,12 @@ ipcMain.handle(IPC_CHANNELS.SELECT_ZIP_FILE, async () => {
   const { dialog } = require("electron");
   const result = await dialog.showOpenDialog({
     properties: ["openFile"],
-    filters: [{ name: "Zip Files", extensions: ["zip"] }],
+    filters: [
+      {
+        name: "Nodex plugin",
+        extensions: ["Nodexplugin", "Nodexplugin-dev", "zip"],
+      },
+    ],
   });
 
   if (result.canceled || result.filePaths.length === 0) {
@@ -176,6 +189,94 @@ ipcMain.handle(IPC_CHANNELS.SELECT_ZIP_FILE, async () => {
 
   return result.filePaths[0];
 });
+
+ipcMain.handle(IPC_CHANNELS.SELECT_OUTPUT_DIRECTORY, async () => {
+  const { dialog } = require("electron");
+  const result = await dialog.showOpenDialog(getDialogParent(), {
+    properties: ["openDirectory", "createDirectory"],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  return result.filePaths[0];
+});
+
+ipcMain.handle(
+  IPC_CHANNELS.EXPORT_PLUGIN_DEV,
+  async (_event, pluginName: string) => {
+    if (!isSafePluginName(pluginName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    const { dialog } = require("electron");
+    const result = await dialog.showOpenDialog(getDialogParent(), {
+      properties: ["openDirectory", "createDirectory"],
+      title: "Export dev package (.Nodexplugin-dev)",
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, error: "Cancelled" };
+    }
+    try {
+      const outPath = await pluginLoader.exportPluginAsDev(
+        pluginName,
+        result.filePaths[0],
+      );
+      return { success: true, path: outPath };
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.EXPORT_PLUGIN_PRODUCTION,
+  async (_event, pluginName: string) => {
+    if (!isSafePluginName(pluginName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    const { dialog } = require("electron");
+    const result = await dialog.showOpenDialog(getDialogParent(), {
+      properties: ["openDirectory", "createDirectory"],
+      title: "Export production package (.Nodexplugin)",
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, error: "Cancelled" };
+    }
+    try {
+      const outPath = await pluginLoader.exportProductionPackage(
+        pluginName,
+        result.filePaths[0],
+      );
+      return { success: true, path: outPath };
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.BUNDLE_PLUGIN_LOCAL,
+  async (_event, pluginName: string) => {
+    if (!isSafePluginName(pluginName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    try {
+      return await pluginLoader.bundlePluginToLocalDist(pluginName);
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
 
 ipcMain.handle(IPC_CHANNELS.IMPORT_PLUGIN, async (_event, zipPath: string) => {
   try {

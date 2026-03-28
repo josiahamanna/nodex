@@ -8,6 +8,9 @@ export const IPC_CHANNELS = {
   GET_INSTALLED_PLUGINS: "plugin:get-installed",
   UNINSTALL_PLUGIN: "plugin:uninstall",
   SELECT_ZIP_FILE: "plugin:select-zip",
+  EXPORT_PLUGIN_DEV: "plugin:export-dev",
+  EXPORT_PLUGIN_PRODUCTION: "plugin:export-production",
+  BUNDLE_PLUGIN_LOCAL: "plugin:bundle-local",
   PLUGINS_CHANGED: "plugin:changed",
 } as const;
 

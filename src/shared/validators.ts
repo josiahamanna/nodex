@@ -6,6 +6,19 @@ export function isValidNoteType(type: unknown): type is string {
   return typeof type === 'string' && /^[a-z][a-z0-9-]*$/.test(type) && type.length < 50;
 }
 
+/** Prevent path traversal and invalid folder names for plugin IDs from IPC. */
+export function isSafePluginName(name: unknown): name is string {
+  return (
+    typeof name === "string" &&
+    name.length > 0 &&
+    name.length < 200 &&
+    !/[\\/]/.test(name) &&
+    !name.includes("..") &&
+    name !== "." &&
+    name !== ".."
+  );
+}
+
 export function sanitizeHtml(html: string): string {
   return html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
