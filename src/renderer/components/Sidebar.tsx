@@ -30,7 +30,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
+    <aside className="h-full w-full min-h-0 min-w-0 bg-white flex flex-col border-r border-gray-200">
       <div className="p-4 border-b border-gray-200">
         <h1 className="text-xl font-bold text-gray-800">Nodex</h1>
         <p className="text-xs text-gray-500 mt-1">

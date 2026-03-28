@@ -31,7 +31,7 @@ function MenuBar({ editor }: { editor: Editor | null }) {
 
   const items: [string, () => void, () => boolean][] = [
     [
-      "Bold",
+      "Boldddssssd",
       () => editor.chain().focus().toggleBold().run(),
       () => editor.isActive("bold"),
     ],

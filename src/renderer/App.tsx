@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import {
+  Panel,
+  PanelGroup,
+  PanelResizeHandle,
+} from "react-resizable-panels";
 import { AppDispatch, RootState } from "./store";
 import { fetchNote, fetchAllNotes } from "./store/notesSlice";
 import Sidebar from "./components/Sidebar";
@@ -50,31 +55,47 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar
-        notes={notesList}
-        currentNoteId={currentNote?.id}
-        onNoteSelect={handleNoteSelect}
-        onPluginManagerOpen={handlePluginManagerOpen}
-        onPluginIdeOpen={handlePluginIdeOpen}
-      />
-      <main className="flex-1 overflow-hidden">
-        {showPluginIde ? (
-          <PluginIDE onPluginsChanged={handlePluginsChanged} />
-        ) : showPluginManager ? (
-          <PluginManager onPluginsChanged={handlePluginsChanged} />
-        ) : loading ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-gray-500">Loading...</div>
-          </div>
-        ) : currentNote ? (
-          <NoteViewer note={currentNote} />
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-gray-500">No note selected</div>
-          </div>
-        )}
-      </main>
+    <div className="flex h-screen bg-gray-100 min-h-0">
+      <PanelGroup
+        direction="horizontal"
+        autoSaveId="nodex-sidebar"
+        className="flex-1 min-h-0 min-w-0"
+      >
+        <Panel
+          defaultSize={20}
+          minSize={12}
+          maxSize={40}
+          className="min-h-0 min-w-0"
+        >
+          <Sidebar
+            notes={notesList}
+            currentNoteId={currentNote?.id}
+            onNoteSelect={handleNoteSelect}
+            onPluginManagerOpen={handlePluginManagerOpen}
+            onPluginIdeOpen={handlePluginIdeOpen}
+          />
+        </Panel>
+        <PanelResizeHandle className="w-1.5 shrink-0 bg-gray-200 hover:bg-indigo-300 data-[panel-resize-handle-active=true]:bg-indigo-400 transition-colors" />
+        <Panel defaultSize={80} minSize={55} className="min-h-0 min-w-0">
+          <main className="h-full overflow-hidden">
+            {showPluginIde ? (
+              <PluginIDE onPluginsChanged={handlePluginsChanged} />
+            ) : showPluginManager ? (
+              <PluginManager onPluginsChanged={handlePluginsChanged} />
+            ) : loading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-gray-500">Loading...</div>
+              </div>
+            ) : currentNote ? (
+              <NoteViewer note={currentNote} />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-gray-500">No note selected</div>
+              </div>
+            )}
+          </main>
+        </Panel>
+      </PanelGroup>
     </div>
   );
 };

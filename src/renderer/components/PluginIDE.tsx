@@ -172,6 +172,8 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
   const [npmResults, setNpmResults] = useState<NpmSearchRow[]>([]);
   const [npmLoading, setNpmLoading] = useState(false);
   const [npmMenuOpen, setNpmMenuOpen] = useState(false);
+  const [toolbarMenu, setToolbarMenu] = useState<null | "file" | "build">(null);
+  const toolbarMenuRef = useRef<HTMLDivElement | null>(null);
   const [addAsDevDep, setAddAsDevDep] = useState(false);
   const [installedPkgs, setInstalledPkgs] = useState<InstalledPkg[]>([]);
   const [tscDiagnostics, setTscDiagnostics] = useState<TscDiagnostic[]>([]);
@@ -364,6 +366,29 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [npmMenuOpen]);
+
+  useEffect(() => {
+    if (!toolbarMenu) {
+      return;
+    }
+    const onDown = (ev: MouseEvent) => {
+      const el = toolbarMenuRef.current;
+      if (el && !el.contains(ev.target as Node)) {
+        setToolbarMenu(null);
+      }
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        setToolbarMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [toolbarMenu]);
 
   useEffect(() => {
     const collapsed = localStorage.getItem(PLUGIN_IDE_FILES_COLLAPSED_KEY) === "1";
@@ -1213,159 +1238,264 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
 
   return (
     <div className="h-full flex flex-col bg-white">
-      <header className="border-b border-gray-200 px-4 py-2 flex flex-wrap items-center gap-2 shrink-0">
-        <h2 className="text-lg font-semibold text-gray-800 mr-2">
-          Plugin IDE
-        </h2>
-        <label className="text-sm text-gray-600 flex items-center gap-1">
-          Plugin
-          <select
-            className="border border-gray-300 rounded px-2 py-1 text-sm max-w-[12rem]"
-            value={pluginFolder}
-            onChange={(e) => {
-              setPluginFolder(e.target.value);
-              setTabs([]);
-              setActivePath(null);
-            }}
+      <header className="border-b border-gray-200 shrink-0">
+        <div className="px-4 py-2 flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold text-gray-800 mr-2">
+            Plugin IDE
+          </h2>
+          <label className="text-sm text-gray-600 flex items-center gap-1">
+            Plugin
+            <select
+              className="border border-gray-300 rounded px-2 py-1 text-sm max-w-[12rem]"
+              value={pluginFolder}
+              onChange={(e) => {
+                setPluginFolder(e.target.value);
+                setTabs([]);
+                setActivePath(null);
+              }}
+            >
+              <option value="">—</option>
+              {folders.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div
+            ref={toolbarMenuRef}
+            className="flex flex-wrap items-center gap-1"
           >
-            <option value="">—</option>
-            {folders.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void loadNodexFromParent()}
-          className="px-2 py-1 text-xs bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
-          title="Pick parent folder; register subfolders with .nodexplugin"
-        >
-          Load parent (.nodexplugin)
-        </button>
-        <button
-          type="button"
-          disabled={!pluginFolder || busy}
-          onClick={() => void removeExternalRegistration()}
-          className="px-2 py-1 text-xs bg-white border border-amber-300 text-amber-900 rounded hover:bg-amber-50 disabled:opacity-50"
-          title="Remove external registration only (sources/ plugins are unchanged)"
-        >
-          Remove external
-        </button>
-        <button
-          type="button"
-          disabled={!activeTab || busy}
-          onClick={() => saveActive()}
-          className="px-3 py-1 text-sm bg-slate-700 text-white rounded hover:bg-slate-800 disabled:opacity-50"
-        >
-          Save
-        </button>
-        <button
-          type="button"
-          disabled={!pluginFolder || busy}
-          onClick={() =>
-            setPathModal({ kind: "newFile", value: "newfile.js" })
-          }
-          className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
-        >
-          New file
-        </button>
-        <button
-          type="button"
-          disabled={!pluginFolder || busy}
-          onClick={() => setPathModal({ kind: "newFolder", value: "lib" })}
-          className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
-        >
-          New folder
-        </button>
-        <button
-          type="button"
-          disabled={!pluginFolder || busy}
-          onClick={() => void onImportFiles()}
-          className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
-        >
-          Import file(s)
-        </button>
-        <button
-          type="button"
-          disabled={!pluginFolder || busy}
-          onClick={() => void onImportFolder()}
-          className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
-        >
-          Import folder
-        </button>
-        <button
-          type="button"
-          disabled={!pluginFolder || !activePath || busy}
-          onClick={() => void onDeletePath()}
-          className="px-3 py-1 text-sm bg-white border border-red-200 text-red-800 rounded hover:bg-red-50 disabled:opacity-50"
-        >
-          Delete
-        </button>
-        <button
-          type="button"
-          disabled={!pluginFolder || !activePath || busy}
-          onClick={() => openRenameModal()}
-          className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
-        >
-          Rename
-        </button>
-        <button
-          type="button"
-          disabled={!pluginFolder || !activePath || busy}
-          onClick={() => void copyToInternalClipboard()}
-          className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
-        >
-          Copy
-        </button>
-        <button
-          type="button"
-          disabled={!pluginFolder || busy}
-          onClick={() => void pasteFromInternalClipboard()}
-          className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
-        >
-          Paste
-        </button>
-        <button
-          type="button"
-          disabled={!pluginFolder || busy}
-          onClick={() => void copyDistToFolder()}
-          className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
-          title="Copy dist/ contents via folder picker"
-        >
-          Copy dist…
-        </button>
-        <button
-          type="button"
-          disabled={!pluginFolder || busy}
-          onClick={() => void bundleLocalOnly()}
-          className="px-3 py-1 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50"
-        >
-          Bundle
-        </button>
-        <button
-          type="button"
-          disabled={!pluginFolder || busy}
-          onClick={bundleAndReload}
-          className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
-        >
-          Bundle &amp; reload
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={reloadOnly}
-          className="px-3 py-1 text-sm bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
-        >
-          Reload registry
-        </button>
-        <span className="text-xs text-gray-500 ml-auto max-w-md text-right leading-snug">
+            <div className="relative">
+              <button
+                type="button"
+                className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50"
+                aria-expanded={toolbarMenu === "file"}
+                aria-haspopup="true"
+                onClick={() =>
+                  setToolbarMenu((m) => (m === "file" ? null : "file"))
+                }
+              >
+                File
+              </button>
+              {toolbarMenu === "file" ? (
+                <div
+                  className="absolute left-0 top-full z-[70] mt-1 min-w-[12rem] rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+                  role="menu"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!activeTab || busy}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void saveActive();
+                    }}
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || busy}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      setPathModal({ kind: "newFile", value: "newfile.js" });
+                    }}
+                  >
+                    New file
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || busy}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      setPathModal({ kind: "newFolder", value: "lib" });
+                    }}
+                  >
+                    New folder
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || busy}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void onImportFiles();
+                    }}
+                  >
+                    Import file(s)
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || busy}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void onImportFolder();
+                    }}
+                  >
+                    Import folder
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || !activePath || busy}
+                    className="w-full text-left px-3 py-2 text-sm text-red-800 hover:bg-red-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void onDeletePath();
+                    }}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || !activePath || busy}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      openRenameModal();
+                    }}
+                  >
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || !activePath || busy}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void copyToInternalClipboard();
+                    }}
+                  >
+                    Copy
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || busy}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void pasteFromInternalClipboard();
+                    }}
+                  >
+                    Paste
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || busy}
+                    title="Copy dist/ contents via folder picker"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void copyDistToFolder();
+                    }}
+                  >
+                    Copy dist…
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            <div className="relative">
+              <button
+                type="button"
+                className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50"
+                aria-expanded={toolbarMenu === "build"}
+                aria-haspopup="true"
+                onClick={() =>
+                  setToolbarMenu((m) => (m === "build" ? null : "build"))
+                }
+              >
+                Build
+              </button>
+              {toolbarMenu === "build" ? (
+                <div
+                  className="absolute left-0 top-full z-[70] mt-1 min-w-[13rem] rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+                  role="menu"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={busy}
+                    title="Pick parent folder; register subfolders with .nodexplugin"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void loadNodexFromParent();
+                    }}
+                  >
+                    Load parent (.nodexplugin)
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || busy}
+                    title="Remove external registration only (sources/ plugins are unchanged)"
+                    className="w-full text-left px-3 py-2 text-sm text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void removeExternalRegistration();
+                    }}
+                  >
+                    Remove external
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || busy}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void bundleLocalOnly();
+                    }}
+                  >
+                    Bundle
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || busy}
+                    className="w-full text-left px-3 py-2 text-sm bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void bundleAndReload();
+                    }}
+                  >
+                    Bundle &amp; reload
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={busy}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void reloadOnly();
+                    }}
+                  >
+                    Reload registry
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        <div className="px-4 pb-2 text-xs text-gray-500 leading-snug">
           ⌘/Ctrl+S save · ⇧T types · ⇧B bundle · ⇧L reload · ⇧E bundle+reload · ⇧O
           import · ⇧N new file · ⇧P parent · ⇧D copy dist · ⇧C/⇧V copy/paste · ⇧M
           rename · F2 rename · ⇧I npm install · ⇧⌫ delete
-        </span>
+        </div>
       </header>
 
       <div className="border-b border-gray-200 px-4 py-2 flex flex-wrap items-center gap-3 shrink-0 bg-gray-50/80">
