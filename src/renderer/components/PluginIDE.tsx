@@ -38,7 +38,32 @@ interface PluginIDEProps {
 type PathModalState =
   | null
   | { kind: "newFile"; value: string }
-  | { kind: "newFolder"; value: string };
+  | { kind: "newFolder"; value: string }
+  | { kind: "rename"; from: string; value: string };
+
+/** Duplicate path as sibling (`file.ts` → `file-copy.ts`, `dir` → `dir-copy`). */
+function siblingCopyRelativePath(rel: string, isDir: boolean): string {
+  const norm = rel.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (isDir) {
+    const i = norm.lastIndexOf("/");
+    const parent = i >= 0 ? norm.slice(0, i) : "";
+    const name = i >= 0 ? norm.slice(i + 1) : norm;
+    const next = `${name}-copy`;
+    return parent ? `${parent}/${next}` : next;
+  }
+  const i = norm.lastIndexOf("/");
+  const dir = i >= 0 ? norm.slice(0, i) : "";
+  const base = i >= 0 ? norm.slice(i + 1) : norm;
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0 || dot === base.length - 1) {
+    const next = `${base}-copy`;
+    return dir ? `${dir}/${next}` : next;
+  }
+  const stem = base.slice(0, dot);
+  const ext = base.slice(dot);
+  const next = `${stem}-copy${ext}`;
+  return dir ? `${dir}/${next}` : next;
+}
 
 interface InstalledPkg {
   name: string;
@@ -154,6 +179,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     () => localStorage.getItem(PLUGIN_IDE_TSC_ON_SAVE_KEY) === "1",
   );
   const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
+  const pathClipboardRef = useRef<{ rel: string; isDir: boolean } | null>(
+    null,
+  );
   const ideTypingsLoadedRef = useRef(false);
   const pluginDepTypingsDisposablesRef = useRef<{ dispose: () => void }[]>(
     [],
@@ -186,16 +214,30 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     }
   }, [pluginFolder]);
 
+  const refreshWorkspaceFolders = useCallback(async () => {
+    const list = await window.Nodex.listPluginWorkspaceFolders();
+    setFolders(list);
+    setPluginFolder((cur) => (list.includes(cur) ? cur : list[0] ?? ""));
+  }, []);
+
   useEffect(() => {
-    void (async () => {
-      const list = await window.Nodex.listPluginWorkspaceFolders();
-      setFolders(list);
-      setPluginFolder((cur) =>
-        list.includes(cur) ? cur : list[0] ?? "",
-      );
-    })();
+    void refreshWorkspaceFolders();
     void refreshTypes();
-  }, [refreshTypes]);
+  }, [refreshTypes, refreshWorkspaceFolders]);
+
+  useEffect(() => {
+    void window.Nodex.setIdeWorkspaceWatch(pluginFolder || null);
+    return () => {
+      void window.Nodex.setIdeWorkspaceWatch(null);
+    };
+  }, [pluginFolder]);
+
+  useEffect(() => {
+    const off = window.Nodex.onIdeWorkspaceFsChanged(() => {
+      void refreshFileList();
+    });
+    return off;
+  }, [refreshFileList]);
 
   useEffect(() => {
     void refreshFileList();
@@ -418,6 +460,32 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     }
   };
 
+  const bundleLocalOnly = async () => {
+    if (!pluginFolder) {
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      if (activeTab && activeTab.content !== activeTab.savedContent) {
+        const ok = await saveActive();
+        if (!ok) {
+          return;
+        }
+      }
+      const bundle = await window.Nodex.bundlePluginLocal(pluginFolder);
+      if (!bundle.success) {
+        setStatus(bundle.error ?? "Bundle failed");
+        return;
+      }
+      setStatus("Bundle OK (dist/ updated).");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const bundleAndReload = async () => {
     if (!pluginFolder) {
       return;
@@ -448,6 +516,19 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
       await refreshTypes();
       onPluginsChanged?.();
       setStatus("Bundled and registry reloaded.");
+      if (
+        typeof window.confirm === "function" &&
+        window.confirm("Copy dist/ contents to another folder now?")
+      ) {
+        const cp = await window.Nodex.copyPluginDistToFolder(pluginFolder);
+        if (cp.success) {
+          setStatus("Bundled, reloaded, and dist/ copied.");
+        } else if (cp.error !== "Cancelled") {
+          setStatus(
+            cp.error ?? "dist copy failed (bundle + reload succeeded).",
+          );
+        }
+      }
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Error");
     } finally {
@@ -581,7 +662,33 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     setBusy(true);
     setStatus(null);
     try {
-      if (pathModal.kind === "newFile") {
+      if (pathModal.kind === "rename") {
+        const toRel = raw.replace(/\/+$/, "");
+        if (toRel === pathModal.from) {
+          setPathModal(null);
+          return;
+        }
+        const res = await window.Nodex.renamePluginSourcePath(
+          pluginFolder,
+          pathModal.from,
+          toRel,
+        );
+        if (!res.success) {
+          setStatus(res.error ?? "Rename failed");
+          return;
+        }
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.relativePath === pathModal.from
+              ? { ...t, relativePath: toRel }
+              : t,
+          ),
+        );
+        setActivePath((ap) => (ap === pathModal.from ? toRel : ap));
+        setPathModal(null);
+        await refreshFileList();
+        setStatus(`Renamed to ${toRel}`);
+      } else if (pathModal.kind === "newFile") {
         const res = await window.Nodex.createPluginSourceFile(
           pluginFolder,
           raw,
@@ -666,6 +773,167 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     } finally {
       setBusy(false);
     }
+  };
+
+  const loadNodexFromParent = async () => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await window.Nodex.loadNodexPluginsFromParent();
+      if (res.cancelled) {
+        return;
+      }
+      await refreshWorkspaceFolders();
+      const parts: string[] = [];
+      if (res.added?.length) {
+        parts.push(`Registered: ${res.added.join(", ")}`);
+      }
+      if (res.warnings?.length) {
+        parts.push(...res.warnings);
+      }
+      if (res.errors?.length) {
+        parts.push(`Errors: ${res.errors.join("; ")}`);
+      }
+      if (parts.length) {
+        setStatus(parts.join(" · "));
+      } else if (!res.success) {
+        setStatus("No plugins found under parent (need .nodexplugin + manifest.json).");
+      }
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Load failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeExternalRegistration = async () => {
+    if (!pluginFolder || busy) {
+      return;
+    }
+    if (
+      !confirm(
+        `Remove “${pluginFolder}” from the external workspace list? (Does not delete files on disk.)`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const r = await window.Nodex.removeExternalPluginWorkspace(pluginFolder);
+      if (!r.success) {
+        setStatus(r.error ?? "Remove failed");
+        return;
+      }
+      setTabs([]);
+      setActivePath(null);
+      await refreshWorkspaceFolders();
+      setStatus(`Removed external registration for ${pluginFolder}.`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyToInternalClipboard = async () => {
+    if (!pluginFolder || busy) {
+      return;
+    }
+    if (!activePath) {
+      setStatus("Open a file to copy.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const kind = await window.Nodex.getPluginSourceEntryKind(
+        pluginFolder,
+        activePath,
+      );
+      if (kind === "missing") {
+        setStatus("Cannot copy: path not found.");
+        return;
+      }
+      pathClipboardRef.current = {
+        rel: activePath,
+        isDir: kind === "dir",
+      };
+      setStatus(
+        `Copied ${activePath} (${kind === "dir" ? "folder" : "file"}) — use Paste to duplicate.`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pasteFromInternalClipboard = async () => {
+    if (!pluginFolder || busy) {
+      return;
+    }
+    const clip = pathClipboardRef.current;
+    if (!clip) {
+      setStatus("Nothing to paste (Copy first).");
+      return;
+    }
+    setBusy(true);
+    try {
+      let destRel = siblingCopyRelativePath(clip.rel, clip.isDir);
+      let attempt = 0;
+      let res = await window.Nodex.copyPluginSourceWithinWorkspace(
+        pluginFolder,
+        clip.rel,
+        destRel,
+      );
+      while (!res.success && attempt < 12) {
+        attempt += 1;
+        destRel = siblingCopyRelativePath(destRel, clip.isDir);
+        res = await window.Nodex.copyPluginSourceWithinWorkspace(
+          pluginFolder,
+          clip.rel,
+          destRel,
+        );
+      }
+      if (!res.success) {
+        setStatus(res.error ?? "Paste failed");
+        return;
+      }
+      await refreshFileList();
+      if (!clip.isDir) {
+        await openFile(destRel);
+      }
+      setStatus(`Duplicated to ${destRel}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyDistToFolder = async () => {
+    if (!pluginFolder || busy) {
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const cp = await window.Nodex.copyPluginDistToFolder(pluginFolder);
+      setStatus(
+        cp.success
+          ? "dist/ contents copied."
+          : cp.error === "Cancelled"
+            ? "Copy cancelled."
+            : (cp.error ?? "Copy failed"),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openRenameModal = () => {
+    if (!pluginFolder || !activePath) {
+      setStatus("Open a file to rename.");
+      return;
+    }
+    setPathModal({ kind: "rename", from: activePath, value: activePath });
   };
 
   const addRegistryDependency = async (row: NpmSearchRow) => {
@@ -801,18 +1069,124 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     [previewType],
   );
 
-  const saveActiveRef = useRef(saveActive);
-  saveActiveRef.current = saveActive;
+  const ideActionsRef = useRef({
+    saveActive,
+    runTypecheck,
+    bundleLocalOnly,
+    bundleAndReload,
+    reloadOnly,
+    onImportFiles,
+    loadNodexFromParent,
+    copyDistToFolder,
+    copyToInternalClipboard,
+    pasteFromInternalClipboard,
+    openRenameModal,
+    runInstallDependencies,
+    onDeletePath,
+    openNewFileModal: () =>
+      setPathModal({ kind: "newFile", value: "newfile.js" }),
+  });
+  ideActionsRef.current = {
+    saveActive,
+    runTypecheck,
+    bundleLocalOnly,
+    bundleAndReload,
+    reloadOnly,
+    onImportFiles,
+    loadNodexFromParent,
+    copyDistToFolder,
+    copyToInternalClipboard,
+    pasteFromInternalClipboard,
+    openRenameModal,
+    runInstallDependencies,
+    onDeletePath,
+    openNewFileModal: () =>
+      setPathModal({ kind: "newFile", value: "newfile.js" }),
+  };
 
   useEffect(() => {
+    const shortcutSurfaceOk = (ev: KeyboardEvent): boolean => {
+      const t = ev.target;
+      if (!(t instanceof HTMLElement)) {
+        return true;
+      }
+      if (t.closest(".monaco-editor")) {
+        return true;
+      }
+      const tag = t.tagName;
+      return tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT";
+    };
+
     const onKey = (ev: KeyboardEvent) => {
-      if ((ev.ctrlKey || ev.metaKey) && ev.key === "s") {
+      const a = ideActionsRef.current;
+      if (ev.key === "F2") {
+        if (!shortcutSurfaceOk(ev)) {
+          return;
+        }
         ev.preventDefault();
-        saveActiveRef.current();
+        a.openRenameModal();
+        return;
+      }
+      const mod = ev.ctrlKey || ev.metaKey;
+      if (mod && ev.key.toLowerCase() === "s") {
+        ev.preventDefault();
+        void a.saveActive();
+        return;
+      }
+      if (!mod || !ev.shiftKey) {
+        return;
+      }
+      if (!shortcutSurfaceOk(ev)) {
+        return;
+      }
+      const k = ev.key.toLowerCase();
+      const stop = (): void => {
+        ev.preventDefault();
+        ev.stopPropagation();
+      };
+      if (k === "t") {
+        stop();
+        void a.runTypecheck();
+      } else if (k === "b") {
+        stop();
+        void a.bundleLocalOnly();
+      } else if (k === "l") {
+        stop();
+        void a.reloadOnly();
+      } else if (k === "e") {
+        stop();
+        void a.bundleAndReload();
+      } else if (k === "o") {
+        stop();
+        void a.onImportFiles();
+      } else if (k === "n") {
+        stop();
+        a.openNewFileModal();
+      } else if (k === "p") {
+        stop();
+        void a.loadNodexFromParent();
+      } else if (k === "d") {
+        stop();
+        void a.copyDistToFolder();
+      } else if (k === "c") {
+        stop();
+        void a.copyToInternalClipboard();
+      } else if (k === "v") {
+        stop();
+        void a.pasteFromInternalClipboard();
+      } else if (k === "m") {
+        stop();
+        a.openRenameModal();
+      } else if (k === "i") {
+        stop();
+        void a.runInstallDependencies();
+      } else if (k === "delete" || k === "backspace") {
+        stop();
+        void a.onDeletePath();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
   const qLower = npmQuery.trim().toLowerCase();
@@ -862,6 +1236,24 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void loadNodexFromParent()}
+          className="px-2 py-1 text-xs bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
+          title="Pick parent folder; register subfolders with .nodexplugin"
+        >
+          Load parent (.nodexplugin)
+        </button>
+        <button
+          type="button"
+          disabled={!pluginFolder || busy}
+          onClick={() => void removeExternalRegistration()}
+          className="px-2 py-1 text-xs bg-white border border-amber-300 text-amber-900 rounded hover:bg-amber-50 disabled:opacity-50"
+          title="Remove external registration only (sources/ plugins are unchanged)"
+        >
+          Remove external
+        </button>
         <button
           type="button"
           disabled={!activeTab || busy}
@@ -914,6 +1306,47 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
         </button>
         <button
           type="button"
+          disabled={!pluginFolder || !activePath || busy}
+          onClick={() => openRenameModal()}
+          className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
+        >
+          Rename
+        </button>
+        <button
+          type="button"
+          disabled={!pluginFolder || !activePath || busy}
+          onClick={() => void copyToInternalClipboard()}
+          className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
+        >
+          Copy
+        </button>
+        <button
+          type="button"
+          disabled={!pluginFolder || busy}
+          onClick={() => void pasteFromInternalClipboard()}
+          className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
+        >
+          Paste
+        </button>
+        <button
+          type="button"
+          disabled={!pluginFolder || busy}
+          onClick={() => void copyDistToFolder()}
+          className="px-3 py-1 text-sm bg-white border border-gray-300 text-gray-800 rounded hover:bg-gray-50 disabled:opacity-50"
+          title="Copy dist/ contents via folder picker"
+        >
+          Copy dist…
+        </button>
+        <button
+          type="button"
+          disabled={!pluginFolder || busy}
+          onClick={() => void bundleLocalOnly()}
+          className="px-3 py-1 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50"
+        >
+          Bundle
+        </button>
+        <button
+          type="button"
           disabled={!pluginFolder || busy}
           onClick={bundleAndReload}
           className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
@@ -928,8 +1361,10 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
         >
           Reload registry
         </button>
-        <span className="text-xs text-gray-500 ml-auto">
-          Ctrl+S save · JSX in .jsx · Excludes node_modules, dist, .git, bin
+        <span className="text-xs text-gray-500 ml-auto max-w-md text-right leading-snug">
+          ⌘/Ctrl+S save · ⇧T types · ⇧B bundle · ⇧L reload · ⇧E bundle+reload · ⇧O
+          import · ⇧N new file · ⇧P parent · ⇧D copy dist · ⇧C/⇧V copy/paste · ⇧M
+          rename · F2 rename · ⇧I npm install · ⇧⌫ delete
         </span>
       </header>
 
@@ -1066,12 +1501,22 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
               id="path-modal-title"
               className="text-lg font-semibold text-gray-900 mb-2"
             >
-              {pathModal.kind === "newFile" ? "New file" : "New folder"}
+              {pathModal.kind === "newFile"
+                ? "New file"
+                : pathModal.kind === "newFolder"
+                  ? "New folder"
+                  : "Rename"}
             </h3>
             <p className="text-sm text-gray-600 mb-3">
-              Path relative to plugin root (use{" "}
-              <code className="text-xs bg-gray-100 px-1">/</code> for
-              subfolders).
+              {pathModal.kind === "rename"
+                ? "New path relative to plugin root."
+                : (
+                    <>
+                      Path relative to plugin root (use{" "}
+                      <code className="text-xs bg-gray-100 px-1">/</code> for
+                      subfolders).
+                    </>
+                  )}
             </p>
             <input
               type="text"

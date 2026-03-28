@@ -38,6 +38,14 @@ export const IPC_CHANNELS = {
   PLUGIN_TYPECHECK: "plugin:typecheck",
   PLUGIN_IDE_TYPINGS: "plugin:ide-typings",
   PLUGIN_IDE_PLUGIN_TYPINGS: "plugin:ide-plugin-typings",
+  PLUGIN_LOAD_NODEX_FROM_PARENT: "plugin:load-nodex-from-parent",
+  PLUGIN_REMOVE_EXTERNAL_PLUGIN: "plugin:remove-external-plugin",
+  PLUGIN_RENAME_SOURCE_PATH: "plugin:rename-source-path",
+  PLUGIN_COPY_SOURCE_WITHIN_WORKSPACE: "plugin:copy-source-within-workspace",
+  PLUGIN_COPY_DIST_TO_FOLDER: "plugin:copy-dist-to-folder",
+  PLUGIN_GET_SOURCE_ENTRY_KIND: "plugin:get-source-entry-kind",
+  PLUGIN_IDE_SET_WORKSPACE_WATCH: "plugin:ide-set-workspace-watch",
+  PLUGIN_IDE_WORKSPACE_FS_CHANGED: "plugin:ide-workspace-fs-changed",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

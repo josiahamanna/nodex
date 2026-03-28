@@ -116,8 +116,157 @@ export class PluginLoader {
     return path.join(this.userPluginsDir, "bin");
   }
 
+  private ideExternalPluginsJsonPath(): string {
+    return path.join(this.userPluginsDir, "ide-external-plugins.json");
+  }
+
+  /** Optional JSON: `{ "entries": [ { "id": "foo", "path": "/abs/..." } ] }` */
+  readExternalPluginEntries(): { id: string; path: string }[] {
+    const p = this.ideExternalPluginsJsonPath();
+    if (!fs.existsSync(p)) {
+      return [];
+    }
+    try {
+      const raw = fs.readFileSync(p, "utf8");
+      const j = JSON.parse(raw) as { entries?: { id: string; path: string }[] };
+      if (!Array.isArray(j.entries)) {
+        return [];
+      }
+      return j.entries.filter(
+        (e) =>
+          e &&
+          typeof e.id === "string" &&
+          typeof e.path === "string" &&
+          isSafePluginName(e.id) &&
+          path.isAbsolute(e.path),
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  private writeExternalPluginEntries(entries: { id: string; path: string }[]): void {
+    fs.mkdirSync(this.userPluginsDir, { recursive: true });
+    fs.writeFileSync(
+      this.ideExternalPluginsJsonPath(),
+      JSON.stringify({ entries }, null, 2),
+      "utf8",
+    );
+  }
+
+  private resolveExternalWorkspacePath(
+    installedFolderName: string,
+  ): string | null {
+    if (!isSafePluginName(installedFolderName)) {
+      return null;
+    }
+    for (const e of this.readExternalPluginEntries()) {
+      if (e.id !== installedFolderName) {
+        continue;
+      }
+      const mp = path.join(e.path, "manifest.json");
+      if (fs.existsSync(mp)) {
+        return path.resolve(e.path);
+      }
+    }
+    return null;
+  }
+
   /**
-   * Editable plugin tree: `sources/<name>` if present, else legacy flat `userData/plugins/<name>`.
+   * Scan a parent directory's immediate subfolders for `.nodexplugin` + `manifest.json`.
+   * Persists roots in ide-external-plugins.json (sources/ wins on id conflict).
+   */
+  loadNodexPluginsFromParentDir(parentAbs: string): {
+    added: string[];
+    warnings: string[];
+    errors: string[];
+  } {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    const added: string[] = [];
+    const resolved = path.resolve(parentAbs);
+    if (!fs.existsSync(resolved)) {
+      errors.push("Path does not exist");
+      return { added, warnings, errors };
+    }
+    if (!fs.statSync(resolved).isDirectory()) {
+      errors.push("Not a directory");
+      return { added, warnings, errors };
+    }
+
+    const map = new Map(
+      this.readExternalPluginEntries().map((e) => [e.id, e]),
+    );
+
+    for (const ent of fs.readdirSync(resolved, { withFileTypes: true })) {
+      if (!ent.isDirectory() || ent.name.startsWith(".")) {
+        continue;
+      }
+      const childPath = path.resolve(path.join(resolved, ent.name));
+      const marker = path.join(childPath, ".nodexplugin");
+      if (!fs.existsSync(marker)) {
+        continue;
+      }
+      if (!fs.existsSync(path.join(childPath, "manifest.json"))) {
+        warnings.push(
+          `${ent.name}: .nodexplugin present but manifest.json missing — skipped`,
+        );
+        continue;
+      }
+
+      let id = ent.name;
+      try {
+        const raw = fs.readFileSync(marker, "utf8").trim();
+        if (raw.length > 0) {
+          const j = JSON.parse(raw) as { id?: string };
+          if (typeof j.id === "string" && isSafePluginName(j.id)) {
+            id = j.id;
+          }
+        }
+      } catch {
+        warnings.push(`${ent.name}: .nodexplugin is not valid JSON — using folder name as id`);
+      }
+
+      if (!isSafePluginName(id)) {
+        warnings.push(`${ent.name}: invalid plugin id — skipped`);
+        continue;
+      }
+
+      const fromSources = path.join(this.userSourcesRoot(), id);
+      if (fs.existsSync(path.join(fromSources, "manifest.json"))) {
+        warnings.push(
+          `${id}: already in sources/ — external entry not added`,
+        );
+        continue;
+      }
+
+      const prev = map.get(id);
+      map.set(id, { id, path: childPath });
+      if (!prev || prev.path !== childPath) {
+        added.push(id);
+      }
+    }
+
+    this.writeExternalPluginEntries([...map.values()].sort((a, b) => a.id.localeCompare(b.id)));
+    return { added, warnings, errors };
+  }
+
+  removeExternalPluginWorkspace(id: string): boolean {
+    if (!isSafePluginName(id)) {
+      return false;
+    }
+    const cur = this.readExternalPluginEntries();
+    const next = cur.filter((e) => e.id !== id);
+    if (next.length === cur.length) {
+      return false;
+    }
+    this.writeExternalPluginEntries(next);
+    return true;
+  }
+
+  /**
+   * Editable plugin tree: `sources/<name>` if present, else IDE-registered external
+   * path, else legacy flat `userData/plugins/<name>`.
    */
   private tryResolvePluginWorkspacePath(
     installedFolderName: string,
@@ -128,6 +277,10 @@ export class PluginLoader {
     const fromSources = path.join(this.userSourcesRoot(), installedFolderName);
     if (fs.existsSync(path.join(fromSources, "manifest.json"))) {
       return fromSources;
+    }
+    const ext = this.resolveExternalWorkspacePath(installedFolderName);
+    if (ext) {
+      return ext;
     }
     if (PluginLoader.RESERVED_TOP_LEVEL.has(installedFolderName)) {
       return null;
@@ -209,6 +362,14 @@ export class PluginLoader {
         if (fs.existsSync(path.join(p, "manifest.json"))) {
           names.add(ent.name);
         }
+      }
+    }
+    for (const e of this.readExternalPluginEntries()) {
+      if (
+        isSafePluginName(e.id) &&
+        fs.existsSync(path.join(e.path, "manifest.json"))
+      ) {
+        names.add(e.id);
       }
     }
     return Array.from(names).sort();
@@ -1581,6 +1742,167 @@ export class PluginLoader {
         this.devUiBundleCache.delete(key);
       }
     }
+  }
+
+  getPluginWorkspaceAbsolutePath(installedFolderName: string): string | null {
+    return this.tryResolvePluginWorkspacePath(installedFolderName);
+  }
+
+  getPluginSourceEntryKind(
+    installedFolderName: string,
+    relativePath: string,
+  ): "file" | "dir" | "missing" {
+    if (!isSafeRelativePluginSourcePath(relativePath)) {
+      return "missing";
+    }
+    const base = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!base) {
+      return "missing";
+    }
+    const abs = path.resolve(base, relativePath);
+    const rel = path.relative(base, abs);
+    if (rel.startsWith("..") || path.isAbsolute(rel) || rel === "") {
+      return "missing";
+    }
+    if (!fs.existsSync(abs)) {
+      return "missing";
+    }
+    return fs.statSync(abs).isDirectory() ? "dir" : "file";
+  }
+
+  renamePluginSourcePath(
+    installedFolderName: string,
+    fromRelative: string,
+    toRelative: string,
+  ): void {
+    if (
+      !isSafeRelativePluginSourcePath(fromRelative) ||
+      !isSafeRelativePluginSourcePath(toRelative)
+    ) {
+      throw new Error("Invalid path");
+    }
+    const base = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!base) {
+      throw new Error("Plugin not found");
+    }
+    const fromAbs = path.resolve(base, fromRelative);
+    const toAbs = path.resolve(base, toRelative);
+    const relFrom = path.relative(base, fromAbs);
+    const relTo = path.relative(base, toAbs);
+    if (
+      relFrom.startsWith("..") ||
+      path.isAbsolute(relFrom) ||
+      relFrom === "" ||
+      relTo.startsWith("..") ||
+      path.isAbsolute(relTo) ||
+      relTo === ""
+    ) {
+      throw new Error("Invalid path");
+    }
+    if (!fs.existsSync(fromAbs)) {
+      throw new Error("Source path not found");
+    }
+    if (fs.existsSync(toAbs)) {
+      throw new Error("Destination already exists");
+    }
+    fs.mkdirSync(path.dirname(toAbs), { recursive: true });
+    fs.renameSync(fromAbs, toAbs);
+    this.invalidateDevUiCacheForWorkspace(base);
+  }
+
+  copyPluginSourceWithinWorkspace(
+    installedFolderName: string,
+    fromRelative: string,
+    toRelative: string,
+  ): void {
+    if (
+      !isSafeRelativePluginSourcePath(fromRelative) ||
+      !isSafeRelativePluginSourcePath(toRelative)
+    ) {
+      throw new Error("Invalid path");
+    }
+    const base = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!base) {
+      throw new Error("Plugin not found");
+    }
+    const fromAbs = path.resolve(base, fromRelative);
+    const toAbs = path.resolve(base, toRelative);
+    const relFrom = path.relative(base, fromAbs);
+    const relTo = path.relative(base, toAbs);
+    if (
+      relFrom.startsWith("..") ||
+      path.isAbsolute(relFrom) ||
+      relFrom === "" ||
+      relTo.startsWith("..") ||
+      path.isAbsolute(relTo) ||
+      relTo === ""
+    ) {
+      throw new Error("Invalid path");
+    }
+    if (!fs.existsSync(fromAbs)) {
+      throw new Error("Source path not found");
+    }
+    if (fs.existsSync(toAbs)) {
+      throw new Error("Destination already exists");
+    }
+    const st = fs.statSync(fromAbs);
+    fs.mkdirSync(path.dirname(toAbs), { recursive: true });
+    if (st.isDirectory()) {
+      fs.cpSync(fromAbs, toAbs, { recursive: true });
+    } else {
+      fs.copyFileSync(fromAbs, toAbs);
+    }
+    this.invalidateDevUiCacheForWorkspace(base);
+  }
+
+  copyPluginDistContentsToDirectory(
+    installedFolderName: string,
+    destDirAbsolute: string,
+  ): { success: boolean; error?: string } {
+    if (typeof destDirAbsolute !== "string" || !path.isAbsolute(destDirAbsolute)) {
+      return { success: false, error: "Destination must be an absolute directory path" };
+    }
+    const base = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!base) {
+      return { success: false, error: "Plugin not found" };
+    }
+    const distDir = path.join(base, "dist");
+    if (!fs.existsSync(distDir) || !fs.statSync(distDir).isDirectory()) {
+      return { success: false, error: "No dist/ folder — bundle the plugin first" };
+    }
+    const resolvedDest = path.resolve(destDirAbsolute);
+    if (!fs.existsSync(resolvedDest) || !fs.statSync(resolvedDest).isDirectory()) {
+      return { success: false, error: "Destination is not an existing directory" };
+    }
+    const normBase = path.resolve(base);
+    if (
+      resolvedDest === normBase ||
+      resolvedDest.startsWith(normBase + path.sep)
+    ) {
+      return {
+        success: false,
+        error: "Cannot copy dist into the plugin workspace",
+      };
+    }
+    try {
+      for (const ent of fs.readdirSync(distDir)) {
+        const src = path.join(distDir, ent);
+        const dest = path.join(resolvedDest, ent);
+        if (fs.existsSync(dest)) {
+          return {
+            success: false,
+            error: `Destination already has an entry named "${ent}"`,
+          };
+        }
+        fs.cpSync(src, dest, { recursive: true });
+      }
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+    return { success: true };
   }
 
   private invalidateDevUiCacheForWorkspace(workspaceRoot: string): void {

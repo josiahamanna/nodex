@@ -262,6 +262,62 @@ contextBridge.exposeInMainWorld("Nodex", {
       IPC_CHANNELS.PLUGIN_IDE_PLUGIN_TYPINGS,
       installedFolderName,
     ),
+  loadNodexPluginsFromParent: (): Promise<{
+    success: boolean;
+    cancelled?: boolean;
+    added: string[];
+    warnings: string[];
+    errors: string[];
+  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_LOAD_NODEX_FROM_PARENT),
+  removeExternalPluginWorkspace: (
+    pluginId: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_REMOVE_EXTERNAL_PLUGIN, pluginId),
+  renamePluginSourcePath: (
+    installedFolderName: string,
+    fromRelative: string,
+    toRelative: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_RENAME_SOURCE_PATH,
+      installedFolderName,
+      fromRelative,
+      toRelative,
+    ),
+  copyPluginSourceWithinWorkspace: (
+    installedFolderName: string,
+    fromRelative: string,
+    toRelative: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_COPY_SOURCE_WITHIN_WORKSPACE,
+      installedFolderName,
+      fromRelative,
+      toRelative,
+    ),
+  copyPluginDistToFolder: (
+    installedFolderName: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_COPY_DIST_TO_FOLDER, installedFolderName),
+  getPluginSourceEntryKind: (
+    installedFolderName: string,
+    relativePath: string,
+  ): Promise<"file" | "dir" | "missing"> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_GET_SOURCE_ENTRY_KIND,
+      installedFolderName,
+      relativePath,
+    ),
+  setIdeWorkspaceWatch: (
+    pluginName: string | null,
+  ): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_IDE_SET_WORKSPACE_WATCH, pluginName),
+  onIdeWorkspaceFsChanged: (callback: () => void) => {
+    const ch = IPC_CHANNELS.PLUGIN_IDE_WORKSPACE_FS_CHANGED;
+    const fn = () => callback();
+    ipcRenderer.on(ch, fn);
+    return () => ipcRenderer.removeListener(ch, fn);
+  },
   reloadPluginRegistry: (): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_RELOAD_REGISTRY),
 });

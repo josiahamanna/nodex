@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import { appendPluginAudit } from "./core/plugin-audit";
@@ -21,6 +21,51 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 let mainWindow: BrowserWindow | null = null;
 let pluginLoader: PluginLoader;
+
+let ideWorkspaceWatch: fs.FSWatcher | null = null;
+let ideWorkspaceWatchTimer: ReturnType<typeof setTimeout> | null = null;
+
+function emitIdeWorkspaceFsChanged(): void {
+  ideWorkspaceWatchTimer = null;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(IPC_CHANNELS.PLUGIN_IDE_WORKSPACE_FS_CHANGED);
+  }
+}
+
+function setIdeWorkspaceWatch(pluginName: string | null): void {
+  if (ideWorkspaceWatch) {
+    ideWorkspaceWatch.close();
+    ideWorkspaceWatch = null;
+  }
+  if (ideWorkspaceWatchTimer) {
+    clearTimeout(ideWorkspaceWatchTimer);
+    ideWorkspaceWatchTimer = null;
+  }
+  if (!pluginName) {
+    return;
+  }
+  if (!isSafePluginName(pluginName)) {
+    return;
+  }
+  const root = pluginLoader.getPluginWorkspaceAbsolutePath(pluginName);
+  if (!root || !fs.existsSync(root)) {
+    return;
+  }
+  try {
+    ideWorkspaceWatch = fs.watch(
+      root,
+      { recursive: true },
+      () => {
+        if (ideWorkspaceWatchTimer) {
+          clearTimeout(ideWorkspaceWatchTimer);
+        }
+        ideWorkspaceWatchTimer = setTimeout(emitIdeWorkspaceFsChanged, 320);
+      },
+    );
+  } catch (e) {
+    console.warn("[Main] ide workspace watch:", e);
+  }
+}
 
 function getDialogParent(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined;
@@ -500,6 +545,150 @@ ipcMain.handle(IPC_CHANNELS.GET_PLUGIN_LOAD_ISSUES, async () => {
 ipcMain.handle(IPC_CHANNELS.PLUGIN_LIST_WORKSPACE_FOLDERS, async () => {
   return pluginLoader.listPluginWorkspaceFolders();
 });
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_LOAD_NODEX_FROM_PARENT, async () => {
+  const parent = getDialogParent();
+  if (!parent) {
+    return {
+      success: false,
+      cancelled: true,
+      added: [],
+      warnings: [],
+      errors: [],
+    };
+  }
+  const result = await dialog.showOpenDialog(parent, {
+    properties: ["openDirectory"],
+    title:
+      "Parent folder — immediate subfolders containing .nodexplugin are registered",
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: false, cancelled: true, added: [], warnings: [], errors: [] };
+  }
+  const scan = pluginLoader.loadNodexPluginsFromParentDir(result.filePaths[0]);
+  return { success: true, ...scan };
+});
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_REMOVE_EXTERNAL_PLUGIN,
+  async (_event, pluginId: string) => {
+    if (!isSafePluginName(pluginId)) {
+      return { success: false, error: "Invalid plugin id" };
+    }
+    const ok = pluginLoader.removeExternalPluginWorkspace(pluginId);
+    return ok
+      ? { success: true }
+      : {
+          success: false,
+          error:
+            "Not found in external list (sources/ plugins are not removed here)",
+        };
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_RENAME_SOURCE_PATH,
+  async (
+    _event,
+    installedFolderName: string,
+    fromRelative: string,
+    toRelative: string,
+  ) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    try {
+      pluginLoader.renamePluginSourcePath(
+        installedFolderName,
+        fromRelative,
+        toRelative,
+      );
+      return { success: true };
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_COPY_SOURCE_WITHIN_WORKSPACE,
+  async (
+    _event,
+    installedFolderName: string,
+    fromRelative: string,
+    toRelative: string,
+  ) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    try {
+      pluginLoader.copyPluginSourceWithinWorkspace(
+        installedFolderName,
+        fromRelative,
+        toRelative,
+      );
+      return { success: true };
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_GET_SOURCE_ENTRY_KIND,
+  async (_event, installedFolderName: string, relativePath: string) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return "missing" as const;
+    }
+    if (typeof relativePath !== "string") {
+      return "missing" as const;
+    }
+    return pluginLoader.getPluginSourceEntryKind(
+      installedFolderName,
+      relativePath,
+    );
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_COPY_DIST_TO_FOLDER,
+  async (_event, installedFolderName: string) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    const parent = getDialogParent();
+    if (!parent) {
+      return { success: false, error: "No window for dialog" };
+    }
+    const pick = await dialog.showOpenDialog(parent, {
+      properties: ["openDirectory", "createDirectory"],
+      title: "Copy dist/ contents into this folder",
+    });
+    if (pick.canceled || pick.filePaths.length === 0) {
+      return { success: false, error: "Cancelled" };
+    }
+    return pluginLoader.copyPluginDistContentsToDirectory(
+      installedFolderName,
+      pick.filePaths[0],
+    );
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_IDE_SET_WORKSPACE_WATCH,
+  async (_event, pluginName: string | null) => {
+    setIdeWorkspaceWatch(
+      pluginName && isSafePluginName(pluginName) ? pluginName : null,
+    );
+    return { success: true };
+  },
+);
 
 ipcMain.handle(
   IPC_CHANNELS.PLUGIN_LIST_SOURCE_FILES,

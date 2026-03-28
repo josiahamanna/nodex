@@ -159,6 +159,37 @@ declare global {
         workspaceRootFileUri: string;
         libs: { fileName: string; content: string }[];
       } | null>;
+      loadNodexPluginsFromParent: () => Promise<{
+        success: boolean;
+        cancelled?: boolean;
+        added: string[];
+        warnings: string[];
+        errors: string[];
+      }>;
+      removeExternalPluginWorkspace: (
+        pluginId: string,
+      ) => Promise<{ success: boolean; error?: string }>;
+      renamePluginSourcePath: (
+        installedFolderName: string,
+        fromRelative: string,
+        toRelative: string,
+      ) => Promise<{ success: boolean; error?: string }>;
+      copyPluginSourceWithinWorkspace: (
+        installedFolderName: string,
+        fromRelative: string,
+        toRelative: string,
+      ) => Promise<{ success: boolean; error?: string }>;
+      copyPluginDistToFolder: (
+        installedFolderName: string,
+      ) => Promise<{ success: boolean; error?: string }>;
+      getPluginSourceEntryKind: (
+        installedFolderName: string,
+        relativePath: string,
+      ) => Promise<"file" | "dir" | "missing">;
+      setIdeWorkspaceWatch: (
+        pluginName: string | null,
+      ) => Promise<{ success: boolean }>;
+      onIdeWorkspaceFsChanged: (callback: () => void) => () => void;
       reloadPluginRegistry: () => Promise<{ success: boolean; error?: string }>;
     };
   }
