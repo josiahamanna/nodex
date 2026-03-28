@@ -14,6 +14,8 @@ module.exports = {
   externals: {
     "adm-zip": "commonjs adm-zip",
     "./zip-handler": "commonjs ./zip-handler",
+    // Rollup 4 loads @rollup/rollup-<platform> native addons; bundling breaks that resolution.
+    rollup: "commonjs rollup",
   },
   plugins: [
     new CopyPlugin({

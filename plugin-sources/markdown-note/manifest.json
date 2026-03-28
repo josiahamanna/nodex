@@ -1,8 +1,9 @@
 {
   "name": "markdown-note",
   "version": "1.0.0",
-  "type": "backend",
+  "type": "hybrid",
   "main": "index.js",
+  "ui": "ui.jsx",
   "mode": "development",
   "displayName": "Markdown Note Renderer",
   "description": "Renders markdown notes with custom styling",
