@@ -22,6 +22,8 @@ declare global {
         };
       };
       postMessage: (data: unknown) => void;
+      /** Persist JSON-serializable UI state (debounced on host). */
+      postPluginUiState?: (state: unknown) => void;
       onMessage: ((message: unknown) => void) | null;
     };
   }

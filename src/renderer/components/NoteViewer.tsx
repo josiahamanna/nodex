@@ -1,13 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Note } from "../../preload";
 import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
 
 interface NoteViewerProps {
   note: Note;
+  onTitleCommit: (title: string) => void | Promise<void>;
 }
 
-const NoteViewer: React.FC<NoteViewerProps> = ({ note }) => {
+const NoteViewer: React.FC<NoteViewerProps> = ({ note, onTitleCommit }) => {
   const [hasPlugin, setHasPlugin] = useState(false);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const [titleEditing, setTitleEditing] = useState(false);
 
   useEffect(() => {
     const checkPlugin = async () => {
@@ -16,6 +19,16 @@ const NoteViewer: React.FC<NoteViewerProps> = ({ note }) => {
     };
     checkPlugin();
   }, [note.type]);
+
+  useLayoutEffect(() => {
+    const el = titleRef.current;
+    if (!el || titleEditing) {
+      return;
+    }
+    if (el.textContent !== note.title) {
+      el.textContent = note.title;
+    }
+  }, [note.id, note.title, titleEditing]);
 
   const renderNote = () => {
     if (hasPlugin) {
@@ -34,12 +47,51 @@ const NoteViewer: React.FC<NoteViewerProps> = ({ note }) => {
     );
   };
 
+  const commitTitleFromDom = async () => {
+    const el = titleRef.current;
+    if (!el) {
+      return;
+    }
+    const raw = el.textContent ?? "";
+    const t = raw.replace(/\s+/g, " ").trim();
+    if (!t) {
+      el.textContent = note.title;
+      setTitleEditing(false);
+      return;
+    }
+    if (t !== note.title) {
+      await onTitleCommit(t);
+    }
+    el.textContent = t;
+    setTitleEditing(false);
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
       <header className="shrink-0 border-b border-border px-4 py-3">
-        <h2 className="text-[13px] font-semibold leading-tight text-foreground">
-          {note.title}
-        </h2>
+        <h2
+          key={note.id}
+          ref={titleRef}
+          contentEditable
+          suppressContentEditableWarning
+          role="heading"
+          aria-level={2}
+          tabIndex={0}
+          className="min-h-[1.25rem] max-w-full rounded-sm px-1 py-0.5 text-[13px] font-semibold leading-tight text-foreground outline-none ring-offset-background hover:bg-muted/40 focus:bg-muted/40 focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          onFocus={() => setTitleEditing(true)}
+          onBlur={() => void commitTitleFromDom()}
+          onPaste={(e) => {
+            e.preventDefault();
+            const text = e.clipboardData.getData("text/plain");
+            document.execCommand("insertText", false, text);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+          }}
+        />
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
           <div className="flex items-center gap-2 text-[12px]">
             <span className="text-muted-foreground">Type</span>

@@ -5,18 +5,24 @@ import {
   PanelGroup,
   PanelResizeHandle,
 } from "react-resizable-panels";
-import { AppDispatch, RootState } from "./store";
+import { AppDispatch, RootState, store } from "./store";
 import {
   createNote,
   fetchNote,
   fetchAllNotes,
+  moveNoteInTree,
+  pasteSubtree,
   renameNote,
 } from "./store/notesSlice";
 import Sidebar from "./components/Sidebar";
 import NoteViewer from "./components/NoteViewer";
 import PluginManager from "./components/PluginManager";
 import PluginIDE from "./components/PluginIDE";
-import type { CreateNoteRelation } from "../preload";
+import type {
+  CreateNoteRelation,
+  NoteMovePlacement,
+  PasteSubtreePayload,
+} from "../preload";
 
 const App: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -83,6 +89,35 @@ const App: React.FC = () => {
     }
   };
 
+  const workspaceRootId = notesList[0]?.id ?? null;
+
+  const handleMoveNote = async (payload: {
+    draggedId: string;
+    targetId: string;
+    placement: NoteMovePlacement;
+  }) => {
+    await dispatch(moveNoteInTree(payload)).unwrap();
+    await dispatch(fetchAllNotes());
+  };
+
+  const handlePasteSubtree = async (p: PasteSubtreePayload) => {
+    const r = await dispatch(pasteSubtree(p)).unwrap();
+    await dispatch(fetchAllNotes());
+    setShowPluginManager(false);
+    setShowPluginIde(false);
+    const s = store.getState().notes;
+    if (r?.newRootId) {
+      dispatch(fetchNote(r.newRootId));
+    } else if (
+      s.currentNote?.id &&
+      s.notesList.some((n) => n.id === s.currentNote!.id)
+    ) {
+      dispatch(fetchNote(s.currentNote.id));
+    } else if (s.notesList[0]) {
+      dispatch(fetchNote(s.notesList[0].id));
+    }
+  };
+
   return (
     <div className="nodex-app-pad box-border flex h-screen min-h-0 flex-col bg-muted/45 text-foreground dark:bg-muted/25">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-sm box-border">
@@ -100,6 +135,7 @@ const App: React.FC = () => {
             <Sidebar
               notes={notesList}
               registeredTypes={registeredTypes}
+              workspaceRootId={workspaceRootId}
               currentNoteId={currentNote?.id}
               activeSidebarTool={
                 showPluginIde
@@ -111,6 +147,8 @@ const App: React.FC = () => {
               onNoteSelect={handleNoteSelect}
               onCreateNote={handleCreateNote}
               onRenameNote={handleRenameNote}
+              onMoveNote={handleMoveNote}
+              onPasteSubtree={handlePasteSubtree}
               onPluginManagerOpen={handlePluginManagerOpen}
               onPluginIdeOpen={handlePluginIdeOpen}
             />
@@ -129,7 +167,12 @@ const App: React.FC = () => {
                   </div>
                 </div>
               ) : currentNote ? (
-                <NoteViewer note={currentNote} />
+                <NoteViewer
+                  note={currentNote}
+                  onTitleCommit={(title) =>
+                    handleRenameNote(currentNote.id, title)
+                  }
+                />
               ) : (
                 <div className="flex h-full items-center justify-center p-8">
                   <div className="text-[12px] text-muted-foreground">

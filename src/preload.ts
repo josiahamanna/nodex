@@ -19,6 +19,15 @@ export interface NoteListItem {
 
 export type CreateNoteRelation = "child" | "sibling" | "root";
 
+export type NoteMovePlacement = "before" | "after" | "into";
+
+export type PasteSubtreePayload = {
+  sourceId: string;
+  targetId: string;
+  mode: "cut" | "copy";
+  placement: NoteMovePlacement;
+};
+
 contextBridge.exposeInMainWorld("Nodex", {
   getNote: (noteId?: string): Promise<Note | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_NOTE, noteId),
@@ -32,6 +41,20 @@ contextBridge.exposeInMainWorld("Nodex", {
     ipcRenderer.invoke(IPC_CHANNELS.CREATE_NOTE, payload),
   renameNote: (id: string, title: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.RENAME_NOTE, id, title),
+  moveNote: (
+    draggedId: string,
+    targetId: string,
+    placement: NoteMovePlacement,
+  ): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.MOVE_NOTE, {
+      draggedId,
+      targetId,
+      placement,
+    }),
+  pasteSubtree: (payload: PasteSubtreePayload): Promise<{ newRootId?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PASTE_SUBTREE, payload),
+  saveNotePluginUiState: (noteId: string, state: unknown): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SAVE_NOTE_PLUGIN_UI_STATE, noteId, state),
   getComponent: (type: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_COMPONENT, type),
   getPluginHTML: (type: string, note: Note): Promise<string | null> =>

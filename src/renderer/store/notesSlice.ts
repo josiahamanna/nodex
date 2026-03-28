@@ -3,7 +3,10 @@ import {
   CreateNoteRelation,
   Note,
   NoteListItem,
+  NoteMovePlacement,
+  PasteSubtreePayload,
 } from "../../preload";
+import { PLUGIN_UI_METADATA_KEY } from "../../shared/plugin-state-protocol";
 
 interface NotesState {
   currentNote: Note | null;
@@ -49,6 +52,36 @@ export const renameNote = createAsyncThunk(
   async ({ id, title }: { id: string; title: string }) => {
     await window.Nodex.renameNote(id, title);
     return { id, title };
+  },
+);
+
+export const moveNoteInTree = createAsyncThunk(
+  "notes/moveNote",
+  async (payload: {
+    draggedId: string;
+    targetId: string;
+    placement: NoteMovePlacement;
+  }) => {
+    await window.Nodex.moveNote(
+      payload.draggedId,
+      payload.targetId,
+      payload.placement,
+    );
+  },
+);
+
+export const pasteSubtree = createAsyncThunk(
+  "notes/pasteSubtree",
+  async (payload: PasteSubtreePayload) => {
+    return await window.Nodex.pasteSubtree(payload);
+  },
+);
+
+export const saveNotePluginUiState = createAsyncThunk(
+  "notes/saveNotePluginUiState",
+  async ({ noteId, state }: { noteId: string; state: unknown }) => {
+    await window.Nodex.saveNotePluginUiState(noteId, state);
+    return { noteId, state };
   },
 );
 
@@ -106,6 +139,28 @@ const notesSlice = createSlice({
       })
       .addCase(renameNote.rejected, (state, action) => {
         state.error = action.error.message || "Failed to rename note";
+      })
+      .addCase(moveNoteInTree.rejected, (state, action) => {
+        state.error = action.error.message || "Failed to move note";
+      })
+      .addCase(pasteSubtree.rejected, (state, action) => {
+        state.error = action.error.message || "Failed to paste";
+      })
+      .addCase(saveNotePluginUiState.fulfilled, (state, action) => {
+        const { noteId, state: snap } = action.payload;
+        if (state.currentNote?.id === noteId) {
+          state.currentNote = {
+            ...state.currentNote,
+            metadata: {
+              ...(state.currentNote.metadata ?? {}),
+              [PLUGIN_UI_METADATA_KEY]: snap,
+            },
+          };
+        }
+      })
+      .addCase(saveNotePluginUiState.rejected, (state, action) => {
+        state.error =
+          action.error.message || "Failed to save plugin UI state";
       });
   },
 });

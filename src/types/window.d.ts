@@ -2,6 +2,8 @@ import {
   CreateNoteRelation,
   Note,
   NoteListItem,
+  NoteMovePlacement,
+  PasteSubtreePayload,
 } from "../preload";
 
 declare global {
@@ -15,6 +17,18 @@ declare global {
         type: string;
       }) => Promise<{ id: string }>;
       renameNote: (id: string, title: string) => Promise<void>;
+      moveNote: (
+        draggedId: string,
+        targetId: string,
+        placement: NoteMovePlacement,
+      ) => Promise<void>;
+      pasteSubtree: (
+        payload: PasteSubtreePayload,
+      ) => Promise<{ newRootId?: string }>;
+      saveNotePluginUiState: (
+        noteId: string,
+        state: unknown,
+      ) => Promise<void>;
       getComponent: (type: string) => Promise<string | null>;
       getPluginHTML: (type: string, note: Note) => Promise<string | null>;
       getRegisteredTypes: () => Promise<string[]>;

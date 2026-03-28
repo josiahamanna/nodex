@@ -23,6 +23,10 @@ export enum MessageType {
   READY = "ready",
   UPDATE = "update",
   ACTION = "action",
+  /** Iframe → host: versioned JSON snapshot for persistence (see plugin-state-protocol.ts). */
+  PLUGIN_UI_SNAPSHOT = "plugin_ui_snapshot",
+  /** Host → iframe: hydrate from note.metadata.pluginUiState. */
+  HYDRATE_PLUGIN_UI = "hydrate_plugin_ui",
 }
 
 export interface PluginMessage {

@@ -1,10 +1,14 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CreateNoteRelation,
   NoteListItem,
+  NoteMovePlacement,
+  PasteSubtreePayload,
 } from "../../preload";
 import { useTheme } from "../theme/ThemeContext";
+
+const DND_NOTE_MIME = "application/x-nodex-note-id";
 
 type SidebarActiveTool = "plugin-ide" | "plugin-manager" | null;
 
@@ -16,11 +20,36 @@ type ContextMenuState = {
   pickRelation?: CreateNoteRelation;
 };
 
+type ClipboardState = { mode: "cut" | "copy"; sourceId: string } | null;
+
+type DropHint = { targetId: string; placement: NoteMovePlacement };
+
+function parentMapFromNotes(notes: NoteListItem[]): Map<string, string | null> {
+  return new Map(notes.map((n) => [n.id, n.parentId]));
+}
+
+/** True if `ancestorId` is a strict ancestor of `nodeId` in the tree. */
+function isStrictAncestor(
+  ancestorId: string,
+  nodeId: string,
+  parents: Map<string, string | null>,
+): boolean {
+  let cur: string | null = nodeId;
+  while (cur != null) {
+    const p = parents.get(cur);
+    if (p === ancestorId) {
+      return true;
+    }
+    cur = p ?? null;
+  }
+  return false;
+}
+
 interface SidebarProps {
   notes: NoteListItem[];
   registeredTypes: string[];
+  workspaceRootId: string | null;
   currentNoteId?: string;
-  /** Which footer tool panel is open in the main area (notes view = null). */
   activeSidebarTool?: SidebarActiveTool;
   onNoteSelect: (noteId: string) => void;
   onCreateNote: (payload: {
@@ -29,6 +58,12 @@ interface SidebarProps {
     type: string;
   }) => Promise<void>;
   onRenameNote: (id: string, title: string) => Promise<void>;
+  onMoveNote: (payload: {
+    draggedId: string;
+    targetId: string;
+    placement: NoteMovePlacement;
+  }) => Promise<void>;
+  onPasteSubtree: (payload: PasteSubtreePayload) => Promise<void>;
   onPluginManagerOpen: () => void;
   onPluginIdeOpen: () => void;
 }
@@ -37,11 +72,9 @@ const sidebarFooterBtnBase =
   "flex min-h-9 w-full items-center justify-center rounded-sm border px-3 py-2.5 text-center text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar-background))]";
 const sidebarFooterBtnIdle =
   "border-sidebar-border bg-background text-foreground hover:bg-muted/50 dark:bg-transparent dark:hover:bg-sidebar-accent/40";
-/** Active tool: matches note row — accent + primary pill bar */
 const sidebarFooterBtnSelected =
   "relative border-sidebar-border bg-sidebar-accent font-semibold text-foreground before:pointer-events-none before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-1 before:rounded-full before:bg-primary before:content-['']";
 
-/** VS Code–style section label */
 const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/45">
     {children}
@@ -54,22 +87,29 @@ const ctxBtn =
 const Sidebar: React.FC<SidebarProps> = ({
   notes,
   registeredTypes,
+  workspaceRootId,
   currentNoteId,
   activeSidebarTool = null,
   onNoteSelect,
   onCreateNote,
   onRenameNote,
+  onMoveNote,
+  onPasteSubtree,
   onPluginManagerOpen,
   onPluginIdeOpen,
 }) => {
   const { colorMode, setColorMode } = useTheme();
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [clipboard, setClipboard] = useState<ClipboardState>(null);
   const [renameTarget, setRenameTarget] = useState<{
     id: string;
     title: string;
   } | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [dropHint, setDropHint] = useState<DropHint | null>(null);
+  const draggingRef = useRef<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const parents = useMemo(() => parentMapFromNotes(notes), [notes]);
 
   const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -127,12 +167,48 @@ const Sidebar: React.FC<SidebarProps> = ({
     setRenameTarget(null);
   };
 
+  const placementFromPointer = (
+    e: React.DragEvent,
+    el: HTMLElement,
+  ): NoteMovePlacement => {
+    const rect = el.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const frac = rect.height > 0 ? y / rect.height : 0.5;
+    if (frac < 0.33) {
+      return "before";
+    }
+    if (frac > 0.66) {
+      return "after";
+    }
+    return "into";
+  };
+
+  const dropAllowed = (
+    draggedId: string,
+    targetId: string,
+    placement: NoteMovePlacement,
+  ): boolean => {
+    if (!workspaceRootId || draggedId === targetId) {
+      return false;
+    }
+    if (draggedId === workspaceRootId) {
+      return false;
+    }
+    if (isStrictAncestor(draggedId, targetId, parents)) {
+      return false;
+    }
+    if (placement === "into" && targetId === draggedId) {
+      return false;
+    }
+    return true;
+  };
+
   const contextMenuPortal =
     menu &&
     createPortal(
       <div
         ref={menuRef}
-        className="fixed z-[100] min-w-[200px] rounded-md border border-border bg-popover py-1 shadow-md"
+        className="fixed z-[100] min-w-[220px] rounded-md border border-border bg-popover py-1 shadow-md"
         style={{ left: menu.x, top: menu.y }}
         role="menu"
       >
@@ -152,6 +228,87 @@ const Sidebar: React.FC<SidebarProps> = ({
                 >
                   Rename…
                 </button>
+                {menu.anchorId !== workspaceRootId ? (
+                  <button
+                    type="button"
+                    className={ctxBtn}
+                    onClick={() => {
+                      if (menu.anchorId) {
+                        setClipboard({ mode: "cut", sourceId: menu.anchorId });
+                      }
+                      closeMenu();
+                    }}
+                  >
+                    Cut
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className={ctxBtn}
+                  onClick={() => {
+                    if (menu.anchorId) {
+                      setClipboard({ mode: "copy", sourceId: menu.anchorId });
+                    }
+                    closeMenu();
+                  }}
+                >
+                  Copy
+                </button>
+                {clipboard ? (
+                  <>
+                    <div className="my-1 h-px bg-border" />
+                    <button
+                      type="button"
+                      className={ctxBtn}
+                      onClick={async () => {
+                        if (!clipboard || !menu.anchorId) {
+                          return;
+                        }
+                        try {
+                          await onPasteSubtree({
+                            ...clipboard,
+                            targetId: menu.anchorId,
+                            placement: "into",
+                          });
+                          if (clipboard.mode === "cut") {
+                            setClipboard(null);
+                          }
+                        } catch {
+                          /* surfaced in app */
+                        }
+                        closeMenu();
+                      }}
+                    >
+                      Paste as child
+                    </button>
+                    {menu.anchorId !== workspaceRootId ? (
+                      <button
+                        type="button"
+                        className={ctxBtn}
+                        onClick={async () => {
+                          if (!clipboard || !menu.anchorId) {
+                            return;
+                          }
+                          try {
+                            await onPasteSubtree({
+                              ...clipboard,
+                              targetId: menu.anchorId,
+                              placement: "after",
+                            });
+                            if (clipboard.mode === "cut") {
+                              setClipboard(null);
+                            }
+                          } catch {
+                            /* surfaced in app */
+                          }
+                          closeMenu();
+                        }}
+                      >
+                        Paste as sibling
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
                 <div className="my-1 h-px bg-border" />
                 <button
                   type="button"
@@ -166,6 +323,53 @@ const Sidebar: React.FC<SidebarProps> = ({
                 >
                   New child…
                 </button>
+                {menu.anchorId !== workspaceRootId ? (
+                  <button
+                    type="button"
+                    className={ctxBtn}
+                    onClick={() =>
+                      setMenu({
+                        ...menu,
+                        step: "pickType",
+                        pickRelation: "sibling",
+                      })
+                    }
+                  >
+                    New sibling…
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {clipboard && workspaceRootId ? (
+                  <>
+                    <button
+                      type="button"
+                      className={ctxBtn}
+                      onClick={async () => {
+                        if (!clipboard) {
+                          return;
+                        }
+                        try {
+                          await onPasteSubtree({
+                            ...clipboard,
+                            targetId: workspaceRootId,
+                            placement: "into",
+                          });
+                          if (clipboard.mode === "cut") {
+                            setClipboard(null);
+                          }
+                        } catch {
+                          /* surfaced in app */
+                        }
+                        closeMenu();
+                      }}
+                    >
+                      Paste into workspace
+                    </button>
+                    <div className="my-1 h-px bg-border" />
+                  </>
+                ) : null}
                 <button
                   type="button"
                   className={ctxBtn}
@@ -173,27 +377,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                     setMenu({
                       ...menu,
                       step: "pickType",
-                      pickRelation: "sibling",
+                      pickRelation: "root",
                     })
                   }
                 >
-                  New sibling…
+                  New note under workspace…
                 </button>
               </>
-            ) : (
-              <button
-                type="button"
-                className={ctxBtn}
-                onClick={() =>
-                  setMenu({
-                    ...menu,
-                    step: "pickType",
-                    pickRelation: "root",
-                  })
-                }
-              >
-                New root note…
-              </button>
             )}
           </>
         ) : (
@@ -238,7 +428,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         });
                         closeMenu();
                       } catch {
-                        /* Error surfaced via app state */
+                        /* surfaced in app */
                       }
                     }}
                   >
@@ -342,18 +532,95 @@ const Sidebar: React.FC<SidebarProps> = ({
             {notes.map((note) => {
               const selected = currentNoteId === note.id;
               const pad = 10 + note.depth * 14;
+              const isRoot = note.id === workspaceRootId;
+              const hint =
+                dropHint?.targetId === note.id ? dropHint.placement : null;
+
               return (
-                <li key={note.id}>
+                <li
+                  key={note.id}
+                  draggable={!isRoot}
+                  onDragStart={(e) => {
+                    if (isRoot) {
+                      return;
+                    }
+                    e.dataTransfer.setData(DND_NOTE_MIME, note.id);
+                    e.dataTransfer.setData("text/plain", note.id);
+                    e.dataTransfer.effectAllowed = "move";
+                    draggingRef.current = note.id;
+                  }}
+                  onDragEnd={() => {
+                    draggingRef.current = null;
+                    setDropHint(null);
+                  }}
+                  onDragOver={(e) => {
+                    const fromMime = e.dataTransfer.types.includes(DND_NOTE_MIME);
+                    const fromText = e.dataTransfer.types.includes("text/plain");
+                    if (!fromMime && !fromText) {
+                      return;
+                    }
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    const d = draggingRef.current;
+                    if (!d) {
+                      return;
+                    }
+                    const placement = placementFromPointer(
+                      e,
+                      e.currentTarget as HTMLElement,
+                    );
+                    if (dropAllowed(d, note.id, placement)) {
+                      setDropHint({ targetId: note.id, placement });
+                    } else {
+                      setDropHint(null);
+                    }
+                  }}
+                  onDragLeave={() => {
+                    setDropHint((h) =>
+                      h?.targetId === note.id ? null : h,
+                    );
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDropHint(null);
+                    draggingRef.current = null;
+                    const draggedId =
+                      e.dataTransfer.getData(DND_NOTE_MIME) ||
+                      e.dataTransfer.getData("text/plain");
+                    if (!draggedId) {
+                      return;
+                    }
+                    const placement = placementFromPointer(
+                      e,
+                      e.currentTarget as HTMLElement,
+                    );
+                    if (!dropAllowed(draggedId, note.id, placement)) {
+                      return;
+                    }
+                    void onMoveNote({
+                      draggedId,
+                      targetId: note.id,
+                      placement,
+                    });
+                  }}
+                  className={`relative rounded-md ${
+                    hint === "into"
+                      ? "ring-2 ring-inset ring-primary/60"
+                      : ""
+                  } ${hint === "before" ? "border-t-2 border-primary" : ""} ${
+                    hint === "after" ? "border-b-2 border-primary" : ""
+                  }`}
+                >
                   <button
                     type="button"
                     data-note-row
                     onClick={() => onNoteSelect(note.id)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
                       setMenu({
-                        x: e.clientX,
-                        y: e.clientY,
+                        x: ev.clientX,
+                        y: ev.clientY,
                         anchorId: note.id,
                         step: "main",
                       });
@@ -363,7 +630,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       selected
                         ? "bg-sidebar-accent text-sidebar-foreground hover:bg-sidebar-accent before:pointer-events-none before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-1 before:rounded-full before:bg-primary before:content-['']"
                         : "text-sidebar-foreground hover:bg-sidebar-accent/70"
-                    }`}
+                    } ${isRoot ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
                   >
                     <span
                       className={`line-clamp-2 text-[13px] leading-snug ${
@@ -371,6 +638,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                       }`}
                     >
                       {note.title}
+                      {isRoot ? (
+                        <span className="ml-1.5 text-[10px] font-normal text-sidebar-foreground/45">
+                          (workspace root)
+                        </span>
+                      ) : null}
                     </span>
                     <span
                       className={`inline-flex w-fit max-w-full shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[11px] font-medium leading-none ring-1 ring-inset ring-foreground/10 dark:ring-white/15 ${getTypeBadgeClass(note.type)}`}
@@ -384,9 +656,15 @@ const Sidebar: React.FC<SidebarProps> = ({
           </ul>
         </div>
         <p className="mt-2 px-1 text-[10px] leading-snug text-sidebar-foreground/40">
-          Right-click a note for child, sibling, or rename. Right-click empty
-          area for a new root note.
+          Drag notes: top / bottom of a row = reorder; middle = make child.
+          Cut/copy in the menu, then paste on another note. Title also editable
+          in the viewer header.
         </p>
+        {clipboard ? (
+          <p className="mt-1 px-1 text-[10px] text-sidebar-foreground/50">
+            Clipboard: {clipboard.mode} — use right-click to paste.
+          </p>
+        ) : null}
       </div>
 
       <footer className="shrink-0 space-y-3 border-sidebar-border border-t px-3 py-3">

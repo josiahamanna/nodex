@@ -1,8 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useDispatch } from "react-redux";
 import { Note } from "../../../preload";
 import { MessageType, PluginMessage } from "../../../shared/plugin-api";
+import {
+  isPluginUiSnapshotMessage,
+  PLUGIN_UI_METADATA_KEY,
+  PLUGIN_UI_PROTOCOL_VERSION,
+} from "../../../shared/plugin-state-protocol";
 import { attachReactToPluginWindow } from "../../../shared/react-bridge";
 import { useTheme } from "../../theme/ThemeContext";
+import type { AppDispatch } from "../../store";
+import {
+  saveNotePluginUiState,
+} from "../../store/notesSlice";
+import { receiveSnapshot } from "../../store/pluginUiSlice";
 import {
   buildIframeThemeCss,
   NODEX_IFRAME_THEME_MESSAGE,
@@ -24,6 +35,7 @@ const PLUGIN_IFRAME_CSP_CONNECT_DEV =
 const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   note,
 }) => {
+  const dispatch = useDispatch<AppDispatch>();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const noteRef = useRef(note);
   noteRef.current = note;
@@ -31,6 +43,43 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   const [error, setError] = useState<string | null>(null);
   const { resolvedDark } = useTheme();
   const inheritThemeRef = useRef(true);
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const sendMessageToPlugin = useCallback((message: PluginMessage) => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(message, "*");
+    }
+  }, []);
+
+  const schedulePluginUiPersist = useCallback(
+    (noteId: string, state: unknown) => {
+      dispatch(receiveSnapshot({ noteId, state }));
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+      }
+      persistTimerRef.current = setTimeout(() => {
+        persistTimerRef.current = null;
+        void dispatch(saveNotePluginUiState({ noteId, state }));
+      }, 400);
+    },
+    [dispatch],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
+  }, [note.id]);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -45,16 +94,33 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
         return;
       }
 
+      if (isPluginUiSnapshotMessage(event.data)) {
+        schedulePluginUiPersist(noteRef.current.id, event.data.state);
+        return;
+      }
+
       const message: PluginMessage = event.data;
 
       switch (message.type) {
-        case MessageType.READY:
+        case MessageType.READY: {
           setIsReady(true);
+          const n = noteRef.current;
           sendMessageToPlugin({
             type: MessageType.RENDER,
-            payload: noteRef.current,
+            payload: n,
           });
+          const ui = n.metadata?.[PLUGIN_UI_METADATA_KEY];
+          if (ui !== undefined) {
+            sendMessageToPlugin({
+              type: MessageType.HYDRATE_PLUGIN_UI,
+              payload: {
+                v: PLUGIN_UI_PROTOCOL_VERSION,
+                state: ui,
+              },
+            });
+          }
           break;
+        }
 
         case MessageType.ACTION:
           console.log("[Plugin Action]", message.payload);
@@ -64,7 +130,7 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
           break;
       }
     },
-    [],
+    [schedulePluginUiPersist, sendMessageToPlugin],
   );
 
   useEffect(() => {
@@ -76,13 +142,7 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
     if (isReady && iframeRef.current) {
       sendMessageToPlugin({ type: MessageType.UPDATE, payload: note });
     }
-  }, [isReady, note]);
-
-  const sendMessageToPlugin = (message: PluginMessage) => {
-    if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(message, "*");
-    }
-  };
+  }, [isReady, note, sendMessageToPlugin]);
 
   const pushThemeToIframe = useCallback(() => {
     const win = iframeRef.current?.contentWindow;
@@ -132,6 +192,8 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
         themeCss,
         dark: resolvedDark,
         inheritTheme: inherit,
+        pluginUiSnapshotType: MessageType.PLUGIN_UI_SNAPSHOT,
+        pluginUiProtocolVersion: PLUGIN_UI_PROTOCOL_VERSION,
       });
 
       if (iframeRef.current) {
@@ -174,9 +236,17 @@ function createSandboxedHTML(
     themeCss: string;
     dark: boolean;
     inheritTheme: boolean;
+    pluginUiSnapshotType: string;
+    pluginUiProtocolVersion: number;
   },
 ): string {
-  const { themeCss, dark, inheritTheme } = opts;
+  const {
+    themeCss,
+    dark,
+    inheritTheme,
+    pluginUiSnapshotType,
+    pluginUiProtocolVersion,
+  } = opts;
   const themeStyle =
     inheritTheme && themeCss.length > 0
       ? `<style id="nodex-theme">${escapeForInlineStyle(themeCss)}</style>`
@@ -222,6 +292,13 @@ function createSandboxedHTML(
       window.Nodex = window.Nodex || {};
       window.Nodex.postMessage = function (data) {
         window.parent.postMessage({ type: 'action', payload: data }, '*');
+      };
+      window.Nodex.postPluginUiState = function (state) {
+        window.parent.postMessage({
+          type: '${pluginUiSnapshotType}',
+          v: ${pluginUiProtocolVersion},
+          state: state,
+        }, '*');
       };
       window.Nodex.onMessage = null;
       window.addEventListener('message', function (event) {

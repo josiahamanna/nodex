@@ -13,13 +13,18 @@ import { PluginLoader } from "./core/plugin-loader";
 import { seedSamplePluginsToUserDir } from "./core/seed-user-plugins";
 import { setPluginProgressSink } from "./core/plugin-progress";
 import { packageManager } from "./core/package-manager";
+import { bootstrapNotesTree, saveNotesState } from "./core/notes-persistence";
 import {
   createNote as createNoteInStore,
+  duplicateSubtreeAt,
   ensureNotesSeeded,
   getFirstNote,
   getNoteById,
   getNotesFlat,
+  getTreeRootId,
+  moveNote as moveNoteInStore,
   renameNote as renameNoteInStore,
+  setNotePluginUiState,
 } from "./core/notes-store";
 import { registry } from "./core/registry";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
@@ -35,6 +40,18 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 let mainWindow: BrowserWindow | null = null;
 let pluginLoader: PluginLoader;
+let notesPersistencePath: string | null = null;
+
+function persistNotes(): void {
+  if (!notesPersistencePath) {
+    return;
+  }
+  try {
+    saveNotesState(notesPersistencePath);
+  } catch (e) {
+    console.warn("[Main] Failed to save notes:", e);
+  }
+}
 
 let ideWorkspaceWatch: fs.FSWatcher | null = null;
 let ideWorkspaceWatchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -240,6 +257,83 @@ app.on("ready", () => {
     return pluginLoader.getManifestUiFields(name.trim());
   });
 
+  pluginLoader.loadAll(registry);
+
+  notesPersistencePath = path.join(userDataPath, "notes-tree.json");
+  bootstrapNotesTree(notesPersistencePath, registry.getRegisteredTypes());
+
+  ipcMain.removeHandler(IPC_CHANNELS.MOVE_NOTE);
+  ipcMain.removeHandler(IPC_CHANNELS.PASTE_SUBTREE);
+  ipcMain.handle(
+    IPC_CHANNELS.MOVE_NOTE,
+    async (
+      _event,
+      payload: { draggedId: string; targetId: string; placement: string },
+    ) => {
+      const registeredTypes = registry.getRegisteredTypes();
+      ensureNotesSeeded(registeredTypes);
+
+      if (!payload || typeof payload !== "object") {
+        throw new Error("Invalid payload");
+      }
+      const { draggedId, targetId } = payload;
+      if (!isValidNoteId(draggedId) || !isValidNoteId(targetId)) {
+        throw new Error("Invalid id");
+      }
+      const p = payload.placement;
+      if (p !== "before" && p !== "after" && p !== "into") {
+        throw new Error("Invalid placement");
+      }
+      moveNoteInStore(draggedId, targetId, p);
+      persistNotes();
+    },
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.PASTE_SUBTREE,
+    async (
+      _event,
+      payload: {
+        sourceId: string;
+        targetId: string;
+        mode: string;
+        placement: string;
+      },
+    ) => {
+      const registeredTypes = registry.getRegisteredTypes();
+      ensureNotesSeeded(registeredTypes);
+
+      if (!payload || typeof payload !== "object") {
+        throw new Error("Invalid payload");
+      }
+      const { sourceId, targetId, mode, placement } = payload;
+      if (!isValidNoteId(sourceId) || !isValidNoteId(targetId)) {
+        throw new Error("Invalid id");
+      }
+      if (mode !== "cut" && mode !== "copy") {
+        throw new Error("Invalid mode");
+      }
+      if (
+        placement !== "before" &&
+        placement !== "after" &&
+        placement !== "into"
+      ) {
+        throw new Error("Invalid placement");
+      }
+      const rootId = getTreeRootId();
+      if (mode === "cut" && rootId && sourceId === rootId) {
+        throw new Error("Cannot cut the workspace root");
+      }
+      if (mode === "cut") {
+        moveNoteInStore(sourceId, targetId, placement);
+        persistNotes();
+        return {};
+      }
+      const { newRootId } = duplicateSubtreeAt(sourceId, targetId, placement);
+      persistNotes();
+      return { newRootId };
+    },
+  );
+
   createWindow();
 
   setPluginProgressSink((payload) => {
@@ -247,8 +341,6 @@ app.on("ready", () => {
       mainWindow.webContents.send(IPC_CHANNELS.PLUGIN_PROGRESS, payload);
     }
   });
-
-  pluginLoader.loadAll(registry);
 });
 
 app.on("window-all-closed", () => {
@@ -325,6 +417,7 @@ ipcMain.handle(
       relation: rel,
       type,
     });
+    persistNotes();
     return { id: created.id };
   },
 );
@@ -340,7 +433,22 @@ ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: strin
     throw new Error("Invalid title");
   }
   renameNoteInStore(id, title);
+  persistNotes();
 });
+
+ipcMain.handle(
+  IPC_CHANNELS.SAVE_NOTE_PLUGIN_UI_STATE,
+  async (_event, noteId: string, state: unknown) => {
+    const registeredTypes = registry.getRegisteredTypes();
+    ensureNotesSeeded(registeredTypes);
+
+    if (!isValidNoteId(noteId)) {
+      throw new Error("Invalid note id");
+    }
+    setNotePluginUiState(noteId, state);
+    persistNotes();
+  },
+);
 
 ipcMain.handle(IPC_CHANNELS.GET_COMPONENT, async (_event, type: string) => {
   if (!isValidNoteType(type)) {
