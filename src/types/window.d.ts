@@ -1,10 +1,20 @@
-import { Note, NoteListItem } from "../preload";
+import {
+  CreateNoteRelation,
+  Note,
+  NoteListItem,
+} from "../preload";
 
 declare global {
   interface Window {
     Nodex: {
-      getNote: (noteId?: string) => Promise<Note>;
+      getNote: (noteId?: string) => Promise<Note | null>;
       getAllNotes: () => Promise<NoteListItem[]>;
+      createNote: (payload: {
+        anchorId?: string;
+        relation: CreateNoteRelation;
+        type: string;
+      }) => Promise<{ id: string }>;
+      renameNote: (id: string, title: string) => Promise<void>;
       getComponent: (type: string) => Promise<string | null>;
       getPluginHTML: (type: string, note: Note) => Promise<string | null>;
       getRegisteredTypes: () => Promise<string[]>;

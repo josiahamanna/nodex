@@ -1,5 +1,9 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
-import { Note, NoteListItem } from "../../preload";
+import {
+  CreateNoteRelation,
+  Note,
+  NoteListItem,
+} from "../../preload";
 
 interface NotesState {
   currentNote: Note | null;
@@ -29,6 +33,25 @@ export const fetchAllNotes = createAsyncThunk(
   },
 );
 
+export const createNote = createAsyncThunk(
+  "notes/createNote",
+  async (payload: {
+    anchorId?: string;
+    relation: CreateNoteRelation;
+    type: string;
+  }) => {
+    return await window.Nodex.createNote(payload);
+  },
+);
+
+export const renameNote = createAsyncThunk(
+  "notes/renameNote",
+  async ({ id, title }: { id: string; title: string }) => {
+    await window.Nodex.renameNote(id, title);
+    return { id, title };
+  },
+);
+
 const notesSlice = createSlice({
   name: "notes",
   initialState,
@@ -48,7 +71,7 @@ const notesSlice = createSlice({
       })
       .addCase(fetchNote.fulfilled, (state, action) => {
         state.loading = false;
-        state.currentNote = action.payload;
+        state.currentNote = action.payload ?? null;
       })
       .addCase(fetchNote.rejected, (state, action) => {
         state.loading = false;
@@ -65,6 +88,24 @@ const notesSlice = createSlice({
       .addCase(fetchAllNotes.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || "Failed to fetch notes list";
+      })
+      .addCase(createNote.fulfilled, (state) => {
+        state.error = null;
+      })
+      .addCase(createNote.rejected, (state, action) => {
+        state.error = action.error.message || "Failed to create note";
+      })
+      .addCase(renameNote.fulfilled, (state, action) => {
+        state.error = null;
+        if (state.currentNote?.id === action.payload.id) {
+          state.currentNote = {
+            ...state.currentNote,
+            title: action.payload.title.trim(),
+          };
+        }
+      })
+      .addCase(renameNote.rejected, (state, action) => {
+        state.error = action.error.message || "Failed to rename note";
       });
   },
 });

@@ -13,13 +13,25 @@ export interface NoteListItem {
   id: string;
   type: string;
   title: string;
+  parentId: string | null;
+  depth: number;
 }
 
+export type CreateNoteRelation = "child" | "sibling" | "root";
+
 contextBridge.exposeInMainWorld("Nodex", {
-  getNote: (noteId?: string): Promise<Note> =>
+  getNote: (noteId?: string): Promise<Note | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_NOTE, noteId),
   getAllNotes: (): Promise<NoteListItem[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_NOTES),
+  createNote: (payload: {
+    anchorId?: string;
+    relation: CreateNoteRelation;
+    type: string;
+  }): Promise<{ id: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CREATE_NOTE, payload),
+  renameNote: (id: string, title: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.RENAME_NOTE, id, title),
   getComponent: (type: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_COMPONENT, type),
   getPluginHTML: (type: string, note: Note): Promise<string | null> =>

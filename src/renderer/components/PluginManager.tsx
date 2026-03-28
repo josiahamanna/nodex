@@ -439,7 +439,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
 
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
-      <header className="border-b border-border px-6 py-4">
+      <header className="border-b border-border px-4 py-3">
         <h2 className="text-[13px] font-semibold text-foreground">
           Plugin Manager
         </h2>
@@ -448,7 +448,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
         </p>
       </header>
 
-      <div className="flex-1 overflow-auto px-8 py-6">
+      <div className="flex-1 overflow-auto px-4 py-4">
         {installModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div className="max-h-[85vh] w-full max-w-lg overflow-auto rounded-lg bg-card p-5 text-card-foreground shadow-xl">

@@ -63,10 +63,14 @@
   --radius-sm: calc(var(--radius) - 4px);
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* In @layer so Tailwind utilities (padding, etc.) reliably override this reset */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+  }
 }
 
 body {
@@ -85,4 +89,32 @@ body {
 
 .nodex-panel-sash {
   cursor: col-resize;
+}
+
+/* Electron/Chromium: native button fill can hide Tailwind bg-primary on primary actions */
+button.nodex-primary-fill {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: none;
+  cursor: pointer;
+}
+
+/*
+ * App shell spacing as plain CSS (not only Tailwind) so padding is never
+ * zeroed by reset / layer ordering issues with arbitrary utilities.
+ */
+/* Single window gutter — do not stack with inner .nodex-app-pad */
+.nodex-app-pad {
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+/* Panel flex host only; content padding lives in Sidebar / NoteViewer / etc. */
+.nodex-panel-shell {
+  box-sizing: border-box;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  padding: 0;
 }

@@ -1508,8 +1508,8 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
 
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
-      <header className="shrink-0 border-b border-border">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
+      <header className="relative z-40 shrink-0 border-b border-border bg-background">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
           <h2 className="mr-1 text-[13px] font-semibold text-foreground">
             Plugin IDE
           </h2>
@@ -1548,7 +1548,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
               </button>
               {toolbarMenu === "file" ? (
                 <div
-                  className="absolute left-0 top-full z-[70] mt-1 min-w-[12rem] rounded-md border border-border bg-background py-1 shadow-lg"
+                  className="absolute left-0 top-full z-50 mt-1 min-w-[12rem] rounded-md border border-border bg-background py-1 shadow-lg"
                   role="menu"
                 >
                   <button
@@ -1701,7 +1701,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
               </button>
               {toolbarMenu === "build" ? (
                 <div
-                  className="absolute left-0 top-full z-[70] mt-1 min-w-[13rem] rounded-md border border-border bg-background py-1 shadow-lg"
+                  className="absolute left-0 top-full z-50 mt-1 min-w-[13rem] rounded-md border border-border bg-background py-1 shadow-lg"
                   role="menu"
                 >
                   <button
@@ -1772,13 +1772,13 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
           </div>
         </div>
         <details className="group border-t border-border/80 bg-muted/20 [&_summary::-webkit-details-marker]:hidden">
-          <summary className="flex cursor-pointer select-none items-center gap-2 px-5 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground">
+          <summary className="flex cursor-pointer select-none items-center gap-2 px-4 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground">
             <span className="inline-block w-3 text-center text-muted-foreground/70 transition-transform group-open:rotate-90">
               ›
             </span>
             Keyboard shortcuts
           </summary>
-          <div className="border-t border-border/70 px-5 py-3">
+          <div className="border-t border-border/70 px-4 py-3">
             <ul className="grid grid-cols-1 gap-x-10 gap-y-2 text-[11px] text-muted-foreground sm:grid-cols-2">
               <li>
                 <kbd className={IDE_SHORTCUT_KBD}>⌘/Ctrl+S</kbd> Save
@@ -1829,13 +1829,13 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
         </details>
       </header>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-border bg-muted/30 px-5 py-3">
+      <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-border bg-muted/30 px-4 py-3">
         <span className="text-[12px] font-semibold text-foreground">
           Dependencies
         </span>
         <div
           ref={npmWrapRef}
-          className="relative z-[80] isolate flex-1 min-w-[14rem] max-w-xl"
+          className="relative isolate z-0 flex-1 min-w-[14rem] max-w-xl"
         >
           <input
             type="search"
@@ -1847,7 +1847,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             disabled={!pluginFolder || busy}
           />
           {npmMenuOpen && pluginFolder && (
-            <div className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-72 overflow-auto rounded-md border border-border bg-background shadow-xl text-sm">
+            <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-auto rounded-md border border-border bg-background shadow-xl text-sm">
               {filteredInstalled.length > 0 && (
                 <div className="p-2 border-b border-border bg-background">
                   <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">
@@ -1968,7 +1968,11 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
           type="button"
           disabled={!pluginFolder || busy}
           onClick={() => void runInstallDependencies()}
-          className="min-h-7 rounded-sm bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-92 disabled:opacity-50"
+          className="nodex-primary-fill min-h-7 rounded-sm border-0 px-3 py-1.5 text-[12px] font-medium shadow-sm transition-opacity hover:opacity-92 disabled:opacity-50"
+          style={{
+            backgroundColor: "hsl(var(--primary))",
+            color: "hsl(var(--primary-foreground))",
+          }}
         >
           Install dependencies
         </button>
@@ -2031,7 +2035,11 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
               </button>
               <button
                 type="button"
-                className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                className="nodex-primary-fill rounded px-3 py-1.5 text-sm hover:opacity-90 disabled:opacity-50"
+                style={{
+                  backgroundColor: "hsl(var(--primary))",
+                  color: "hsl(var(--primary-foreground))",
+                }}
                 disabled={busy}
                 onClick={() => void submitPathModal()}
               >
@@ -2049,7 +2057,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
       )}
 
       {tscDiagnostics.length > 0 && (
-        <div className="max-h-40 shrink-0 overflow-y-auto border-b border-border bg-rose-50/50 px-5 py-3 text-[11px] dark:bg-rose-950/20">
+        <div className="max-h-40 shrink-0 overflow-y-auto border-b border-border bg-rose-50/50 px-4 py-3 text-[11px] dark:bg-rose-950/20">
           <div className="mb-2 font-semibold text-foreground">
             Problems ({tscDiagnostics.length})
           </div>

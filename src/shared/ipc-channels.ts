@@ -5,6 +5,8 @@ export const IPC_CHANNELS = {
   GET_PLUGIN_MANIFEST_UI: "plugin:get-manifest-ui",
   GET_NOTE: "note:get",
   GET_ALL_NOTES: "note:get-all",
+  CREATE_NOTE: "note:create",
+  RENAME_NOTE: "note:rename",
   GET_COMPONENT: "plugin:get-component",
   GET_PLUGIN_HTML: "plugin:get-html",
   GET_REGISTERED_TYPES: "plugin:get-registered-types",

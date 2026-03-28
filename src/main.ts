@@ -13,6 +13,14 @@ import { PluginLoader } from "./core/plugin-loader";
 import { seedSamplePluginsToUserDir } from "./core/seed-user-plugins";
 import { setPluginProgressSink } from "./core/plugin-progress";
 import { packageManager } from "./core/package-manager";
+import {
+  createNote as createNoteInStore,
+  ensureNotesSeeded,
+  getFirstNote,
+  getNoteById,
+  getNotesFlat,
+  renameNote as renameNoteInStore,
+} from "./core/notes-store";
 import { registry } from "./core/registry";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
 import { toFileUri } from "./shared/file-uri";
@@ -257,66 +265,81 @@ app.on("activate", () => {
 
 ipcMain.handle(IPC_CHANNELS.GET_NOTE, async (_event, noteId?: string) => {
   const registeredTypes = registry.getRegisteredTypes();
-
-  const sampleContent: Record<string, any> = {
-    markdown: {
-      content:
-        "# Hello World\n\nThis is a **markdown** note rendered by a plugin!\n\n## Features\n\n- Dynamic plugin loading\n- Component registry\n- Hot reload support",
-    },
-    text: {
-      content:
-        "<h1>Rich Text Editor</h1><p>This note uses <strong>Tiptap</strong> for rich text editing.</p>",
-    },
-    code: {
-      content:
-        'function hello() {\n  console.log("Hello from Monaco!");\n}\n\nhello();',
-      metadata: { language: "javascript" },
-    },
-  };
-
-  const typeToTitle: Record<string, string> = {
-    markdown: "Markdown Note",
-    text: "Rich Text Note",
-    code: "Code Editor",
-  };
-
-  const notes = registeredTypes.map((type, index) => ({
-    id: String(index + 1),
-    type: type,
-    title:
-      typeToTitle[type] ||
-      `${type.charAt(0).toUpperCase() + type.slice(1)} Note`,
-    content: sampleContent[type]?.content || `Sample content for ${type}`,
-    metadata: sampleContent[type]?.metadata,
-  }));
+  ensureNotesSeeded(registeredTypes);
 
   if (noteId) {
-    const note = notes.find((note) => note.id === noteId);
+    if (!isValidNoteId(noteId)) {
+      throw new Error("Invalid note id");
+    }
+    const note = getNoteById(noteId);
     if (!note) {
       throw new Error("Note not found");
     }
-    return note;
+    const { id, type, title, content, metadata } = note;
+    return { id, type, title, content, metadata };
   }
 
-  return notes.length > 0 ? notes[0] : null;
+  const first = getFirstNote();
+  if (!first) {
+    return null;
+  }
+  const { id, type, title, content, metadata } = first;
+  return { id, type, title, content, metadata };
 });
 
 ipcMain.handle(IPC_CHANNELS.GET_ALL_NOTES, async () => {
   const registeredTypes = registry.getRegisteredTypes();
+  ensureNotesSeeded(registeredTypes);
+  return getNotesFlat();
+});
 
-  const typeToTitle: Record<string, string> = {
-    markdown: "Markdown Note",
-    text: "Rich Text Note",
-    code: "Code Editor",
-  };
+ipcMain.handle(
+  IPC_CHANNELS.CREATE_NOTE,
+  async (
+    _event,
+    payload: { anchorId?: string; relation: string; type: string },
+  ) => {
+    const registeredTypes = registry.getRegisteredTypes();
+    ensureNotesSeeded(registeredTypes);
 
-  return registeredTypes.map((type, index) => ({
-    id: String(index + 1),
-    type: type,
-    title:
-      typeToTitle[type] ||
-      `${type.charAt(0).toUpperCase() + type.slice(1)} Note`,
-  }));
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload");
+    }
+    const { type } = payload;
+    if (!isValidNoteType(type) || !registeredTypes.includes(type)) {
+      throw new Error("Invalid note type");
+    }
+    const rel = payload.relation;
+    if (rel !== "child" && rel !== "sibling" && rel !== "root") {
+      throw new Error("Invalid relation");
+    }
+    let anchorId = payload.anchorId;
+    if (anchorId !== undefined && !isValidNoteId(anchorId)) {
+      throw new Error("Invalid anchor id");
+    }
+    if (rel === "root") {
+      anchorId = undefined;
+    }
+    const created = createNoteInStore({
+      anchorId,
+      relation: rel,
+      type,
+    });
+    return { id: created.id };
+  },
+);
+
+ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: string) => {
+  const registeredTypes = registry.getRegisteredTypes();
+  ensureNotesSeeded(registeredTypes);
+
+  if (!isValidNoteId(id)) {
+    throw new Error("Invalid note id");
+  }
+  if (typeof title !== "string") {
+    throw new Error("Invalid title");
+  }
+  renameNoteInStore(id, title);
 });
 
 ipcMain.handle(IPC_CHANNELS.GET_COMPONENT, async (_event, type: string) => {

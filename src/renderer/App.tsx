@@ -6,11 +6,17 @@ import {
   PanelResizeHandle,
 } from "react-resizable-panels";
 import { AppDispatch, RootState } from "./store";
-import { fetchNote, fetchAllNotes } from "./store/notesSlice";
+import {
+  createNote,
+  fetchNote,
+  fetchAllNotes,
+  renameNote,
+} from "./store/notesSlice";
 import Sidebar from "./components/Sidebar";
 import NoteViewer from "./components/NoteViewer";
 import PluginManager from "./components/PluginManager";
 import PluginIDE from "./components/PluginIDE";
+import type { CreateNoteRelation } from "../preload";
 
 const App: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -19,15 +25,17 @@ const App: React.FC = () => {
   );
   const [showPluginManager, setShowPluginManager] = useState(false);
   const [showPluginIde, setShowPluginIde] = useState(false);
+  const [registeredTypes, setRegisteredTypes] = useState<string[]>([]);
 
   useEffect(() => {
     dispatch(fetchAllNotes());
     dispatch(fetchNote());
+    void window.Nodex.getRegisteredTypes().then(setRegisteredTypes);
 
-    // Listen for plugin changes from main process
     const unsubscribe = window.Nodex.onPluginsChanged(() => {
       dispatch(fetchAllNotes());
       dispatch(fetchNote());
+      void window.Nodex.getRegisteredTypes().then(setRegisteredTypes);
     });
 
     return unsubscribe;
@@ -52,24 +60,46 @@ const App: React.FC = () => {
   const handlePluginsChanged = () => {
     dispatch(fetchAllNotes());
     dispatch(fetchNote());
+    void window.Nodex.getRegisteredTypes().then(setRegisteredTypes);
+  };
+
+  const handleCreateNote = async (payload: {
+    anchorId?: string;
+    relation: CreateNoteRelation;
+    type: string;
+  }) => {
+    setShowPluginManager(false);
+    setShowPluginIde(false);
+    const { id } = await dispatch(createNote(payload)).unwrap();
+    await dispatch(fetchAllNotes());
+    dispatch(fetchNote(id));
+  };
+
+  const handleRenameNote = async (id: string, title: string) => {
+    await dispatch(renameNote({ id, title })).unwrap();
+    await dispatch(fetchAllNotes());
+    if (currentNote?.id === id) {
+      dispatch(fetchNote(id));
+    }
   };
 
   return (
-    <div className="box-border flex h-screen min-h-0 flex-col bg-muted/45 p-3 text-foreground sm:p-4 dark:bg-muted/25">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-sm">
+    <div className="nodex-app-pad box-border flex h-screen min-h-0 flex-col bg-muted/45 text-foreground dark:bg-muted/25">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-sm box-border">
         <PanelGroup
           direction="horizontal"
           autoSaveId="nodex-sidebar"
-          className="min-h-0 min-w-0 flex-1"
+          className="min-h-0 min-w-0 flex-1 box-border"
         >
           <Panel
             defaultSize={20}
             minSize={12}
             maxSize={40}
-            className="min-h-0 min-w-0"
+            className="nodex-panel-shell"
           >
             <Sidebar
               notes={notesList}
+              registeredTypes={registeredTypes}
               currentNoteId={currentNote?.id}
               activeSidebarTool={
                 showPluginIde
@@ -79,13 +109,15 @@ const App: React.FC = () => {
                     : null
               }
               onNoteSelect={handleNoteSelect}
+              onCreateNote={handleCreateNote}
+              onRenameNote={handleRenameNote}
               onPluginManagerOpen={handlePluginManagerOpen}
               onPluginIdeOpen={handlePluginIdeOpen}
             />
           </Panel>
           <PanelResizeHandle className="nodex-panel-sash relative w-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-y-0 before:left-1/2 before:z-10 before:w-px before:-translate-x-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
-          <Panel defaultSize={80} minSize={55} className="min-h-0 min-w-0">
-            <main className="h-full overflow-hidden">
+          <Panel defaultSize={80} minSize={55} className="nodex-panel-shell">
+            <main className="box-border h-full min-h-0 flex-1 overflow-hidden">
               {showPluginIde ? (
                 <PluginIDE onPluginsChanged={handlePluginsChanged} />
               ) : showPluginManager ? (

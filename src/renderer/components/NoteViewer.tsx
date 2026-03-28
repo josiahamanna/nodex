@@ -36,7 +36,7 @@ const NoteViewer: React.FC<NoteViewerProps> = ({ note }) => {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
-      <header className="shrink-0 border-b border-border px-6 py-4">
+      <header className="shrink-0 border-b border-border px-4 py-3">
         <h2 className="text-[13px] font-semibold leading-tight text-foreground">
           {note.title}
         </h2>
@@ -52,7 +52,7 @@ const NoteViewer: React.FC<NoteViewerProps> = ({ note }) => {
           ) : null}
         </div>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto p-6">
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-3">
         <div className="min-h-0 flex-1">{renderNote()}</div>
       </div>
     </div>
