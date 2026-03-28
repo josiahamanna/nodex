@@ -54,7 +54,8 @@ function App() {
     typeof window !== "undefined" && window.__NODEX_NOTE__
       ? window.__NODEX_NOTE__.content
       : "";
-  const [content, setContent] = useState(initial);
+  const initial__ = "#Jehu"
+  const [content, setContent] = useState(initial__);
   const [mode, setMode] = useState<ViewMode>("split");
 
   useEffect(() => {

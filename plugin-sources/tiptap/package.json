@@ -5,6 +5,8 @@
   "dependencies": {
     "@tiptap/pm": "^3.21.0",
     "@tiptap/react": "^3.21.0",
-    "@tiptap/starter-kit": "^3.21.0"
+    "@tiptap/starter-kit": "^3.21.0",
+    "react": "^19.2.4",
+    "styled-components": "^6.3.12"
   }
 }

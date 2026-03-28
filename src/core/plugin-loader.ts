@@ -2084,6 +2084,23 @@ export class PluginLoader {
       seed.add(k);
     }
 
+    let needsHostReactTypings = Boolean(manifest.ui);
+    if (!needsHostReactTypings) {
+      try {
+        const files = this.listPluginSourceFiles(installedFolderName);
+        needsHostReactTypings = files.some((f) => {
+          const lower = f.toLowerCase();
+          return lower.endsWith(".tsx") || lower.endsWith(".jsx");
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+    if (needsHostReactTypings) {
+      seed.add("react");
+      seed.add("react-dom");
+    }
+
     const pkgNames = this.collectTransitiveNpmPackageNames(
       seed,
       localNm,

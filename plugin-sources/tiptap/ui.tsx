@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import type { Editor } from "@tiptap/core";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import styled from "styled-components";
+
 
 interface NotePayload {
   id: string;
@@ -24,6 +26,13 @@ declare global {
   }
 }
 
+const Container = styled.div`
+  display: flex;
+  flex-direction: column;
+  background: red;
+  height: 100%;
+`;
+
 function MenuBar({ editor }: { editor: Editor | null }) {
   if (!editor) {
     return null;
@@ -36,7 +45,7 @@ function MenuBar({ editor }: { editor: Editor | null }) {
       () => editor.isActive("bold"),
     ],
     [
-      "Italic",
+      "Italsssssssssssssssssssssssssssssssssic",
       () => editor.chain().focus().toggleItalic().run(),
       () => editor.isActive("italic"),
     ],
@@ -121,7 +130,7 @@ function EditorApp() {
   }, [editor]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <Container>
       <MenuBar editor={editor} />
       <div
         style={{
@@ -134,7 +143,7 @@ function EditorApp() {
       >
         <EditorContent editor={editor} />
       </div>
-    </div>
+    </Container>
   );
 }
 

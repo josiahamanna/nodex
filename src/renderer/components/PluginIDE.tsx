@@ -23,12 +23,55 @@ import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
 
 const PLUGIN_IDE_FILES_COLLAPSED_KEY = "plugin-ide-files-collapsed";
 const PLUGIN_IDE_TSC_ON_SAVE_KEY = "plugin-ide-tsc-on-save";
+const PLUGIN_IDE_RELOAD_ON_SAVE_KEY = "plugin-ide-reload-on-save";
+const PLUGIN_IDE_SNAPSHOT_KEY = "plugin-ide-workspace-snapshot-v1";
+const PLUGIN_IDE_MAX_SNAPSHOT_FILE_BYTES = 500 * 1024;
 const NPM_DEBOUNCE_MS = 280;
 
 interface OpenTab {
   relativePath: string;
   content: string;
   savedContent: string;
+}
+
+interface StoredWorkspaceSnapshot {
+  tabs: OpenTab[];
+  activePath: string | null;
+  cursors: Record<string, { lineNumber: number; column: number }>;
+}
+
+function readSnapshotMap(): Record<string, StoredWorkspaceSnapshot> {
+  try {
+    const raw = localStorage.getItem(PLUGIN_IDE_SNAPSHOT_KEY);
+    if (!raw) {
+      return {};
+    }
+    const p = JSON.parse(raw) as Record<string, StoredWorkspaceSnapshot>;
+    return p && typeof p === "object" ? p : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSnapshotMap(m: Record<string, StoredWorkspaceSnapshot>): void {
+  try {
+    localStorage.setItem(PLUGIN_IDE_SNAPSHOT_KEY, JSON.stringify(m));
+  } catch {
+    /* quota */
+  }
+}
+
+function formatImportedPathsForStatus(imported: string[] | undefined): string {
+  if (!imported?.length) {
+    return "";
+  }
+  const maxShow = 12;
+  const head = imported.slice(0, maxShow).join(", ");
+  const more =
+    imported.length > maxShow
+      ? ` (+${imported.length - maxShow} more)`
+      : "";
+  return ` — ${head}${more}`;
 }
 
 interface PluginIDEProps {
@@ -180,7 +223,19 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
   const [tscOnSave, setTscOnSave] = useState(
     () => localStorage.getItem(PLUGIN_IDE_TSC_ON_SAVE_KEY) === "1",
   );
+  const [reloadOnSave, setReloadOnSave] = useState(
+    () => localStorage.getItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY) === "1",
+  );
   const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
+  const tabsRef = useRef<OpenTab[]>([]);
+  const activePathRef = useRef<string | null>(null);
+  const cursorByPathRef = useRef<
+    Record<string, { lineNumber: number; column: number }>
+  >({});
+  const prevActivePathForCursorRef = useRef<string | null>(null);
+  const reloadAfterSaveTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const pathClipboardRef = useRef<{ rel: string; isDir: boolean } | null>(
     null,
   );
@@ -194,11 +249,79 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     [tabs, activePath],
   );
 
+  tabsRef.current = tabs;
+  activePathRef.current = activePath;
+
+  const dirtyTabCount = useMemo(
+    () => tabs.filter((t) => t.content !== t.savedContent).length,
+    [tabs],
+  );
+
+  const flushWorkspaceSnapshot = useCallback((pluginId: string) => {
+    if (!pluginId) {
+      return;
+    }
+    const tabsSnap: OpenTab[] = [];
+    for (const t of tabsRef.current) {
+      if (
+        t.content.length > PLUGIN_IDE_MAX_SNAPSHOT_FILE_BYTES ||
+        t.savedContent.length > PLUGIN_IDE_MAX_SNAPSHOT_FILE_BYTES
+      ) {
+        continue;
+      }
+      tabsSnap.push({ ...t });
+    }
+    const cursors = { ...cursorByPathRef.current };
+    const ap = activePathRef.current;
+    const ed = editorRef.current;
+    if (ed && ap) {
+      const pos = ed.getPosition();
+      if (pos) {
+        cursors[ap] = {
+          lineNumber: pos.lineNumber,
+          column: pos.column,
+        };
+      }
+    }
+    const snap: StoredWorkspaceSnapshot = {
+      tabs: tabsSnap,
+      activePath: ap,
+      cursors,
+    };
+    const all = readSnapshotMap();
+    all[pluginId] = snap;
+    writeSnapshotMap(all);
+  }, []);
+
   const refreshTypes = useCallback(async () => {
     const t = await window.Nodex.getRegisteredTypes();
     setTypes(t);
     setPreviewType((cur) => (t.includes(cur) ? cur : t[0] ?? ""));
   }, []);
+
+  const scheduleReloadAfterSave = useCallback(() => {
+    if (!reloadOnSave) {
+      return;
+    }
+    if (reloadAfterSaveTimerRef.current) {
+      clearTimeout(reloadAfterSaveTimerRef.current);
+    }
+    reloadAfterSaveTimerRef.current = setTimeout(() => {
+      reloadAfterSaveTimerRef.current = null;
+      void (async () => {
+        try {
+          const r = await window.Nodex.reloadPluginRegistry();
+          if (r.success) {
+            setPreviewRev((x) => x + 1);
+            await refreshTypes();
+            onPluginsChanged?.();
+          }
+        } catch {
+          /* ignore */
+        }
+      })();
+    }, 500);
+  }, [reloadOnSave, refreshTypes, onPluginsChanged]);
 
   const refreshFileList = useCallback(async () => {
     if (!pluginFolder) {
@@ -228,6 +351,15 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
   }, [refreshTypes, refreshWorkspaceFolders]);
 
   useEffect(() => {
+    return () => {
+      if (reloadAfterSaveTimerRef.current) {
+        clearTimeout(reloadAfterSaveTimerRef.current);
+        reloadAfterSaveTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     void window.Nodex.setIdeWorkspaceWatch(pluginFolder || null);
     return () => {
       void window.Nodex.setIdeWorkspaceWatch(null);
@@ -244,6 +376,91 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
   useEffect(() => {
     void refreshFileList();
   }, [refreshFileList]);
+
+  useEffect(() => {
+    const id = pluginFolder;
+    return () => {
+      if (id) {
+        flushWorkspaceSnapshot(id);
+      }
+    };
+  }, [pluginFolder, flushWorkspaceSnapshot]);
+
+  useEffect(() => {
+    if (!pluginFolder) {
+      setTabs([]);
+      setActivePath(null);
+      cursorByPathRef.current = {};
+      prevActivePathForCursorRef.current = null;
+      return;
+    }
+    const snap = readSnapshotMap()[pluginFolder];
+    if (!snap?.tabs?.length) {
+      setTabs([]);
+      setActivePath(null);
+      cursorByPathRef.current = {};
+      prevActivePathForCursorRef.current = null;
+      return;
+    }
+    setTabs(snap.tabs);
+    const ap =
+      snap.activePath &&
+      snap.tabs.some((t) => t.relativePath === snap.activePath)
+        ? snap.activePath
+        : (snap.tabs[0]?.relativePath ?? null);
+    setActivePath(ap);
+    cursorByPathRef.current = { ...snap.cursors };
+    prevActivePathForCursorRef.current = ap;
+  }, [pluginFolder]);
+
+  useEffect(() => {
+    const prev = prevActivePathForCursorRef.current;
+    if (prev && editorRef.current) {
+      const pos = editorRef.current.getPosition();
+      if (pos) {
+        cursorByPathRef.current[prev] = {
+          lineNumber: pos.lineNumber,
+          column: pos.column,
+        };
+      }
+    }
+    prevActivePathForCursorRef.current = activePath;
+  }, [activePath]);
+
+  useEffect(() => {
+    if (!activePath) {
+      return;
+    }
+    const pos = cursorByPathRef.current[activePath];
+    if (!pos) {
+      return;
+    }
+    let cancelled = false;
+    const outer = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (cancelled) {
+          return;
+        }
+        const ed = editorRef.current;
+        if (!ed) {
+          return;
+        }
+        ed.setPosition({
+          lineNumber: pos.lineNumber,
+          column: pos.column,
+        });
+        ed.revealPositionInCenter({
+          lineNumber: pos.lineNumber,
+          column: pos.column,
+        });
+        delete cursorByPathRef.current[activePath];
+      });
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(outer);
+    };
+  }, [activePath, workspaceRootFileUri]);
 
   useEffect(() => {
     let cancelled = false;
@@ -467,7 +684,54 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
         }
       })();
     }
+    scheduleReloadAfterSave();
     return true;
+  };
+
+  const saveAllDirtyTabs = async (): Promise<boolean> => {
+    if (!pluginFolder) {
+      return true;
+    }
+    const dirty = tabs.filter((t) => t.content !== t.savedContent);
+    if (dirty.length === 0) {
+      setStatus("Nothing to save.");
+      return true;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      for (const t of dirty) {
+        const res = await window.Nodex.writePluginSourceFile(
+          pluginFolder,
+          t.relativePath,
+          t.content,
+        );
+        if (!res.success) {
+          setStatus(res.error ?? `Save failed: ${t.relativePath}`);
+          return false;
+        }
+      }
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.content !== t.savedContent ? { ...t, savedContent: t.content } : t,
+        ),
+      );
+      setStatus(`Saved ${dirty.length} file(s).`);
+      if (tscOnSave) {
+        void (async () => {
+          try {
+            const tr = await window.Nodex.runPluginTypecheck(pluginFolder);
+            setTscDiagnostics(tr.diagnostics);
+          } catch {
+            /* ignore */
+          }
+        })();
+      }
+      scheduleReloadAfterSave();
+      return true;
+    } finally {
+      setBusy(false);
+    }
   };
 
   const closeTab = (rel: string, e?: React.MouseEvent) => {
@@ -540,20 +804,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
       setPreviewRev((r) => r + 1);
       await refreshTypes();
       onPluginsChanged?.();
-      setStatus("Bundled and registry reloaded.");
-      if (
-        typeof window.confirm === "function" &&
-        window.confirm("Copy dist/ contents to another folder now?")
-      ) {
-        const cp = await window.Nodex.copyPluginDistToFolder(pluginFolder);
-        if (cp.success) {
-          setStatus("Bundled, reloaded, and dist/ copied.");
-        } else if (cp.error !== "Cancelled") {
-          setStatus(
-            cp.error ?? "dist copy failed (bundle + reload succeeded).",
-          );
-        }
-      }
+      setStatus(
+        "Bundled and registry reloaded. Use File → Copy dist… to export dist/ elsewhere.",
+      );
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Error");
     } finally {
@@ -767,7 +1020,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
         return;
       }
       await refreshFileList();
-      setStatus(`Imported ${res.imported?.length ?? 0} file(s).`);
+      setStatus(
+        `Imported ${res.imported?.length ?? 0} file(s) under plugin root.${formatImportedPathsForStatus(res.imported)}`,
+      );
     } finally {
       setBusy(false);
     }
@@ -794,7 +1049,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
         return;
       }
       await refreshFileList();
-      setStatus(`Imported ${res.imported?.length ?? 0} file(s) from folder.`);
+      setStatus(
+        `Imported ${res.imported?.length ?? 0} file(s) from folder under plugin root.${formatImportedPathsForStatus(res.imported)}`,
+      );
     } finally {
       setBusy(false);
     }
@@ -1096,6 +1353,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
 
   const ideActionsRef = useRef({
     saveActive,
+    saveAllDirtyTabs,
     runTypecheck,
     bundleLocalOnly,
     bundleAndReload,
@@ -1113,6 +1371,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
   });
   ideActionsRef.current = {
     saveActive,
+    saveAllDirtyTabs,
     runTypecheck,
     bundleLocalOnly,
     bundleAndReload,
@@ -1155,7 +1414,11 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
       const mod = ev.ctrlKey || ev.metaKey;
       if (mod && ev.key.toLowerCase() === "s") {
         ev.preventDefault();
-        void a.saveActive();
+        if (ev.shiftKey) {
+          void a.saveAllDirtyTabs();
+        } else {
+          void a.saveActive();
+        }
         return;
       }
       if (!mod || !ev.shiftKey) {
@@ -1250,8 +1513,6 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
               value={pluginFolder}
               onChange={(e) => {
                 setPluginFolder(e.target.value);
-                setTabs([]);
-                setActivePath(null);
               }}
             >
               <option value="">—</option>
@@ -1294,6 +1555,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     }}
                   >
                     Save
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || busy || dirtyTabCount === 0}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void saveAllDirtyTabs();
+                    }}
+                  >
+                    Save all
                   </button>
                   <button
                     type="button"
@@ -1492,18 +1765,21 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
           </div>
         </div>
         <div className="px-4 pb-2 text-xs text-gray-500 leading-snug">
-          ⌘/Ctrl+S save · ⇧T types · ⇧B bundle · ⇧L reload · ⇧E bundle+reload · ⇧O
-          import · ⇧N new file · ⇧P parent · ⇧D copy dist · ⇧C/⇧V copy/paste · ⇧M
-          rename · F2 rename · ⇧I npm install · ⇧⌫ delete
+          ⌘/Ctrl+S save · ⌘/Ctrl+⇧S save all · ⇧T types · ⇧B bundle · ⇧L reload · ⇧E
+          bundle+reload · ⇧O import · ⇧N new file · ⇧P parent · ⇧D copy dist ·
+          ⇧C/⇧V copy/paste · ⇧M rename · F2 rename · ⇧I npm install · ⇧⌫ delete
         </div>
       </header>
 
-      <div className="border-b border-gray-200 px-4 py-2 flex flex-wrap items-center gap-3 shrink-0 bg-gray-50/80">
+      <div className="border-b border-gray-200 px-4 py-2 flex flex-wrap items-center gap-3 shrink-0 bg-gray-50">
         <span className="text-sm font-medium text-gray-700">Dependencies</span>
-        <div ref={npmWrapRef} className="relative flex-1 min-w-[14rem] max-w-xl">
+        <div
+          ref={npmWrapRef}
+          className="relative z-[80] isolate flex-1 min-w-[14rem] max-w-xl"
+        >
           <input
             type="search"
-            className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
+            className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white"
             placeholder="Search npm (2+ chars) or installed packages…"
             value={npmQuery}
             onChange={(e) => setNpmQuery(e.target.value)}
@@ -1511,9 +1787,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             disabled={!pluginFolder || busy}
           />
           {npmMenuOpen && pluginFolder && (
-            <div className="absolute left-0 right-0 top-full mt-1 z-50 max-h-72 overflow-auto rounded-md border border-gray-200 bg-white shadow-lg text-sm">
+            <div className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-72 overflow-auto rounded-md border border-gray-200 bg-white shadow-xl text-sm">
               {filteredInstalled.length > 0 && (
-                <div className="p-2 border-b border-gray-100">
+                <div className="p-2 border-b border-gray-200 bg-white">
                   <div className="text-xs font-semibold text-gray-500 uppercase mb-1">
                     Installed
                   </div>
@@ -1534,7 +1810,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                 </div>
               )}
               {npmQuery.trim().length >= 2 && (
-                <div className="p-2">
+                <div className="p-2 bg-white">
                   <div className="text-xs font-semibold text-gray-500 uppercase mb-1">
                     npm registry
                   </div>
@@ -1608,6 +1884,22 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             }}
           />
           Typecheck on save
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={reloadOnSave}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setReloadOnSave(v);
+              if (v) {
+                localStorage.setItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY, "1");
+              } else {
+                localStorage.removeItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY);
+              }
+            }}
+          />
+          Reload registry on save
         </label>
         <button
           type="button"
@@ -1788,9 +2080,15 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
             >
               {tabs.map((t) => {
                 const dirty = t.content !== t.savedContent;
+                const base = t.relativePath.split("/").pop() ?? t.relativePath;
                 return (
                   <div
                     key={t.relativePath}
+                    title={
+                      dirty
+                        ? `${t.relativePath} (unsaved)`
+                        : t.relativePath
+                    }
                     className={`flex items-center gap-1 px-2 py-1 border-r border-gray-200 text-sm cursor-pointer whitespace-nowrap ${
                       activePath === t.relativePath
                         ? "bg-white text-gray-900"
@@ -1802,8 +2100,8 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     aria-selected={activePath === t.relativePath}
                   >
                     <span>
-                      {dirty ? "● " : ""}
-                      {t.relativePath.split("/").pop()}
+                      {dirty ? "* " : ""}
+                      {base}
                     </span>
                     <button
                       type="button"
@@ -1817,6 +2115,12 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                 );
               })}
             </div>
+            {dirtyTabCount > 0 ? (
+              <div className="px-2 py-0.5 text-xs text-amber-800 bg-amber-50 border-b border-amber-100 shrink-0">
+                {dirtyTabCount} unsaved file
+                {dirtyTabCount === 1 ? "" : "s"}
+              </div>
+            ) : null}
             <div className="flex-1 min-h-0">
               {activeTab ? (
                 <Editor
