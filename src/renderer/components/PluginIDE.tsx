@@ -6,7 +6,7 @@ import React, {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import Editor, { type BeforeMount, type OnMount } from "@monaco-editor/react";
+import Editor, { type OnMount } from "@monaco-editor/react";
 import {
   editor as monacoEditor,
   MarkerSeverity,
@@ -18,9 +18,7 @@ import {
   PanelResizeHandle,
   type ImperativePanelHandle,
 } from "react-resizable-panels";
-import { Note } from "../../preload";
 import { joinFileUri } from "../../shared/file-uri";
-import { NODEX_PLUGIN_UI_MONACO_URI } from "../../shared/nodex-plugin-ui-monaco-uri";
 import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
 import { useNodexDialog } from "../dialog/NodexDialogProvider";
 import { useTheme } from "../theme/ThemeContext";
@@ -41,219 +39,38 @@ import {
   type IdeShellStateDetail,
   type IdeShellTreeFsOpDetail,
 } from "../plugin-ide/ideShellBridge";
-
-const PLUGIN_IDE_FILES_COLLAPSED_KEY = "plugin-ide-files-collapsed";
-const PLUGIN_IDE_TSC_ON_SAVE_KEY = "plugin-ide-tsc-on-save";
-const PLUGIN_IDE_FORMAT_ON_SAVE_KEY = "plugin-ide-format-on-save";
-const PLUGIN_IDE_RELOAD_ON_SAVE_KEY = "plugin-ide-reload-on-save";
-/** Same width as shell `EditorTabSidebar` menus (fixed avoids full-width `fixed`/`absolute` panels). */
-const PLUGIN_IDE_TOOLBAR_MENU_PANEL =
-  "absolute left-0 top-full z-50 mt-1 w-[min(18rem,calc(100vw-12px))] rounded-md border border-border bg-background py-1 shadow-lg";
-const PLUGIN_IDE_SNAPSHOT_KEY = "plugin-ide-workspace-snapshot-v1";
-
-/** Placeholder from main `listPluginSourceFiles` when `node_modules` exists (not a real file). */
-const NODE_MODULES_LIST_MARKER = "node_modules/";
-const PLUGIN_IDE_MAX_SNAPSHOT_FILE_BYTES = 500 * 1024;
-const NPM_DEBOUNCE_MS = 280;
-const PLUGIN_IDE_CUSTOM_EDITOR_KEY = "plugin-ide-custom-editor-cmd";
-
-interface OpenTab {
-  relativePath: string;
-  content: string;
-  savedContent: string;
-  /** Disk mtime when buffer last matched disk (open/save); null until known. */
-  diskMtimeMs: number | null;
-}
-
-interface StoredWorkspaceSnapshot {
-  tabs: OpenTab[];
-  activePath: string | null;
-  cursors: Record<string, { lineNumber: number; column: number }>;
-}
-
-function readSnapshotMap(): Record<string, StoredWorkspaceSnapshot> {
-  try {
-    const raw = localStorage.getItem(PLUGIN_IDE_SNAPSHOT_KEY);
-    if (!raw) {
-      return {};
-    }
-    const p = JSON.parse(raw) as Record<string, StoredWorkspaceSnapshot>;
-    return p && typeof p === "object" ? p : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeSnapshotMap(m: Record<string, StoredWorkspaceSnapshot>): void {
-  try {
-    localStorage.setItem(PLUGIN_IDE_SNAPSHOT_KEY, JSON.stringify(m));
-  } catch {
-    /* quota */
-  }
-}
-
-function formatImportedPathsForStatus(imported: string[] | undefined): string {
-  if (!imported?.length) {
-    return "";
-  }
-  const maxShow = 12;
-  const head = imported.slice(0, maxShow).join(", ");
-  const more =
-    imported.length > maxShow
-      ? ` (+${imported.length - maxShow} more)`
-      : "";
-  return ` — ${head}${more}`;
-}
+import { monacoBeforeMount } from "../plugin-ide/plugin-ide-monaco";
+import {
+  NPM_DEBOUNCE_MS,
+  NODE_MODULES_LIST_MARKER,
+  PLUGIN_IDE_CUSTOM_EDITOR_KEY,
+  PLUGIN_IDE_FILES_COLLAPSED_KEY,
+  PLUGIN_IDE_FORMAT_ON_SAVE_KEY,
+  PLUGIN_IDE_MAX_SNAPSHOT_FILE_BYTES,
+  PLUGIN_IDE_RELOAD_ON_SAVE_KEY,
+  PLUGIN_IDE_TOOLBAR_MENU_PANEL,
+  PLUGIN_IDE_TSC_ON_SAVE_KEY,
+  basenameRel,
+  formatImportedPathsForStatus,
+  initialPasteDestRel,
+  languageForPath,
+  normalizePluginRelPath,
+  readSnapshotMap,
+  sampleNoteForType,
+  siblingCopyRelativePath,
+  writeSnapshotMap,
+  type InstalledPkg,
+  type NpmSearchRow,
+  type OpenTab,
+  type PathModalState,
+  type StoredWorkspaceSnapshot,
+  type TscDiagnostic,
+} from "../plugin-ide/plugin-ide-utils";
 
 interface PluginIDEProps {
   onPluginsChanged?: () => void;
   /** VS Code–style shell: menus + file tree live in the primary sidebar. */
   shellLayout?: boolean;
-}
-
-type PathModalState =
-  | null
-  | { kind: "newFile"; value: string }
-  | { kind: "newFolder"; value: string }
-  | { kind: "rename"; from: string; value: string };
-
-/** Duplicate path as sibling (`file.ts` → `file-copy.ts`, `dir` → `dir-copy`). */
-function siblingCopyRelativePath(rel: string, isDir: boolean): string {
-  const norm = rel.replace(/\\/g, "/").replace(/\/+$/, "");
-  if (isDir) {
-    const i = norm.lastIndexOf("/");
-    const parent = i >= 0 ? norm.slice(0, i) : "";
-    const name = i >= 0 ? norm.slice(i + 1) : norm;
-    const next = `${name}-copy`;
-    return parent ? `${parent}/${next}` : next;
-  }
-  const i = norm.lastIndexOf("/");
-  const dir = i >= 0 ? norm.slice(0, i) : "";
-  const base = i >= 0 ? norm.slice(i + 1) : norm;
-  const dot = base.lastIndexOf(".");
-  if (dot <= 0 || dot === base.length - 1) {
-    const next = `${base}-copy`;
-    return dir ? `${dir}/${next}` : next;
-  }
-  const stem = base.slice(0, dot);
-  const ext = base.slice(dot);
-  const next = `${stem}-copy${ext}`;
-  return dir ? `${dir}/${next}` : next;
-}
-
-function basenameRel(rel: string): string {
-  const norm = rel.replace(/\\/g, "/").replace(/\/+$/, "");
-  const i = norm.lastIndexOf("/");
-  return i >= 0 ? norm.slice(i + 1) : norm;
-}
-
-/** Tree / UI may use trailing `/` for directories; IPC entry APIs accept both. */
-function normalizePluginRelPath(rel: string): string {
-  return rel.replace(/\\/g, "/").replace(/\/+$/, "");
-}
-
-/** First paste attempt: sibling duplicate, or `pasteIntoDir/baseName`. */
-function initialPasteDestRel(
-  sourceRel: string,
-  isDir: boolean,
-  pasteIntoDir?: string,
-): string {
-  const trimmed = pasteIntoDir?.trim().replace(/\\/g, "/").replace(/\/+$/, "");
-  if (trimmed) {
-    return `${trimmed}/${basenameRel(sourceRel)}`;
-  }
-  return siblingCopyRelativePath(sourceRel, isDir);
-}
-
-interface InstalledPkg {
-  name: string;
-  range: string;
-  dev: boolean;
-}
-
-interface NpmSearchRow {
-  name: string;
-  version: string;
-  description: string;
-  popularity: number;
-}
-
-interface TscDiagnostic {
-  relativePath: string;
-  line: number;
-  column: number;
-  message: string;
-  category: "error" | "warning" | "suggestion";
-  code: number | undefined;
-}
-
-function languageForPath(rel: string): string {
-  const lower = rel.toLowerCase();
-  if (lower.endsWith(".tsx")) {
-    return "typescript";
-  }
-  if (lower.endsWith(".ts")) {
-    return "typescript";
-  }
-  if (lower.endsWith(".jsx")) {
-    return "typescript";
-  }
-  if (lower.endsWith(".js") || lower.endsWith(".mjs") || lower.endsWith(".cjs")) {
-    return "javascript";
-  }
-  if (lower.endsWith(".json")) {
-    return "json";
-  }
-  if (lower.endsWith(".md")) {
-    return "markdown";
-  }
-  if (lower.endsWith(".css")) {
-    return "css";
-  }
-  if (lower.endsWith(".html")) {
-    return "html";
-  }
-  return "plaintext";
-}
-
-const monacoBeforeMount: BeforeMount = () => {
-  const ts = monacoTypescript;
-  const compilerOptions = {
-    allowJs: true,
-    strict: false,
-    jsx: ts.JsxEmit.React,
-    target: ts.ScriptTarget.ES2020,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeJs,
-    esModuleInterop: true,
-    allowSyntheticDefaultImports: true,
-    skipLibCheck: true,
-    paths: {
-      "@nodex/plugin-ui": [NODEX_PLUGIN_UI_MONACO_URI],
-    },
-  };
-  ts.javascriptDefaults.setCompilerOptions(compilerOptions);
-  ts.typescriptDefaults.setCompilerOptions(compilerOptions);
-};
-
-function sampleNoteForType(type: string): Note {
-  const contentByType: Record<string, string> = {
-    root:
-      "# Documentation preview\n\n**Root** notes use the same Markdown UI as `markdown` notes.",
-    markdown:
-      "# Preview\n\nEdit the plugin and **Bundle & reload** to refresh.\n\n- Item one\n- Item two",
-    text: "<p><strong>Rich text</strong> preview for this note type.</p>",
-    code: 'function preview() {\n  return "hello";\n}\n',
-  };
-  const metadata =
-    type === "code" ? { language: "javascript" } : undefined;
-  return {
-    id: "ide-preview",
-    type,
-    title: "Plugin preview",
-    content: contentByType[type] ?? `# Preview (${type})\n\nSample body.`,
-    metadata,
-  };
 }
 
 const PluginIDE: React.FC<PluginIDEProps> = ({

@@ -1,294 +1,157 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { ClientLogPayload } from "./shared/client-log";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
+import type { NodexRendererApi } from "./shared/nodex-renderer-api";
 
-export interface Note {
-  id: string;
-  type: string;
-  title: string;
-  content: string;
-  metadata?: Record<string, any>;
-}
+export type {
+  CreateNoteRelation,
+  MainDebugLogEntry,
+  Note,
+  NoteListItem,
+  NoteMovePlacement,
+  OpenPluginWorkspaceArgs,
+  PasteSubtreePayload,
+  PluginInventoryItem,
+  PluginProgressPayload,
+} from "./shared/nodex-renderer-api";
 
-export interface NoteListItem {
-  id: string;
-  type: string;
-  title: string;
-  parentId: string | null;
-  depth: number;
-}
-
-export type CreateNoteRelation = "child" | "sibling" | "root";
-
-export type NoteMovePlacement = "before" | "after" | "into";
-
-export type PasteSubtreePayload = {
-  sourceId: string;
-  targetId: string;
-  mode: "cut" | "copy";
-  placement: NoteMovePlacement;
-};
-
-contextBridge.exposeInMainWorld("Nodex", {
-  getNote: (noteId?: string): Promise<Note | null> =>
+const api: NodexRendererApi = {
+  getNote: (noteId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_NOTE, noteId),
-  getAllNotes: (): Promise<NoteListItem[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_NOTES),
-  createNote: (payload: {
-    anchorId?: string;
-    relation: CreateNoteRelation;
-    type: string;
-  }): Promise<{ id: string }> =>
+  getAllNotes: () => ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_NOTES),
+  createNote: (payload) =>
     ipcRenderer.invoke(IPC_CHANNELS.CREATE_NOTE, payload),
-  renameNote: (id: string, title: string): Promise<void> =>
+  renameNote: (id, title) =>
     ipcRenderer.invoke(IPC_CHANNELS.RENAME_NOTE, id, title),
-  deleteNotes: (ids: string[]): Promise<void> =>
-    ipcRenderer.invoke(IPC_CHANNELS.DELETE_NOTES, ids),
-  moveNote: (
-    draggedId: string,
-    targetId: string,
-    placement: NoteMovePlacement,
-  ): Promise<void> =>
+  deleteNotes: (ids) => ipcRenderer.invoke(IPC_CHANNELS.DELETE_NOTES, ids),
+  moveNote: (draggedId, targetId, placement) =>
     ipcRenderer.invoke(IPC_CHANNELS.MOVE_NOTE, {
       draggedId,
       targetId,
       placement,
     }),
-  moveNotesBulk: (
-    ids: string[],
-    targetId: string,
-    placement: NoteMovePlacement,
-  ): Promise<void> =>
+  moveNotesBulk: (ids, targetId, placement) =>
     ipcRenderer.invoke(IPC_CHANNELS.MOVE_NOTES_BULK, {
       ids,
       targetId,
       placement,
     }),
-  pasteSubtree: (payload: PasteSubtreePayload): Promise<{ newRootId?: string }> =>
+  pasteSubtree: (payload) =>
     ipcRenderer.invoke(IPC_CHANNELS.PASTE_SUBTREE, payload),
-  saveNotePluginUiState: (noteId: string, state: unknown): Promise<void> =>
+  saveNotePluginUiState: (noteId, state) =>
     ipcRenderer.invoke(IPC_CHANNELS.SAVE_NOTE_PLUGIN_UI_STATE, noteId, state),
-  saveNoteContent: (noteId: string, content: string): Promise<void> =>
+  saveNoteContent: (noteId, content) =>
     ipcRenderer.invoke(IPC_CHANNELS.SAVE_NOTE_CONTENT, noteId, content),
-  getComponent: (type: string): Promise<string | null> =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_COMPONENT, type),
-  getPluginHTML: (type: string, note: Note): Promise<string | null> =>
+  getComponent: (type) => ipcRenderer.invoke(IPC_CHANNELS.GET_COMPONENT, type),
+  getPluginHTML: (type, note) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_HTML, type, note),
-  getRegisteredTypes: (): Promise<string[]> =>
+  getRegisteredTypes: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_REGISTERED_TYPES),
-  selectZipFile: (): Promise<string | null> =>
-    ipcRenderer.invoke(IPC_CHANNELS.SELECT_ZIP_FILE),
-  importPlugin: (
-    zipPath: string,
-  ): Promise<{
-    success: boolean;
-    error?: string;
-    warnings?: string[];
-  }> => ipcRenderer.invoke(IPC_CHANNELS.IMPORT_PLUGIN, zipPath),
-  getInstalledPlugins: (): Promise<string[]> =>
+  selectZipFile: () => ipcRenderer.invoke(IPC_CHANNELS.SELECT_ZIP_FILE),
+  importPlugin: (zipPath) =>
+    ipcRenderer.invoke(IPC_CHANNELS.IMPORT_PLUGIN, zipPath),
+  getInstalledPlugins: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_INSTALLED_PLUGINS),
-  getPluginInventory: (): Promise<
-    {
-      id: string;
-      isBundled: boolean;
-      canToggle: boolean;
-      enabled: boolean;
-      loaded: boolean;
-    }[]
-  > => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_GET_INVENTORY),
-  getDisabledPluginIds: (): Promise<string[]> =>
+  getPluginInventory: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_GET_INVENTORY),
+  getDisabledPluginIds: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_GET_DISABLED_IDS),
-  setPluginEnabled: (
-    pluginId: string,
-    enabled: boolean,
-  ): Promise<{ success: boolean; error?: string }> =>
+  setPluginEnabled: (pluginId, enabled) =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_SET_ENABLED, {
       pluginId,
       enabled,
     }),
-  toggleDeveloperTools: (): Promise<{ success: boolean }> =>
+  toggleDeveloperTools: () =>
     ipcRenderer.invoke(IPC_CHANNELS.UI_TOGGLE_DEVTOOLS),
-  quitApp: (): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.UI_QUIT_APP),
-  reloadWindow: (): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.UI_RELOAD_WINDOW),
-  getUserPluginsDirectory: (): Promise<{ path: string; error?: string }> =>
+  quitApp: () => ipcRenderer.invoke(IPC_CHANNELS.UI_QUIT_APP),
+  reloadWindow: () => ipcRenderer.invoke(IPC_CHANNELS.UI_RELOAD_WINDOW),
+  getUserPluginsDirectory: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_GET_USER_PLUGINS_DIR),
-  resetUserPluginsDirectory: (): Promise<{
-    success: boolean;
-    path: string;
-    error?: string;
-  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_RESET_USER_DATA_PLUGINS),
-  deletePluginBinAndCaches: (): Promise<{
-    success: boolean;
-    error?: string;
-  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_MAINT_DELETE_BIN_AND_CACHES),
-  formatNodexPluginData: (): Promise<{
-    success: boolean;
-    error?: string;
-  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_MAINT_FORMAT_NODEX),
-  deleteAllPluginSources: (): Promise<{
-    success: boolean;
-    error?: string;
-  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_MAINT_DELETE_SOURCES),
-  uninstallPlugin: (
-    pluginName: string,
-  ): Promise<{ success: boolean; error?: string }> =>
+  resetUserPluginsDirectory: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_RESET_USER_DATA_PLUGINS),
+  deletePluginBinAndCaches: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_MAINT_DELETE_BIN_AND_CACHES),
+  formatNodexPluginData: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_MAINT_FORMAT_NODEX),
+  deleteAllPluginSources: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_MAINT_DELETE_SOURCES),
+  uninstallPlugin: (pluginName) =>
     ipcRenderer.invoke(IPC_CHANNELS.UNINSTALL_PLUGIN, pluginName),
-  exportPluginDev: (
-    pluginName: string,
-  ): Promise<{ success: boolean; path?: string; error?: string }> =>
+  exportPluginDev: (pluginName) =>
     ipcRenderer.invoke(IPC_CHANNELS.EXPORT_PLUGIN_DEV, pluginName),
-  exportPluginProduction: (
-    pluginName: string,
-  ): Promise<{ success: boolean; path?: string; error?: string }> =>
+  exportPluginProduction: (pluginName) =>
     ipcRenderer.invoke(IPC_CHANNELS.EXPORT_PLUGIN_PRODUCTION, pluginName),
-  bundlePluginLocal: (
-    pluginName: string,
-  ): Promise<{
-    success: boolean;
-    error?: string;
-    warnings?: string[];
-  }> => ipcRenderer.invoke(IPC_CHANNELS.BUNDLE_PLUGIN_LOCAL, pluginName),
-  installPluginDependencies: (
-    pluginName: string,
-  ): Promise<{ success: boolean; error?: string; log?: string }> =>
+  bundlePluginLocal: (pluginName) =>
+    ipcRenderer.invoke(IPC_CHANNELS.BUNDLE_PLUGIN_LOCAL, pluginName),
+  installPluginDependencies: (pluginName) =>
     ipcRenderer.invoke(IPC_CHANNELS.INSTALL_PLUGIN_DEPENDENCIES, pluginName),
-  clearPluginDependencyCache: (
-    pluginName: string,
-  ): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.CLEAR_PLUGIN_DEPENDENCY_CACHE, pluginName),
-  clearAllPluginDependencyCaches: (): Promise<{ success: boolean }> =>
+  clearPluginDependencyCache: (pluginName) =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.CLEAR_PLUGIN_DEPENDENCY_CACHE,
+      pluginName,
+    ),
+  clearAllPluginDependencyCaches: () =>
     ipcRenderer.invoke(IPC_CHANNELS.CLEAR_ALL_PLUGIN_DEPENDENCY_CACHES),
-  getPluginCacheStats: (): Promise<{
-    root: string;
-    totalBytes: number;
-    plugins: { name: string; bytes: number }[];
-  }> => ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_CACHE_STATS),
-  onPluginsChanged: (callback: () => void) => {
+  getPluginCacheStats: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_CACHE_STATS),
+  onPluginsChanged: (callback) => {
     ipcRenderer.on(IPC_CHANNELS.PLUGINS_CHANGED, callback);
     return () =>
       ipcRenderer.removeListener(IPC_CHANNELS.PLUGINS_CHANGED, callback);
   },
-  getProjectState: (): Promise<{
-    rootPath: string | null;
-    notesDbPath: string | null;
-    workspaceRoots: string[];
-  }> => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_GET_STATE),
-  getAppPrefs: (): Promise<{ seedSampleNotes: boolean }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.APP_GET_PREFS),
-  setSeedSampleNotes: (
-    enabled: boolean,
-  ): Promise<
-    | { ok: true; seedSampleNotes: boolean }
-    | { ok: false; error: string }
-  > => ipcRenderer.invoke(IPC_CHANNELS.APP_SET_SEED_SAMPLE_NOTES, enabled),
-  selectProjectFolder: (): Promise<
-    | { ok: true; rootPath: string | null; workspaceRoots: string[] }
-    | { ok: false; cancelled: true }
-    | { ok: false; error: string }
-  > => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_SELECT_FOLDER),
-  openProjectPath: (
-    absPath: string,
-  ): Promise<
-    | { ok: true; rootPath: string | null; workspaceRoots: string[] }
-    | { ok: false; error: string }
-  > => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_OPEN_PATH, absPath),
-  addWorkspaceFolder: (): Promise<
-    | { ok: true; rootPath: string | null; workspaceRoots: string[] }
-    | { ok: false; cancelled: true }
-    | { ok: false; error: string }
-  > => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_ADD_WORKSPACE_FOLDER),
-  removeWorkspaceRoot: (
-    projectRootAbs: string,
-    moveToTrash: boolean,
-  ): Promise<
-    | {
-        ok: true;
-        rootPath: string | null;
-        workspaceRoots: string[];
-        trashError?: string;
-      }
-    | { ok: false; error: string }
-  > =>
+  getProjectState: () => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_GET_STATE),
+  getAppPrefs: () => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_PREFS),
+  setSeedSampleNotes: (enabled) =>
+    ipcRenderer.invoke(IPC_CHANNELS.APP_SET_SEED_SAMPLE_NOTES, enabled),
+  selectProjectFolder: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_SELECT_FOLDER),
+  openProjectPath: (absPath) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_OPEN_PATH, absPath),
+  addWorkspaceFolder: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_ADD_WORKSPACE_FOLDER),
+  removeWorkspaceRoot: (projectRootAbs, moveToTrash) =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_REMOVE_WORKSPACE_ROOT, {
       projectRootAbs,
       moveToTrash,
     }),
-  onProjectRootChanged: (callback: () => void) => {
+  onProjectRootChanged: (callback) => {
     const ch = IPC_CHANNELS.PROJECT_ROOT_CHANGED;
     ipcRenderer.on(ch, callback);
     return () => ipcRenderer.removeListener(ch, callback);
   },
-  listAssets: (
-    relativePath: string,
-    projectRoot?: string,
-  ): Promise<
-    | { ok: true; entries: { name: string; isDirectory: boolean }[] }
-    | { ok: false; error: string }
-  > =>
+  listAssets: (relativePath, projectRoot) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.ASSET_LIST,
       projectRoot !== undefined && projectRoot.length > 0
         ? { relativePath, projectRoot }
         : relativePath,
     ),
-  getAssetInfo: (
-    relativePath: string,
-    projectRoot?: string,
-  ): Promise<{
-    name: string;
-    ext: string;
-    size: number;
-    relativePath: string;
-  } | null> =>
+  getAssetInfo: (relativePath, projectRoot) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.ASSET_GET_INFO,
       projectRoot !== undefined && projectRoot.length > 0
         ? { relativePath, projectRoot }
         : relativePath,
     ),
-  readAssetText: (
-    relativePath: string,
-    projectRoot?: string,
-  ): Promise<
-    { ok: true; text: string } | { ok: false; error: string }
-  > =>
+  readAssetText: (relativePath, projectRoot) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.ASSET_READ_TEXT,
       projectRoot !== undefined && projectRoot.length > 0
         ? { relativePath, projectRoot }
         : relativePath,
     ),
-  openAssetExternal: (
-    relativePath: string,
-    projectRoot?: string,
-  ): Promise<{ ok: true } | { ok: false; error: string }> =>
+  openAssetExternal: (relativePath, projectRoot) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.ASSET_OPEN_EXTERNAL,
       projectRoot !== undefined && projectRoot.length > 0
         ? { relativePath, projectRoot }
         : relativePath,
     ),
-  moveProjectAsset: (payload: {
-    fromProject: string;
-    fromRel: string;
-    toProject: string;
-    toDirRel: string;
-  }): Promise<
-    | { ok: true; toRel: string }
-    | { ok: false; error: string }
-  > => ipcRenderer.invoke(IPC_CHANNELS.ASSET_MOVE, payload),
-  nodexUndo: (): Promise<
-    | { ok: true; touchedNotes: boolean }
-    | { ok: false; error: string; touchedNotes?: boolean }
-  > => ipcRenderer.invoke(IPC_CHANNELS.NODEX_UNDO),
-  nodexRedo: (): Promise<
-    | { ok: true; touchedNotes: boolean }
-    | { ok: false; error: string; touchedNotes?: boolean }
-  > => ipcRenderer.invoke(IPC_CHANNELS.NODEX_REDO),
-  /** Build a URL loadable in the renderer for files under the project `assets/` tree. */
-  assetUrl: (relativePath: string, projectRoot?: string): string => {
+  moveProjectAsset: (payload) =>
+    ipcRenderer.invoke(IPC_CHANNELS.ASSET_MOVE, payload),
+  nodexUndo: () => ipcRenderer.invoke(IPC_CHANNELS.NODEX_UNDO),
+  nodexRedo: () => ipcRenderer.invoke(IPC_CHANNELS.NODEX_REDO),
+  assetUrl: (relativePath, projectRoot) => {
     const parts = relativePath
       .replace(/\\/g, "/")
       .split("/")
@@ -300,138 +163,85 @@ contextBridge.exposeInMainWorld("Nodex", {
     }
     return url;
   },
-  revealProjectFolderInExplorer: (
-    absPath: string,
-  ): Promise<{ ok: true } | { ok: false; error: string }> =>
+  revealProjectFolderInExplorer: (absPath) =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_REVEAL_FOLDER, absPath),
   refreshWorkspace: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_REFRESH_WORKSPACE),
-  onPluginProgress: (
-    callback: (payload: {
-      op: string;
-      phase: string;
-      message: string;
-      pluginName?: string;
-    }) => void,
-  ) => {
+  onPluginProgress: (callback) => {
     const ch = IPC_CHANNELS.PLUGIN_PROGRESS;
     const fn = (_e: unknown, p: unknown) =>
       callback(p as Parameters<typeof callback>[0]);
     ipcRenderer.on(ch, fn);
     return () => ipcRenderer.removeListener(ch, fn);
   },
-  validatePluginZip: (
-    zipPath: string,
-  ): Promise<{ valid: boolean; errors: string[]; warnings: string[] }> =>
+  validatePluginZip: (zipPath) =>
     ipcRenderer.invoke(IPC_CHANNELS.VALIDATE_PLUGIN_ZIP, zipPath),
-  getPluginInstallPlan: (
-    installedFolderName: string,
-  ): Promise<{
-    manifestName: string;
-    cacheDir: string;
-    dependencies: Record<string, string>;
-    dependencyCount: number;
-    warnManyDeps: boolean;
-    warnLargePackageJson: boolean;
-    depsChangedSinceLastInstall: boolean;
-    hadSnapshot: boolean;
-    registryNotes: string[];
-  }> =>
+  getPluginInstallPlan: (installedFolderName) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.GET_PLUGIN_INSTALL_PLAN,
       installedFolderName,
     ),
-  getPluginResolvedDeps: (
-    installedFolderName: string,
-  ): Promise<{
-    declared: Record<string, string>;
-    resolved: Record<string, string>;
-    error?: string;
-  }> =>
+  getPluginResolvedDeps: (installedFolderName) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.GET_PLUGIN_RESOLVED_DEPS,
       installedFolderName,
     ),
-  runPluginCacheNpm: (
-    installedFolderName: string,
-    npmArgs: string[],
-  ): Promise<{ success: boolean; error?: string; log?: string }> =>
+  runPluginCacheNpm: (installedFolderName, npmArgs) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.RUN_PLUGIN_CACHE_NPM,
       installedFolderName,
       npmArgs,
     ),
-  getPluginLoadIssues: (): Promise<{ folder: string; error: string }[]> =>
+  getPluginLoadIssues: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_LOAD_ISSUES),
-  listPluginWorkspaceFolders: (): Promise<string[]> =>
+  listPluginWorkspaceFolders: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_LIST_WORKSPACE_FOLDERS),
-  listPluginSourceFiles: (installedFolderName: string): Promise<string[]> =>
+  listPluginSourceFiles: (installedFolderName) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_LIST_SOURCE_FILES,
       installedFolderName,
     ),
-  readPluginSourceFile: (
-    installedFolderName: string,
-    relativePath: string,
-  ): Promise<string> =>
+  readPluginSourceFile: (installedFolderName, relativePath) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_READ_SOURCE_FILE,
       installedFolderName,
       relativePath,
     ),
-  writePluginSourceFile: (
-    installedFolderName: string,
-    relativePath: string,
-    content: string,
-  ): Promise<{ success: boolean; error?: string }> =>
+  writePluginSourceFile: (installedFolderName, relativePath, content) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_WRITE_SOURCE_FILE,
       installedFolderName,
       relativePath,
       content,
     ),
-  mkdirPluginSource: (
-    installedFolderName: string,
-    relativeDir: string,
-  ): Promise<{ success: boolean; error?: string }> =>
+  mkdirPluginSource: (installedFolderName, relativeDir) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_MKDIR_SOURCE,
       installedFolderName,
       relativeDir,
     ),
-  createPluginSourceFile: (
-    installedFolderName: string,
-    relativePath: string,
-    content?: string,
-  ): Promise<{ success: boolean; error?: string }> =>
+  createPluginSourceFile: (installedFolderName, relativePath, content) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_CREATE_SOURCE_FILE,
       installedFolderName,
       relativePath,
       content ?? "",
     ),
-  deletePluginSourcePath: (
-    installedFolderName: string,
-    relativePath: string,
-  ): Promise<{ success: boolean; error?: string }> =>
+  deletePluginSourcePath: (installedFolderName, relativePath) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_DELETE_SOURCE_PATH,
       installedFolderName,
       relativePath,
     ),
-  selectImportFiles: (): Promise<string[] | null> =>
+  selectImportFiles: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_SELECT_IMPORT_FILES),
-  selectImportDirectory: (): Promise<string | null> =>
+  selectImportDirectory: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_SELECT_IMPORT_DIRECTORY),
   importFilesIntoWorkspace: (
-    installedFolderName: string,
-    absolutePaths: string[],
-    destRelativeBase?: string,
-  ): Promise<{
-    success: boolean;
-    imported?: string[];
-    error?: string;
-  }> =>
+    installedFolderName,
+    absolutePaths,
+    destRelativeBase,
+  ) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_IMPORT_FILES_INTO_WORKSPACE,
       installedFolderName,
@@ -439,87 +249,36 @@ contextBridge.exposeInMainWorld("Nodex", {
       destRelativeBase ?? "",
     ),
   importDirectoryIntoWorkspace: (
-    installedFolderName: string,
-    absoluteDir: string,
-    destRelativeBase?: string,
-  ): Promise<{
-    success: boolean;
-    imported?: string[];
-    error?: string;
-  }> =>
+    installedFolderName,
+    absoluteDir,
+    destRelativeBase,
+  ) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_IMPORT_DIRECTORY_INTO_WORKSPACE,
       installedFolderName,
       absoluteDir,
       destRelativeBase ?? "",
     ),
-  importDirectoryAsNewWorkspace: (
-    absoluteDir: string,
-  ): Promise<{
-    success: boolean;
-    folderName?: string;
-    imported?: string[];
-    error?: string;
-  }> =>
+  importDirectoryAsNewWorkspace: (absoluteDir) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_IMPORT_DIRECTORY_AS_NEW_WORKSPACE,
       absoluteDir,
     ),
-  npmRegistrySearch: (
-    query: string,
-  ): Promise<{
-    success: boolean;
-    error?: string;
-    results: {
-      name: string;
-      version: string;
-      description: string;
-      popularity: number;
-    }[];
-  }> => ipcRenderer.invoke(IPC_CHANNELS.NPM_REGISTRY_SEARCH, query),
-  runPluginTypecheck: (
-    pluginName: string,
-  ): Promise<{
-    success: boolean;
-    error?: string;
-    diagnostics: {
-      relativePath: string;
-      line: number;
-      column: number;
-      message: string;
-      category: "error" | "warning" | "suggestion";
-      code: number | undefined;
-    }[];
-  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_TYPECHECK, pluginName),
-  getIdeTypings: (): Promise<{
-    libs: { fileName: string; content: string }[];
-  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_IDE_TYPINGS),
-  getIdePluginTypings: (
-    installedFolderName: string,
-  ): Promise<{
-    workspaceRootFileUri: string;
-    libs: { fileName: string; content: string }[];
-  } | null> =>
+  npmRegistrySearch: (query) =>
+    ipcRenderer.invoke(IPC_CHANNELS.NPM_REGISTRY_SEARCH, query),
+  runPluginTypecheck: (pluginName) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_TYPECHECK, pluginName),
+  getIdeTypings: () => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_IDE_TYPINGS),
+  getIdePluginTypings: (installedFolderName) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_IDE_PLUGIN_TYPINGS,
       installedFolderName,
     ),
-  loadNodexPluginsFromParent: (): Promise<{
-    success: boolean;
-    cancelled?: boolean;
-    added: string[];
-    warnings: string[];
-    errors: string[];
-  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_LOAD_NODEX_FROM_PARENT),
-  removeExternalPluginWorkspace: (
-    pluginId: string,
-  ): Promise<{ success: boolean; error?: string }> =>
+  loadNodexPluginsFromParent: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_LOAD_NODEX_FROM_PARENT),
+  removeExternalPluginWorkspace: (pluginId) =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_REMOVE_EXTERNAL_PLUGIN, pluginId),
-  renamePluginSourcePath: (
-    installedFolderName: string,
-    fromRelative: string,
-    toRelative: string,
-  ): Promise<{ success: boolean; error?: string }> =>
+  renamePluginSourcePath: (installedFolderName, fromRelative, toRelative) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_RENAME_SOURCE_PATH,
       installedFolderName,
@@ -527,10 +286,10 @@ contextBridge.exposeInMainWorld("Nodex", {
       toRelative,
     ),
   copyPluginSourceWithinWorkspace: (
-    installedFolderName: string,
-    fromRelative: string,
-    toRelative: string,
-  ): Promise<{ success: boolean; error?: string }> =>
+    installedFolderName,
+    fromRelative,
+    toRelative,
+  ) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_COPY_SOURCE_WITHIN_WORKSPACE,
       installedFolderName,
@@ -538,11 +297,11 @@ contextBridge.exposeInMainWorld("Nodex", {
       toRelative,
     ),
   copyPluginSourceBetweenWorkspaces: (
-    fromPlugin: string,
-    fromRelative: string,
-    toPlugin: string,
-    toRelative: string,
-  ): Promise<{ success: boolean; error?: string }> =>
+    fromPlugin,
+    fromRelative,
+    toPlugin,
+    toRelative,
+  ) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_COPY_SOURCE_BETWEEN_WORKSPACES,
       fromPlugin,
@@ -551,11 +310,11 @@ contextBridge.exposeInMainWorld("Nodex", {
       toRelative,
     ),
   movePluginSourceBetweenWorkspaces: (
-    fromPlugin: string,
-    fromRelative: string,
-    toPlugin: string,
-    toRelative: string,
-  ): Promise<{ success: boolean; error?: string }> =>
+    fromPlugin,
+    fromRelative,
+    toPlugin,
+    toRelative,
+  ) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_MOVE_SOURCE_BETWEEN_WORKSPACES,
       fromPlugin,
@@ -563,91 +322,67 @@ contextBridge.exposeInMainWorld("Nodex", {
       toPlugin,
       toRelative,
     ),
-  copyPluginDistToFolder: (
-    installedFolderName: string,
-  ): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_COPY_DIST_TO_FOLDER, installedFolderName),
-  getPluginSourceEntryKind: (
-    installedFolderName: string,
-    relativePath: string,
-  ): Promise<"file" | "dir" | "missing"> =>
+  copyPluginDistToFolder: (installedFolderName) =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_COPY_DIST_TO_FOLDER,
+      installedFolderName,
+    ),
+  getPluginSourceEntryKind: (installedFolderName, relativePath) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_GET_SOURCE_ENTRY_KIND,
       installedFolderName,
       relativePath,
     ),
-  getPluginSourceFileMeta: (
-    installedFolderName: string,
-    relativePath: string,
-  ): Promise<{ mtimeMs: number; size: number } | null> =>
+  getPluginSourceFileMeta: (installedFolderName, relativePath) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.PLUGIN_GET_SOURCE_FILE_META,
       installedFolderName,
       relativePath,
     ),
-  openPluginWorkspaceInEditor: (args: {
-    editor: string;
-    customBin?: string;
-    pluginName: string;
-  }): Promise<{ success: boolean; error?: string }> =>
+  openPluginWorkspaceInEditor: (args) =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_OPEN_WORKSPACE_IN_EDITOR, args),
-  revealPluginWorkspaceInFileManager: (
-    pluginName: string,
-  ): Promise<{ success: boolean; error?: string }> =>
+  revealPluginWorkspaceInFileManager: (pluginName) =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_REVEAL_WORKSPACE, pluginName),
-  scaffoldPluginWorkspace: (
-    pluginName: string,
-  ): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_SCAFFOLD_PLUGIN_WORKSPACE, pluginName),
-  setIdeWorkspaceWatch: (
-    pluginName: string | null,
-  ): Promise<{ success: boolean }> =>
+  scaffoldPluginWorkspace: (pluginName) =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_SCAFFOLD_PLUGIN_WORKSPACE,
+      pluginName,
+    ),
+  setIdeWorkspaceWatch: (pluginName) =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_IDE_SET_WORKSPACE_WATCH, pluginName),
-  onIdeWorkspaceFsChanged: (callback: () => void) => {
+  onIdeWorkspaceFsChanged: (callback) => {
     const ch = IPC_CHANNELS.PLUGIN_IDE_WORKSPACE_FS_CHANGED;
     const fn = () => callback();
     ipcRenderer.on(ch, fn);
     return () => ipcRenderer.removeListener(ch, fn);
   },
-  getMainDebugLogBuffer: (): Promise<
-    { ts: number; level: string; text: string }[]
-  > => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_IDE_GET_MAIN_DEBUG_LOGS),
-  clearMainDebugLogBuffer: (): Promise<{ success: boolean }> =>
+  getMainDebugLogBuffer: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_IDE_GET_MAIN_DEBUG_LOGS),
+  clearMainDebugLogBuffer: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_IDE_CLEAR_MAIN_DEBUG_LOGS),
-  onMainDebugLog: (
-    callback: (entry: { ts: number; level: string; text: string }) => void,
-  ) => {
+  onMainDebugLog: (callback) => {
     const ch = IPC_CHANNELS.PLUGIN_IDE_MAIN_DEBUG_LOG;
     const fn = (_e: unknown, entry: unknown) =>
       callback(entry as Parameters<typeof callback>[0]);
     ipcRenderer.on(ch, fn);
     return () => ipcRenderer.removeListener(ch, fn);
   },
-  sendClientLog: (payload: ClientLogPayload): void =>
+  sendClientLog: (payload: ClientLogPayload) =>
     ipcRenderer.send(IPC_CHANNELS.NODEX_CLIENT_LOG, payload),
-  reloadPluginRegistry: (): Promise<{ success: boolean; error?: string }> =>
+  reloadPluginRegistry: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_RELOAD_REGISTRY),
-  getNativeThemeDark: (): Promise<boolean> =>
+  getNativeThemeDark: () =>
     ipcRenderer.invoke(IPC_CHANNELS.UI_GET_NATIVE_THEME_DARK),
-  onNativeThemeChanged: (callback: (isDark: boolean) => void) => {
+  onNativeThemeChanged: (callback) => {
     const ch = IPC_CHANNELS.UI_NATIVE_THEME_CHANGED;
     const fn = (_e: unknown, dark: boolean) => callback(dark);
     ipcRenderer.on(ch, fn);
     return () => ipcRenderer.removeListener(ch, fn);
   },
-  getPluginRendererUiMeta: (
-    noteType: string,
-  ): Promise<{
-    theme?: "inherit" | "isolated";
-    designSystemVersion?: string;
-    deferDisplayUntilContentReady?: boolean;
-  } | null> =>
+  getPluginRendererUiMeta: (noteType) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_RENDERER_UI_META, noteType),
-  getPluginManifestUi: (
-    pluginName: string,
-  ): Promise<{
-    theme: "inherit" | "isolated";
-    designSystemVersion?: string;
-    designSystemWarning: string | null;
-  } | null> => ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_MANIFEST_UI, pluginName),
-});
+  getPluginManifestUi: (pluginName) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_MANIFEST_UI, pluginName),
+};
+
+contextBridge.exposeInMainWorld("Nodex", api);

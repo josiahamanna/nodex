@@ -1,9 +1,11 @@
+import type { Note, NoteRenderer } from "../shared/plugin-api";
+
 export type PluginThemeMode = "inherit" | "isolated";
 
 export interface PluginRenderer {
   pluginName: string;
-  render: (note: any) => string | Promise<string>;
-  onMessage?: (message: any) => void;
+  render: (note: Note) => string | Promise<string>;
+  onMessage?: (message: unknown) => void;
   /** Iframe UI: inherit host CSS variables vs isolated styling */
   theme?: PluginThemeMode;
   designSystemVersion?: string;
@@ -25,7 +27,7 @@ export class Registry {
   registerRenderer(
     pluginName: string,
     type: string,
-    renderer: any,
+    renderer: NoteRenderer,
     uiMeta?: {
       theme?: PluginThemeMode;
       designSystemVersion?: string;

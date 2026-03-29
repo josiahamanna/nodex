@@ -14,7 +14,7 @@ export interface Note {
   type: string;
   title: string;
   content: string;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 // Message types for iframe communication
@@ -35,7 +35,7 @@ export enum MessageType {
 
 export interface PluginMessage {
   type: MessageType;
-  payload?: any;
+  payload?: unknown;
 }
 
 // Plugin API that will be available to plugins
@@ -52,7 +52,7 @@ export interface NoteRenderer {
   render(note: Note): string | Promise<string>;
 
   // Optional: Handle messages from the iframe
-  onMessage?(message: any): void;
+  onMessage?(message: unknown): void;
 }
 
 // Plugin activation function signature

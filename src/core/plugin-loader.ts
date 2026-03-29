@@ -29,6 +29,7 @@ import {
 } from "./plugin-disabled-store";
 import { syncHostNodexScopedPackagesIntoWorkspace } from "./nodex-host-packages";
 import { seedSamplePluginsToUserDir } from "./seed-user-plugins";
+import type { NoteRenderer } from "../shared/plugin-api";
 
 const zipHandler = require("./zip-handler");
 
@@ -741,13 +742,13 @@ export class PluginLoader {
       };
 
       const api: {
-        registerNoteRenderer: (type: string, renderer: any) => {
+        registerNoteRenderer: (type: string, renderer: NoteRenderer) => {
           dispose: () => void;
         };
         getNote: () => null;
         getUiBootstrap?: () => Promise<string>;
       } = {
-        registerNoteRenderer: (type: string, renderer: any) => {
+        registerNoteRenderer: (type: string, renderer: NoteRenderer) => {
           registry.registerRenderer(manifest.name, type, renderer, {
             theme:
               manifest.theme === "isolated" ? "isolated" : "inherit",

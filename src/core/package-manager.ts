@@ -201,7 +201,7 @@ export class PackageManager {
 
     // Get package info
     const entries = zip.getEntries();
-    const files = entries.map((e: any) => e.entryName);
+    const files = entries.map((e: { entryName: string }) => e.entryName);
     const size = fs.statSync(packagePath).size;
 
     console.log(`[PackageManager] Extracted ${mode} package: ${manifest.name}`);
@@ -344,7 +344,7 @@ export class PackageManager {
 
       // Check for manifest.json
       const hasManifest = entries.some(
-        (e: any) => e.entryName === "manifest.json",
+        (e: { entryName: string }) => e.entryName === "manifest.json",
       );
       if (!hasManifest) {
         errors.push("Package does not contain manifest.json");
@@ -400,7 +400,7 @@ export class PackageManager {
     const manifest: PluginManifest = JSON.parse(manifestContent);
 
     const entries = zip.getEntries();
-    const files = entries.map((e: any) => e.entryName);
+    const files = entries.map((e: { entryName: string }) => e.entryName);
     const size = fs.statSync(packagePath).size;
 
     return {

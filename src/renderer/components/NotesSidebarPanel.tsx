@@ -14,174 +14,26 @@ import {
 import { useNodexDialog } from "../dialog/NodexDialogProvider";
 import ProjectAssetsInline from "./ProjectAssetsInline";
 import WorkspaceMountHeaderSurface from "./WorkspaceMountHeaderSurface";
-
-const DND_NOTE_MIME = "application/x-nodex-note-id";
-const DND_NOTE_IDS_MIME = "application/x-nodex-note-ids";
-const COLLAPSED_STORAGE_KEY = "nodex-sidebar-collapsed-ids";
-const WORKSPACE_SECTION_EXPANDED_KEY = "nodex-workspace-section-expanded";
-const WORKSPACE_MOUNT_ROW_RE = /^__nodex_mount_\d+$/;
-
-type ContextMenuState = {
-  x: number;
-  y: number;
-  anchorId: string | null;
-  /** Context menu on a project section header (folder path). */
-  workspaceProjectRoot?: string | null;
-  step: "main" | "pickType";
-  pickRelation?: CreateNoteRelation;
-};
-
-type ClipboardState = { mode: "cut" | "copy"; sourceId: string } | null;
-
-type DropHint = { targetId: string; placement: NoteMovePlacement };
-
-function parentMapFromNotes(notes: NoteListItem[]): Map<string, string | null> {
-  return new Map(notes.map((n) => [n.id, n.parentId]));
-}
-
-function readCollapsedIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(COLLAPSED_STORAGE_KEY);
-    if (!raw) {
-      return new Set();
-    }
-    const a = JSON.parse(raw) as unknown;
-    if (!Array.isArray(a)) {
-      return new Set();
-    }
-    return new Set(a.filter((x): x is string => typeof x === "string"));
-  } catch {
-    return new Set();
-  }
-}
-
-function writeCollapsedIds(ids: Set<string>): void {
-  try {
-    localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...ids]));
-  } catch {
-    /* ignore */
-  }
-}
-
-function readWorkspaceSectionExpandedMap(): Record<string, boolean> {
-  try {
-    const raw = localStorage.getItem(WORKSPACE_SECTION_EXPANDED_KEY);
-    if (!raw) {
-      return {};
-    }
-    const o = JSON.parse(raw) as unknown;
-    if (!o || typeof o !== "object") {
-      return {};
-    }
-    const out: Record<string, boolean> = {};
-    for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
-      if (typeof v === "boolean") {
-        out[k] = v;
-      }
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-function writeWorkspaceSectionExpandedMap(m: Record<string, boolean>): void {
-  try {
-    localStorage.setItem(WORKSPACE_SECTION_EXPANDED_KEY, JSON.stringify(m));
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Top-level selected nodes (no selected ancestor). */
-function minimalSelectedRoots(
-  selected: Set<string>,
-  parents: Map<string, string | null>,
-): string[] {
-  const arr = [...selected];
-  const out: string[] = [];
-  for (const id of arr) {
-    let p = parents.get(id) ?? null;
-    let under = false;
-    while (p) {
-      if (selected.has(p)) {
-        under = true;
-        break;
-      }
-      p = parents.get(p) ?? null;
-    }
-    if (!under) {
-      out.push(id);
-    }
-  }
-  return [...new Set(out)];
-}
-
-function visibleNotesList(
-  notes: NoteListItem[],
-  collapsedIds: Set<string>,
-  parents: Map<string, string | null>,
-): NoteListItem[] {
-  function anyAncestorCollapsed(id: string): boolean {
-    let p = parents.get(id) ?? null;
-    while (p) {
-      if (collapsedIds.has(p)) {
-        return true;
-      }
-      p = parents.get(p) ?? null;
-    }
-    return false;
-  }
-  return notes.filter((n) => !anyAncestorCollapsed(n.id));
-}
-
-/** True if `ancestorId` is a strict ancestor of `nodeId` in the tree. */
-function isStrictAncestor(
-  ancestorId: string,
-  nodeId: string,
-  parents: Map<string, string | null>,
-): boolean {
-  let cur: string | null = nodeId;
-  while (cur != null) {
-    const p = parents.get(cur);
-    if (p === ancestorId) {
-      return true;
-    }
-    cur = p ?? null;
-  }
-  return false;
-}
-
-function parseDragIds(e: React.DragEvent): string[] {
-  const bulk = e.dataTransfer.getData(DND_NOTE_IDS_MIME);
-  if (bulk) {
-    try {
-      const a = JSON.parse(bulk) as unknown;
-      if (Array.isArray(a)) {
-        return a.filter((x): x is string => typeof x === "string");
-      }
-    } catch {
-      /* fall through */
-    }
-  }
-  const one =
-    e.dataTransfer.getData(DND_NOTE_MIME) ||
-    e.dataTransfer.getData("text/plain");
-  return one ? [one] : [];
-}
-
-function clipboardTouchesDeleted(
-  sourceId: string,
-  deletedRoots: string[],
-  parents: Map<string, string | null>,
-): boolean {
-  for (const root of deletedRoots) {
-    if (sourceId === root || isStrictAncestor(root, sourceId, parents)) {
-      return true;
-    }
-  }
-  return false;
-}
+import SectionLabel from "../notes-sidebar/SectionLabel";
+import {
+  clipboardTouchesDeleted,
+  ctxBtn,
+  DND_NOTE_IDS_MIME,
+  DND_NOTE_MIME,
+  folderDisplayName,
+  minimalSelectedRoots,
+  parentMapFromNotes,
+  parseDragIds,
+  readCollapsedIds,
+  readWorkspaceSectionExpandedMap,
+  visibleNotesList,
+  writeCollapsedIds,
+  writeWorkspaceSectionExpandedMap,
+  WORKSPACE_MOUNT_ROW_RE,
+  type ClipboardState,
+  type ContextMenuState,
+  type DropHint,
+} from "../notes-sidebar/notes-sidebar-utils";
 
 export interface NotesSidebarPanelProps {
   notes: NoteListItem[];
@@ -218,21 +70,6 @@ export interface NotesSidebarPanelProps {
   /** Bumps to refresh inline asset trees after global undo/redo. */
   assetFsTick?: number;
 }
-
-const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/45">
-    {children}
-  </p>
-);
-
-function folderDisplayName(absPath: string): string {
-  const norm = absPath.replace(/\\/g, "/").replace(/\/+$/, "");
-  const parts = norm.split("/").filter(Boolean);
-  return parts.length > 0 ? parts[parts.length - 1]! : absPath;
-}
-
-const ctxBtn =
-  "block w-full rounded-sm px-2.5 py-1.5 text-left text-[12px] text-popover-foreground outline-none hover:bg-accent hover:text-accent-foreground transition-colors duration-150";
 
 const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   notes,
