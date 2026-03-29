@@ -372,10 +372,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     const rect = el.getBoundingClientRect();
     const y = e.clientY - rect.top;
     const frac = rect.height > 0 ? y / rect.height : 0.5;
-    if (frac < 0.33) {
+    // Wider “into” band reduces placement flip-flop at row boundaries while dragging.
+    if (frac < 0.25) {
       return "before";
     }
-    if (frac > 0.66) {
+    if (frac > 0.75) {
       return "after";
     }
     return "into";
@@ -443,20 +444,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           (id) => id !== workspaceRootId,
         )
       : [];
-
-  const dropHintLabel = (() => {
-    if (!dropHint) {
-      return null;
-    }
-    const p = dropHint.placement;
-    if (p === "before") {
-      return "Insert above (sibling)";
-    }
-    if (p === "after") {
-      return "Insert below (sibling)";
-    }
-    return "Nest inside (child)";
-  })();
 
   const contextMenuPortal =
     menu &&
@@ -920,12 +907,10 @@ const Sidebar: React.FC<SidebarProps> = ({
             });
           }}
         >
-          {dropHintLabel ? (
-            <p className="mb-1.5 rounded-md border border-primary/25 bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary transition-colors duration-150 dark:bg-primary/15">
-              {dropHintLabel}
-            </p>
-          ) : null}
-          <ul className="flex flex-col gap-px" role="list">
+          <ul
+            className={`flex flex-col gap-px ${draggingId ? "select-none" : ""}`}
+            role="list"
+          >
             {visibleNotes.map((note) => {
               const primarySelected = currentNoteId === note.id;
               const inMulti = selectedNoteIds.has(note.id);
@@ -999,12 +984,21 @@ const Sidebar: React.FC<SidebarProps> = ({
                         ? dropAllowedOne(raw[0]!, note.id, placement)
                         : dropAllowedMany(raw, note.id, placement);
                     if (ok) {
-                      setDropHint({ targetId: note.id, placement });
+                      setDropHint((h) =>
+                        h?.targetId === note.id && h?.placement === placement
+                          ? h
+                          : { targetId: note.id, placement },
+                      );
                     } else {
                       setDropHint(null);
                     }
                   }}
-                  onDragLeave={() => {
+                  onDragLeave={(e) => {
+                    const rel = e.relatedTarget as Node | null;
+                    const cur = e.currentTarget as HTMLElement;
+                    if (rel && cur.contains(rel)) {
+                      return;
+                    }
                     setDropHint((h) =>
                       h?.targetId === note.id ? null : h,
                     );
@@ -1049,15 +1043,24 @@ const Sidebar: React.FC<SidebarProps> = ({
                     isDraggingRow ? "opacity-55" : ""
                   }`}
                 >
+                  {hint ? (
+                    <span
+                      className="pointer-events-none absolute right-1 top-1/2 z-30 -translate-y-1/2 whitespace-nowrap rounded border border-border bg-popover px-1 py-px text-[8px] font-medium leading-tight text-foreground shadow-sm"
+                      aria-live="polite"
+                    >
+                      {hint === "before"
+                        ? "above (sibling)"
+                        : hint === "after"
+                          ? "below (sibling)"
+                          : "child"}
+                    </span>
+                  ) : null}
                   {hint === "before" ? (
                     <div
                       className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center justify-center"
                       aria-hidden
                     >
-                      <div className="h-0.5 w-full rounded-full bg-primary shadow-[0_0_0_1px_hsl(var(--background))]" />
-                      <span className="absolute right-1 rounded bg-primary px-1 py-px text-[9px] font-semibold text-primary-foreground">
-                        Above
-                      </span>
+                      <div className="h-[2px] w-full rounded-full bg-foreground shadow-[0_0_0_1px_hsl(var(--background))]" />
                     </div>
                   ) : null}
                   {hint === "after" ? (
@@ -1065,21 +1068,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                       className="pointer-events-none absolute bottom-0 left-0 right-0 z-20 flex items-center justify-center"
                       aria-hidden
                     >
-                      <div className="h-0.5 w-full rounded-full bg-primary shadow-[0_0_0_1px_hsl(var(--background))]" />
-                      <span className="absolute right-1 rounded bg-primary px-1 py-px text-[9px] font-semibold text-primary-foreground">
-                        Below
-                      </span>
+                      <div className="h-[2px] w-full rounded-full bg-foreground shadow-[0_0_0_1px_hsl(var(--background))]" />
                     </div>
                   ) : null}
                   {hint === "into" ? (
                     <div
-                      className="pointer-events-none absolute inset-1 z-10 rounded-md border-2 border-dashed border-primary/70 bg-primary/10 dark:bg-primary/20"
+                      className="pointer-events-none absolute inset-1 z-10 rounded-md border-2 border-dotted border-foreground/60 bg-primary/5 dark:bg-primary/15"
                       aria-hidden
-                    >
-                      <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-primary/90 px-1.5 py-0.5 text-[9px] font-semibold text-primary-foreground">
-                        Nest inside
-                      </span>
-                    </div>
+                    />
                   ) : null}
                   <div
                     className="flex min-h-8 items-stretch rounded-md transition-colors duration-150"
@@ -1118,7 +1114,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           step: "main",
                         });
                       }}
-                      className={`relative flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-r-md py-1 pr-2 text-left outline-none transition-colors duration-150 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar-background))] ${
+                      className={`relative flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-r-md py-1 text-left outline-none transition-colors duration-150 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar-background))] ${
                         selected
                           ? inMulti && !primarySelected
                             ? "bg-primary/15 text-sidebar-foreground ring-1 ring-inset ring-primary/35 hover:bg-primary/20"

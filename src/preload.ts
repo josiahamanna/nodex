@@ -270,6 +270,18 @@ contextBridge.exposeInMainWorld("Nodex", {
       absoluteDir,
       destRelativeBase ?? "",
     ),
+  importDirectoryAsNewWorkspace: (
+    absoluteDir: string,
+  ): Promise<{
+    success: boolean;
+    folderName?: string;
+    imported?: string[];
+    error?: string;
+  }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_IMPORT_DIRECTORY_AS_NEW_WORKSPACE,
+      absoluteDir,
+    ),
   npmRegistrySearch: (
     query: string,
   ): Promise<{
@@ -380,6 +392,7 @@ contextBridge.exposeInMainWorld("Nodex", {
   ): Promise<{
     theme?: "inherit" | "isolated";
     designSystemVersion?: string;
+    deferDisplayUntilContentReady?: boolean;
   } | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_RENDERER_UI_META, noteType),
   getPluginManifestUi: (

@@ -78,6 +78,11 @@ export interface PluginManifest {
   theme?: "inherit" | "isolated";
   /** Declared compatibility with Nodex design system / @nodex/plugin-ui */
   designSystemVersion?: string;
+  /**
+   * If true, host keeps the loading overlay until the iframe posts `MessageType.CONTENT_READY`
+   * after initial `ready`. Omit or false = hide overlay on `ready` (default).
+   */
+  deferDisplayUntilContentReady?: boolean;
 }
 
 export interface NodexAPI {
@@ -644,6 +649,8 @@ export class PluginLoader {
             theme:
               manifest.theme === "isolated" ? "isolated" : "inherit",
             designSystemVersion: manifest.designSystemVersion,
+            deferDisplayUntilContentReady:
+              manifest.deferDisplayUntilContentReady === true,
           });
           this.loadedPlugins.add(manifest.name);
           console.log(
@@ -2053,6 +2060,105 @@ export class PluginLoader {
     if (normBase && !isSafeRelativePluginSourcePath(normBase)) {
       return { success: false, error: "Invalid destination base" };
     }
+    const copied = this.copyExternalDirectoryTreeIntoBase(base, rootDir, normBase);
+    if (!copied.success) {
+      return copied;
+    }
+    this.invalidateDevUiCacheForWorkspace(base);
+    return { success: true, imported: copied.imported };
+  }
+
+  /**
+   * Copy an external plugin folder into `sources/<folderName>` when none is selected in the IDE.
+   * Requires `manifest.json` at the root of the imported directory.
+   */
+  importDirectoryAsNewWorkspace(
+    absoluteDir: string,
+  ): {
+    success: boolean;
+    folderName?: string;
+    imported?: string[];
+    error?: string;
+  } {
+    if (typeof absoluteDir !== "string" || !path.isAbsolute(absoluteDir)) {
+      return { success: false, error: "Invalid directory path" };
+    }
+    const rootDir = path.resolve(absoluteDir);
+    if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
+      return { success: false, error: "Not a directory" };
+    }
+    if (!fs.existsSync(path.join(rootDir, "manifest.json"))) {
+      return {
+        success: false,
+        error:
+          "Selected folder must contain manifest.json at its root (Nodex plugin layout).",
+      };
+    }
+    try {
+      fs.mkdirSync(this.userPluginsDir, { recursive: true });
+      fs.mkdirSync(this.userSourcesRoot(), { recursive: true });
+    } catch (e) {
+      return {
+        success: false,
+        error: `Could not create plugin folders (${this.userPluginsDir}): ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      };
+    }
+    let folderName = path
+      .basename(rootDir)
+      .replace(/[^a-zA-Z0-9._-]/g, "-")
+      .replace(/^-+|-+$/g, "");
+    if (!folderName) {
+      folderName = "imported-plugin";
+    }
+    if (!isSafePluginName(folderName)) {
+      return { success: false, error: "Invalid workspace folder name" };
+    }
+    const dest = path.join(this.userSourcesRoot(), folderName);
+    if (fs.existsSync(dest)) {
+      return {
+        success: false,
+        error: `Workspace folder "${folderName}" already exists under sources/. Choose another folder or remove it first.`,
+      };
+    }
+    fs.mkdirSync(dest, { recursive: true });
+    const copied = this.copyExternalDirectoryTreeIntoBase(dest, rootDir, "");
+    if (!copied.success) {
+      try {
+        fs.rmSync(dest, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
+      return copied;
+    }
+    if (!fs.existsSync(path.join(dest, "manifest.json"))) {
+      try {
+        fs.rmSync(dest, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
+      return {
+        success: false,
+        error: "Import did not produce manifest.json in workspace (copy failed).",
+      };
+    }
+    this.invalidateDevUiCacheForWorkspace(dest);
+    return {
+      success: true,
+      folderName,
+      imported: copied.imported,
+    };
+  }
+
+  private copyExternalDirectoryTreeIntoBase(
+    base: string,
+    rootDir: string,
+    normBase: string,
+  ): { success: true; imported: string[] } | { success: false; error: string } {
+    if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
+      return { success: false, error: "Not a directory" };
+    }
     const imported: string[] = [];
     const walk = (dir: string): void => {
       for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -2090,7 +2196,6 @@ export class PluginLoader {
         error: e instanceof Error ? e.message : String(e),
       };
     }
-    this.invalidateDevUiCacheForWorkspace(base);
     return { success: true, imported };
   }
 

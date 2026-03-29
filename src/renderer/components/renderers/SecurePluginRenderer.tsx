@@ -40,9 +40,12 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   const noteRef = useRef(note);
   noteRef.current = note;
   const [isReady, setIsReady] = useState(false);
+  const [contentReady, setContentReady] = useState(false);
+  const [deferDisplay, setDeferDisplay] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { resolvedDark } = useTheme();
   const inheritThemeRef = useRef(true);
+  const deferDisplayRef = useRef(false);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sendMessageToPlugin = useCallback((message: PluginMessage) => {
@@ -99,11 +102,19 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
         return;
       }
 
+      if (event.data?.type === MessageType.CONTENT_READY) {
+        setContentReady(true);
+        return;
+      }
+
       const message: PluginMessage = event.data;
 
       switch (message.type) {
         case MessageType.READY: {
           setIsReady(true);
+          if (!deferDisplayRef.current) {
+            setContentReady(true);
+          }
           const n = noteRef.current;
           sendMessageToPlugin({
             type: MessageType.RENDER,
@@ -187,6 +198,11 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
       const inherit = (meta?.theme ?? "inherit") !== "isolated";
       inheritThemeRef.current = inherit;
 
+      const defer = meta?.deferDisplayUntilContentReady === true;
+      deferDisplayRef.current = defer;
+      setDeferDisplay(defer);
+      setContentReady(false);
+
       const themeCss = buildIframeThemeCss(inherit);
       const sandboxedHTML = createSandboxedHTML(htmlContent, {
         themeCss,
@@ -209,6 +225,18 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
     void loadPluginContent();
   }, [loadPluginContent]);
 
+  useEffect(() => {
+    if (!isReady || !deferDisplay || contentReady) {
+      return;
+    }
+    const t = window.setTimeout(() => {
+      setContentReady(true);
+    }, 15_000);
+    return () => window.clearTimeout(t);
+  }, [isReady, deferDisplay, contentReady]);
+
+  const showHostLoader = !isReady || (deferDisplay && !contentReady);
+
   if (error) {
     return (
       <div className="p-6">
@@ -221,12 +249,29 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   }
 
   return (
-    <iframe
-      ref={iframeRef}
-      sandbox="allow-scripts allow-same-origin"
-      className="h-full w-full border-0"
-      title={`Plugin renderer for ${note.type}`}
-    />
+    <div className="relative h-full min-h-0 w-full">
+      <iframe
+        ref={iframeRef}
+        sandbox="allow-scripts allow-same-origin"
+        className={`h-full w-full border-0 transition-opacity duration-150 ${
+          showHostLoader ? "pointer-events-none opacity-0" : "opacity-100"
+        }`}
+        title={`Plugin renderer for ${note.type}`}
+      />
+      {showHostLoader ? (
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/85 text-muted-foreground backdrop-blur-[1px]"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <div
+            className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground/25 border-t-muted-foreground"
+            aria-hidden
+          />
+          <span className="text-[12px] font-medium">Loading note…</span>
+        </div>
+      ) : null}
+    </div>
   );
 };
 
@@ -299,6 +344,11 @@ function createSandboxedHTML(
           v: ${pluginUiProtocolVersion},
           state: state,
         }, '*');
+      };
+      window.Nodex.notifyDisplayReady = function () {
+        try {
+          window.parent.postMessage({ type: '${MessageType.CONTENT_READY}' }, '*');
+        } catch (e) {}
       };
       window.Nodex.onMessage = null;
       window.addEventListener('message', function (event) {

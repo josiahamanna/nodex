@@ -17,6 +17,10 @@ function resolveSamplePluginSourceDir(name: string): string | null {
   if (fs.existsSync(path.join(fromRepo, "manifest.json"))) {
     return fromRepo;
   }
+  const fromSources = path.join(__dirname, "../../plugin-sources", name);
+  if (fs.existsSync(path.join(fromSources, "manifest.json"))) {
+    return fromSources;
+  }
   return null;
 }
 

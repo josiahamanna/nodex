@@ -1,5 +1,5 @@
 /** Hybrid plugin: Node main + ui.tsx bundled for the sandboxed iframe. */
-
+import "./jehu"
 interface PluginContext {
   subscriptions: { dispose?: () => void }[];
 }

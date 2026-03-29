@@ -7,6 +7,8 @@ export interface PluginRenderer {
   /** Iframe UI: inherit host CSS variables vs isolated styling */
   theme?: PluginThemeMode;
   designSystemVersion?: string;
+  /** When true, host overlay until iframe posts `content_ready`. */
+  deferDisplayUntilContentReady?: boolean;
 }
 
 export class Registry {
@@ -24,7 +26,11 @@ export class Registry {
     pluginName: string,
     type: string,
     renderer: any,
-    uiMeta?: { theme?: PluginThemeMode; designSystemVersion?: string },
+    uiMeta?: {
+      theme?: PluginThemeMode;
+      designSystemVersion?: string;
+      deferDisplayUntilContentReady?: boolean;
+    },
   ): void {
     this.renderers.set(type, {
       pluginName,
@@ -32,6 +38,7 @@ export class Registry {
       onMessage: renderer.onMessage,
       theme: uiMeta?.theme ?? "inherit",
       designSystemVersion: uiMeta?.designSystemVersion,
+      deferDisplayUntilContentReady: uiMeta?.deferDisplayUntilContentReady,
     });
     console.log(
       `[Registry] Registered renderer: ${type} (plugin: ${pluginName})`,

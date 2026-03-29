@@ -10,6 +10,7 @@ import { pluginCacheManager } from "./plugin-cache-manager";
 import { emitPluginProgress } from "./plugin-progress";
 import type { PluginManifest } from "./plugin-loader";
 import type { Plugin as EsbuildPlugin } from "esbuild";
+import { resolveNodexPluginUiEntry } from "./resolve-nodex-plugin-ui";
 
 export interface BundleOptions {
   minify?: boolean;
@@ -54,6 +55,42 @@ function resolveMonacoEditorEsm(pluginPath: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function nodexPluginUiEsbuildPlugin(): EsbuildPlugin {
+  return {
+    name: "nodex-plugin-ui-alias",
+    setup(build) {
+      build.onResolve({ filter: /^@nodex\/plugin-ui$/ }, () => {
+        const entry = resolveNodexPluginUiEntry();
+        if (!entry) {
+          return {
+            errors: [
+              {
+                text: "Could not resolve @nodex/plugin-ui (packages/nodex-plugin-ui not found). Run from repo root.",
+              },
+            ],
+          };
+        }
+        return { path: entry };
+      });
+    },
+  };
+}
+
+function nodexPluginUiRollupPlugin(): {
+  name: string;
+  resolveId(id: string): string | null;
+} {
+  return {
+    name: "nodex-plugin-ui-alias",
+    resolveId(id: string) {
+      if (id !== "@nodex/plugin-ui") {
+        return null;
+      }
+      return resolveNodexPluginUiEntry();
+    },
+  };
 }
 
 function monacoEditorAliasEsbuildPlugin(pluginPath: string): EsbuildPlugin {
@@ -211,6 +248,7 @@ export class PluginBundler {
       },
       plugins: [
         monacoEditorAliasEsbuildPlugin(pluginPath),
+        nodexPluginUiEsbuildPlugin(),
         nodexReactShimPlugins(),
       ],
       logLevel: "silent",
@@ -333,6 +371,7 @@ export class PluginBundler {
           external: [...REACT_EXTERNALS],
           plugins: [
             monacoEditorAliasRollupPlugin(pluginPath),
+            nodexPluginUiRollupPlugin(),
             rollupStubAssetImports(),
             replace({
               preventAssignment: true,

@@ -21,6 +21,8 @@ export interface Note {
 export enum MessageType {
   RENDER = "render",
   READY = "ready",
+  /** Iframe → host: first meaningful UI is ready to show; used when manifest `deferDisplayUntilContentReady` is true. */
+  CONTENT_READY = "content_ready",
   UPDATE = "update",
   ACTION = "action",
   /** Iframe → host: versioned JSON snapshot for persistence (see plugin-state-protocol.ts). */

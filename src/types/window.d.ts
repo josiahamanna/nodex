@@ -154,6 +154,14 @@ declare global {
         imported?: string[];
         error?: string;
       }>;
+      importDirectoryAsNewWorkspace: (
+        absoluteDir: string,
+      ) => Promise<{
+        success: boolean;
+        folderName?: string;
+        imported?: string[];
+        error?: string;
+      }>;
       npmRegistrySearch: (
         query: string,
       ) => Promise<{
@@ -230,6 +238,7 @@ declare global {
       ) => Promise<{
         theme?: "inherit" | "isolated";
         designSystemVersion?: string;
+        deferDisplayUntilContentReady?: boolean;
       } | null>;
       getPluginManifestUi: (
         pluginName: string,

@@ -10,6 +10,7 @@
   "author": "Nodex",
   "license": "MIT",
   "permissions": ["storage.read", "storage.write"],
+  "deferDisplayUntilContentReady": true,
   "dependencies": {
     "@tiptap/pm": "^3.21.0",
     "@tiptap/react": "^3.21.0",

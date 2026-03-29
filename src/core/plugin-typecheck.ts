@@ -1,6 +1,32 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as ts from "typescript";
+import { resolveNodexPluginUiEntry } from "./resolve-nodex-plugin-ui";
+
+function mergeNodexPluginUiForWorkspace(
+  configDir: string,
+  parsed: ts.ParsedCommandLine,
+): void {
+  const sdkEntry = resolveNodexPluginUiEntry();
+  if (!sdkEntry) {
+    return;
+  }
+  const mappedEntry = path.resolve(sdkEntry);
+  const prevPaths = parsed.options.paths ?? {};
+  const baseUrl = parsed.options.baseUrl ?? configDir;
+  parsed.options = {
+    ...parsed.options,
+    baseUrl,
+    paths: {
+      ...prevPaths,
+      "@nodex/plugin-ui": [mappedEntry.split(path.sep).join("/")],
+    },
+  };
+  const absSdk = path.resolve(sdkEntry);
+  if (!parsed.fileNames.some((f) => path.resolve(f) === absSdk)) {
+    parsed.fileNames = [...parsed.fileNames, absSdk];
+  }
+}
 
 export interface TypecheckDiagnostic {
   relativePath: string;
@@ -112,6 +138,9 @@ export function typecheckPluginWorkspace(
       path.join(root, "tsconfig.json"),
     );
   }
+
+  const configDir = configPath ? path.dirname(configPath) : root;
+  mergeNodexPluginUiForWorkspace(configDir, parsed);
 
   if (parsed.errors.length > 0) {
     const msg = parsed.errors

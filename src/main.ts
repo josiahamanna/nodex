@@ -11,6 +11,7 @@ import { appendPluginAudit } from "./core/plugin-audit";
 import { pluginCacheManager } from "./core/plugin-cache-manager";
 import { PluginLoader } from "./core/plugin-loader";
 import { seedSamplePluginsToUserDir } from "./core/seed-user-plugins";
+import { resolveNodexPluginUiMonacoLib } from "./core/resolve-nodex-plugin-ui";
 import { setPluginProgressSink } from "./core/plugin-progress";
 import { packageManager } from "./core/package-manager";
 import { bootstrapNotesTree, saveNotesState } from "./core/notes-persistence";
@@ -102,6 +103,16 @@ function setIdeWorkspaceWatch(pluginName: string | null): void {
 
 function getDialogParent(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined;
+}
+
+/** Avoid passing `undefined` as the first argument to `showOpenDialog` (can break on some platforms). */
+function showOpenDialogWithParent(
+  options: Electron.OpenDialogOptions,
+): Promise<Electron.OpenDialogReturnValue> {
+  const parent = getDialogParent();
+  return parent
+    ? dialog.showOpenDialog(parent, options)
+    : dialog.showOpenDialog(options);
 }
 
 function broadcastNativeThemeToRenderers(): void {
@@ -248,6 +259,8 @@ app.on("ready", () => {
       return {
         theme: r.theme ?? "inherit",
         designSystemVersion: r.designSystemVersion,
+        deferDisplayUntilContentReady:
+          r.deferDisplayUntilContentReady === true,
       };
     },
   );
@@ -570,7 +583,7 @@ ipcMain.handle(
       return { success: false, error: "Invalid plugin name" };
     }
     const { dialog } = require("electron");
-    const result = await dialog.showOpenDialog(getDialogParent(), {
+    const result = await showOpenDialogWithParent({
       properties: ["openDirectory", "createDirectory"],
       title: "Export dev package (.Nodexplugin-dev)",
     });
@@ -599,7 +612,7 @@ ipcMain.handle(
       return { success: false, error: "Invalid plugin name" };
     }
     const { dialog } = require("electron");
-    const result = await dialog.showOpenDialog(getDialogParent(), {
+    const result = await showOpenDialogWithParent({
       properties: ["openDirectory", "createDirectory"],
       title: "Export production package (.Nodexplugin)",
     });
@@ -775,17 +788,7 @@ ipcMain.handle(IPC_CHANNELS.PLUGIN_LIST_WORKSPACE_FOLDERS, async () => {
 });
 
 ipcMain.handle(IPC_CHANNELS.PLUGIN_LOAD_NODEX_FROM_PARENT, async () => {
-  const parent = getDialogParent();
-  if (!parent) {
-    return {
-      success: false,
-      cancelled: true,
-      added: [],
-      warnings: [],
-      errors: [],
-    };
-  }
-  const result = await dialog.showOpenDialog(parent, {
+  const result = await showOpenDialogWithParent({
     properties: ["openDirectory"],
     title:
       "Parent folder — immediate subfolders containing .nodexplugin are registered",
@@ -890,11 +893,7 @@ ipcMain.handle(
     if (!isSafePluginName(installedFolderName)) {
       return { success: false, error: "Invalid plugin name" };
     }
-    const parent = getDialogParent();
-    if (!parent) {
-      return { success: false, error: "No window for dialog" };
-    }
-    const pick = await dialog.showOpenDialog(parent, {
+    const pick = await showOpenDialogWithParent({
       properties: ["openDirectory", "createDirectory"],
       title: "Copy dist/ contents into this folder",
     });
@@ -1032,8 +1031,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle(IPC_CHANNELS.PLUGIN_SELECT_IMPORT_FILES, async () => {
-  const { dialog } = require("electron");
-  const result = await dialog.showOpenDialog(getDialogParent(), {
+  const result = await showOpenDialogWithParent({
     properties: ["openFile", "multiSelections"],
     title: "Import files into plugin workspace",
   });
@@ -1044,8 +1042,7 @@ ipcMain.handle(IPC_CHANNELS.PLUGIN_SELECT_IMPORT_FILES, async () => {
 });
 
 ipcMain.handle(IPC_CHANNELS.PLUGIN_SELECT_IMPORT_DIRECTORY, async () => {
-  const { dialog } = require("electron");
-  const result = await dialog.showOpenDialog(getDialogParent(), {
+  const result = await showOpenDialogWithParent({
     properties: ["openDirectory"],
     title: "Import folder into plugin workspace",
   });
@@ -1099,6 +1096,23 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_IMPORT_DIRECTORY_AS_NEW_WORKSPACE,
+  async (_event, absoluteDir: unknown) => {
+    if (typeof absoluteDir !== "string") {
+      return { success: false, error: "Invalid directory" };
+    }
+    try {
+      return pluginLoader.importDirectoryAsNewWorkspace(absoluteDir);
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
 function toFileUriForMonaco(absPath: string): string {
   return toFileUri(absPath);
 }
@@ -1145,6 +1159,10 @@ ipcMain.handle(IPC_CHANNELS.PLUGIN_IDE_TYPINGS, async () => {
   };
   tryAdd("@types/react/index.d.ts");
   tryAdd("@types/react-dom/index.d.ts");
+  const nodexSdk = resolveNodexPluginUiMonacoLib();
+  if (nodexSdk) {
+    libs.push(nodexSdk);
+  }
   return { libs };
 });
 

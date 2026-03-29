@@ -45,6 +45,7 @@ export const IPC_CHANNELS = {
   PLUGIN_SELECT_IMPORT_DIRECTORY: "plugin:select-import-directory",
   PLUGIN_IMPORT_FILES_INTO_WORKSPACE: "plugin:import-files-into-workspace",
   PLUGIN_IMPORT_DIRECTORY_INTO_WORKSPACE: "plugin:import-directory-into-workspace",
+  PLUGIN_IMPORT_DIRECTORY_AS_NEW_WORKSPACE: "plugin:import-directory-as-new-workspace",
   NPM_REGISTRY_SEARCH: "plugin:npm-registry-search",
   PLUGIN_TYPECHECK: "plugin:typecheck",
   PLUGIN_IDE_TYPINGS: "plugin:ide-typings",

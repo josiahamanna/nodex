@@ -19,6 +19,7 @@ import {
 } from "react-resizable-panels";
 import { Note } from "../../preload";
 import { joinFileUri } from "../../shared/file-uri";
+import { NODEX_PLUGIN_UI_MONACO_URI } from "../../shared/nodex-plugin-ui-monaco-uri";
 import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -175,6 +176,9 @@ const monacoBeforeMount: BeforeMount = () => {
     esModuleInterop: true,
     allowSyntheticDefaultImports: true,
     skipLibCheck: true,
+    paths: {
+      "@nodex/plugin-ui": [NODEX_PLUGIN_UI_MONACO_URI],
+    },
   };
   ts.javascriptDefaults.setCompilerOptions(compilerOptions);
   ts.typescriptDefaults.setCompilerOptions(compilerOptions);
@@ -1036,7 +1040,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
   };
 
   const onImportFolder = async () => {
-    if (!pluginFolder || busy) {
+    if (busy) {
       return;
     }
     setBusy(true);
@@ -1046,18 +1050,43 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
       if (!dir) {
         return;
       }
-      const res = await window.Nodex.importDirectoryIntoWorkspace(
-        pluginFolder,
-        dir,
-        "",
-      );
+      if (pluginFolder) {
+        const res = await window.Nodex.importDirectoryIntoWorkspace(
+          pluginFolder,
+          dir,
+          "",
+        );
+        if (!res.success) {
+          setStatus(res.error ?? "Import failed");
+          return;
+        }
+        await refreshFileList();
+        setStatus(
+          `Imported ${res.imported?.length ?? 0} file(s) from folder under plugin root.${formatImportedPathsForStatus(res.imported)}`,
+        );
+        return;
+      }
+      const res = await window.Nodex.importDirectoryAsNewWorkspace(dir);
       if (!res.success) {
         setStatus(res.error ?? "Import failed");
         return;
       }
-      await refreshFileList();
+      await refreshWorkspaceFolders();
+      if (res.folderName) {
+        setPluginFolder(res.folderName);
+      }
+      const reload = await window.Nodex.reloadPluginRegistry();
+      if (!reload.success) {
+        setStatus(
+          `Workspace "${res.folderName}" imported, but registry reload failed: ${reload.error ?? "unknown"}.`,
+        );
+        return;
+      }
+      setPreviewRev((r) => r + 1);
+      await refreshTypes();
+      onPluginsChanged?.();
       setStatus(
-        `Imported ${res.imported?.length ?? 0} file(s) from folder under plugin root.${formatImportedPathsForStatus(res.imported)}`,
+        `Imported new workspace "${res.folderName}" (${res.imported?.length ?? 0} file(s)).${formatImportedPathsForStatus(res.imported)}`,
       );
     } finally {
       setBusy(false);
@@ -1614,7 +1643,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                   <button
                     type="button"
                     role="menuitem"
-                    disabled={!pluginFolder || busy}
+                    disabled={busy}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
