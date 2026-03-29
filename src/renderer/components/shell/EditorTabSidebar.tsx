@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   dispatchIdeShellAction,
+  dispatchIdeShellExpandFolder,
   dispatchIdeShellOpenFile,
+  dispatchIdeShellPlugin,
   IDE_SHELL_STATE_EVENT,
   type IdeShellAction,
   type IdeShellStateDetail,
@@ -64,8 +67,9 @@ function buildFileTree(paths: string[]): FileTreeNode[] {
 
 const menuBtn =
   "min-h-7 rounded-sm border border-input bg-background px-2 py-1 text-[11px] text-foreground hover:bg-muted/50";
-const menuPanel =
-  "absolute left-0 top-full z-50 mt-1 min-w-[12rem] rounded-md border border-border bg-background py-1 shadow-lg";
+/** Fixed portal menu — must not use absolute under sidebar (center panel stacks on top). */
+const menuPortalPanel =
+  "fixed z-[1000] rounded-md border border-border bg-background py-1 shadow-lg";
 const menuItem =
   "w-full px-3 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50";
 
@@ -73,18 +77,35 @@ function fireAction(type: IdeShellAction): void {
   dispatchIdeShellAction(type);
 }
 
+/** Align tree with plugin row: pl-6 + w-6 chevron + gap ≈ start of folder label. */
+const PLUGIN_TREE_ROOT_OFFSET_CLASS = "ml-[30px] border-l border-sidebar-border/50 pl-2";
+const TREE_DEPTH_PAD_BASE = 4;
+const TREE_DEPTH_STEP_PX = 14;
+
 const EditorTabSidebar: React.FC = () => {
   const [state, setState] = useState<IdeShellStateDetail>({
     pluginFolder: "",
+    folders: [],
     fileList: [],
     activePath: null,
     busy: false,
     dirtyTabCount: 0,
     hasActiveTab: false,
+    tscOnSave: false,
+    formatOnSave: false,
+    reloadOnSave: false,
   });
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>(
+    {},
+  );
   const [menu, setMenu] = useState<null | "file" | "edit" | "build">(null);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const tree = useMemo(() => buildFileTree(state.fileList), [state.fileList]);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+  const fileBtnRef = useRef<HTMLButtonElement | null>(null);
+  const editBtnRef = useRef<HTMLButtonElement | null>(null);
+  const buildBtnRef = useRef<HTMLButtonElement | null>(null);
+  const menuPortalRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const onState = (e: Event) => {
@@ -97,38 +118,104 @@ const EditorTabSidebar: React.FC = () => {
     return () => window.removeEventListener(IDE_SHELL_STATE_EVENT, onState);
   }, []);
 
+  useLayoutEffect(() => {
+    if (!menu) {
+      setMenuPos(null);
+      return;
+    }
+    const ref =
+      menu === "file"
+        ? fileBtnRef
+        : menu === "edit"
+          ? editBtnRef
+          : buildBtnRef;
+    const el = ref.current;
+    if (!el) {
+      setMenuPos(null);
+      return;
+    }
+    const r = el.getBoundingClientRect();
+    setMenuPos({ top: r.bottom + 2, left: r.left });
+  }, [menu]);
+
   useEffect(() => {
     if (!menu) {
       return;
     }
     const onDown = (ev: MouseEvent) => {
-      const el = wrapRef.current;
-      if (el && !el.contains(ev.target as Node)) {
-        setMenu(null);
+      const t = ev.target as Node;
+      const portal = menuPortalRef.current;
+      if (
+        portal?.contains(t) ||
+        fileBtnRef.current?.contains(t) ||
+        editBtnRef.current?.contains(t) ||
+        buildBtnRef.current?.contains(t)
+      ) {
+        return;
       }
+      setMenu(null);
     };
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === "Escape") {
         setMenu(null);
       }
     };
-    document.addEventListener("mousedown", onDown);
+    document.addEventListener("mousedown", onDown, true);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("mousedown", onDown, true);
       document.removeEventListener("keydown", onKey);
     };
   }, [menu]);
+
+  useEffect(() => {
+    if (!menu) {
+      return;
+    }
+    const close = (): void => {
+      setMenu(null);
+    };
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("resize", close);
+    };
+  }, [menu]);
+
+  useEffect(() => {
+    if (state.pluginFolder) {
+      setExpandedFolders((prev) => ({
+        ...prev,
+        [state.pluginFolder]: true,
+      }));
+    }
+  }, [state.pluginFolder]);
 
   const pf = state.pluginFolder;
   const busy = state.busy;
   const hasOpen = state.hasActiveTab;
   const dirty = state.dirtyTabCount;
 
-  const renderTreeNodes = (nodes: FileTreeNode[], depth: number): React.ReactNode =>
+  const toggleFolderExpanded = (folderName: string): void => {
+    setExpandedFolders((prev) => {
+      const nextOpen = !prev[folderName];
+      if (nextOpen) {
+        const entry = state.folders.find((f) => f.name === folderName);
+        if (entry && entry.fileList == null) {
+          dispatchIdeShellExpandFolder(folderName);
+        }
+      }
+      return { ...prev, [folderName]: nextOpen };
+    });
+  };
+
+  const renderTreeNodes = (
+    nodes: FileTreeNode[],
+    depth: number,
+    treePluginFolder: string,
+  ): React.ReactNode =>
     nodes.map((n) => {
       const isDir = n.children.length > 0 || n.path === null;
-      const pad = 8 + depth * 12;
+      const pad = TREE_DEPTH_PAD_BASE + depth * TREE_DEPTH_STEP_PX;
       if (isDir && n.children.length > 0) {
         return (
           <li key={`${depth}-${n.name}`} className="list-none">
@@ -139,13 +226,14 @@ const EditorTabSidebar: React.FC = () => {
               {n.name}
             </div>
             <ul className="m-0 p-0">
-              {renderTreeNodes(n.children, depth + 1)}
+              {renderTreeNodes(n.children, depth + 1, treePluginFolder)}
             </ul>
           </li>
         );
       }
       const rel = n.path ?? "";
-      const active = state.activePath === rel;
+      const active =
+        state.activePath === rel && state.pluginFolder === treePluginFolder;
       return (
         <li key={rel || `${depth}-${n.name}`} className="list-none">
           <button
@@ -157,7 +245,9 @@ const EditorTabSidebar: React.FC = () => {
                 : "border-transparent text-foreground"
             }`}
             title={rel}
-            onClick={() => dispatchIdeShellOpenFile(rel)}
+            onClick={() =>
+              dispatchIdeShellOpenFile(rel, treePluginFolder)
+            }
           >
             {n.name}
           </button>
@@ -165,25 +255,20 @@ const EditorTabSidebar: React.FC = () => {
       );
     });
 
-  return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div
-        ref={wrapRef}
-        className="shrink-0 border-sidebar-border border-b px-1 py-1.5"
-      >
-        <div className="flex flex-wrap gap-1">
-          <div className="relative">
-            <button
-              type="button"
-              className={menuBtn}
-              aria-expanded={menu === "file"}
-              aria-haspopup="true"
-              onClick={() => setMenu((m) => (m === "file" ? null : "file"))}
-            >
-              File
-            </button>
+  const menuPortal =
+    menu && menuPos
+      ? createPortal(
+          <div
+            ref={menuPortalRef}
+            role="menu"
+            className={`${menuPortalPanel} ${menu === "build" ? "min-w-[13rem]" : "min-w-[12rem]"}`}
+            style={{
+              top: menuPos.top,
+              left: menuPos.left,
+            }}
+          >
             {menu === "file" ? (
-              <div className={menuPanel} role="menu">
+              <>
                 <button
                   type="button"
                   role="menuitem"
@@ -316,21 +401,10 @@ const EditorTabSidebar: React.FC = () => {
                 >
                   Copy dist…
                 </button>
-              </div>
+              </>
             ) : null}
-          </div>
-          <div className="relative">
-            <button
-              type="button"
-              className={menuBtn}
-              aria-expanded={menu === "edit"}
-              aria-haspopup="true"
-              onClick={() => setMenu((m) => (m === "edit" ? null : "edit"))}
-            >
-              Edit
-            </button>
             {menu === "edit" ? (
-              <div className={menuPanel} role="menu">
+              <>
                 <button
                   type="button"
                   role="menuitem"
@@ -341,23 +415,56 @@ const EditorTabSidebar: React.FC = () => {
                     fireAction("typecheck");
                   }}
                 >
-                  Check types
+                  Check types (TS)
                 </button>
-              </div>
+                <div
+                  className="my-1 border-t border-border"
+                  role="separator"
+                  aria-hidden
+                />
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={state.tscOnSave}
+                  className={menuItem}
+                  onClick={() => {
+                    setMenu(null);
+                    fireAction("toggleTscOnSave");
+                  }}
+                >
+                  {state.tscOnSave ? "✓ " : ""}
+                  Typecheck on save
+                </button>
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={state.formatOnSave}
+                  className={menuItem}
+                  onClick={() => {
+                    setMenu(null);
+                    fireAction("toggleFormatOnSave");
+                  }}
+                >
+                  {state.formatOnSave ? "✓ " : ""}
+                  Format on save (Prettier)
+                </button>
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={state.reloadOnSave}
+                  className={menuItem}
+                  onClick={() => {
+                    setMenu(null);
+                    fireAction("toggleReloadOnSave");
+                  }}
+                >
+                  {state.reloadOnSave ? "✓ " : ""}
+                  Reload registry on save
+                </button>
+              </>
             ) : null}
-          </div>
-          <div className="relative">
-            <button
-              type="button"
-              className={menuBtn}
-              aria-expanded={menu === "build"}
-              aria-haspopup="true"
-              onClick={() => setMenu((m) => (m === "build" ? null : "build"))}
-            >
-              Build
-            </button>
             {menu === "build" ? (
-              <div className={`${menuPanel} min-w-[13rem]`} role="menu">
+              <>
                 <button
                   type="button"
                   role="menuitem"
@@ -430,27 +537,126 @@ const EditorTabSidebar: React.FC = () => {
                 >
                   Install dependencies
                 </button>
-              </div>
+              </>
             ) : null}
-          </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="shrink-0 border-sidebar-border border-b px-1 py-1.5">
+        <div className="flex flex-wrap gap-1">
+          <button
+            ref={fileBtnRef}
+            type="button"
+            className={menuBtn}
+            aria-expanded={menu === "file"}
+            aria-haspopup="true"
+            onClick={() => setMenu((m) => (m === "file" ? null : "file"))}
+          >
+            File
+          </button>
+          <button
+            ref={editBtnRef}
+            type="button"
+            className={menuBtn}
+            aria-expanded={menu === "edit"}
+            aria-haspopup="true"
+            onClick={() => setMenu((m) => (m === "edit" ? null : "edit"))}
+          >
+            Edit
+          </button>
+          <button
+            ref={buildBtnRef}
+            type="button"
+            className={menuBtn}
+            aria-expanded={menu === "build"}
+            aria-haspopup="true"
+            onClick={() => setMenu((m) => (m === "build" ? null : "build"))}
+          >
+            Build
+          </button>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="border-sidebar-border border-b px-3 py-2">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Workspace files
+            Plugins
           </span>
         </div>
-        {!pf ? (
+        {state.folders.length === 0 ? (
           <p className="px-3 py-3 text-[11px] text-muted-foreground">
-            Select a plugin in the editor column to load its file tree.
+            No plugin workspaces yet. Import or load a parent folder from the
+            Build menu.
           </p>
         ) : (
           <ul className="m-0 list-none py-1">
-            {renderTreeNodes(tree, 0)}
+            {state.folders.map((folder) => {
+              const open = !!expandedFolders[folder.name];
+              const activeWs = folder.name === pf;
+              return (
+                <li key={folder.name} className="list-none">
+                  <div
+                    className="flex items-center gap-0.5 py-[2px] pr-2"
+                    style={{ paddingLeft: 6 }}
+                  >
+                    <button
+                      type="button"
+                      className="flex h-7 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted/50"
+                      aria-expanded={open}
+                      title={open ? "Collapse files" : "Expand files"}
+                      aria-label={
+                        open ? `Collapse ${folder.name}` : `Expand ${folder.name}`
+                      }
+                      onClick={() => toggleFolderExpanded(folder.name)}
+                    >
+                      <span
+                        className={`inline-block text-[12px] transition-transform ${open ? "rotate-90" : ""}`}
+                      >
+                        ›
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`min-w-0 flex-1 truncate rounded-sm px-1 py-1 text-left font-mono text-[12px] hover:bg-muted/40 ${
+                        activeWs
+                          ? "font-semibold text-foreground"
+                          : "text-foreground"
+                      }`}
+                      title={`Open workspace ${folder.name}`}
+                      onClick={() => dispatchIdeShellPlugin(folder.name)}
+                    >
+                      {folder.name}
+                    </button>
+                  </div>
+                  {open && folder.fileList == null ? (
+                    <div
+                      className={`pb-2 text-[11px] text-muted-foreground ${PLUGIN_TREE_ROOT_OFFSET_CLASS}`}
+                      aria-live="polite"
+                    >
+                      Loading…
+                    </div>
+                  ) : null}
+                  {open && folder.fileList != null ? (
+                    <ul
+                      className={`m-0 list-none py-0.5 ${PLUGIN_TREE_ROOT_OFFSET_CLASS}`}
+                    >
+                      {renderTreeNodes(
+                        buildFileTree(folder.fileList),
+                        0,
+                        folder.name,
+                      )}
+                    </ul>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
+      {menuPortal}
     </div>
   );
 };

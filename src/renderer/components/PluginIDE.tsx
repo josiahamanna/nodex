@@ -22,24 +22,26 @@ import { joinFileUri } from "../../shared/file-uri";
 import { NODEX_PLUGIN_UI_MONACO_URI } from "../../shared/nodex-plugin-ui-monaco-uri";
 import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
 import { useTheme } from "../theme/ThemeContext";
+import { useToast } from "../toast/ToastContext";
+import { clientLog } from "../logging/clientLog";
 import {
   IDE_SHELL_ACTION_EVENT,
+  IDE_SHELL_EXPAND_FOLDER_EVENT,
   IDE_SHELL_OPEN_FILE_EVENT,
   IDE_SHELL_PLUGIN_EVENT,
   IDE_SHELL_STATE_EVENT,
   type IdeShellAction,
+  type IdeShellOpenFileDetail,
   type IdeShellStateDetail,
 } from "../plugin-ide/ideShellBridge";
 
 const PLUGIN_IDE_FILES_COLLAPSED_KEY = "plugin-ide-files-collapsed";
 const PLUGIN_IDE_TSC_ON_SAVE_KEY = "plugin-ide-tsc-on-save";
+const PLUGIN_IDE_FORMAT_ON_SAVE_KEY = "plugin-ide-format-on-save";
 const PLUGIN_IDE_RELOAD_ON_SAVE_KEY = "plugin-ide-reload-on-save";
 const PLUGIN_IDE_SNAPSHOT_KEY = "plugin-ide-workspace-snapshot-v1";
 const PLUGIN_IDE_MAX_SNAPSHOT_FILE_BYTES = 500 * 1024;
 const NPM_DEBOUNCE_MS = 280;
-
-const IDE_SHORTCUT_KBD =
-  "inline rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px] text-foreground/90 shadow-sm";
 
 interface OpenTab {
   relativePath: string;
@@ -218,8 +220,12 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
 }) => {
   const { resolvedDark } = useTheme();
   const monacoTheme = resolvedDark ? "vs-dark" : "vs";
+  const { showToast } = useToast();
 
   const [folders, setFolders] = useState<string[]>([]);
+  const [folderFilesCache, setFolderFilesCache] = useState<
+    Record<string, string[] | undefined>
+  >({});
   const [pluginFolder, setPluginFolder] = useState<string>("");
   /** Absolute workspace as file:// so Monaco resolves imports like runtime (cache-backed virtual node_modules). */
   const [workspaceRootFileUri, setWorkspaceRootFileUri] = useState("");
@@ -231,6 +237,30 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   const [previewRev, setPreviewRev] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!status) {
+      return;
+    }
+    const s = status.toLowerCase();
+    let severity: "error" | "warning" | "info" | "log" = "info";
+    if (
+      s.includes("fail") ||
+      /\berror\b/.test(s) ||
+      s.includes("could not") ||
+      s.includes("invalid") ||
+      s.includes("not valid")
+    ) {
+      severity = "error";
+    } else if (s.includes("warn")) {
+      severity = "warning";
+    }
+    showToast({
+      severity,
+      message: status,
+      mergeKey: `plugin-ide:${severity}`,
+    });
+  }, [status, showToast]);
   const [pathModal, setPathModal] = useState<PathModalState>(null);
   const filesPanelRef = useRef<ImperativePanelHandle | null>(null);
   const npmWrapRef = useRef<HTMLDivElement | null>(null);
@@ -239,7 +269,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   const [npmResults, setNpmResults] = useState<NpmSearchRow[]>([]);
   const [npmLoading, setNpmLoading] = useState(false);
   const [npmMenuOpen, setNpmMenuOpen] = useState(false);
-  const [toolbarMenu, setToolbarMenu] = useState<null | "file" | "build">(null);
+  const [toolbarMenu, setToolbarMenu] = useState<
+    null | "file" | "edit" | "build"
+  >(null);
   const toolbarMenuRef = useRef<HTMLDivElement | null>(null);
   const [addAsDevDep, setAddAsDevDep] = useState(false);
   const [installedPkgs, setInstalledPkgs] = useState<InstalledPkg[]>([]);
@@ -250,7 +282,12 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   const [reloadOnSave, setReloadOnSave] = useState(
     () => localStorage.getItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY) === "1",
   );
+  const [formatOnSave, setFormatOnSave] = useState(
+    () => localStorage.getItem(PLUGIN_IDE_FORMAT_ON_SAVE_KEY) === "1",
+  );
   const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
+  const pluginFolderRef = useRef("");
+  const pendingShellOpenRef = useRef<string | null>(null);
   const tabsRef = useRef<OpenTab[]>([]);
   const activePathRef = useRef<string | null>(null);
   const cursorByPathRef = useRef<
@@ -275,6 +312,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
 
   tabsRef.current = tabs;
   activePathRef.current = activePath;
+  pluginFolderRef.current = pluginFolder;
 
   const dirtyTabCount = useMemo(
     () => tabs.filter((t) => t.content !== t.savedContent).length,
@@ -355,6 +393,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     try {
       const files = await window.Nodex.listPluginSourceFiles(pluginFolder);
       setFileList(files);
+      setFolderFilesCache((prev) => ({ ...prev, [pluginFolder]: files }));
     } catch (e) {
       setFileList([]);
       setStatus(
@@ -366,6 +405,15 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   const refreshWorkspaceFolders = useCallback(async () => {
     const list = await window.Nodex.listPluginWorkspaceFolders();
     setFolders(list);
+    setFolderFilesCache((prev) => {
+      const next: Record<string, string[] | undefined> = {};
+      for (const name of list) {
+        if (prev[name] !== undefined) {
+          next[name] = prev[name];
+        }
+      }
+      return next;
+    });
     setPluginFolder((cur) => (list.includes(cur) ? cur : list[0] ?? ""));
   }, []);
 
@@ -424,17 +472,17 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       setActivePath(null);
       cursorByPathRef.current = {};
       prevActivePathForCursorRef.current = null;
-      return;
+    } else {
+      setTabs(snap.tabs);
+      const ap =
+        snap.activePath &&
+        snap.tabs.some((t) => t.relativePath === snap.activePath)
+          ? snap.activePath
+          : (snap.tabs[0]?.relativePath ?? null);
+      setActivePath(ap);
+      cursorByPathRef.current = { ...snap.cursors };
+      prevActivePathForCursorRef.current = ap;
     }
-    setTabs(snap.tabs);
-    const ap =
-      snap.activePath &&
-      snap.tabs.some((t) => t.relativePath === snap.activePath)
-        ? snap.activePath
-        : (snap.tabs[0]?.relativePath ?? null);
-    setActivePath(ap);
-    cursorByPathRef.current = { ...snap.cursors };
-    prevActivePathForCursorRef.current = ap;
   }, [pluginFolder]);
 
   useEffect(() => {
@@ -677,6 +725,85 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     );
   };
 
+  const tryPrettierFormat = useCallback(
+    async (content: string, relativePath: string): Promise<string> => {
+      if (!pluginFolder || !formatOnSave) {
+        return content;
+      }
+      const lower = relativePath.toLowerCase();
+      const dot = lower.lastIndexOf(".");
+      const ext = dot >= 0 ? lower.slice(dot + 1) : "";
+      const supported = new Set([
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "mjs",
+        "cjs",
+        "json",
+        "css",
+        "md",
+      ]);
+      if (!supported.has(ext)) {
+        return content;
+      }
+      try {
+        const prettier = await import("prettier/standalone");
+        const estree = await import("prettier/plugins/estree");
+        const plugins: object[] = [estree];
+        let parser: string;
+        if (ext === "ts" || ext === "tsx") {
+          plugins.push(await import("prettier/plugins/typescript"));
+          parser = "typescript";
+        } else if (
+          ext === "js" ||
+          ext === "jsx" ||
+          ext === "mjs" ||
+          ext === "cjs"
+        ) {
+          plugins.push(await import("prettier/plugins/babel"));
+          parser = "babel";
+        } else if (ext === "json") {
+          plugins.push(await import("prettier/plugins/babel"));
+          parser = "json";
+        } else if (ext === "css") {
+          plugins.push(await import("prettier/plugins/postcss"));
+          parser = "css";
+        } else {
+          plugins.push(await import("prettier/plugins/markdown"));
+          parser = "markdown";
+        }
+        const rc: Record<string, unknown> = {};
+        for (const cfg of [".prettierrc.json", ".prettierrc"] as const) {
+          try {
+            const raw = await window.Nodex.readPluginSourceFile(
+              pluginFolder,
+              cfg,
+            );
+            Object.assign(rc, JSON.parse(raw) as Record<string, unknown>);
+            break;
+          } catch {
+            /* try next */
+          }
+        }
+        const out = await prettier.format(content, {
+          ...rc,
+          parser,
+          plugins,
+        } as Parameters<typeof prettier.format>[1]);
+        return out;
+      } catch (e) {
+        clientLog({
+          component: "PluginIDE",
+          level: "warn",
+          message: `Prettier: ${e instanceof Error ? e.message : String(e)}`,
+        });
+        return content;
+      }
+    },
+    [pluginFolder, formatOnSave],
+  );
+
   const saveActive = async (): Promise<boolean> => {
     if (!pluginFolder || !activeTab) {
       return true;
@@ -684,10 +811,26 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     if (activeTab.content === activeTab.savedContent) {
       return true;
     }
+    let toWrite = activeTab.content;
+    if (formatOnSave) {
+      toWrite = await tryPrettierFormat(
+        activeTab.content,
+        activeTab.relativePath,
+      );
+      if (toWrite !== activeTab.content) {
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.relativePath === activeTab.relativePath
+              ? { ...t, content: toWrite }
+              : t,
+          ),
+        );
+      }
+    }
     const res = await window.Nodex.writePluginSourceFile(
       pluginFolder,
       activeTab.relativePath,
-      activeTab.content,
+      toWrite,
     );
     if (!res.success) {
       setStatus(res.error ?? "Save failed");
@@ -728,10 +871,21 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     setStatus(null);
     try {
       for (const t of dirty) {
+        let body = t.content;
+        if (formatOnSave) {
+          body = await tryPrettierFormat(t.content, t.relativePath);
+          if (body !== t.content) {
+            setTabs((prev) =>
+              prev.map((x) =>
+                x.relativePath === t.relativePath ? { ...x, content: body } : x,
+              ),
+            );
+          }
+        }
         const res = await window.Nodex.writePluginSourceFile(
           pluginFolder,
           t.relativePath,
-          t.content,
+          body,
         );
         if (!res.success) {
           setStatus(res.error ?? `Save failed: ${t.relativePath}`);
@@ -936,7 +1090,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       const errCount = res.diagnostics.filter((d) => d.category === "error")
         .length;
       if (res.error) {
-        setStatus(res.error);
+        if (res.diagnostics.length === 0) {
+          clientLog({
+            component: "PluginIDE",
+            level: "warn",
+            message: res.error,
+          });
+          setStatus(
+            "Typecheck failed: invalid tsconfig or compiler options. Fix tsconfig.json (options like target, module, moduleResolution, jsx must be string values).",
+          );
+        } else {
+          setStatus(res.error);
+        }
       } else if (errCount > 0) {
         setStatus(`Typecheck: ${errCount} error(s). See Problems.`);
       } else {
@@ -1454,11 +1619,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     }
     const detail: IdeShellStateDetail = {
       pluginFolder,
+      folders: folders.map((name) => ({
+        name,
+        fileList: folderFilesCache[name] ?? null,
+      })),
       fileList,
       activePath,
       busy,
       dirtyTabCount,
       hasActiveTab: !!activeTab,
+      tscOnSave,
+      formatOnSave,
+      reloadOnSave,
     };
     window.dispatchEvent(
       new CustomEvent(IDE_SHELL_STATE_EVENT, { detail }),
@@ -1466,15 +1638,58 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   }, [
     shellLayout,
     pluginFolder,
+    folders,
+    folderFilesCache,
     fileList,
     activePath,
     busy,
     dirtyTabCount,
     activeTab,
+    tscOnSave,
+    formatOnSave,
+    reloadOnSave,
   ]);
+
+  useEffect(() => {
+    if (!shellLayout) {
+      return;
+    }
+    const onExpand = (e: Event) => {
+      const name = (e as CustomEvent<string>).detail;
+      if (typeof name !== "string" || !name) {
+        return;
+      }
+      void (async () => {
+        try {
+          const files = await window.Nodex.listPluginSourceFiles(name);
+          setFolderFilesCache((prev) => ({ ...prev, [name]: files }));
+        } catch (err) {
+          clientLog({
+            component: "PluginIDE",
+            level: "warn",
+            message: `listPluginSourceFiles(${name}): ${err instanceof Error ? err.message : String(err)}`,
+          });
+        }
+      })();
+    };
+    window.addEventListener(IDE_SHELL_EXPAND_FOLDER_EVENT, onExpand);
+    return () =>
+      window.removeEventListener(IDE_SHELL_EXPAND_FOLDER_EVENT, onExpand);
+  }, [shellLayout]);
 
   const openFileRef = useRef(openFile);
   openFileRef.current = openFile;
+
+  useEffect(() => {
+    const pend = pendingShellOpenRef.current;
+    if (!pluginFolder || pend == null) {
+      return;
+    }
+    pendingShellOpenRef.current = null;
+    queueMicrotask(() => {
+      void openFileRef.current(pend);
+    });
+  }, [pluginFolder]);
 
   useEffect(() => {
     if (!shellLayout) {
@@ -1487,9 +1702,23 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       }
     };
     const onOpen = (e: Event) => {
-      const rel = (e as CustomEvent<string>).detail;
-      if (typeof rel === "string") {
-        void openFileRef.current(rel);
+      const d = (e as CustomEvent<IdeShellOpenFileDetail>).detail;
+      if (typeof d === "string") {
+        void openFileRef.current(d);
+        return;
+      }
+      if (
+        d &&
+        typeof d === "object" &&
+        typeof d.relativePath === "string" &&
+        typeof d.pluginFolder === "string"
+      ) {
+        if (d.pluginFolder === pluginFolderRef.current) {
+          void openFileRef.current(d.relativePath);
+        } else {
+          pendingShellOpenRef.current = d.relativePath;
+          setPluginFolder(d.pluginFolder);
+        }
       }
     };
     const onAction = (e: Event) => {
@@ -1543,6 +1772,39 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           return;
         case "typecheck":
           void a.runTypecheck();
+          return;
+        case "toggleTscOnSave":
+          setTscOnSave((v) => {
+            const n = !v;
+            if (n) {
+              localStorage.setItem(PLUGIN_IDE_TSC_ON_SAVE_KEY, "1");
+            } else {
+              localStorage.removeItem(PLUGIN_IDE_TSC_ON_SAVE_KEY);
+            }
+            return n;
+          });
+          return;
+        case "toggleFormatOnSave":
+          setFormatOnSave((v) => {
+            const n = !v;
+            if (n) {
+              localStorage.setItem(PLUGIN_IDE_FORMAT_ON_SAVE_KEY, "1");
+            } else {
+              localStorage.removeItem(PLUGIN_IDE_FORMAT_ON_SAVE_KEY);
+            }
+            return n;
+          });
+          return;
+        case "toggleReloadOnSave":
+          setReloadOnSave((v) => {
+            const n = !v;
+            if (n) {
+              localStorage.setItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY, "1");
+            } else {
+              localStorage.removeItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY);
+            }
+            return n;
+          });
           return;
         case "installDeps":
           void a.runInstallDependencies();
@@ -1775,73 +2037,42 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       <button
         type="button"
         disabled={!pluginFolder || busy}
-        onClick={() => void runTypecheck()}
-        className="min-h-7 rounded-sm border border-border bg-background px-3 py-1.5 text-[12px] font-medium text-foreground shadow-sm transition-colors hover:bg-muted/60 disabled:opacity-50"
+        onClick={() => void runInstallDependencies()}
+        title="Install dependencies (⇧I)"
+        aria-label="Install dependencies"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-foreground bg-foreground text-background shadow-sm transition-opacity hover:opacity-85 disabled:opacity-50"
       >
-        Check types
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden
+        >
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
       </button>
-      <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={tscOnSave}
-          onChange={(e) => {
-            const v = e.target.checked;
-            setTscOnSave(v);
-            if (v) {
-              localStorage.setItem(PLUGIN_IDE_TSC_ON_SAVE_KEY, "1");
-            } else {
-              localStorage.removeItem(PLUGIN_IDE_TSC_ON_SAVE_KEY);
-            }
-          }}
-          className="h-3.5 w-3.5 rounded-sm border-border"
-        />
-        Typecheck on save
-      </label>
-      <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={reloadOnSave}
-          onChange={(e) => {
-            const v = e.target.checked;
-            setReloadOnSave(v);
-            if (v) {
-              localStorage.setItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY, "1");
-            } else {
-              localStorage.removeItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY);
-            }
-          }}
-          className="h-3.5 w-3.5 rounded-sm border-border"
-        />
-        Reload registry on save
-      </label>
       <button
         type="button"
         disabled={!pluginFolder || busy}
-        onClick={() => void runInstallDependencies()}
-        className="nodex-primary-fill min-h-7 rounded-sm border-0 px-3 py-1.5 text-[12px] font-medium shadow-sm transition-opacity hover:opacity-92 disabled:opacity-50"
-        style={{
-          backgroundColor: "hsl(var(--primary))",
-          color: "hsl(var(--primary-foreground))",
-        }}
+        onClick={() => void bundleAndReload()}
+        title="Bundle workspace and reload registry (⇧E)"
+        className="min-h-8 shrink-0 rounded-sm border border-foreground bg-foreground px-2.5 py-1 text-[11px] font-semibold text-background shadow-sm transition-opacity hover:opacity-85 disabled:opacity-50"
       >
-        Install dependencies
+        Build &amp; load
       </button>
     </>
   );
 
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
+      {!shellLayout ? (
       <header className="relative z-40 shrink-0 border-b border-border bg-background">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          {!shellLayout ? (
-            <h2 className="mr-1 text-[13px] font-semibold text-foreground">
-              Plugin IDE
-            </h2>
-          ) : (
-            <span className="mr-1 text-[11px] font-medium text-muted-foreground">
-              Workspace
-            </span>
-          )}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
           <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
             Plugin
             <select
@@ -1859,7 +2090,6 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
               ))}
             </select>
           </label>
-          {!shellLayout ? (
           <div
             ref={toolbarMenuRef}
             className="flex flex-wrap items-center gap-1"
@@ -2021,6 +2251,106 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
               <button
                 type="button"
                 className="min-h-7 rounded-sm border border-input bg-background px-2.5 py-1 text-[12px] text-foreground hover:bg-muted/50"
+                aria-expanded={toolbarMenu === "edit"}
+                aria-haspopup="true"
+                onClick={() =>
+                  setToolbarMenu((m) => (m === "edit" ? null : "edit"))
+                }
+              >
+                Edit
+              </button>
+              {toolbarMenu === "edit" ? (
+                <div
+                  className="absolute left-0 top-full z-50 mt-1 min-w-[14rem] rounded-md border border-border bg-background py-1 shadow-lg"
+                  role="menu"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || busy}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void runTypecheck();
+                    }}
+                  >
+                    Check types (TS)
+                  </button>
+                  <div
+                    className="my-1 border-t border-border"
+                    role="separator"
+                    aria-hidden
+                  />
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={tscOnSave}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      const v = !tscOnSave;
+                      setTscOnSave(v);
+                      if (v) {
+                        localStorage.setItem(PLUGIN_IDE_TSC_ON_SAVE_KEY, "1");
+                      } else {
+                        localStorage.removeItem(PLUGIN_IDE_TSC_ON_SAVE_KEY);
+                      }
+                    }}
+                  >
+                    {tscOnSave ? "✓ " : ""}
+                    Typecheck on save
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={formatOnSave}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      const v = !formatOnSave;
+                      setFormatOnSave(v);
+                      if (v) {
+                        localStorage.setItem(
+                          PLUGIN_IDE_FORMAT_ON_SAVE_KEY,
+                          "1",
+                        );
+                      } else {
+                        localStorage.removeItem(PLUGIN_IDE_FORMAT_ON_SAVE_KEY);
+                      }
+                    }}
+                  >
+                    {formatOnSave ? "✓ " : ""}
+                    Format on save (Prettier)
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={reloadOnSave}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      const v = !reloadOnSave;
+                      setReloadOnSave(v);
+                      if (v) {
+                        localStorage.setItem(
+                          PLUGIN_IDE_RELOAD_ON_SAVE_KEY,
+                          "1",
+                        );
+                      } else {
+                        localStorage.removeItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY);
+                      }
+                    }}
+                  >
+                    {reloadOnSave ? "✓ " : ""}
+                    Reload registry on save
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            <div className="relative">
+              <button
+                type="button"
+                className="min-h-7 rounded-sm border border-input bg-background px-2.5 py-1 text-[12px] text-foreground hover:bg-muted/50"
                 aria-expanded={toolbarMenu === "build"}
                 aria-haspopup="true"
                 onClick={() =>
@@ -2100,83 +2430,13 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
               ) : null}
             </div>
           </div>
-          ) : null}
         </div>
-        <details className="group border-t border-border/80 bg-muted/20 [&_summary::-webkit-details-marker]:hidden">
-          <summary className="flex cursor-pointer select-none items-center gap-2 px-4 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground">
-            <span className="inline-block w-3 text-center text-muted-foreground/70 transition-transform group-open:rotate-90">
-              ›
-            </span>
-            Keyboard shortcuts
-          </summary>
-          <div className="border-t border-border/70 px-4 py-3">
-            <ul className="grid grid-cols-1 gap-x-10 gap-y-2 text-[11px] text-muted-foreground sm:grid-cols-2">
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⌘/Ctrl+S</kbd> Save
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⌘/Ctrl+⇧S</kbd> Save all
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⇧T</kbd> Types
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⇧B</kbd> Bundle
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⇧L</kbd> Reload registry
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⇧E</kbd> Bundle + reload
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⇧O</kbd> Import
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⇧N</kbd> New file
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⇧P</kbd> Parent folder
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⇧D</kbd> Copy dist
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⇧C</kbd> /{" "}
-                <kbd className={IDE_SHORTCUT_KBD}>⇧V</kbd> Copy / paste path
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⇧M</kbd> /{" "}
-                <kbd className={IDE_SHORTCUT_KBD}>F2</kbd> Rename
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⇧I</kbd> npm install
-              </li>
-              <li>
-                <kbd className={IDE_SHORTCUT_KBD}>⇧⌫</kbd> Delete
-              </li>
-            </ul>
-          </div>
-        </details>
       </header>
+      ) : null}
 
-      {shellLayout ? (
-        <details className="group shrink-0 border-b border-border bg-muted/30 [&_summary::-webkit-details-marker]:hidden">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground">
-            <span className="inline-block w-3 text-center text-muted-foreground/70 transition-transform group-open:rotate-90">
-              ›
-            </span>
-            Dependencies and npm (expand)
-          </summary>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 border-t border-border/70 px-4 pb-3 pt-2">
-            {depsToolbarInner}
-          </div>
-        </details>
-      ) : (
-        <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-border bg-muted/30 px-4 py-3">
-          {depsToolbarInner}
-        </div>
-      )}
+      <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-border bg-muted/30 px-4 py-3">
+        {depsToolbarInner}
+      </div>
 
       {pathModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
@@ -2247,12 +2507,6 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {status && (
-        <div className="px-4 py-1 text-sm bg-amber-50 text-amber-900 border-b border-amber-100 shrink-0">
-          {status}
         </div>
       )}
 

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { ClientLogPayload } from "./shared/client-log";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
 
 export interface Note {
@@ -421,6 +422,8 @@ contextBridge.exposeInMainWorld("Nodex", {
     ipcRenderer.on(ch, fn);
     return () => ipcRenderer.removeListener(ch, fn);
   },
+  sendClientLog: (payload: ClientLogPayload): void =>
+    ipcRenderer.send(IPC_CHANNELS.NODEX_CLIENT_LOG, payload),
   reloadPluginRegistry: (): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_RELOAD_REGISTRY),
   getNativeThemeDark: (): Promise<boolean> =>

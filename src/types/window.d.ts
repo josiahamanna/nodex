@@ -5,6 +5,7 @@ import {
   NoteMovePlacement,
   PasteSubtreePayload,
 } from "../preload";
+import type { ClientLogPayload } from "../shared/client-log";
 
 declare global {
   interface Window {
@@ -257,6 +258,7 @@ declare global {
       onMainDebugLog: (
         callback: (entry: { ts: number; level: string; text: string }) => void,
       ) => () => void;
+      sendClientLog: (payload: ClientLogPayload) => void;
       reloadPluginRegistry: () => Promise<{ success: boolean; error?: string }>;
       getNativeThemeDark: () => Promise<boolean>;
       onNativeThemeChanged: (

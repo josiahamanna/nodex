@@ -69,6 +69,8 @@ export const IPC_CHANNELS = {
   PLUGIN_GET_DISABLED_IDS: "plugin:get-disabled-ids",
   PLUGIN_SET_ENABLED: "plugin:set-enabled",
   PLUGIN_GET_INVENTORY: "plugin:get-inventory",
+  /** Renderer → main: structured client log (console, debug dock, daily file). */
+  NODEX_CLIENT_LOG: "nodex:client-log",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

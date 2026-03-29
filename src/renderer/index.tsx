@@ -7,6 +7,7 @@ import { Provider } from "react-redux";
 import { store } from "./store";
 import App from "./App";
 import { ThemeProvider } from "./theme/ThemeContext";
+import { ToastProvider } from "./toast/ToastContext";
 import "./styles.css";
 
 /** Ship Monaco inside the app bundle (see monaco-editor-webpack-plugin in webpack.renderer.config.js). */
@@ -24,9 +25,11 @@ const root = createRoot(container);
 root.render(
   <React.StrictMode>
     <ThemeProvider>
-      <Provider store={store}>
-        <App />
-      </Provider>
+      <ToastProvider>
+        <Provider store={store}>
+          <App />
+        </Provider>
+      </ToastProvider>
     </ThemeProvider>
   </React.StrictMode>,
 );

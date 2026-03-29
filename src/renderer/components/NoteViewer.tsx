@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Note } from "../../preload";
+import { useToast } from "../toast/ToastContext";
 import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
 
 interface NoteViewerProps {
@@ -11,14 +12,23 @@ const NoteViewer: React.FC<NoteViewerProps> = ({ note, onTitleCommit }) => {
   const [hasPlugin, setHasPlugin] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [titleEditing, setTitleEditing] = useState(false);
+  const { showToast } = useToast();
 
   useEffect(() => {
     const checkPlugin = async () => {
       const types = await window.Nodex.getRegisteredTypes();
-      setHasPlugin(types.includes(note.type));
+      const ok = types.includes(note.type);
+      setHasPlugin(ok);
+      if (!ok) {
+        showToast({
+          severity: "warning",
+          message: `No plugin installed for note type "${note.type}". Install one from Plugin Manager.`,
+          mergeKey: `note-no-plugin:${note.type}`,
+        });
+      }
     };
-    checkPlugin();
-  }, [note.type]);
+    void checkPlugin();
+  }, [note.type, showToast]);
 
   useLayoutEffect(() => {
     const el = titleRef.current;

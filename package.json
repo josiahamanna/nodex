@@ -59,6 +59,7 @@
     "dompurify": "^3.3.3",
     "esbuild": "^0.27.4",
     "monaco-editor": "^0.55.1",
+    "prettier": "^3.5.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-redux": "^9.2.0",

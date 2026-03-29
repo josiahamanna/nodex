@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   nativeTheme,
 } from "electron";
 import * as fs from "fs";
@@ -34,9 +35,11 @@ import { registry } from "./core/registry";
 import {
   clearMainDebugLogBuffer,
   getMainDebugLogBuffer,
+  ingestRendererStructuredLog,
   installMainProcessDebugLogTap,
   setMainDebugLogWindow,
 } from "./main/main-process-debug-log";
+import type { ClientLogPayload } from "./shared/client-log";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
 import { toFileUri } from "./shared/file-uri";
 import {
@@ -167,6 +170,7 @@ const createWindow = (): void => {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
@@ -174,6 +178,7 @@ const createWindow = (): void => {
       sandbox: false,
     },
   });
+  mainWindow.setMenuBarVisibility(false);
 
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
@@ -187,6 +192,7 @@ const createWindow = (): void => {
 };
 
 app.on("ready", () => {
+  Menu.setApplicationMenu(null);
   installMainProcessDebugLogTap();
   setMainDebugLogWindow(() => mainWindow);
 
@@ -198,6 +204,27 @@ app.on("ready", () => {
   ipcMain.handle(IPC_CHANNELS.PLUGIN_IDE_CLEAR_MAIN_DEBUG_LOGS, () => {
     clearMainDebugLogBuffer();
     return { success: true as const };
+  });
+
+  ipcMain.removeAllListeners(IPC_CHANNELS.NODEX_CLIENT_LOG);
+  ipcMain.on(IPC_CHANNELS.NODEX_CLIENT_LOG, (_event, raw: unknown) => {
+    const p = raw as Partial<ClientLogPayload>;
+    if (typeof p.component !== "string" || typeof p.message !== "string") {
+      return;
+    }
+    const lv = p.level;
+    const level: ClientLogPayload["level"] =
+      lv === "info" || lv === "warn" || lv === "error" || lv === "debug" || lv === "log"
+        ? lv
+        : "log";
+    ingestRendererStructuredLog({
+      level,
+      component: p.component.slice(0, 120),
+      message: p.message.slice(0, 12_000),
+      noteId: typeof p.noteId === "string" ? p.noteId.slice(0, 200) : undefined,
+      noteTitle:
+        typeof p.noteTitle === "string" ? p.noteTitle.slice(0, 500) : undefined,
+    });
   });
 
   nativeTheme.on("updated", broadcastNativeThemeToRenderers);

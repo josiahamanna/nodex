@@ -550,16 +550,16 @@ const PluginManager: React.FC<PluginManagerProps> = ({
 
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
-      <header className="border-b border-border px-4 py-3">
-        <h2 className="text-[13px] font-semibold text-foreground">
-          {embedded ? "Plugins" : "Plugin Manager"}
-        </h2>
-        <p className="mt-2 text-[12px] text-muted-foreground">
-          {embedded
-            ? "Import, caches, and actions for the selected plugin."
-            : "Manage your Nodex plugins"}
-        </p>
-      </header>
+      {!embedded ? (
+        <header className="border-b border-border px-4 py-3">
+          <h2 className="text-[13px] font-semibold text-foreground">
+            Plugin Manager
+          </h2>
+          <p className="mt-2 text-[12px] text-muted-foreground">
+            Manage your Nodex plugins
+          </p>
+        </header>
+      ) : null}
 
       <div className="flex-1 overflow-auto px-4 py-4">
         {installModal && (
