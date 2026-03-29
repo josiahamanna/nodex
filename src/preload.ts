@@ -86,6 +86,27 @@ contextBridge.exposeInMainWorld("Nodex", {
   }> => ipcRenderer.invoke(IPC_CHANNELS.IMPORT_PLUGIN, zipPath),
   getInstalledPlugins: (): Promise<string[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_INSTALLED_PLUGINS),
+  getPluginInventory: (): Promise<
+    {
+      id: string;
+      isBundled: boolean;
+      canToggle: boolean;
+      enabled: boolean;
+      loaded: boolean;
+    }[]
+  > => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_GET_INVENTORY),
+  getDisabledPluginIds: (): Promise<string[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_GET_DISABLED_IDS),
+  setPluginEnabled: (
+    pluginId: string,
+    enabled: boolean,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_SET_ENABLED, {
+      pluginId,
+      enabled,
+    }),
+  toggleDeveloperTools: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.UI_TOGGLE_DEVTOOLS),
   getUserPluginsDirectory: (): Promise<{ path: string; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_GET_USER_PLUGINS_DIR),
   resetUserPluginsDirectory: (): Promise<{

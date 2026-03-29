@@ -1,7 +1,17 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 
+type PluginInventoryRow = Awaited<
+  ReturnType<typeof window.Nodex.getPluginInventory>
+>[number];
+
 interface PluginManagerProps {
   onPluginsChanged?: () => void;
+  /**
+   * `undefined` — standalone manager (full list in-page).
+   * `null` — embedded in shell: no plugin selected yet.
+   * string — embedded: show detail for this id only.
+   */
+  selectedPluginId?: string | null;
 }
 
 const SKIP_INSTALL_CONFIRM_KEY = "nodex-skip-install-confirm";
@@ -17,8 +27,13 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
+const PluginManager: React.FC<PluginManagerProps> = ({
+  onPluginsChanged,
+  selectedPluginId: selectedPluginIdProp,
+}) => {
+  const embedded = selectedPluginIdProp !== undefined;
   const [plugins, setPlugins] = useState<string[]>([]);
+  const [inventory, setInventory] = useState<PluginInventoryRow[]>([]);
   const [importing, setImporting] = useState(false);
   const [working, setWorking] = useState<string | null>(null);
   const [cacheStats, setCacheStats] = useState<{
@@ -67,13 +82,18 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
   }, []);
 
   const loadPlugins = async () => {
-    const installed = await window.Nodex.getInstalledPlugins();
+    const [installed, inv] = await Promise.all([
+      window.Nodex.getInstalledPlugins(),
+      window.Nodex.getPluginInventory(),
+    ]);
     setPlugins(installed);
+    setInventory(inv);
     const meta: Record<
       string,
       Awaited<ReturnType<typeof window.Nodex.getPluginManifestUi>>
     > = {};
-    for (const p of installed) {
+    const ids = new Set([...installed, ...inv.map((r) => r.id)]);
+    for (const p of ids) {
       try {
         meta[p] = await window.Nodex.getPluginManifestUi(p);
       } catch {
@@ -368,6 +388,28 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
     }
   };
 
+  const handleReloadRegistry = async () => {
+    setMessage(null);
+    try {
+      const r = await window.Nodex.reloadPluginRegistry();
+      if (r.success) {
+        setMessage({ type: "success", text: "Registry reloaded." });
+        onPluginsChanged?.();
+        await loadPlugins();
+      } else {
+        setMessage({
+          type: "error",
+          text: r.error ?? "Reload failed",
+        });
+      }
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Reload failed",
+      });
+    }
+  };
+
   const handleBundleLocal = async (pluginName: string) => {
     setMessage(null);
     try {
@@ -496,14 +538,26 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
     }
   };
 
+  const idsForCards =
+    embedded && selectedPluginIdProp !== null
+      ? [selectedPluginIdProp]
+      : embedded && selectedPluginIdProp === null
+        ? []
+        : plugins;
+
+  const invFor = (id: string): PluginInventoryRow | undefined =>
+    inventory.find((r) => r.id === id);
+
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
       <header className="border-b border-border px-4 py-3">
         <h2 className="text-[13px] font-semibold text-foreground">
-          Plugin Manager
+          {embedded ? "Plugins" : "Plugin Manager"}
         </h2>
         <p className="mt-2 text-[12px] text-muted-foreground">
-          Manage your Nodex plugins
+          {embedded
+            ? "Import, caches, and actions for the selected plugin."
+            : "Manage your Nodex plugins"}
         </p>
       </header>
 
@@ -656,25 +710,77 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
         </div>
 
         <div>
-          <h3 className="text-lg font-semibold text-foreground mb-3">
-            Installed Plugins
-          </h3>
+          {!embedded ? (
+            <h3 className="text-lg font-semibold text-foreground mb-3">
+              Installed Plugins
+            </h3>
+          ) : (
+            <h3 className="text-lg font-semibold text-foreground mb-3">
+              Plugin detail
+            </h3>
+          )}
 
-          {plugins.length === 0 ? (
+          {embedded && selectedPluginIdProp === null ? (
+            <div className="text-muted-foreground py-8 text-[12px]">
+              Select a plugin in the left list to view details, export, and
+              dependency tools.
+            </div>
+          ) : idsForCards.length === 0 ? (
             <div className="text-muted-foreground text-center py-8">
               No plugins installed yet. Import a plugin to get started!
             </div>
           ) : (
             <div className="space-y-2">
-              {plugins.map((plugin) => (
+              {idsForCards.map((plugin) => (
                 <div
                   key={plugin}
                   className="flex flex-col gap-3 p-4 bg-muted/40 rounded-lg border border-border"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <h4 className="font-medium text-foreground">{plugin}</h4>
-                      <p className="text-sm text-muted-foreground">Active</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="font-medium text-foreground">
+                          {plugin}
+                        </h4>
+                        {invFor(plugin)?.isBundled ? (
+                          <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                            Core
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {invFor(plugin)?.loaded
+                          ? "Loaded"
+                          : invFor(plugin)?.enabled === false
+                            ? "Disabled"
+                            : "Not loaded"}
+                      </p>
+                      {invFor(plugin)?.canToggle ? (
+                        <label className="mt-2 flex cursor-pointer items-center gap-2 text-[12px] text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={invFor(plugin)?.enabled !== false}
+                            disabled={working !== null}
+                            onChange={async (e) => {
+                              const r = await window.Nodex.setPluginEnabled(
+                                plugin,
+                                e.target.checked,
+                              );
+                              if (r.success) {
+                                await loadPlugins();
+                                onPluginsChanged?.();
+                              } else {
+                                setMessage({
+                                  type: "error",
+                                  text: r.error ?? "Could not update plugin",
+                                });
+                              }
+                            }}
+                            className="h-3.5 w-3.5 rounded-sm border-border"
+                          />
+                          Enabled
+                        </label>
+                      ) : null}
                       {pluginUiMeta[plugin]?.designSystemWarning ? (
                         <p className="mt-1 text-xs text-destructive">
                           {pluginUiMeta[plugin]!.designSystemWarning}
@@ -700,6 +806,14 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
                         className="rounded bg-accent px-3 py-1 text-sm font-medium text-accent-foreground hover:opacity-90"
                       >
                         Export production
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleReloadRegistry()}
+                        disabled={working !== null}
+                        className="rounded border border-border bg-background px-3 py-1 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50"
+                      >
+                        Reload registry
                       </button>
                       <button
                         type="button"

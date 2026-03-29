@@ -190,6 +190,16 @@ app.on("ready", () => {
   installMainProcessDebugLogTap();
   setMainDebugLogWindow(() => mainWindow);
 
+  ipcMain.removeHandler(IPC_CHANNELS.PLUGIN_IDE_GET_MAIN_DEBUG_LOGS);
+  ipcMain.removeHandler(IPC_CHANNELS.PLUGIN_IDE_CLEAR_MAIN_DEBUG_LOGS);
+  ipcMain.handle(IPC_CHANNELS.PLUGIN_IDE_GET_MAIN_DEBUG_LOGS, () =>
+    getMainDebugLogBuffer(),
+  );
+  ipcMain.handle(IPC_CHANNELS.PLUGIN_IDE_CLEAR_MAIN_DEBUG_LOGS, () => {
+    clearMainDebugLogBuffer();
+    return { success: true as const };
+  });
+
   nativeTheme.on("updated", broadcastNativeThemeToRenderers);
 
   ipcMain.handle(IPC_CHANNELS.UI_GET_NATIVE_THEME_DARK, () => {
@@ -269,6 +279,56 @@ app.on("ready", () => {
   seedSamplePluginsToUserDir(pluginsPath);
 
   pluginLoader = new PluginLoader(pluginsPath, bundledRoots);
+  pluginLoader.setUserDataPathForDisabled(userDataPath);
+
+  ipcMain.handle(IPC_CHANNELS.UI_TOGGLE_DEVTOOLS, () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.toggleDevTools();
+    }
+    return { success: true as const };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PLUGIN_GET_DISABLED_IDS, () =>
+    pluginLoader.getDisabledUserPluginIdsForIpc(),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.PLUGIN_SET_ENABLED,
+    (_e, payload: unknown) => {
+      if (
+        !payload ||
+        typeof payload !== "object" ||
+        typeof (payload as { pluginId?: unknown }).pluginId !== "string" ||
+        typeof (payload as { enabled?: unknown }).enabled !== "boolean"
+      ) {
+        return { success: false as const, error: "Invalid payload" };
+      }
+      const { pluginId, enabled } = payload as {
+        pluginId: string;
+        enabled: boolean;
+      };
+      if (!isSafePluginName(pluginId)) {
+        return { success: false as const, error: "Invalid plugin id" };
+      }
+      try {
+        pluginLoader.setUserPluginEnabled(pluginId, enabled);
+        pluginLoader.reload(registry);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.PLUGINS_CHANGED);
+        }
+        return { success: true as const };
+      } catch (err) {
+        return {
+          success: false as const,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(IPC_CHANNELS.PLUGIN_GET_INVENTORY, () =>
+    pluginLoader.getPluginInventory(),
+  );
 
   ipcMain.handle(
     IPC_CHANNELS.GET_PLUGIN_RENDERER_UI_META,
@@ -1216,15 +1276,6 @@ ipcMain.handle(
     return pluginLoader.getIdePluginVirtualTypings(pluginName);
   },
 );
-
-ipcMain.handle(IPC_CHANNELS.PLUGIN_IDE_GET_MAIN_DEBUG_LOGS, () =>
-  getMainDebugLogBuffer(),
-);
-
-ipcMain.handle(IPC_CHANNELS.PLUGIN_IDE_CLEAR_MAIN_DEBUG_LOGS, () => {
-  clearMainDebugLogBuffer();
-  return { success: true as const };
-});
 
 ipcMain.handle(IPC_CHANNELS.PLUGIN_RELOAD_REGISTRY, async () => {
   try {

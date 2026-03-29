@@ -22,9 +22,16 @@ import { joinFileUri } from "../../shared/file-uri";
 import { NODEX_PLUGIN_UI_MONACO_URI } from "../../shared/nodex-plugin-ui-monaco-uri";
 import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
 import { useTheme } from "../theme/ThemeContext";
+import {
+  IDE_SHELL_ACTION_EVENT,
+  IDE_SHELL_OPEN_FILE_EVENT,
+  IDE_SHELL_PLUGIN_EVENT,
+  IDE_SHELL_STATE_EVENT,
+  type IdeShellAction,
+  type IdeShellStateDetail,
+} from "../plugin-ide/ideShellBridge";
 
 const PLUGIN_IDE_FILES_COLLAPSED_KEY = "plugin-ide-files-collapsed";
-const PLUGIN_IDE_BOTTOM_PANEL_COLLAPSED_KEY = "plugin-ide-bottom-panel-collapsed";
 const PLUGIN_IDE_TSC_ON_SAVE_KEY = "plugin-ide-tsc-on-save";
 const PLUGIN_IDE_RELOAD_ON_SAVE_KEY = "plugin-ide-reload-on-save";
 const PLUGIN_IDE_SNAPSHOT_KEY = "plugin-ide-workspace-snapshot-v1";
@@ -82,6 +89,8 @@ function formatImportedPathsForStatus(imported: string[] | undefined): string {
 
 interface PluginIDEProps {
   onPluginsChanged?: () => void;
+  /** VS Code–style shell: menus + file tree live in the primary sidebar. */
+  shellLayout?: boolean;
 }
 
 type PathModalState =
@@ -119,14 +128,6 @@ interface InstalledPkg {
   range: string;
   dev: boolean;
 }
-
-interface MainDebugLogLine {
-  ts: number;
-  level: string;
-  text: string;
-}
-
-type BottomDockTab = "debug" | "terminal";
 
 interface NpmSearchRow {
   name: string;
@@ -211,7 +212,10 @@ function sampleNoteForType(type: string): Note {
   };
 }
 
-const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
+const PluginIDE: React.FC<PluginIDEProps> = ({
+  onPluginsChanged,
+  shellLayout = false,
+}) => {
   const { resolvedDark } = useTheme();
   const monacoTheme = resolvedDark ? "vs-dark" : "vs";
 
@@ -229,8 +233,6 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
   const [busy, setBusy] = useState(false);
   const [pathModal, setPathModal] = useState<PathModalState>(null);
   const filesPanelRef = useRef<ImperativePanelHandle | null>(null);
-  const bottomPanelRef = useRef<ImperativePanelHandle | null>(null);
-  const logScrollRef = useRef<HTMLPreElement | null>(null);
   const npmWrapRef = useRef<HTMLDivElement | null>(null);
 
   const [npmQuery, setNpmQuery] = useState("");
@@ -242,8 +244,6 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
   const [addAsDevDep, setAddAsDevDep] = useState(false);
   const [installedPkgs, setInstalledPkgs] = useState<InstalledPkg[]>([]);
   const [tscDiagnostics, setTscDiagnostics] = useState<TscDiagnostic[]>([]);
-  const [bottomDockTab, setBottomDockTab] = useState<BottomDockTab>("debug");
-  const [mainDebugLogs, setMainDebugLogs] = useState<MainDebugLogLine[]>([]);
   const [tscOnSave, setTscOnSave] = useState(
     () => localStorage.getItem(PLUGIN_IDE_TSC_ON_SAVE_KEY) === "1",
   );
@@ -632,6 +632,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
   }, [toolbarMenu]);
 
   useEffect(() => {
+    if (shellLayout) {
+      return;
+    }
     const collapsed = localStorage.getItem(PLUGIN_IDE_FILES_COLLAPSED_KEY) === "1";
     const id = window.setTimeout(() => {
       if (collapsed) {
@@ -639,45 +642,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
       }
     }, 0);
     return () => window.clearTimeout(id);
-  }, []);
-
-  useEffect(() => {
-    const collapsed =
-      localStorage.getItem(PLUGIN_IDE_BOTTOM_PANEL_COLLAPSED_KEY) === "1";
-    const id = window.setTimeout(() => {
-      if (collapsed) {
-        bottomPanelRef.current?.collapse();
-      }
-    }, 0);
-    return () => window.clearTimeout(id);
-  }, []);
-
-  useEffect(() => {
-    let unsub: (() => void) | undefined;
-    void (async () => {
-      try {
-        const initial = await window.Nodex.getMainDebugLogBuffer();
-        setMainDebugLogs(initial);
-      } catch {
-        /* ignore */
-      }
-      unsub = window.Nodex.onMainDebugLog((entry) => {
-        setMainDebugLogs((prev) => {
-          const next = [...prev, entry];
-          const cap = 3000;
-          return next.length > cap ? next.slice(-cap) : next;
-        });
-      });
-    })();
-    return () => unsub?.();
-  }, []);
-
-  useEffect(() => {
-    const el = logScrollRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [mainDebugLogs]);
+  }, [shellLayout]);
 
   const openFile = async (relativePath: string) => {
     const existing = tabs.find((t) => t.relativePath === relativePath);
@@ -1446,7 +1411,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     bundleAndReload,
     reloadOnly,
     onImportFiles,
+    onImportFolder,
     loadNodexFromParent,
+    removeExternalRegistration,
     copyDistToFolder,
     copyToInternalClipboard,
     pasteFromInternalClipboard,
@@ -1455,6 +1422,8 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     onDeletePath,
     openNewFileModal: () =>
       setPathModal({ kind: "newFile", value: "newfile.js" }),
+    openNewFolderModal: () =>
+      setPathModal({ kind: "newFolder", value: "lib" }),
   });
   ideActionsRef.current = {
     saveActive,
@@ -1464,7 +1433,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     bundleAndReload,
     reloadOnly,
     onImportFiles,
+    onImportFolder,
     loadNodexFromParent,
+    removeExternalRegistration,
     copyDistToFolder,
     copyToInternalClipboard,
     pasteFromInternalClipboard,
@@ -1473,7 +1444,128 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     onDeletePath,
     openNewFileModal: () =>
       setPathModal({ kind: "newFile", value: "newfile.js" }),
+    openNewFolderModal: () =>
+      setPathModal({ kind: "newFolder", value: "lib" }),
   };
+
+  useEffect(() => {
+    if (!shellLayout) {
+      return;
+    }
+    const detail: IdeShellStateDetail = {
+      pluginFolder,
+      fileList,
+      activePath,
+      busy,
+      dirtyTabCount,
+      hasActiveTab: !!activeTab,
+    };
+    window.dispatchEvent(
+      new CustomEvent(IDE_SHELL_STATE_EVENT, { detail }),
+    );
+  }, [
+    shellLayout,
+    pluginFolder,
+    fileList,
+    activePath,
+    busy,
+    dirtyTabCount,
+    activeTab,
+  ]);
+
+  const openFileRef = useRef(openFile);
+  openFileRef.current = openFile;
+
+  useEffect(() => {
+    if (!shellLayout) {
+      return;
+    }
+    const onPlugin = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (typeof id === "string") {
+        setPluginFolder(id);
+      }
+    };
+    const onOpen = (e: Event) => {
+      const rel = (e as CustomEvent<string>).detail;
+      if (typeof rel === "string") {
+        void openFileRef.current(rel);
+      }
+    };
+    const onAction = (e: Event) => {
+      const t = (e as CustomEvent<{ type: IdeShellAction }>).detail?.type;
+      if (!t) {
+        return;
+      }
+      const a = ideActionsRef.current;
+      switch (t) {
+        case "save":
+          void a.saveActive();
+          return;
+        case "saveAll":
+          void a.saveAllDirtyTabs();
+          return;
+        case "newFile":
+          a.openNewFileModal();
+          return;
+        case "newFolder":
+          a.openNewFolderModal();
+          return;
+        case "importFiles":
+          void a.onImportFiles();
+          return;
+        case "importFolder":
+          void a.onImportFolder();
+          return;
+        case "delete":
+          void a.onDeletePath();
+          return;
+        case "rename":
+          a.openRenameModal();
+          return;
+        case "copy":
+          void a.copyToInternalClipboard();
+          return;
+        case "paste":
+          void a.pasteFromInternalClipboard();
+          return;
+        case "copyDist":
+          void a.copyDistToFolder();
+          return;
+        case "bundle":
+          void a.bundleLocalOnly();
+          return;
+        case "bundleReload":
+          void a.bundleAndReload();
+          return;
+        case "reloadRegistry":
+          void a.reloadOnly();
+          return;
+        case "typecheck":
+          void a.runTypecheck();
+          return;
+        case "installDeps":
+          void a.runInstallDependencies();
+          return;
+        case "loadParent":
+          void a.loadNodexFromParent();
+          return;
+        case "removeExternal":
+          void a.removeExternalRegistration();
+          return;
+        default:
+          return;
+      }
+    };
+    window.addEventListener(IDE_SHELL_PLUGIN_EVENT, onPlugin);
+    window.addEventListener(IDE_SHELL_OPEN_FILE_EVENT, onOpen);
+    window.addEventListener(IDE_SHELL_ACTION_EVENT, onAction);
+    return () => {
+      window.removeEventListener(IDE_SHELL_PLUGIN_EVENT, onPlugin);
+      window.removeEventListener(IDE_SHELL_OPEN_FILE_EVENT, onOpen);
+      window.removeEventListener(IDE_SHELL_ACTION_EVENT, onAction);
+    };
+  }, [shellLayout]);
 
   useEffect(() => {
     const shortcutSurfaceOk = (ev: KeyboardEvent): boolean => {
@@ -1586,36 +1678,170 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     }
   };
 
-  const toggleBottomPanel = () => {
-    const p = bottomPanelRef.current;
-    if (!p) {
-      return;
-    }
-    if (p.isCollapsed()) {
-      p.expand();
-      localStorage.removeItem(PLUGIN_IDE_BOTTOM_PANEL_COLLAPSED_KEY);
-    } else {
-      p.collapse();
-      localStorage.setItem(PLUGIN_IDE_BOTTOM_PANEL_COLLAPSED_KEY, "1");
-    }
-  };
-
-  const clearMainDebugLogs = async () => {
-    try {
-      await window.Nodex.clearMainDebugLogBuffer();
-      setMainDebugLogs([]);
-    } catch {
-      setMainDebugLogs([]);
-    }
-  };
+  const depsToolbarInner = (
+    <>
+      <span className="text-[12px] font-semibold text-foreground">
+        Dependencies
+      </span>
+      <div
+        ref={npmWrapRef}
+        className="relative isolate z-0 flex-1 min-w-[14rem] max-w-xl"
+      >
+        <input
+          type="search"
+          className="w-full rounded-sm border border-input bg-background px-3 py-2 text-[12px]"
+          placeholder="Search npm (2+ chars) or installed packages…"
+          value={npmQuery}
+          onChange={(e) => setNpmQuery(e.target.value)}
+          onFocus={() => setNpmMenuOpen(true)}
+          disabled={!pluginFolder || busy}
+        />
+        {npmMenuOpen && pluginFolder && (
+          <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-auto rounded-md border border-border bg-background shadow-xl text-sm">
+            {filteredInstalled.length > 0 && (
+              <div className="p-2 border-b border-border bg-background">
+                <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">
+                  Installed
+                </div>
+                <ul>
+                  {filteredInstalled.map((p) => (
+                    <li
+                      key={`${p.name}-${p.dev ? "d" : "p"}`}
+                      className="px-2 py-1 text-foreground font-mono text-xs"
+                    >
+                      {p.name}
+                      <span className="text-muted-foreground">
+                        @{p.range}
+                        {p.dev ? " (dev)" : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {npmQuery.trim().length >= 2 && (
+              <div className="p-2 bg-background">
+                <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">
+                  npm registry
+                </div>
+                {npmLoading ? (
+                  <div className="text-muted-foreground text-xs px-2 py-2">
+                    Searching…
+                  </div>
+                ) : npmResults.length === 0 ? (
+                  <div className="text-muted-foreground text-xs px-2 py-2">
+                    No results
+                  </div>
+                ) : (
+                  <ul>
+                    {npmResults.map((r) => (
+                      <li key={r.name}>
+                        <button
+                          type="button"
+                          className="flex w-full flex-col gap-0.5 rounded px-2 py-1.5 text-left hover:bg-accent/50"
+                          onClick={() => void addRegistryDependency(r)}
+                          disabled={busy}
+                        >
+                          <span className="font-mono text-foreground">
+                            {r.name}
+                            <span className="text-muted-foreground font-normal">
+                              @{r.version}
+                            </span>
+                          </span>
+                          {r.description ? (
+                            <span className="text-xs text-muted-foreground line-clamp-2">
+                              {r.description}
+                            </span>
+                          ) : null}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={addAsDevDep}
+          onChange={(e) => setAddAsDevDep(e.target.checked)}
+          className="h-3.5 w-3.5 rounded-sm border-border"
+        />
+        devDependency
+      </label>
+      <button
+        type="button"
+        disabled={!pluginFolder || busy}
+        onClick={() => void runTypecheck()}
+        className="min-h-7 rounded-sm border border-border bg-background px-3 py-1.5 text-[12px] font-medium text-foreground shadow-sm transition-colors hover:bg-muted/60 disabled:opacity-50"
+      >
+        Check types
+      </button>
+      <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={tscOnSave}
+          onChange={(e) => {
+            const v = e.target.checked;
+            setTscOnSave(v);
+            if (v) {
+              localStorage.setItem(PLUGIN_IDE_TSC_ON_SAVE_KEY, "1");
+            } else {
+              localStorage.removeItem(PLUGIN_IDE_TSC_ON_SAVE_KEY);
+            }
+          }}
+          className="h-3.5 w-3.5 rounded-sm border-border"
+        />
+        Typecheck on save
+      </label>
+      <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={reloadOnSave}
+          onChange={(e) => {
+            const v = e.target.checked;
+            setReloadOnSave(v);
+            if (v) {
+              localStorage.setItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY, "1");
+            } else {
+              localStorage.removeItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY);
+            }
+          }}
+          className="h-3.5 w-3.5 rounded-sm border-border"
+        />
+        Reload registry on save
+      </label>
+      <button
+        type="button"
+        disabled={!pluginFolder || busy}
+        onClick={() => void runInstallDependencies()}
+        className="nodex-primary-fill min-h-7 rounded-sm border-0 px-3 py-1.5 text-[12px] font-medium shadow-sm transition-opacity hover:opacity-92 disabled:opacity-50"
+        style={{
+          backgroundColor: "hsl(var(--primary))",
+          color: "hsl(var(--primary-foreground))",
+        }}
+      >
+        Install dependencies
+      </button>
+    </>
+  );
 
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
       <header className="relative z-40 shrink-0 border-b border-border bg-background">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          <h2 className="mr-1 text-[13px] font-semibold text-foreground">
-            Plugin IDE
-          </h2>
+          {!shellLayout ? (
+            <h2 className="mr-1 text-[13px] font-semibold text-foreground">
+              Plugin IDE
+            </h2>
+          ) : (
+            <span className="mr-1 text-[11px] font-medium text-muted-foreground">
+              Workspace
+            </span>
+          )}
           <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
             Plugin
             <select
@@ -1633,6 +1859,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
               ))}
             </select>
           </label>
+          {!shellLayout ? (
           <div
             ref={toolbarMenuRef}
             className="flex flex-wrap items-center gap-1"
@@ -1677,17 +1904,6 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     }}
                   >
                     Save all
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40"
-                    onClick={() => {
-                      setToolbarMenu(null);
-                      toggleBottomPanel();
-                    }}
-                  >
-                    Toggle bottom panel
                   </button>
                   <button
                     type="button"
@@ -1884,6 +2100,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
               ) : null}
             </div>
           </div>
+          ) : null}
         </div>
         <details className="group border-t border-border/80 bg-muted/20 [&_summary::-webkit-details-marker]:hidden">
           <summary className="flex cursor-pointer select-none items-center gap-2 px-4 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground">
@@ -1943,154 +2160,23 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
         </details>
       </header>
 
-      <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-border bg-muted/30 px-4 py-3">
-        <span className="text-[12px] font-semibold text-foreground">
-          Dependencies
-        </span>
-        <div
-          ref={npmWrapRef}
-          className="relative isolate z-0 flex-1 min-w-[14rem] max-w-xl"
-        >
-          <input
-            type="search"
-            className="w-full rounded-sm border border-input bg-background px-3 py-2 text-[12px]"
-            placeholder="Search npm (2+ chars) or installed packages…"
-            value={npmQuery}
-            onChange={(e) => setNpmQuery(e.target.value)}
-            onFocus={() => setNpmMenuOpen(true)}
-            disabled={!pluginFolder || busy}
-          />
-          {npmMenuOpen && pluginFolder && (
-            <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-auto rounded-md border border-border bg-background shadow-xl text-sm">
-              {filteredInstalled.length > 0 && (
-                <div className="p-2 border-b border-border bg-background">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">
-                    Installed
-                  </div>
-                  <ul>
-                    {filteredInstalled.map((p) => (
-                      <li
-                        key={`${p.name}-${p.dev ? "d" : "p"}`}
-                        className="px-2 py-1 text-foreground font-mono text-xs"
-                      >
-                        {p.name}
-                        <span className="text-muted-foreground">
-                          @{p.range}
-                          {p.dev ? " (dev)" : ""}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {npmQuery.trim().length >= 2 && (
-                <div className="p-2 bg-background">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">
-                    npm registry
-                  </div>
-                  {npmLoading ? (
-                    <div className="text-muted-foreground text-xs px-2 py-2">
-                      Searching…
-                    </div>
-                  ) : npmResults.length === 0 ? (
-                    <div className="text-muted-foreground text-xs px-2 py-2">
-                      No results
-                    </div>
-                  ) : (
-                    <ul>
-                      {npmResults.map((r) => (
-                        <li key={r.name}>
-                          <button
-                            type="button"
-                            className="flex w-full flex-col gap-0.5 rounded px-2 py-1.5 text-left hover:bg-accent/50"
-                            onClick={() => void addRegistryDependency(r)}
-                            disabled={busy}
-                          >
-                            <span className="font-mono text-foreground">
-                              {r.name}
-                              <span className="text-muted-foreground font-normal">
-                                @{r.version}
-                              </span>
-                            </span>
-                            {r.description ? (
-                              <span className="text-xs text-muted-foreground line-clamp-2">
-                                {r.description}
-                              </span>
-                            ) : null}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+      {shellLayout ? (
+        <details className="group shrink-0 border-b border-border bg-muted/30 [&_summary::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground">
+            <span className="inline-block w-3 text-center text-muted-foreground/70 transition-transform group-open:rotate-90">
+              ›
+            </span>
+            Dependencies and npm (expand)
+          </summary>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 border-t border-border/70 px-4 pb-3 pt-2">
+            {depsToolbarInner}
+          </div>
+        </details>
+      ) : (
+        <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-border bg-muted/30 px-4 py-3">
+          {depsToolbarInner}
         </div>
-        <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={addAsDevDep}
-            onChange={(e) => setAddAsDevDep(e.target.checked)}
-            className="h-3.5 w-3.5 rounded-sm border-border"
-          />
-          devDependency
-        </label>
-        <button
-          type="button"
-          disabled={!pluginFolder || busy}
-          onClick={() => void runTypecheck()}
-          className="min-h-7 rounded-sm border border-border bg-background px-3 py-1.5 text-[12px] font-medium text-foreground shadow-sm transition-colors hover:bg-muted/60 disabled:opacity-50"
-        >
-          Check types
-        </button>
-        <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={tscOnSave}
-            onChange={(e) => {
-              const v = e.target.checked;
-              setTscOnSave(v);
-              if (v) {
-                localStorage.setItem(PLUGIN_IDE_TSC_ON_SAVE_KEY, "1");
-              } else {
-                localStorage.removeItem(PLUGIN_IDE_TSC_ON_SAVE_KEY);
-              }
-            }}
-            className="h-3.5 w-3.5 rounded-sm border-border"
-          />
-          Typecheck on save
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={reloadOnSave}
-            onChange={(e) => {
-              const v = e.target.checked;
-              setReloadOnSave(v);
-              if (v) {
-                localStorage.setItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY, "1");
-              } else {
-                localStorage.removeItem(PLUGIN_IDE_RELOAD_ON_SAVE_KEY);
-              }
-            }}
-            className="h-3.5 w-3.5 rounded-sm border-border"
-          />
-          Reload registry on save
-        </label>
-        <button
-          type="button"
-          disabled={!pluginFolder || busy}
-          onClick={() => void runInstallDependencies()}
-          className="nodex-primary-fill min-h-7 rounded-sm border-0 px-3 py-1.5 text-[12px] font-medium shadow-sm transition-opacity hover:opacity-92 disabled:opacity-50"
-          style={{
-            backgroundColor: "hsl(var(--primary))",
-            color: "hsl(var(--primary-foreground))",
-          }}
-        >
-          Install dependencies
-        </button>
-      </div>
+      )}
 
       {pathModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
@@ -2201,69 +2287,73 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
       )}
 
       <PanelGroup
-        direction="vertical"
-        autoSaveId="plugin-ide-vertical-dock"
+        direction="horizontal"
+        autoSaveId={
+          shellLayout ? "plugin-ide-panels-shell" : "plugin-ide-panels"
+        }
         className="flex-1 min-h-0"
       >
-        <Panel defaultSize={78} minSize={35} className="min-h-0">
-          <PanelGroup
-            direction="horizontal"
-            autoSaveId="plugin-ide-panels"
-            className="h-full min-h-0"
-          >
-        <Panel
-          ref={filesPanelRef}
-          collapsible
-          collapsedSize={0}
-          minSize={10}
-          defaultSize={18}
-          className="min-w-0"
-          onCollapse={() =>
-            localStorage.setItem(PLUGIN_IDE_FILES_COLLAPSED_KEY, "1")
-          }
-          onExpand={() =>
-            localStorage.removeItem(PLUGIN_IDE_FILES_COLLAPSED_KEY)
-          }
-        >
-          <aside className="flex h-full flex-col overflow-y-auto border-r border-border bg-sidebar">
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Files
-              </span>
-              <button
-                type="button"
-                className="rounded-sm p-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                title="Collapse or expand file list"
-                aria-label="Toggle file sidebar"
-                onClick={toggleFilesPanel}
-              >
-                ◀▶
-              </button>
-            </div>
-            <ul className="min-h-0 flex-1 overflow-y-auto py-1">
-              {fileList.map((f) => (
-                <li key={f}>
+        {!shellLayout ? (
+          <>
+            <Panel
+              ref={filesPanelRef}
+              collapsible
+              collapsedSize={0}
+              minSize={10}
+              defaultSize={18}
+              className="min-w-0"
+              onCollapse={() =>
+                localStorage.setItem(PLUGIN_IDE_FILES_COLLAPSED_KEY, "1")
+              }
+              onExpand={() =>
+                localStorage.removeItem(PLUGIN_IDE_FILES_COLLAPSED_KEY)
+              }
+            >
+              <aside className="flex h-full flex-col overflow-y-auto border-r border-border bg-sidebar">
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Files
+                  </span>
                   <button
                     type="button"
-                    onClick={() => void openFile(f)}
-                    className={`w-full truncate border-l-2 py-[5px] pl-4 pr-3 text-left font-mono text-[13px] leading-snug transition-colors hover:bg-muted/50 ${
-                      activePath === f
-                        ? "border-primary bg-muted/60 font-medium text-foreground"
-                        : "border-transparent text-foreground"
-                    }`}
-                    title={f}
+                    className="rounded-sm p-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                    title="Collapse or expand file list"
+                    aria-label="Toggle file sidebar"
+                    onClick={toggleFilesPanel}
                   >
-                    {f}
+                    ◀▶
                   </button>
-                </li>
-              ))}
-            </ul>
-          </aside>
-        </Panel>
+                </div>
+                <ul className="min-h-0 flex-1 overflow-y-auto py-1">
+                  {fileList.map((f) => (
+                    <li key={f}>
+                      <button
+                        type="button"
+                        onClick={() => void openFile(f)}
+                        className={`w-full truncate border-l-2 py-[5px] pl-4 pr-3 text-left font-mono text-[13px] leading-snug transition-colors hover:bg-muted/50 ${
+                          activePath === f
+                            ? "border-primary bg-muted/60 font-medium text-foreground"
+                            : "border-transparent text-foreground"
+                        }`}
+                        title={f}
+                      >
+                        {f}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </aside>
+            </Panel>
 
-        <PanelResizeHandle className="nodex-panel-sash relative w-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-y-0 before:left-1/2 before:z-10 before:w-px before:-translate-x-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
+            <PanelResizeHandle className="nodex-panel-sash relative w-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-y-0 before:left-1/2 before:z-10 before:w-px before:-translate-x-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
+          </>
+        ) : null}
 
-        <Panel defaultSize={52} minSize={30} className="min-w-0">
+        <Panel
+          defaultSize={shellLayout ? 58 : 52}
+          minSize={30}
+          className="min-w-0"
+        >
           <div className="h-full flex flex-col min-h-0">
             <div
               className="flex shrink-0 overflow-x-auto border-b border-border bg-muted/80"
@@ -2391,128 +2481,6 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
               )}
             </div>
           </aside>
-        </Panel>
-          </PanelGroup>
-        </Panel>
-
-        <PanelResizeHandle className="nodex-panel-sash relative h-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-x-0 before:top-1/2 before:z-10 before:h-px before:-translate-y-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
-
-        <Panel
-          ref={bottomPanelRef}
-          collapsible
-          collapsedSize={0}
-          minSize={12}
-          defaultSize={24}
-          className="min-h-0 flex flex-col"
-          onCollapse={() =>
-            localStorage.setItem(PLUGIN_IDE_BOTTOM_PANEL_COLLAPSED_KEY, "1")
-          }
-          onExpand={() =>
-            localStorage.removeItem(PLUGIN_IDE_BOTTOM_PANEL_COLLAPSED_KEY)
-          }
-        >
-          <div className="flex h-full min-h-0 flex-col border-t border-border bg-muted/25 dark:bg-muted/15">
-            <div
-              className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border/80 bg-muted/40 px-2 py-1"
-              role="tablist"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={bottomDockTab === "debug"}
-                className={`rounded px-2.5 py-1 text-[11px] font-medium ${
-                  bottomDockTab === "debug"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => setBottomDockTab("debug")}
-              >
-                Debug
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={bottomDockTab === "terminal"}
-                title="Reserved for a future integrated shell"
-                className={`rounded px-2.5 py-1 text-[11px] font-medium ${
-                  bottomDockTab === "terminal"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => setBottomDockTab("terminal")}
-              >
-                Terminal
-              </button>
-              <span className="flex-1 min-w-[1rem]" />
-              {bottomDockTab === "debug" ? (
-                <button
-                  type="button"
-                  className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                  onClick={() => void clearMainDebugLogs()}
-                >
-                  Clear
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="rounded p-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                title="Hide bottom panel"
-                aria-label="Hide bottom panel"
-                onClick={() => toggleBottomPanel()}
-              >
-                Hide
-              </button>
-            </div>
-            {bottomDockTab === "debug" ? (
-              <pre
-                ref={logScrollRef}
-                className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11px] leading-relaxed text-foreground whitespace-pre-wrap break-words"
-              >
-                {mainDebugLogs.length === 0 ? (
-                  <span className="text-muted-foreground">
-                    Main process logs appear here (console.log / warn / error
-                    from Node). Open or close this panel from File → Toggle
-                    bottom panel.
-                  </span>
-                ) : (
-                  mainDebugLogs.map((line, i) => {
-                    const level = line.level;
-                    const color =
-                      level === "error"
-                        ? "text-red-700 dark:text-red-400"
-                        : level === "warn"
-                          ? "text-amber-800 dark:text-amber-300"
-                          : level === "debug"
-                            ? "text-violet-700 dark:text-violet-300"
-                            : "text-foreground/90";
-                    const t = new Date(line.ts);
-                    const stamp = t.toLocaleTimeString(undefined, {
-                      hour12: false,
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit",
-                    });
-                    return (
-                      <div key={`${line.ts}-${i}`} className={color}>
-                        <span className="text-muted-foreground select-none">
-                          [{stamp}]{" "}
-                        </span>
-                        <span className="text-muted-foreground/80 uppercase text-[10px]">
-                          {level}{" "}
-                        </span>
-                        {line.text}
-                      </div>
-                    );
-                  })
-                )}
-              </pre>
-            ) : (
-              <div className="min-h-0 flex-1 overflow-auto p-4 text-[12px] text-muted-foreground">
-                An interactive terminal may be added here later. For now, use the
-                system terminal or your editor for shell commands.
-              </div>
-            )}
-          </div>
         </Panel>
       </PanelGroup>
     </div>

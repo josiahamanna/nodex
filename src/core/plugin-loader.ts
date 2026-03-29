@@ -21,6 +21,10 @@ import {
 } from "./plugin-typecheck";
 import { toFileUri } from "../shared/file-uri";
 import { designSystemWarning } from "../shared/design-system";
+import {
+  readDisabledPluginIds,
+  writeDisabledPluginIds,
+} from "./plugin-disabled-store";
 
 const zipHandler = require("./zip-handler");
 
@@ -108,12 +112,101 @@ export class PluginLoader {
   private devUiBundleCache: Map<string, { mtime: number; code: string }> =
     new Map();
   private loadIssues: { folder: string; error: string }[] = [];
+  /** Used for plugin-disabled.json (user plugins only). */
+  private userDataPathForDisabled: string | null = null;
 
   constructor(userPluginsDir: string, bundledCoreRoots: string[] = []) {
     this.userPluginsDir = userPluginsDir;
     this.bundledCoreRoots = bundledCoreRoots.filter(
       (p) => typeof p === "string" && p.length > 0 && fs.existsSync(p),
     );
+  }
+
+  setUserDataPathForDisabled(p: string): void {
+    this.userDataPathForDisabled = p;
+  }
+
+  private getDisabledUserPluginIds(): Set<string> {
+    if (!this.userDataPathForDisabled) {
+      return new Set();
+    }
+    return readDisabledPluginIds(this.userDataPathForDisabled);
+  }
+
+  getDisabledUserPluginIdsForIpc(): string[] {
+    return [...this.getDisabledUserPluginIds()].sort();
+  }
+
+  /**
+   * Enable/disable loading of a **user** plugin (folder id). Bundled plugins cannot be disabled.
+   */
+  setUserPluginEnabled(pluginId: string, enabled: boolean): void {
+    if (!isSafePluginName(pluginId)) {
+      throw new Error("Invalid plugin id");
+    }
+    if (this.isBundledPluginFolder(pluginId)) {
+      throw new Error("Bundled plugins cannot be disabled");
+    }
+    if (!this.userDataPathForDisabled) {
+      throw new Error("User data path not configured");
+    }
+    const cur = readDisabledPluginIds(this.userDataPathForDisabled);
+    if (enabled) {
+      cur.delete(pluginId);
+    } else {
+      cur.add(pluginId);
+    }
+    writeDisabledPluginIds(this.userDataPathForDisabled, cur);
+  }
+
+  /** True if a manifest exists under any bundled core root for this folder name. */
+  isBundledPluginFolder(folderName: string): boolean {
+    for (const root of this.bundledCoreRoots) {
+      const mp = path.join(root, folderName, "manifest.json");
+      if (fs.existsSync(mp)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  listBundledPluginFolderNames(): string[] {
+    const names = new Set<string>();
+    for (const root of this.bundledCoreRoots) {
+      if (!fs.existsSync(root)) {
+        continue;
+      }
+      for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+        if (!ent.isDirectory() || ent.name.startsWith(".")) {
+          continue;
+        }
+        if (fs.existsSync(path.join(root, ent.name, "manifest.json"))) {
+          names.add(ent.name);
+        }
+      }
+    }
+    return [...names].sort();
+  }
+
+  getPluginInventory(): {
+    id: string;
+    isBundled: boolean;
+    canToggle: boolean;
+    enabled: boolean;
+    loaded: boolean;
+  }[] {
+    const disabled = this.getDisabledUserPluginIds();
+    const bundled = this.listBundledPluginFolderNames();
+    const user = this.collectUserPluginIds();
+    const ids = new Set<string>([...bundled, ...user]);
+    const list = [...ids].sort();
+    return list.map((id) => {
+      const isBundled = this.isBundledPluginFolder(id);
+      const canToggle = !isBundled;
+      const enabled = isBundled || !disabled.has(id);
+      const loaded = this.loadedPlugins.has(id);
+      return { id, isBundled, canToggle, enabled, loaded };
+    });
   }
 
   private static readonly RESERVED_TOP_LEVEL = new Set(["sources", "bin"]);
@@ -386,7 +479,11 @@ export class PluginLoader {
   }
 
   private loadUserPlugins(registry: Registry): void {
+    const disabled = this.getDisabledUserPluginIds();
     for (const id of this.collectUserPluginIds()) {
+      if (disabled.has(id)) {
+        continue;
+      }
       const loadPath = this.resolvePluginRuntimePath(id);
       if (!loadPath) {
         continue;

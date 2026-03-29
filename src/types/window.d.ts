@@ -48,6 +48,21 @@ declare global {
         warnings?: string[];
       }>;
       getInstalledPlugins: () => Promise<string[]>;
+      getPluginInventory: () => Promise<
+        {
+          id: string;
+          isBundled: boolean;
+          canToggle: boolean;
+          enabled: boolean;
+          loaded: boolean;
+        }[]
+      >;
+      getDisabledPluginIds: () => Promise<string[]>;
+      setPluginEnabled: (
+        pluginId: string,
+        enabled: boolean,
+      ) => Promise<{ success: boolean; error?: string }>;
+      toggleDeveloperTools: () => Promise<{ success: boolean }>;
       getUserPluginsDirectory: () => Promise<{ path: string; error?: string }>;
       resetUserPluginsDirectory: () => Promise<{
         success: boolean;

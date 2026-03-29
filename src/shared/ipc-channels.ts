@@ -1,6 +1,7 @@
 export const IPC_CHANNELS = {
   UI_GET_NATIVE_THEME_DARK: "ui:native-theme-dark",
   UI_NATIVE_THEME_CHANGED: "ui:native-theme-changed",
+  UI_TOGGLE_DEVTOOLS: "ui:toggle-devtools",
   GET_PLUGIN_RENDERER_UI_META: "plugin:get-renderer-ui-meta",
   GET_PLUGIN_MANIFEST_UI: "plugin:get-manifest-ui",
   GET_NOTE: "note:get",
@@ -65,6 +66,9 @@ export const IPC_CHANNELS = {
   PLUGIN_IDE_MAIN_DEBUG_LOG: "plugin:ide-main-debug-log",
   PLUGIN_IDE_GET_MAIN_DEBUG_LOGS: "plugin:ide-get-main-debug-logs",
   PLUGIN_IDE_CLEAR_MAIN_DEBUG_LOGS: "plugin:ide-clear-main-debug-logs",
+  PLUGIN_GET_DISABLED_IDS: "plugin:get-disabled-ids",
+  PLUGIN_SET_ENABLED: "plugin:set-enabled",
+  PLUGIN_GET_INVENTORY: "plugin:get-inventory",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
