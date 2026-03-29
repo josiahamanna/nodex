@@ -316,9 +316,9 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   if (error) {
     return (
       <div className="p-6">
-        <div className="rounded-sm border border-destructive/30 bg-destructive/10 p-4">
-          <p className="font-medium text-destructive">Plugin Error</p>
-          <p className="mt-2 text-sm text-destructive/90">{error}</p>
+        <div className="rounded-sm border border-border bg-muted/60 p-4">
+          <p className="font-medium text-foreground">Plugin Error</p>
+          <p className="mt-2 text-sm text-foreground/90">{error}</p>
         </div>
       </div>
     );

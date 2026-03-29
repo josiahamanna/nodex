@@ -6,6 +6,7 @@ import * as monaco from "monaco-editor";
 import { Provider } from "react-redux";
 import { store } from "./store";
 import App from "./App";
+import { NodexDialogProvider } from "./dialog/NodexDialogProvider";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { ToastProvider } from "./toast/ToastContext";
 import "./styles.css";
@@ -26,9 +27,11 @@ root.render(
   <React.StrictMode>
     <ThemeProvider>
       <ToastProvider>
-        <Provider store={store}>
-          <App />
-        </Provider>
+        <NodexDialogProvider>
+          <Provider store={store}>
+            <App />
+          </Provider>
+        </NodexDialogProvider>
       </ToastProvider>
     </ThemeProvider>
   </React.StrictMode>,

@@ -255,6 +255,48 @@ function bodyForType(type: string): {
   };
 }
 
+/** Prefer `markdown` for the top project note so the overview opens in the markdown preview. */
+function pickWorkspaceOverviewType(registeredTypes: string[]): string | null {
+  if (registeredTypes.length === 0) {
+    return null;
+  }
+  if (registeredTypes.includes("markdown")) {
+    return "markdown";
+  }
+  if (registeredTypes.includes("root")) {
+    return "root";
+  }
+  return registeredTypes[0]!;
+}
+
+function overviewTitleAndBody(overviewType: string): {
+  title: string;
+  content: string;
+  metadata?: Record<string, unknown>;
+} {
+  if (overviewType === "markdown") {
+    return {
+      title: "Home",
+      content: defaultSampleContent.root.content,
+    };
+  }
+  const { content, metadata } = bodyForType(overviewType);
+  return {
+    title: overviewType === "root" ? "Home" : titleForType(overviewType),
+    content,
+    metadata,
+  };
+}
+
+function childTypesBelowOverview(
+  registeredTypes: string[],
+  overviewType: string,
+): string[] {
+  return registeredTypes.filter(
+    (t) => t !== "root" && t !== overviewType,
+  );
+}
+
 /** True if `nodeId` is strictly inside the subtree rooted at `ancestorId` (not equal). */
 export function isDescendantOf(ancestorId: string, nodeId: string): boolean {
   let p = notes.get(nodeId)?.parentId ?? null;
@@ -289,36 +331,33 @@ export function ensureNotesSeeded(registeredTypes: string[]): void {
   if (notes.size > 0) {
     return;
   }
-  if (registeredTypes.length === 0) {
+  const overviewType = pickWorkspaceOverviewType(registeredTypes);
+  if (!overviewType) {
     return;
   }
-  const rootType = registeredTypes.includes("root")
-    ? "root"
-    : registeredTypes[0]!;
-  const { content: rootContent, metadata: rootMeta } = bodyForType(rootType);
-  const rootTitle =
-    rootType === "root" ? "Home" : "Workspace";
+  const { title: overviewTitle, content, metadata } =
+    overviewTitleAndBody(overviewType);
   const homeId = randomUUID();
   notes.set(homeId, {
     id: homeId,
     parentId: null,
-    type: rootType,
-    title: rootTitle,
-    content: rootContent,
-    metadata: rootMeta,
+    type: overviewType,
+    title: overviewTitle,
+    content,
+    metadata,
   });
-  const childTypes = registeredTypes.filter((t) => t !== "root");
+  const childTypes = childTypesBelowOverview(registeredTypes, overviewType);
   const childIds: string[] = [];
   for (const type of childTypes) {
     const id = randomUUID();
-    const { content, metadata } = bodyForType(type);
+    const body = bodyForType(type);
     notes.set(id, {
       id,
       parentId: homeId,
       type,
       title: titleForType(type),
-      content,
-      metadata,
+      content: body.content,
+      metadata: body.metadata,
     });
     childIds.push(id);
   }
@@ -430,7 +469,8 @@ export function deleteNoteSubtrees(rootIds: string[]): void {
   minimal.sort(
     (a, b) => (indexById.get(b) ?? 0) - (indexById.get(a) ?? 0),
   );
-  for (const id of minimal) {
+  const withoutMounts = minimal.filter((id) => !isWorkspaceMountNoteId(id));
+  for (const id of withoutMounts) {
     if (notes.has(id)) {
       deleteNoteSubtree(id);
     }
@@ -881,7 +921,8 @@ export function mergeAttachedSerializedIntoStore(
 }
 
 /**
- * Seed Home + sample child notes under `__nodex_mount_{mountIndex}` when that folder’s DB was empty.
+ * Seed Home + sample child notes under `__nodex_mount_{mountIndex}` when the mount has no children
+ * after merge (e.g. new or effectively empty attached project).
  */
 export function seedAttachedWorkspaceIfEmpty(
   mountIndex: number,
@@ -895,32 +936,33 @@ export function seedAttachedWorkspaceIfEmpty(
     return;
   }
   const pref = `r${mountIndex}_`;
-  const rootType = registeredTypes.includes("root")
-    ? "root"
-    : registeredTypes[0]!;
-  const { content: rootContent, metadata: rootMeta } = bodyForType(rootType);
-  const rootTitle = rootType === "root" ? "Home" : "Workspace";
+  const overviewType = pickWorkspaceOverviewType(registeredTypes);
+  if (!overviewType) {
+    return;
+  }
+  const { title: overviewTitle, content, metadata } =
+    overviewTitleAndBody(overviewType);
   const homeId = `${pref}${randomUUID()}`;
   notes.set(homeId, {
     id: homeId,
     parentId: mountId,
-    type: rootType,
-    title: rootTitle,
-    content: rootContent,
-    metadata: rootMeta,
+    type: overviewType,
+    title: overviewTitle,
+    content,
+    metadata,
   });
-  const childTypes = registeredTypes.filter((t) => t !== "root");
+  const childTypes = childTypesBelowOverview(registeredTypes, overviewType);
   const childIds: string[] = [];
   for (const type of childTypes) {
     const id = `${pref}${randomUUID()}`;
-    const { content, metadata } = bodyForType(type);
+    const body = bodyForType(type);
     notes.set(id, {
       id,
       parentId: homeId,
       type,
       title: titleForType(type),
-      content,
-      metadata,
+      content: body.content,
+      metadata: body.metadata,
     });
     childIds.push(id);
   }

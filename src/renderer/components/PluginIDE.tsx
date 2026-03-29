@@ -22,6 +22,7 @@ import { Note } from "../../preload";
 import { joinFileUri } from "../../shared/file-uri";
 import { NODEX_PLUGIN_UI_MONACO_URI } from "../../shared/nodex-plugin-ui-monaco-uri";
 import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
+import { useNodexDialog } from "../dialog/NodexDialogProvider";
 import { useTheme } from "../theme/ThemeContext";
 import { useToast } from "../toast/ToastContext";
 import { clientLog } from "../logging/clientLog";
@@ -262,6 +263,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   const { resolvedDark } = useTheme();
   const monacoTheme = resolvedDark ? "vs-dark" : "vs";
   const { showToast } = useToast();
+  const { confirm } = useNodexDialog();
 
   const [folders, setFolders] = useState<string[]>([]);
   const [folderFilesCache, setFolderFilesCache] = useState<
@@ -1113,19 +1115,30 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   const closeTab = (rel: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
     const tab = tabs.find((t) => t.relativePath === rel);
-    if (tab && tab.content !== tab.savedContent) {
-      if (!confirm(`Discard unsaved changes in ${rel}?`)) {
-        return;
+    void (async () => {
+      if (tab && tab.content !== tab.savedContent) {
+        const ok = await confirm({
+          title: "Discard changes",
+          message: `Discard unsaved changes in ${rel}?`,
+          confirmLabel: "Discard",
+          variant: "danger",
+        });
+        if (!ok) {
+          return;
+        }
       }
-    }
-    const next = tabs.filter((t) => t.relativePath !== rel);
-    setTabs(next);
-    if (activePath === rel) {
-      setActivePath(next[0]?.relativePath ?? null);
-    }
-    if (diskConflictPath === rel) {
-      setDiskConflictPath(null);
-    }
+      const next = tabs.filter((t) => t.relativePath !== rel);
+      setTabs(next);
+      setActivePath((cur) => {
+        if (cur === rel) {
+          return next[0]?.relativePath ?? null;
+        }
+        return cur;
+      });
+      if (diskConflictPath === rel) {
+        setDiskConflictPath(null);
+      }
+    })();
   };
 
   const resolveDiskConflictReload = async () => {
@@ -1601,11 +1614,13 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     if (!id || busy) {
       return;
     }
-    if (
-      !confirm(
-        `Remove “${id}” from the IDE workspace list? (Does not delete files on disk. Plugins under sources/ must be disabled in Plugin Manager.)`,
-      )
-    ) {
+    const ok = await confirm({
+      title: "Remove workspace registration",
+      message: `Remove “${id}” from the IDE workspace list? (Does not delete files on disk. Plugins under sources/ must be disabled in Plugin Manager.)`,
+      confirmLabel: "Remove",
+      variant: "default",
+    });
+    if (!ok) {
       return;
     }
     setBusy(true);
@@ -2004,7 +2019,13 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       targets.length === 1
         ? `Delete “${targets[0]}”? This cannot be undone.`
         : `Delete ${targets.length} paths? This cannot be undone.`;
-    if (!confirm(msg)) {
+    const ok = await confirm({
+      title: "Delete files",
+      message: msg,
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok) {
       return;
     }
     setBusy(true);
@@ -2234,7 +2255,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
         <button
           type="button"
           disabled={busy}
-          className="rounded-sm border border-amber-600/50 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-950 hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-100"
+          className="rounded-sm border border-border bg-muted/40 px-2 py-1 text-[11px] text-foreground hover:bg-muted disabled:opacity-50"
           onClick={() => void runScaffold()}
         >
           Initialize plugin
@@ -2811,8 +2832,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           type="checkbox"
           checked={addAsDevDep}
           onChange={(e) => setAddAsDevDep(e.target.checked)}
-          className="h-3.5 w-3.5 shrink-0 cursor-pointer rounded border border-input bg-muted accent-primary"
-          style={{ accentColor: "hsl(var(--primary))" }}
+          className="h-3.5 w-3.5 shrink-0 cursor-pointer rounded border border-input bg-muted [accent-color:hsl(220_6%_32%)] dark:[accent-color:hsl(220_6%_68%)]"
         />
         devDependency
       </label>
@@ -2956,7 +2976,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                     type="button"
                     role="menuitem"
                     disabled={!pluginFolder || !activePath || busy}
-                    className="w-full text-left px-3 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm text-foreground/90 hover:bg-muted disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void onDeletePath();
@@ -3163,7 +3183,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                     role="menuitem"
                     disabled={!pluginFolder || busy}
                     title="Remove external registration only (sources/ plugins are unchanged)"
-                    className="w-full text-left px-3 py-2 text-sm text-amber-800 hover:bg-amber-500/15 dark:text-amber-200 dark:hover:bg-amber-500/20 disabled:opacity-50"
+                    className="w-full px-3 py-2 text-left text-sm text-foreground/90 hover:bg-muted disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void removeExternalRegistration();
@@ -3234,7 +3254,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       {diskConflictPath && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
           <div
-            className="bg-background rounded-lg shadow-xl max-w-md w-full p-5 border border-amber-500/40"
+            className="w-full max-w-md rounded-lg border border-border bg-background p-5 shadow-xl"
             role="alertdialog"
             aria-modal="true"
             aria-labelledby="disk-conflict-title"
@@ -3262,7 +3282,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
               </button>
               <button
                 type="button"
-                className="px-3 py-1.5 text-sm rounded bg-amber-600 text-white hover:opacity-90 disabled:opacity-50"
+                className="nodex-btn-neutral px-3 py-1.5 text-sm rounded font-semibold disabled:opacity-50"
                 disabled={busy}
                 onClick={() => void resolveDiskConflictReload()}
               >
@@ -3332,11 +3352,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                 </button>
                 <button
                   type="button"
-                  className="nodex-primary-fill rounded px-3 py-1.5 text-sm hover:opacity-90 disabled:opacity-50"
-                  style={{
-                    backgroundColor: "hsl(var(--primary))",
-                    color: "hsl(var(--primary-foreground))",
-                  }}
+                  className="nodex-btn-neutral-strong rounded px-3 py-1.5 text-sm"
                   disabled={busy}
                   onClick={() => void submitPathModal()}
                 >
@@ -3349,7 +3365,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
         )}
 
       {tscDiagnostics.length > 0 && (
-        <div className="max-h-40 shrink-0 overflow-y-auto border-b border-border bg-rose-50/50 px-4 py-3 text-[11px] dark:bg-rose-950/20">
+        <div className="max-h-40 shrink-0 overflow-y-auto border-b border-border bg-muted/50 px-4 py-3 text-[11px]">
           <div className="mb-2 font-semibold text-foreground">
             Problems ({tscDiagnostics.length})
           </div>
@@ -3364,8 +3380,8 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                   <span
                     className={
                       d.category === "error"
-                        ? "text-red-700 font-medium"
-                        : "text-amber-900"
+                        ? "font-medium text-foreground"
+                        : "text-foreground/80"
                     }
                   >
                     {d.relativePath}({d.line},{d.column})
@@ -3487,7 +3503,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                     </span>
                     <button
                       type="button"
-                      className="px-1 text-muted-foreground hover:text-destructive"
+                      className="px-1 text-muted-foreground hover:text-foreground"
                       aria-label="Close tab"
                       onClick={(e) => closeTab(t.relativePath, e)}
                     >
@@ -3498,7 +3514,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
               })}
             </div>
             {dirtyTabCount > 0 ? (
-              <div className="shrink-0 border-b border-orange-500/25 bg-orange-500/10 px-4 py-1.5 text-[11px] text-orange-950 dark:border-orange-400/20 dark:bg-orange-400/10 dark:text-orange-50">
+              <div className="shrink-0 border-b border-border bg-muted/40 px-4 py-1.5 text-[11px] text-foreground/90">
                 {dirtyTabCount} unsaved file
                 {dirtyTabCount === 1 ? "" : "s"}
               </div>

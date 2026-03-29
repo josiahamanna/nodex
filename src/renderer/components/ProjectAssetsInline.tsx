@@ -200,7 +200,7 @@ export default function ProjectAssetsInline({
               </button>
             ) : null}
             {err ? (
-              <div className="px-1 py-0.5 text-[10px] text-destructive">{err}</div>
+              <div className="px-1 py-0.5 text-[10px] text-foreground/85">{err}</div>
             ) : entries.length === 0 ? (
               <div className="px-1 py-1 text-[10px] text-muted-foreground">
                 Empty
@@ -213,7 +213,7 @@ export default function ProjectAssetsInline({
                     <li key={ent.name}>
                       <div
                         className={`flex w-full cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-left text-[11px] hover:bg-sidebar-accent/60 ${
-                          dragOverDir === fullRel ? "bg-primary/10 ring-1 ring-primary/40" : ""
+                          dragOverDir === fullRel ? "bg-foreground/8 ring-1 ring-foreground/25" : ""
                         }`}
                         draggable
                         onDragStart={(e) => {
@@ -281,7 +281,7 @@ export default function ProjectAssetsInline({
             <div
               className={`mt-1 rounded border border-dashed px-1.5 py-1 text-[9px] ${
                 dropZoneActive
-                  ? "border-primary/50 bg-primary/10 text-foreground"
+                  ? "border-foreground/30 bg-foreground/8 text-foreground"
                   : "border-transparent text-muted-foreground/80"
               }`}
               onDragOver={(e) => {

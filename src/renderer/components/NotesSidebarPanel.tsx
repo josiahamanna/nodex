@@ -11,6 +11,7 @@ import {
   buildWorkspaceSidebarSections,
   type SidebarAssetsRow,
 } from "../../shared/sidebar-assets-rows";
+import { useNodexDialog } from "../dialog/NodexDialogProvider";
 import ProjectAssetsInline from "./ProjectAssetsInline";
 import WorkspaceMountHeaderSurface from "./WorkspaceMountHeaderSurface";
 
@@ -24,6 +25,8 @@ type ContextMenuState = {
   x: number;
   y: number;
   anchorId: string | null;
+  /** Context menu on a project section header (folder path). */
+  workspaceProjectRoot?: string | null;
   step: "main" | "pickType";
   pickRelation?: CreateNoteRelation;
 };
@@ -249,6 +252,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   onOpenProjectAsset,
   assetFsTick = 0,
 }) => {
+  const { confirm, alert } = useNodexDialog();
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(readCollapsedIds);
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(() => new Set());
   const selectionAnchorRef = useRef<string | null>(null);
@@ -537,7 +541,103 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
       >
         {menu.step === "main" ? (
           <>
-            {menu.anchorId ? (
+            {menu.workspaceProjectRoot ? (
+              <>
+                <button
+                  type="button"
+                  className={ctxBtn}
+                  onClick={() => {
+                    const p = menu.workspaceProjectRoot;
+                    closeMenu();
+                    if (p) {
+                      void window.Nodex.revealProjectFolderInExplorer(p);
+                    }
+                  }}
+                >
+                  Open project folder…
+                </button>
+                <div className="my-1 h-px bg-border" />
+                <button
+                  type="button"
+                  className={ctxBtn}
+                  onClick={() => {
+                    const p = menu.workspaceProjectRoot;
+                    if (!p) {
+                      return;
+                    }
+                    const name = folderDisplayName(p);
+                    closeMenu();
+                    void (async () => {
+                      const ok = await confirm({
+                        title: "Remove from workspace",
+                        message: `Remove “${name}” from this workspace?`,
+                        detail:
+                          "Notes and files on disk stay in the folder. You can add it again with Add folder.",
+                        confirmLabel: "Remove",
+                        cancelLabel: "Cancel",
+                        variant: "default",
+                      });
+                      if (!ok) {
+                        return;
+                      }
+                      const r = await window.Nodex.removeWorkspaceRoot(p, false);
+                      if (!r.ok) {
+                        void alert({
+                          title: "Could not update workspace",
+                          message: r.error,
+                        });
+                      }
+                    })();
+                  }}
+                >
+                  Remove from workspace…
+                </button>
+                <button
+                  type="button"
+                  className={`${ctxBtn} font-medium text-foreground/90 hover:text-foreground`}
+                  onClick={() => {
+                    const p = menu.workspaceProjectRoot;
+                    if (!p) {
+                      return;
+                    }
+                    const name = folderDisplayName(p);
+                    closeMenu();
+                    void (async () => {
+                      const ok = await confirm({
+                        title: "Move to Trash",
+                        message: `Remove “${name}” from the workspace and move the folder to the Trash?`,
+                        detail:
+                          "The app detaches this project first, then asks the system to move the folder to Trash. You may be able to restore it from Trash depending on your OS.",
+                        confirmLabel: "Move to Trash",
+                        cancelLabel: "Cancel",
+                        variant: "danger",
+                      });
+                      if (!ok) {
+                        return;
+                      }
+                      const r = await window.Nodex.removeWorkspaceRoot(p, true);
+                      if (!r.ok) {
+                        void alert({
+                          title: "Could not update workspace",
+                          message: r.error,
+                        });
+                        return;
+                      }
+                      if (r.trashError) {
+                        void alert({
+                          title: "Removed from workspace",
+                          message:
+                            "The folder was removed from the workspace, but moving it to Trash failed.",
+                          detail: r.trashError,
+                        });
+                      }
+                    })();
+                  }}
+                >
+                  Move to Trash and remove…
+                </button>
+              </>
+            ) : menu.anchorId ? (
               <>
                 {multiSelectCount <= 1 ? (
                   <button
@@ -604,15 +704,17 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                     className={ctxBtn}
                     onClick={() => {
                       const n = bulkDeleteRoots.length;
-                      if (
-                        !window.confirm(
-                          `Delete ${n} note${n === 1 ? "" : "s"} and their subtrees?`,
-                        )
-                      ) {
-                        return;
-                      }
-                      closeMenu();
                       void (async () => {
+                        const ok = await confirm({
+                          title: "Delete notes",
+                          message: `Delete ${n} note${n === 1 ? "" : "s"} and their subtrees?`,
+                          confirmLabel: "Delete",
+                          variant: "danger",
+                        });
+                        if (!ok) {
+                          return;
+                        }
+                        closeMenu();
                         try {
                           await onDeleteNotes(bulkDeleteRoots);
                           setSelectedNoteIds(new Set());
@@ -643,16 +745,18 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                       if (!menu.anchorId) {
                         return;
                       }
-                      if (
-                        !window.confirm(
-                          "Delete this note and all notes under it?",
-                        )
-                      ) {
-                        return;
-                      }
                       const id = menu.anchorId;
-                      closeMenu();
                       void (async () => {
+                        const ok = await confirm({
+                          title: "Delete note",
+                          message: "Delete this note and all notes under it?",
+                          confirmLabel: "Delete",
+                          variant: "danger",
+                        });
+                        if (!ok) {
+                          return;
+                        }
+                        closeMenu();
                         try {
                           await onDeleteNotes([id]);
                           setSelectedNoteIds(new Set());
@@ -902,7 +1006,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
             </button>
             <button
               type="button"
-              className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
+              className="nodex-btn-neutral rounded-md px-3 py-1.5 text-[12px] font-semibold"
               disabled={!renameDraft.trim()}
               onClick={() => void submitRename()}
             >
@@ -997,7 +1101,11 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
         <div
           className="min-h-[120px] rounded-md transition-shadow duration-150"
           onContextMenu={(e) => {
-            if ((e.target as HTMLElement).closest("[data-note-row]")) {
+            const el = e.target as HTMLElement;
+            if (el.closest("[data-note-row]")) {
+              return;
+            }
+            if (el.closest("[data-workspace-section-header]")) {
               return;
             }
             e.preventDefault();
@@ -1019,7 +1127,22 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                 key={sec.sectionKey}
                 className="mb-2 overflow-hidden rounded-lg border border-sidebar-border/50 bg-sidebar/15"
               >
-                <div className="flex min-h-8 items-stretch border-b border-sidebar-border/50 bg-sidebar-accent/30">
+                <div
+                  className="flex min-h-8 items-stretch border-b border-sidebar-border/50 bg-sidebar-accent/30"
+                  data-workspace-section-header
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedNoteIds(new Set());
+                    setMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      anchorId: null,
+                      workspaceProjectRoot: sec.projectRoot,
+                      step: "main",
+                    });
+                  }}
+                >
                   <button
                     type="button"
                     aria-expanded={sectionOpen}
@@ -1035,6 +1158,8 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                   </button>
                   {headerMount ? (
                     <WorkspaceMountHeaderSurface
+                      plainHeader
+                      folderLabel={folderDisplayName(sec.projectRoot)}
                       mount={headerMount}
                       draggingId={draggingId}
                       currentNoteId={currentNoteId}
@@ -1245,7 +1370,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                   ) : null}
                   {hint === "into" ? (
                     <div
-                      className="pointer-events-none absolute inset-1 z-10 rounded-md border-2 border-dotted border-foreground/60 bg-primary/5 dark:bg-primary/15"
+                      className="pointer-events-none absolute inset-1 z-10 rounded-md border-2 border-dotted border-foreground/60 bg-foreground/5 dark:bg-foreground/12"
                       aria-hidden
                     />
                   ) : null}
@@ -1289,8 +1414,8 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                       className={`relative flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-r-md py-1 text-left outline-none transition-colors duration-150 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar-background))] ${
                         selected
                           ? inMulti && !primarySelected
-                            ? "bg-primary/15 text-sidebar-foreground ring-1 ring-inset ring-primary/35 hover:bg-primary/20"
-                            : "bg-sidebar-accent text-sidebar-foreground before:pointer-events-none before:absolute before:left-1 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-primary before:content-[''] hover:bg-sidebar-accent"
+                            ? "bg-foreground/10 text-sidebar-foreground ring-1 ring-inset ring-foreground/20 hover:bg-foreground/14"
+                            : "bg-sidebar-accent text-sidebar-foreground before:pointer-events-none before:absolute before:left-1 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-foreground/55 before:content-[''] hover:bg-sidebar-accent"
                           : "text-sidebar-foreground hover:bg-sidebar-accent/70"
                       } ${
                         draggingId === note.id
@@ -1299,7 +1424,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                       }`}
                     >
                       {draggingBulkCount > 1 && draggingId === note.id ? (
-                        <span className="absolute right-2 top-1/2 z-[5] -translate-y-1/2 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-primary-foreground shadow-sm">
+                        <span className="absolute right-2 top-1/2 z-[5] -translate-y-1/2 rounded-full bg-foreground px-1.5 py-0.5 text-[9px] font-bold text-background shadow-sm">
                           {draggingBulkCount}
                         </span>
                       ) : null}

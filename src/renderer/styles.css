@@ -100,6 +100,104 @@ button.nodex-primary-fill {
 }
 
 /*
+ * Neutral action buttons (black / white / gray only — no blue/red fills).
+ * Use on <button> so Electron native chrome does not override fills.
+ */
+button.nodex-btn-neutral {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: none;
+  cursor: pointer;
+  background-color: hsl(220 6% 14%);
+  color: hsl(0 0% 98%);
+  border: 1px solid hsl(220 6% 22%);
+}
+button.nodex-btn-neutral:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+button.nodex-btn-neutral:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.dark button.nodex-btn-neutral {
+  background-color: hsl(0 0% 88%);
+  color: hsl(220 10% 8%);
+  border: 1px solid hsl(0 0% 72%);
+}
+.dark button.nodex-btn-neutral:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+
+/** Stronger emphasis (destructive flows) — still grayscale */
+button.nodex-btn-neutral-strong {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: none;
+  cursor: pointer;
+  background-color: hsl(220 8% 8%);
+  color: hsl(0 0% 98%);
+  border: 1px solid hsl(220 6% 16%);
+}
+button.nodex-btn-neutral-strong:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+button.nodex-btn-neutral-strong:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.dark button.nodex-btn-neutral-strong {
+  background-color: hsl(0 0% 72%);
+  color: hsl(220 10% 6%);
+  border: 1px solid hsl(0 0% 52%);
+}
+.dark button.nodex-btn-neutral-strong:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+/* Portaled dialogs: same neutral system */
+button.nodex-dialog-btn-primary {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: none;
+  cursor: pointer;
+  background-color: hsl(220 6% 14%);
+  color: hsl(0 0% 98%);
+  border: 1px solid hsl(220 6% 22%);
+}
+button.nodex-dialog-btn-primary:hover {
+  filter: brightness(0.94);
+}
+.dark button.nodex-dialog-btn-primary {
+  background-color: hsl(0 0% 88%);
+  color: hsl(220 10% 8%);
+  border: 1px solid hsl(0 0% 72%);
+}
+.dark button.nodex-dialog-btn-primary:hover {
+  filter: brightness(0.96);
+}
+
+button.nodex-dialog-btn-danger {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: none;
+  cursor: pointer;
+  background-color: hsl(220 8% 8%);
+  color: hsl(0 0% 98%);
+  border: 1px solid hsl(220 6% 16%);
+}
+button.nodex-dialog-btn-danger:hover {
+  filter: brightness(0.92);
+}
+.dark button.nodex-dialog-btn-danger {
+  background-color: hsl(0 0% 72%);
+  color: hsl(220 10% 6%);
+  border: 1px solid hsl(0 0% 52%);
+}
+.dark button.nodex-dialog-btn-danger:hover {
+  filter: brightness(0.94);
+}
+
+/*
  * App shell spacing as plain CSS (not only Tailwind) so padding is never
  * zeroed by reset / layer ordering issues with arbitrary utilities.
  */

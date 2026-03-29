@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNodexDialog } from "../dialog/NodexDialogProvider";
 
 interface PluginPanelGeneralProps {
   onPluginsChanged?: () => void;
@@ -7,6 +8,7 @@ interface PluginPanelGeneralProps {
 const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
   onPluginsChanged,
 }) => {
+  const { confirm } = useNodexDialog();
   const [path, setPath] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [message, setMessage] = useState<{
@@ -55,11 +57,14 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
   };
 
   const handleDeleteBinAndCaches = async () => {
-    if (
-      !window.confirm(
+    const ok = await confirm({
+      title: "Clear bin and caches",
+      message:
         "Remove all plugins from bin/, clear the global npm plugin cache (app cache folder), and clear the TypeScript main cache under the plugins folder? Sources are kept.",
-      )
-    ) {
+      confirmLabel: "Clear",
+      variant: "danger",
+    });
+    if (!ok) {
       return;
     }
     await run(
@@ -70,11 +75,14 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
   };
 
   const handleDeleteSources = async () => {
-    if (
-      !window.confirm(
+    const ok = await confirm({
+      title: "Delete plugin sources",
+      message:
         "Delete everything under sources/? External IDE plugin registrations are not removed. This cannot be undone.",
-      )
-    ) {
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok) {
       return;
     }
     await run(
@@ -86,14 +94,27 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
 
   const handleFormat = async () => {
     const display = path ?? "user plugins folder";
-    if (
-      !window.confirm(
-        `Format Nodex plugin data?\n\nThis deletes:\n• ${display}\n• userData/nodex-cache (including global npm plugin cache)\n• Legacy ~/.nodex if present\n\nSample markdown/tiptap sources will be re-seeded. Plugin disable flags are reset. Bundled core plugins are unchanged.`,
-      )
-    ) {
+    const ok1 = await confirm({
+      title: "Format Nodex plugin data",
+      message: `This deletes:
+• ${display}
+• userData/nodex-cache (including global npm plugin cache)
+• Legacy ~/.nodex if present
+
+Sample markdown/tiptap sources will be re-seeded. Plugin disable flags are reset. Bundled core plugins are unchanged.`,
+      confirmLabel: "Continue",
+      variant: "danger",
+    });
+    if (!ok1) {
       return;
     }
-    if (!window.confirm("Second confirmation: proceed with full format now?")) {
+    const ok2 = await confirm({
+      title: "Confirm format",
+      message: "Proceed with full format now?",
+      confirmLabel: "Format",
+      variant: "danger",
+    });
+    if (!ok2) {
       return;
     }
     await run(
@@ -120,8 +141,8 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
         <div
           className={`mb-4 rounded-lg border p-3 text-[12px] ${
             message.type === "success"
-              ? "border-green-200 bg-green-50 text-green-900"
-              : "border-destructive/30 bg-destructive/10 text-destructive"
+              ? "border-border bg-muted/50 text-foreground"
+              : "border-border bg-muted/70 text-foreground"
           }`}
         >
           {message.text}
@@ -142,7 +163,7 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
         <button
           type="button"
           disabled={working !== null}
-          className="rounded-md border border-orange-200 bg-orange-50 px-3 py-1.5 text-[12px] font-medium text-orange-950 hover:bg-orange-100 disabled:opacity-50"
+          className="nodex-btn-neutral rounded-md px-3 py-1.5 text-[12px] font-semibold"
           onClick={() => void handleDeleteBinAndCaches()}
         >
           {working === "bin" ? "Working…" : "Delete bin and caches"}
@@ -160,15 +181,15 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
         <button
           type="button"
           disabled={working !== null}
-          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-[12px] font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-50"
+          className="nodex-btn-neutral rounded-md px-3 py-1.5 text-[12px] font-semibold"
           onClick={() => void handleDeleteSources()}
         >
           {working === "sources" ? "Working…" : "Delete all sources"}
         </button>
       </section>
 
-      <section className="space-y-3 border-t border-destructive/25 pt-6">
-        <h3 className="text-[12px] font-semibold text-destructive">Format</h3>
+      <section className="space-y-3 border-t border-border pt-6">
+        <h3 className="text-[12px] font-semibold text-foreground">Format</h3>
         <p className="text-[11px] text-muted-foreground">
           Removes <code className="rounded bg-muted px-1">userData/nodex-cache</code>,
           legacy <code className="rounded bg-muted px-1">~/.nodex</code> if present,
@@ -178,7 +199,7 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
         <button
           type="button"
           disabled={working !== null}
-          className="rounded-md bg-destructive px-3 py-1.5 text-[12px] font-medium text-destructive-foreground hover:opacity-90 disabled:opacity-50"
+          className="nodex-btn-neutral-strong rounded-md px-3 py-1.5 text-[12px] font-semibold"
           onClick={() => void handleFormat()}
         >
           {working === "format" ? "Formatting…" : "Format Nodex plugin data"}

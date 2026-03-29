@@ -784,7 +784,7 @@ const EditorTabSidebar: React.FC = () => {
                   type="button"
                   role="menuitem"
                   disabled={!canPathOp}
-                  className={`${menuItem} text-red-800 hover:bg-red-50`}
+                  className={`${menuItem} font-medium text-foreground/90 hover:bg-muted`}
                   onClick={() => {
                     setMenu(null);
                     fireAction("delete");
@@ -932,7 +932,7 @@ const EditorTabSidebar: React.FC = () => {
                   type="button"
                   role="menuitem"
                   disabled={!pf || busy}
-                  className={`${menuItem} text-amber-900 hover:bg-amber-50`}
+                  className={`${menuItem} text-foreground/90 hover:bg-muted`}
                   title="Only removes plugins registered via “Load parent” or “Add plugin workspace”. Plugins under userData sources/ stay in the manager."
                   onClick={() => {
                     setMenu(null);
@@ -1034,7 +1034,7 @@ const EditorTabSidebar: React.FC = () => {
             <button
               type="button"
               role="menuitem"
-              className={`${menuItem} text-amber-900 hover:bg-amber-50`}
+              className={`${menuItem} text-foreground/90 hover:bg-muted`}
               disabled={busy}
               onClick={() => {
                 fireAction("removeExternal", {
@@ -1096,7 +1096,7 @@ const EditorTabSidebar: React.FC = () => {
             <button
               type="button"
               role="menuitem"
-              className={`${menuItem} text-red-800 hover:bg-red-50`}
+              className={`${menuItem} font-medium text-foreground/90 hover:bg-muted`}
               disabled={busy}
               onClick={() => {
                 fireAction("delete", {

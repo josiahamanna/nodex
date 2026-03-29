@@ -227,3 +227,18 @@ export function deactivateProject(): void {
   }
   resetNotesStore();
 }
+
+/** Close DB, clear in-memory notes, clear saved workspace prefs (no folders open). */
+export function closeWorkspace(userDataPath: string): ActivateProjectResult {
+  try {
+    closeNotesSqlite();
+  } catch {
+    /* ignore */
+  }
+  resetNotesStore();
+  writeProjectPrefs(userDataPath, {
+    lastProjectRoot: null,
+    workspaceRoots: undefined,
+  });
+  return { ok: true, root: "", dbPath: "", workspaceRoots: [] };
+}

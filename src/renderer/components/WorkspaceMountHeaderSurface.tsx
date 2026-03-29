@@ -13,6 +13,10 @@ type DropHint = { targetId: string; placement: NoteMovePlacement };
 
 type Props = {
   mount: NoteListItem;
+  /** Match primary project header: folder label only, no type badge or tree indent. */
+  plainHeader?: boolean;
+  /** Shown when `plainHeader` (e.g. basename from disk path). */
+  folderLabel?: string;
   draggingId: string | null;
   currentNoteId: string | undefined;
   selectedNoteIds: Set<string>;
@@ -60,6 +64,8 @@ type Props = {
 
 export default function WorkspaceMountHeaderSurface({
   mount,
+  plainHeader = false,
+  folderLabel,
   draggingId,
   currentNoteId,
   selectedNoteIds,
@@ -86,6 +92,7 @@ export default function WorkspaceMountHeaderSurface({
   const inMulti = selectedNoteIds.has(mount.id);
   const selected = primarySelected || inMulti;
   const pad = 6 + mount.depth * 12;
+  const label = folderLabel ?? mount.title;
 
   return (
     <div
@@ -204,52 +211,61 @@ export default function WorkspaceMountHeaderSurface({
       ) : null}
       {hint === "into" ? (
         <div
-          className="pointer-events-none absolute inset-1 z-10 rounded-md border-2 border-dotted border-foreground/60 bg-primary/5 dark:bg-primary/15"
+          className="pointer-events-none absolute inset-1 z-10 rounded-md border-2 border-dotted border-foreground/60 bg-foreground/5 dark:bg-foreground/12"
           aria-hidden
         />
       ) : null}
-      <div
-        className="flex min-h-8 items-stretch rounded-md transition-colors duration-150"
-        style={{ paddingLeft: pad }}
-      >
-        <span className="w-6 shrink-0" aria-hidden />
-        <button
-          type="button"
-          data-note-row
-          onClick={(ev) => handleRowClick(mount.id, ev)}
-          onContextMenu={(ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-            void onNoteSelect(mount.id);
-            setMenu({
-              x: ev.clientX,
-              y: ev.clientY,
-              anchorId: mount.id,
-              step: "main",
-            });
-          }}
-          className={`relative flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-r-md py-1 pr-2 text-left outline-none transition-colors duration-150 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar-background))] ${
-            selected
-              ? inMulti && !primarySelected
-                ? "bg-primary/15 text-sidebar-foreground ring-1 ring-inset ring-primary/35 hover:bg-primary/20"
-                : "bg-sidebar-accent text-sidebar-foreground before:pointer-events-none before:absolute before:left-1 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-primary before:content-[''] hover:bg-sidebar-accent"
-              : "text-sidebar-foreground hover:bg-sidebar-accent/70"
-          }`}
+      {plainHeader ? (
+        <div
+          className="flex min-h-8 min-w-0 flex-1 items-center truncate px-2 py-1 font-mono text-[11px] text-sidebar-foreground/90"
+          title={label}
         >
-          <span
-            className={`inline-flex h-5 min-w-[1.75rem] shrink-0 items-center justify-center rounded px-0.5 font-mono text-[9px] font-semibold leading-none ring-1 ring-inset ring-foreground/10 dark:ring-white/15 ${getTypeBadgeClass(mount.type)}`}
-          >
-            {noteTypeInitials(mount.type)}
-          </span>
-          <span
-            className={`min-w-0 flex-1 truncate text-[12px] leading-tight ${
-              primarySelected ? "font-medium" : "font-normal"
+          {label}
+        </div>
+      ) : (
+        <div
+          className="flex min-h-8 items-stretch rounded-md transition-colors duration-150"
+          style={{ paddingLeft: pad }}
+        >
+          <span className="w-6 shrink-0" aria-hidden />
+          <button
+            type="button"
+            data-note-row
+            onClick={(ev) => handleRowClick(mount.id, ev)}
+            onContextMenu={(ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              void onNoteSelect(mount.id);
+              setMenu({
+                x: ev.clientX,
+                y: ev.clientY,
+                anchorId: mount.id,
+                step: "main",
+              });
+            }}
+            className={`relative flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-r-md py-1 pr-2 text-left outline-none transition-colors duration-150 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar-background))] ${
+              selected
+                ? inMulti && !primarySelected
+                  ? "bg-foreground/10 text-sidebar-foreground ring-1 ring-inset ring-foreground/20 hover:bg-foreground/14"
+                  : "bg-sidebar-accent text-sidebar-foreground before:pointer-events-none before:absolute before:left-1 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-foreground/55 before:content-[''] hover:bg-sidebar-accent"
+                : "text-sidebar-foreground hover:bg-sidebar-accent/70"
             }`}
           >
-            {mount.title}
-          </span>
-        </button>
-      </div>
+            <span
+              className={`inline-flex h-5 min-w-[1.75rem] shrink-0 items-center justify-center rounded px-0.5 font-mono text-[9px] font-semibold leading-none ring-1 ring-inset ring-foreground/10 dark:ring-white/15 ${getTypeBadgeClass(mount.type)}`}
+            >
+              {noteTypeInitials(mount.type)}
+            </span>
+            <span
+              className={`min-w-0 flex-1 truncate text-[12px] leading-tight ${
+                primarySelected ? "font-medium" : "font-normal"
+              }`}
+            >
+              {mount.title}
+            </span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,45 @@
 import React from "react";
+import SidebarPowerMenu from "./SidebarPowerMenu";
+
+function CollapseChevronsLeft({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M11 17l-5-5 5-5" />
+      <path d="M18 17l-5-5 5-5" />
+    </svg>
+  );
+}
+
+function ExpandChevronsRight({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M13 17l5-5-5-5" />
+      <path d="M6 17l5-5-5-5" />
+    </svg>
+  );
+}
 
 export type PrimaryTab = "notes" | "editor" | "settings" | "plugins";
 
@@ -171,17 +212,16 @@ const PrimarySidebarShell: React.FC<PrimarySidebarShellProps> = ({
         <div className="flex min-h-0 flex-1 flex-col items-center gap-0.5 overflow-y-auto py-2">
           {renderTabButton(true)}
         </div>
-        <div className="shrink-0 border-sidebar-border border-t p-1">
+        <div className="flex shrink-0 flex-col gap-1.5 border-sidebar-border border-t p-1.5">
+          <SidebarPowerMenu layout="collapsed" />
           <button
             type="button"
             title="Expand sidebar"
             aria-label="Expand sidebar"
-            className="flex h-10 w-full items-center justify-center rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+            className="flex h-11 w-full items-center justify-center rounded-md border border-sidebar-border/60 bg-sidebar-accent/15 text-sidebar-foreground/80 outline-none transition-colors hover:bg-sidebar-accent/45 hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             onClick={onToggleSidebarCollapsed}
           >
-            <span className="text-sm" aria-hidden>
-              »
-            </span>
+            <ExpandChevronsRight />
           </button>
         </div>
       </div>
@@ -208,15 +248,16 @@ const PrimarySidebarShell: React.FC<PrimarySidebarShellProps> = ({
       <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
         {children}
       </div>
-      <div className="shrink-0 border-sidebar-border border-t px-1 py-1">
+      <div className="flex min-h-[3rem] shrink-0 items-center gap-2 border-sidebar-border border-t px-2 py-2">
+        <SidebarPowerMenu layout="expanded" />
         <button
           type="button"
           title="Collapse sidebar"
           aria-label="Collapse sidebar"
-          className="flex h-8 w-full items-center justify-end gap-1 rounded-sm px-2 text-[11px] text-sidebar-foreground/60 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground"
+          className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-sidebar-border/60 bg-sidebar-accent/20 text-sidebar-foreground/85 outline-none transition-colors hover:bg-sidebar-accent/45 hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
           onClick={onToggleSidebarCollapsed}
         >
-          <span aria-hidden>«</span>
+          <CollapseChevronsLeft />
           <span className="sr-only">Collapse</span>
         </button>
       </div>

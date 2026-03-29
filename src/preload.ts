@@ -108,6 +108,10 @@ contextBridge.exposeInMainWorld("Nodex", {
     }),
   toggleDeveloperTools: (): Promise<{ success: boolean }> =>
     ipcRenderer.invoke(IPC_CHANNELS.UI_TOGGLE_DEVTOOLS),
+  quitApp: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.UI_QUIT_APP),
+  reloadWindow: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.UI_RELOAD_WINDOW),
   getUserPluginsDirectory: (): Promise<{ path: string; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_GET_USER_PLUGINS_DIR),
   resetUserPluginsDirectory: (): Promise<{
@@ -195,6 +199,22 @@ contextBridge.exposeInMainWorld("Nodex", {
     | { ok: false; cancelled: true }
     | { ok: false; error: string }
   > => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_ADD_WORKSPACE_FOLDER),
+  removeWorkspaceRoot: (
+    projectRootAbs: string,
+    moveToTrash: boolean,
+  ): Promise<
+    | {
+        ok: true;
+        rootPath: string | null;
+        workspaceRoots: string[];
+        trashError?: string;
+      }
+    | { ok: false; error: string }
+  > =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_REMOVE_WORKSPACE_ROOT, {
+      projectRootAbs,
+      moveToTrash,
+    }),
   onProjectRootChanged: (callback: () => void) => {
     const ch = IPC_CHANNELS.PROJECT_ROOT_CHANGED;
     ipcRenderer.on(ch, callback);

@@ -89,9 +89,9 @@ const PluginRenderer: React.FC<PluginRendererProps> = ({ note }) => {
   if (error) {
     return (
       <div className="p-8">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <h3 className="text-red-800 font-bold mb-2">Plugin Error</h3>
-          <p className="text-red-600 text-sm">{error}</p>
+        <div className="rounded-lg border border-border bg-muted/60 p-4">
+          <h3 className="mb-2 font-bold text-foreground">Plugin Error</h3>
+          <p className="text-sm text-foreground/85">{error}</p>
         </div>
       </div>
     );

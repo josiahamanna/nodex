@@ -75,11 +75,11 @@ const NoteViewer: React.FC<NoteViewerProps> = ({ note, onTitleCommit }) => {
     }
 
     return (
-      <div className="rounded-sm border border-amber-500/30 bg-amber-500/10 p-4">
-        <p className="text-amber-950 dark:text-amber-100">
+      <div className="rounded-sm border border-border bg-muted/50 p-4">
+        <p className="text-foreground">
           No plugin installed for type: <strong>{note.type}</strong>
         </p>
-        <p className="mt-2 text-sm text-amber-900/80 dark:text-amber-200/90">
+        <p className="mt-2 text-sm text-muted-foreground">
           Install a plugin to handle this note type from the Plugin Manager.
         </p>
       </div>

@@ -132,7 +132,7 @@ export default function AssetsSidebarSection({
             </button>
           ) : null}
           {err ? (
-            <div className="px-2 py-1 text-[11px] text-destructive">{err}</div>
+            <div className="px-2 py-1 text-[11px] text-foreground/85">{err}</div>
           ) : entries.length === 0 ? (
             <div className="px-2 py-2 text-[11px] text-muted-foreground">
               Empty folder

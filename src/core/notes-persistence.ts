@@ -107,9 +107,9 @@ export function bootstrapWorkspaceNotes(
   for (let i = 1; i < roots.length; i++) {
     const data = readSerializedFromAlias(db, `ext${i}`);
     mergeAttachedSerializedIntoStore(i, roots[i]!, data, registeredTypes);
-    if (data.records.length === 0) {
-      seedAttachedWorkspaceIfEmpty(i, registeredTypes);
-    }
+    // Always attempt seed: seedAttachedWorkspaceIfEmpty no-ops if mount already has children
+    // (avoids skipping when SQLite has stray rows but the tree under the mount is empty).
+    seedAttachedWorkspaceIfEmpty(i, registeredTypes);
   }
   mergeMultipleRootsIfNeeded();
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useNodexDialog } from "../dialog/NodexDialogProvider";
 
 type PluginInventoryRow = Awaited<
   ReturnType<typeof window.Nodex.getPluginInventory>
@@ -31,6 +32,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
   onPluginsChanged,
   selectedPluginId: selectedPluginIdProp,
 }) => {
+  const { confirm } = useNodexDialog();
   const embedded = selectedPluginIdProp !== undefined;
   const [plugins, setPlugins] = useState<string[]>([]);
   const [inventory, setInventory] = useState<PluginInventoryRow[]>([]);
@@ -249,11 +251,14 @@ const PluginManager: React.FC<PluginManagerProps> = ({
   };
 
   const handleClearAllCaches = async () => {
-    if (
-      !confirm(
+    const ok = await confirm({
+      title: "Clear dependency caches",
+      message:
         "Remove all global plugin dependency cache data (app cache folder)? Bundles will need reinstalling.",
-      )
-    ) {
+      confirmLabel: "Clear",
+      variant: "danger",
+    });
+    if (!ok) {
       return;
     }
     setMessage(null);
@@ -268,18 +273,26 @@ const PluginManager: React.FC<PluginManagerProps> = ({
   const handleResetUserPluginsDirectory = async () => {
     const displayPath =
       userPluginsPath ?? "(path unavailable — check main process logs)";
-    if (
-      !window.confirm(
-        `Delete the entire user plugins folder and reset to a clean state?\n\n${displayPath}\n\nThis removes sources/, bin/, IDE metadata under that folder. Sample markdown/tiptap plugins will be re-seeded if missing. Bundled core plugins are not removed. This cannot be undone.`,
-      )
-    ) {
+    const ok1 = await confirm({
+      title: "Reset user plugins folder",
+      message: `Delete the entire user plugins folder and reset to a clean state?
+
+${displayPath}
+
+This removes sources/, bin/, IDE metadata under that folder. Sample markdown/tiptap plugins will be re-seeded if missing. Bundled core plugins are not removed. This cannot be undone.`,
+      confirmLabel: "Continue",
+      variant: "danger",
+    });
+    if (!ok1) {
       return;
     }
-    if (
-      !window.confirm(
-        "Second confirmation: permanently delete that folder now?",
-      )
-    ) {
+    const ok2 = await confirm({
+      title: "Confirm deletion",
+      message: "Permanently delete that folder now?",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok2) {
       return;
     }
     setWorking("reset-user-plugins");
@@ -365,11 +378,13 @@ const PluginManager: React.FC<PluginManagerProps> = ({
   };
 
   const handleUninstall = async (pluginName: string) => {
-    if (
-      !confirm(
-        `Remove the bundled copy of "${pluginName}" from bin/? Plugin sources under sources/ stay on disk.`,
-      )
-    ) {
+    const ok = await confirm({
+      title: "Uninstall from bin",
+      message: `Remove the bundled copy of "${pluginName}" from bin/? Plugin sources under sources/ stay on disk.`,
+      confirmLabel: "Remove",
+      variant: "danger",
+    });
+    if (!ok) {
       return;
     }
 
@@ -505,19 +520,19 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                 Workspace: {installModal.plan.cacheDir}
               </p>
               {installModal.plan.depsChangedSinceLastInstall && (
-                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
+                <p className="mb-2 rounded border border-border bg-muted/50 p-2 text-sm text-foreground/90">
                   package.json or manifest.dependencies changed since the last
                   recorded install (see .nodex-deps-snapshot.json).
                 </p>
               )}
               {installModal.plan.warnManyDeps && (
-                <p className="text-sm text-amber-800 mb-2">
+                <p className="mb-2 text-sm text-foreground/90">
                   This plugin declares many dependencies (
                   {installModal.plan.dependencyCount}).
                 </p>
               )}
               {installModal.plan.warnLargePackageJson && (
-                <p className="text-sm text-amber-800 mb-2">
+                <p className="mb-2 text-sm text-foreground/90">
                   package.json is unusually large — review before installing.
                 </p>
               )}
@@ -565,7 +580,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                 </button>
                 <button
                   type="button"
-                  className="rounded-sm bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground hover:opacity-92"
+                  className="nodex-btn-neutral rounded-sm px-3 py-1.5 text-[12px] font-semibold"
                   onClick={confirmInstall}
                 >
                   Run npm install
@@ -577,12 +592,12 @@ const PluginManager: React.FC<PluginManagerProps> = ({
 
         {message && (
           <div
-            className={`mb-4 p-4 rounded-lg whitespace-pre-wrap ${
+            className={`mb-4 p-4 rounded-lg whitespace-pre-wrap border border-border ${
               message.type === "success"
-                ? "bg-green-50 border border-green-200 text-green-800"
+                ? "bg-muted/50 text-foreground"
                 : message.type === "info"
-                  ? "bg-sky-50 border border-sky-200 text-sky-900"
-                  : "border border-destructive/30 bg-destructive/10 text-destructive"
+                  ? "bg-muted/40 text-foreground"
+                  : "bg-muted/70 text-foreground"
             }`}
           >
             {message.text}
@@ -590,11 +605,11 @@ const PluginManager: React.FC<PluginManagerProps> = ({
         )}
 
         {loadIssues.length > 0 && (
-          <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200">
-            <p className="font-medium text-amber-900 mb-2">
+          <div className="mb-4 rounded-lg border border-border bg-muted/50 p-4">
+            <p className="mb-2 font-medium text-foreground">
               Plugin load / validation issues
             </p>
-            <ul className="text-sm text-amber-900 space-y-1">
+            <ul className="space-y-1 text-sm text-foreground/90">
               {loadIssues.map((row) => (
                 <li key={row.folder}>
                   <strong>{row.folder}</strong>: {row.error}
@@ -608,7 +623,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
           <button
             type="button"
             onClick={() => setShowProgress((s) => !s)}
-            className="mr-4 text-sm text-primary underline"
+            className="mr-4 text-sm text-foreground underline underline-offset-2"
           >
             {showProgress ? "Hide" : "Show"} operation log (
             {progressLines.length} lines)
@@ -630,7 +645,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
           <button
             onClick={handleImport}
             disabled={importing}
-            className="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="nodex-btn-neutral rounded-lg px-4 py-2 font-semibold disabled:cursor-not-allowed"
           >
             {importing ? "Importing..." : "Import plugin (.Nodexplugin / .zip)"}
           </button>
@@ -670,7 +685,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                           {plugin}
                         </h4>
                         {invFor(plugin)?.isBundled ? (
-                          <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/80">
                             Core
                           </span>
                         ) : null}
@@ -709,7 +724,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                         </label>
                       ) : null}
                       {pluginUiMeta[plugin]?.designSystemWarning ? (
-                        <p className="mt-1 text-xs text-destructive">
+                        <p className="mt-1 text-xs text-foreground/85">
                           {pluginUiMeta[plugin]!.designSystemWarning}
                         </p>
                       ) : null}
@@ -760,7 +775,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                         type="button"
                         onClick={() => handleUninstall(plugin)}
                         disabled={working !== null}
-                        className="rounded bg-destructive/15 px-3 py-1 text-sm font-medium text-destructive hover:bg-destructive/25"
+                        className="rounded border border-border bg-muted/50 px-3 py-1 text-sm font-medium text-foreground hover:bg-muted"
                       >
                         Uninstall
                       </button>
@@ -777,7 +792,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                         vs resolved top-level (npm ls).
                       </p>
                       {depInfo.error && (
-                        <p className="mb-2 text-xs text-destructive">
+                        <p className="mb-2 text-xs text-foreground/85">
                           {depInfo.error}
                         </p>
                       )}
@@ -809,7 +824,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                                 </span>
                                 <button
                                   type="button"
-                                  className="shrink-0 text-[10px] uppercase text-destructive"
+                                  className="shrink-0 text-[10px] uppercase text-foreground/75 hover:text-foreground"
                                   onClick={() => runNpmRemove(k)}
                                   disabled={working !== null}
                                 >
@@ -830,7 +845,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                         <button
                           type="button"
                           disabled={working !== null || !npmAddSpec.trim()}
-                          className="px-2 py-1 text-xs bg-emerald-600 text-white rounded disabled:opacity-50"
+                          className="nodex-btn-neutral px-2 py-1 text-xs rounded disabled:opacity-50"
                           onClick={runNpmAdd}
                         >
                           npm install --save
@@ -882,14 +897,14 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                 type="button"
                 onClick={handleClearAllCaches}
                 disabled={working !== null}
-                className="px-3 py-1 text-sm bg-orange-100 text-orange-900 rounded hover:bg-orange-200 font-medium disabled:opacity-50"
+                className="nodex-btn-neutral px-3 py-1 text-sm rounded font-semibold"
               >
                 Clear all dependency caches
               </button>
             </div>
 
-            <div className="mt-10 pt-6 border-t border-destructive/30">
-              <h3 className="text-lg font-semibold text-destructive mb-2">
+            <div className="mt-10 pt-6 border-t border-border">
+              <h3 className="text-lg font-semibold text-foreground mb-2">
                 Danger zone
               </h3>
               <p className="text-sm text-muted-foreground mb-2">
@@ -910,7 +925,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                 type="button"
                 onClick={() => void handleResetUserPluginsDirectory()}
                 disabled={working !== null}
-                className="px-3 py-1.5 text-sm font-medium rounded bg-destructive text-destructive-foreground hover:opacity-90 disabled:opacity-50"
+                className="nodex-btn-neutral-strong px-3 py-1.5 text-sm font-semibold rounded disabled:opacity-50"
               >
                 {working === "reset-user-plugins"
                   ? "Resetting…"

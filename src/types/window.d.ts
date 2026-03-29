@@ -64,6 +64,8 @@ declare global {
         enabled: boolean,
       ) => Promise<{ success: boolean; error?: string }>;
       toggleDeveloperTools: () => Promise<{ success: boolean }>;
+      quitApp: () => Promise<{ success: boolean }>;
+      reloadWindow: () => Promise<{ success: boolean }>;
       getUserPluginsDirectory: () => Promise<{ path: string; error?: string }>;
       resetUserPluginsDirectory: () => Promise<{
         success: boolean;
@@ -135,6 +137,18 @@ declare global {
       addWorkspaceFolder: () => Promise<
         | { ok: true; rootPath: string | null; workspaceRoots: string[] }
         | { ok: false; cancelled: true }
+        | { ok: false; error: string }
+      >;
+      removeWorkspaceRoot: (
+        projectRootAbs: string,
+        moveToTrash: boolean,
+      ) => Promise<
+        | {
+            ok: true;
+            rootPath: string | null;
+            workspaceRoots: string[];
+            trashError?: string;
+          }
         | { ok: false; error: string }
       >;
       revealProjectFolderInExplorer: (

@@ -22,7 +22,7 @@
 2. **Updated Example Plugin Manifests**
    - `plugin-sources/markdown-note/manifest.json` - Added type, mode, permissions
    - `plugin-sources/monaco-editor/manifest.json` - Added type, mode, permissions
-   - `plugin-sources/tiptap-editor/manifest.json` - Added type, mode, permissions
+   - `plugin-sources/tiptap-editor/manifest.jsfon` - Added type, mode, permissions
 
 **Files Modified**:
 - `src/core/plugin-loader.ts` (lines 8-56)

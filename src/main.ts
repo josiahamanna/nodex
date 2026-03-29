@@ -43,6 +43,7 @@ import { saveNotesState } from "./core/notes-persistence";
 import {
   activateProject,
   activateWorkspace,
+  closeWorkspace,
   deactivateProject,
   getNormalizedWorkspaceRoots,
   readProjectPrefs,
@@ -73,6 +74,7 @@ import {
 import type { ClientLogPayload } from "./shared/client-log";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
 import { toFileUri } from "./shared/file-uri";
+import { isWorkspaceMountNoteId } from "./shared/note-workspace";
 import {
   isSafePluginName,
   isValidNoteId,
@@ -524,6 +526,18 @@ app.on("ready", () => {
     return { success: true as const };
   });
 
+  ipcMain.handle(IPC_CHANNELS.UI_QUIT_APP, () => {
+    app.quit();
+    return { success: true as const };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.UI_RELOAD_WINDOW, () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.reload();
+    }
+    return { success: true as const };
+  });
+
   ipcMain.handle(IPC_CHANNELS.PLUGIN_GET_DISABLED_IDS, () =>
     pluginLoader.getDisabledUserPluginIdsForIpc(),
   );
@@ -622,8 +636,14 @@ app.on("ready", () => {
           throw new Error("Invalid note id");
         }
       }
+      const deletable = (ids as string[]).filter(
+        (id) => !isWorkspaceMountNoteId(id),
+      );
+      if (deletable.length === 0) {
+        return;
+      }
       pushNotesUndoSnapshot();
-      deleteNoteSubtrees(ids as string[]);
+      deleteNoteSubtrees(deletable);
       persistNotes();
     },
   );
@@ -875,6 +895,65 @@ app.on("ready", () => {
       workspaceRoots: [...workspaceRoots],
     };
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_REMOVE_WORKSPACE_ROOT,
+    async (_e, payload: unknown) => {
+      if (!payload || typeof payload !== "object") {
+        return { ok: false as const, error: "Invalid payload" };
+      }
+      const raw = payload as {
+        projectRootAbs?: unknown;
+        moveToTrash?: unknown;
+      };
+      if (
+        typeof raw.projectRootAbs !== "string" ||
+        raw.projectRootAbs.trim().length === 0
+      ) {
+        return { ok: false as const, error: "Invalid path" };
+      }
+      const abs = path.resolve(raw.projectRootAbs.trim());
+      const moveToTrash = raw.moveToTrash === true;
+      const idx = workspaceRoots.findIndex(
+        (r) => path.resolve(r) === abs,
+      );
+      if (idx < 0) {
+        return {
+          ok: false as const,
+          error: "That folder is not in the workspace",
+        };
+      }
+      const next = workspaceRoots.filter((_, i) => i !== idx);
+      const res =
+        next.length === 0
+          ? closeWorkspace(userDataPath)
+          : activateWorkspace(
+              next,
+              userDataPath,
+              registry.getRegisteredTypes(),
+            );
+      if (!res.ok) {
+        return { ok: false as const, error: res.error };
+      }
+      applyWorkspaceActivateResult(res);
+      clearNodexUndoRedo();
+      broadcastProjectRootChanged();
+      let trashError: string | undefined;
+      if (moveToTrash) {
+        try {
+          await shell.trashItem(abs);
+        } catch (e) {
+          trashError = e instanceof Error ? e.message : String(e);
+        }
+      }
+      return {
+        ok: true as const,
+        rootPath: projectRootPath,
+        workspaceRoots: [...workspaceRoots],
+        trashError,
+      };
+    },
+  );
 
   ipcMain.handle(IPC_CHANNELS.ASSET_LIST, (_e, payload: unknown) => {
     const { rel, projectRoot: prOpt } = parseAssetIpcPayload(payload);

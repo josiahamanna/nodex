@@ -1,6 +1,6 @@
 /**
  * Group notes + per-project Assets into one collapsible section per workspace root.
- * Primary folder has no mount row; added folders use a synthetic mount note as section header target.
+ * Primary folder has no mount row; added folders use a synthetic mount id for DnD only — the header UI matches primary (folder label).
  */
 
 import type { NoteListItem } from "../preload";

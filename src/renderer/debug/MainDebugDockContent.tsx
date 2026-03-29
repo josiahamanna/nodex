@@ -87,11 +87,11 @@ const MainDebugDockContent: React.FC<MainDebugDockContentProps> = ({
               const level = line.level;
               const color =
                 level === "error"
-                  ? "text-red-700 dark:text-red-400"
+                  ? "font-medium text-foreground"
                   : level === "warn"
-                    ? "text-amber-800 dark:text-amber-300"
+                    ? "text-foreground/90"
                     : level === "debug"
-                      ? "text-violet-700 dark:text-violet-300"
+                      ? "text-muted-foreground"
                       : "text-foreground/90";
               const t = new Date(line.ts);
               const stamp = t.toLocaleTimeString(undefined, {

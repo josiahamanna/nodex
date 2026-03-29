@@ -2,6 +2,8 @@ export const IPC_CHANNELS = {
   UI_GET_NATIVE_THEME_DARK: "ui:native-theme-dark",
   UI_NATIVE_THEME_CHANGED: "ui:native-theme-changed",
   UI_TOGGLE_DEVTOOLS: "ui:toggle-devtools",
+  UI_QUIT_APP: "ui:quit-app",
+  UI_RELOAD_WINDOW: "ui:reload-window",
   GET_PLUGIN_RENDERER_UI_META: "plugin:get-renderer-ui-meta",
   GET_PLUGIN_MANIFEST_UI: "plugin:get-manifest-ui",
   GET_NOTE: "note:get",
@@ -87,6 +89,8 @@ export const IPC_CHANNELS = {
   PROJECT_ADD_WORKSPACE_FOLDER: "project:add-workspace-folder",
   PROJECT_REVEAL_FOLDER: "project:reveal-folder",
   PROJECT_REFRESH_WORKSPACE: "project:refresh-workspace",
+  /** Remove one folder from the merged workspace; optional move to OS trash. */
+  PROJECT_REMOVE_WORKSPACE_ROOT: "project:remove-workspace-root",
   PROJECT_ROOT_CHANGED: "project:root-changed",
   ASSET_LIST: "asset:list",
   ASSET_GET_INFO: "asset:get-info",
