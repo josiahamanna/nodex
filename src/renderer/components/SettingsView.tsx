@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useMainDebugDock } from "../debug/MainDebugDockContext";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -37,6 +37,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({ category }) => {
   const { colorMode, setColorMode } = useTheme();
   const { toggleMainDebugDock, mainDebugDockExpanded } = useMainDebugDock();
   const [debugMode, setDebugMode] = useState(readDebugModeFlag);
+  const [seedSampleNotes, setSeedSampleNotes] = useState(true);
+  const [seedPrefLoaded, setSeedPrefLoaded] = useState(false);
+
+  useEffect(() => {
+    void window.Nodex.getAppPrefs().then((p) => {
+      setSeedSampleNotes(p.seedSampleNotes);
+      setSeedPrefLoaded(true);
+    });
+  }, []);
 
   if (category === "keyboard") {
     return (
@@ -134,6 +143,37 @@ const SettingsView: React.FC<SettingsViewProps> = ({ category }) => {
               onChange={() => setColorMode("system")}
             />
             System
+          </label>
+        </fieldset>
+        <fieldset className="mt-8 space-y-2">
+          <legend className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            New projects
+          </legend>
+          <label className="flex cursor-pointer items-start gap-2 text-[12px]">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm border-border"
+              checked={!seedSampleNotes}
+              disabled={!seedPrefLoaded}
+              onChange={(e) => {
+                const skip = e.target.checked;
+                const nextEnabled = !skip;
+                setSeedSampleNotes(nextEnabled);
+                void window.Nodex.setSeedSampleNotes(nextEnabled).then((r) => {
+                  if (r.ok) {
+                    setSeedSampleNotes(r.seedSampleNotes);
+                  }
+                });
+              }}
+            />
+            <span>
+              Skip sample notes when opening or adding an{" "}
+              <span className="font-mono text-[11px]">empty</span> project folder
+              <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                When off (default), new empty folders get Home plus Markdown and
+                Rich Text starter notes, same as Open project and Add folder.
+              </span>
+            </span>
           </label>
         </fieldset>
         <div className="mt-8 rounded-md border border-border bg-muted/20 p-4 text-[11px] text-muted-foreground">

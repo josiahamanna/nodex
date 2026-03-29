@@ -1,5 +1,22 @@
 import React, { useEffect, useState, useRef } from "react";
 import DOMPurify from "dompurify";
+
+function identityTrustedTypesPolicy(): {
+  createHTML: (html: string) => string;
+  createScriptURL: (url: string) => string;
+} {
+  return {
+    createHTML: (html: string) => html,
+    createScriptURL: (url: string) => url,
+  };
+}
+
+if (typeof window !== "undefined") {
+  DOMPurify.setConfig({
+    RETURN_TRUSTED_TYPE: false,
+    TRUSTED_TYPES_POLICY: identityTrustedTypesPolicy(),
+  });
+}
 import { Note } from "../../../preload";
 
 interface PluginRendererProps {
@@ -25,6 +42,8 @@ const PluginRenderer: React.FC<PluginRendererProps> = ({ note }) => {
         const result = renderFn(note);
 
         const sanitized = DOMPurify.sanitize(result, {
+          RETURN_TRUSTED_TYPE: false,
+          TRUSTED_TYPES_POLICY: identityTrustedTypesPolicy(),
           ALLOWED_TAGS: [
             "h1",
             "h2",
@@ -48,7 +67,7 @@ const PluginRenderer: React.FC<PluginRendererProps> = ({ note }) => {
           ],
           ALLOWED_ATTR: ["class", "style", "href"],
           ALLOW_DATA_ATTR: false,
-        });
+        } as Parameters<typeof DOMPurify.sanitize>[1]);
 
         setHtml(sanitized);
         setError(null);

@@ -1,14 +1,60 @@
 import * as fs from "fs";
 import * as path from "path";
 import { getNodexDatabasePath } from "./nodex-paths";
-import { bootstrapNotesTree, closeNotesSqlite } from "./notes-persistence";
+import { bootstrapWorkspaceNotes, closeNotesSqlite } from "./notes-persistence";
 import { resetNotesStore } from "./notes-store";
 
 const PREFS_FILE = "nodex-project-prefs.json";
 
 export type ProjectPrefs = {
   lastProjectRoot: string | null;
+  /** All open project folders (first = primary: notes DB anchor + assets). */
+  workspaceRoots?: string[];
 };
+
+/** Keep workspace order; drop paths that are missing or not directories. */
+export function filterExistingWorkspaceRoots(roots: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of roots) {
+    const r = path.resolve(String(p).trim());
+    if (!r || seen.has(r)) {
+      continue;
+    }
+    try {
+      if (fs.existsSync(r) && fs.statSync(r).isDirectory()) {
+        seen.add(r);
+        out.push(r);
+      }
+    } catch {
+      /* skip invalid paths */
+    }
+  }
+  return out;
+}
+
+export function getNormalizedWorkspaceRoots(prefs: ProjectPrefs): string[] {
+  const raw =
+    Array.isArray(prefs.workspaceRoots) && prefs.workspaceRoots.length > 0
+      ? prefs.workspaceRoots
+      : prefs.lastProjectRoot
+        ? [prefs.lastProjectRoot]
+        : [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of raw) {
+    if (typeof p !== "string" || !p.trim()) {
+      continue;
+    }
+    const r = path.resolve(p.trim());
+    if (seen.has(r)) {
+      continue;
+    }
+    seen.add(r);
+    out.push(r);
+  }
+  return out;
+}
 
 export function readProjectPrefs(userDataPath: string): ProjectPrefs {
   const p = path.join(userDataPath, PREFS_FILE);
@@ -20,9 +66,19 @@ export function readProjectPrefs(userDataPath: string): ProjectPrefs {
     if (j.lastProjectRoot != null && typeof j.lastProjectRoot !== "string") {
       return { lastProjectRoot: null };
     }
+    let workspaceRoots: string[] | undefined;
+    if (Array.isArray(j.workspaceRoots)) {
+      workspaceRoots = j.workspaceRoots.filter(
+        (x): x is string => typeof x === "string" && x.trim().length > 0,
+      );
+      if (workspaceRoots.length === 0) {
+        workspaceRoots = undefined;
+      }
+    }
     return {
       lastProjectRoot:
         typeof j.lastProjectRoot === "string" ? j.lastProjectRoot : null,
+      workspaceRoots,
     };
   } catch {
     return { lastProjectRoot: null };
@@ -95,34 +151,72 @@ export function migrateLegacyUserDataDbIfNeeded(
 }
 
 export type ActivateProjectResult =
-  | { ok: true; root: string; dbPath: string }
+  | { ok: true; root: string; dbPath: string; workspaceRoots: string[] }
   | { ok: false; error: string };
 
 /**
- * Close current notes DB, reset store, apply new project root, bootstrap SQLite, persist prefs.
+ * Close current notes DB, reset store, open multiple project folders (merged tree), persist prefs.
  */
-export function activateProject(
-  projectRootAbs: string,
+export function activateWorkspace(
+  rootsInput: string[],
   userDataPath: string,
   registeredTypes: string[],
 ): ActivateProjectResult {
-  const root = path.resolve(projectRootAbs);
-  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
-    return { ok: false, error: "Not a valid directory" };
+  const roots = [
+    ...new Set(
+      rootsInput
+        .map((p) => path.resolve(String(p).trim()))
+        .filter((p) => p.length > 0),
+    ),
+  ];
+  if (roots.length === 0) {
+    return { ok: false, error: "No folders selected" };
   }
-  ensureProjectDirectories(root);
-  migrateLegacyUserDataDbIfNeeded(root, userDataPath);
+  const existing = filterExistingWorkspaceRoots(roots);
+  if (existing.length === 0) {
+    try {
+      closeNotesSqlite();
+    } catch {
+      /* ignore */
+    }
+    resetNotesStore();
+    writeProjectPrefs(userDataPath, {
+      lastProjectRoot: null,
+      workspaceRoots: undefined,
+    });
+    return { ok: true, root: "", dbPath: "", workspaceRoots: [] };
+  }
+  const rootsResolved = existing;
+  ensureProjectDirectories(rootsResolved[0]!);
+  migrateLegacyUserDataDbIfNeeded(rootsResolved[0]!, userDataPath);
   try {
     closeNotesSqlite();
   } catch {
     /* ignore */
   }
   resetNotesStore();
-  const dbPath = getProjectNotesDbPath(root);
-  const legacyJson = getProjectLegacyNotesJsonPath(root);
-  bootstrapNotesTree(dbPath, legacyJson, registeredTypes);
-  writeProjectPrefs(userDataPath, { lastProjectRoot: root });
-  return { ok: true, root, dbPath };
+  const dbPath = getProjectNotesDbPath(rootsResolved[0]!);
+  const legacyJson = getProjectLegacyNotesJsonPath(rootsResolved[0]!);
+  bootstrapWorkspaceNotes(rootsResolved, legacyJson, registeredTypes);
+  writeProjectPrefs(userDataPath, {
+    lastProjectRoot: rootsResolved[0]!,
+    workspaceRoots: rootsResolved,
+  });
+  return {
+    ok: true,
+    root: rootsResolved[0]!,
+    dbPath,
+    workspaceRoots: rootsResolved,
+  };
+}
+
+/** Replace workspace with a single folder. */
+export function activateProject(
+  projectRootAbs: string,
+  userDataPath: string,
+  registeredTypes: string[],
+): ActivateProjectResult {
+  return activateWorkspace([projectRootAbs], userDataPath, registeredTypes);
 }
 
 export function deactivateProject(): void {

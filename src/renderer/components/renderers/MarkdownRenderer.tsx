@@ -1,5 +1,23 @@
 import React, { useRef, useEffect } from "react";
 import DOMPurify from "dompurify";
+
+if (typeof window !== "undefined") {
+  DOMPurify.setConfig({
+    RETURN_TRUSTED_TYPE: false,
+    TRUSTED_TYPES_POLICY: identityTrustedTypesPolicy(),
+  });
+}
+
+/** Runtime identity policy; TS types expect TrustedHTML but string is valid for RETURN_TRUSTED_TYPE false. */
+function identityTrustedTypesPolicy(): {
+  createHTML: (html: string) => string;
+  createScriptURL: (url: string) => string;
+} {
+  return {
+    createHTML: (html: string) => html,
+    createScriptURL: (url: string) => url,
+  };
+}
 import { Note } from "../../../preload";
 
 interface MarkdownRendererProps {
@@ -34,9 +52,11 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note }) => {
     if (containerRef.current) {
       const html = renderMarkdown(note.content);
       const sanitized = DOMPurify.sanitize(html, {
+        RETURN_TRUSTED_TYPE: false,
+        TRUSTED_TYPES_POLICY: identityTrustedTypesPolicy(),
         ALLOWED_TAGS: ["h1", "h2", "h3", "p", "br", "strong", "em", "li"],
         ALLOWED_ATTR: ["class"],
-      });
+      } as Parameters<typeof DOMPurify.sanitize>[1]);
       containerRef.current.innerHTML = sanitized;
     }
   }, [note.content]);

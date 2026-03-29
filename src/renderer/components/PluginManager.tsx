@@ -193,52 +193,6 @@ const PluginManager: React.FC<PluginManagerProps> = ({
     }
   };
 
-  const handleExportDev = async (pluginName: string) => {
-    setMessage(null);
-    try {
-      const result = await window.Nodex.exportPluginDev(pluginName);
-      if (result.success && result.path) {
-        setMessage({
-          type: "success",
-          text: `Dev package created: ${result.path}`,
-        });
-      } else {
-        setMessage({
-          type: "error",
-          text: result.error || "Export failed",
-        });
-      }
-    } catch (error) {
-      setMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Export failed",
-      });
-    }
-  };
-
-  const handleExportProduction = async (pluginName: string) => {
-    setMessage(null);
-    try {
-      const result = await window.Nodex.exportPluginProduction(pluginName);
-      if (result.success && result.path) {
-        setMessage({
-          type: "success",
-          text: `Production package created: ${result.path}`,
-        });
-      } else {
-        setMessage({
-          type: "error",
-          text: result.error || "Export failed",
-        });
-      }
-    } catch (error) {
-      setMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Export failed",
-      });
-    }
-  };
-
   const runInstallDeps = async (pluginName: string) => {
     setMessage(null);
     setWorking(`install:${pluginName}`);
@@ -292,33 +246,6 @@ const PluginManager: React.FC<PluginManagerProps> = ({
     const name = installModal.folderName;
     setInstallModal(null);
     await runInstallDeps(name);
-  };
-
-  const handleClearPluginCache = async (pluginName: string) => {
-    setMessage(null);
-    try {
-      const result = await window.Nodex.clearPluginDependencyCache(pluginName);
-      if (result.success) {
-        setMessage({
-          type: "success",
-          text: `Cleared dependency cache for ${pluginName}.`,
-        });
-        await refreshCacheStats();
-        if (depPanelPlugin === pluginName) {
-          setDepInfo(await window.Nodex.getPluginResolvedDeps(pluginName));
-        }
-      } else {
-        setMessage({
-          type: "error",
-          text: result.error || "Clear cache failed",
-        });
-      }
-    } catch (error) {
-      setMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Clear cache failed",
-      });
-    }
   };
 
   const handleClearAllCaches = async () => {
@@ -795,23 +722,9 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                     <div className="flex flex-wrap gap-2 justify-end">
                       <button
                         type="button"
-                        onClick={() => handleExportDev(plugin)}
-                        className="rounded bg-secondary px-3 py-1 text-sm font-medium text-secondary-foreground hover:opacity-90"
-                      >
-                        Export dev
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleExportProduction(plugin)}
-                        className="rounded bg-accent px-3 py-1 text-sm font-medium text-accent-foreground hover:opacity-90"
-                      >
-                        Export production
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => void handleReloadRegistry()}
                         disabled={working !== null}
-                        className="rounded border border-border bg-background px-3 py-1 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50"
+                        className="rounded border border-border bg-muted/50 px-3 py-1 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
                       >
                         Reload registry
                       </button>
@@ -819,7 +732,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                         type="button"
                         onClick={() => handleInstallDeps(plugin)}
                         disabled={working !== null}
-                        className="px-3 py-1 text-sm bg-emerald-100 text-emerald-900 rounded hover:bg-emerald-200 font-medium disabled:opacity-50"
+                        className="rounded border border-border bg-muted/50 px-3 py-1 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
                       >
                         {working === `install:${plugin}`
                           ? "Installing…"
@@ -829,7 +742,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                         type="button"
                         onClick={() => openDepPanel(plugin)}
                         disabled={working !== null}
-                        className="px-3 py-1 text-sm bg-cyan-100 text-cyan-900 rounded hover:bg-cyan-200 font-medium disabled:opacity-50"
+                        className="rounded border border-border bg-muted/50 px-3 py-1 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
                       >
                         {depPanelPlugin === plugin
                           ? "Close deps"
@@ -837,17 +750,9 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleClearPluginCache(plugin)}
-                        disabled={working !== null}
-                        className="px-3 py-1 text-sm bg-stone-100 text-stone-800 rounded hover:bg-stone-200 font-medium disabled:opacity-50"
-                      >
-                        Clear dep cache
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => handleBundleLocal(plugin)}
                         disabled={working !== null}
-                        className="px-3 py-1 text-sm bg-amber-100 text-amber-900 rounded hover:bg-amber-200 font-medium disabled:opacity-50"
+                        className="rounded border border-border bg-muted/50 px-3 py-1 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
                       >
                         Bundle to dist/
                       </button>

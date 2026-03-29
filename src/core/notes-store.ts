@@ -1,8 +1,14 @@
 import { randomUUID } from "crypto";
+import * as path from "path";
 import {
   PLUGIN_UI_METADATA_KEY,
   validatePluginUiStateSize,
 } from "../shared/plugin-state-protocol";
+import {
+  isWorkspaceMountNoteId,
+  noteDataWorkspaceSlot,
+  WORKSPACE_MOUNT_SENTINEL,
+} from "../shared/note-workspace";
 
 export type NoteRecord = {
   id: string;
@@ -23,7 +29,150 @@ export type NoteListRow = {
 
 export type NoteMovePlacement = "before" | "after" | "into";
 
-const ROOT_KEY = "__root__";
+export const ROOT_KEY = "__root__";
+
+export {
+  isWorkspaceMountNoteId,
+  noteDataWorkspaceSlot,
+  WORKSPACE_MOUNT_SENTINEL,
+} from "../shared/note-workspace";
+
+function targetParentWorkspaceSlot(
+  targetId: string,
+  placement: NoteMovePlacement,
+): number {
+  const target = notes.get(targetId);
+  if (!target) {
+    throw new Error("Note not found");
+  }
+  if (placement === "into") {
+    const s = noteDataWorkspaceSlot(targetId);
+    if (s === WORKSPACE_MOUNT_SENTINEL) {
+      const mountM = /^__nodex_mount_(\d+)$/.exec(targetId);
+      return mountM ? Number(mountM[1]) : 0;
+    }
+    return s;
+  }
+  const p = target.parentId;
+  if (p == null) {
+    return 0;
+  }
+  const ps = noteDataWorkspaceSlot(p);
+  if (ps === WORKSPACE_MOUNT_SENTINEL) {
+    const mountM = /^__nodex_mount_(\d+)$/.exec(p);
+    return mountM ? Number(mountM[1]) : 0;
+  }
+  return ps;
+}
+
+function newNoteIdForWorkspaceSlot(destSlot: number): string {
+  if (destSlot === 0) {
+    return randomUUID();
+  }
+  return `r${destSlot}_${randomUUID()}`;
+}
+
+/**
+ * Clone `sourceRootId` subtree with ids for `destSlot`. Source remains in the tree;
+ * clone is detached (root has parentId null, not listed under global roots).
+ */
+function cloneSubtreeToNewSlot(
+  sourceRootId: string,
+  destSlot: number,
+): string {
+  const toClone = collectSubtreeIds(sourceRootId);
+  const idMap = new Map<string, string>();
+  for (const oldId of toClone) {
+    idMap.set(oldId, newNoteIdForWorkspaceSlot(destSlot));
+  }
+  for (const oldId of toClone) {
+    const old = notes.get(oldId)!;
+    const newId = idMap.get(oldId)!;
+    const oldP = old.parentId;
+    const newP =
+      oldId === sourceRootId
+        ? null
+        : oldP != null
+          ? (idMap.get(oldP) ?? null)
+          : null;
+    notes.set(newId, {
+      id: newId,
+      parentId: newP,
+      type: old.type,
+      title: old.title,
+      content: old.content,
+      metadata: old.metadata ? { ...old.metadata } : undefined,
+    });
+  }
+  for (const oldId of toClone) {
+    const oldKids = [...getChildren(oldId)];
+    setChildren(
+      idMap.get(oldId)!,
+      oldKids.map((k) => idMap.get(k)!),
+    );
+  }
+  return idMap.get(sourceRootId)!;
+}
+
+function attachBlockAtPlacement(
+  block: string[],
+  targetId: string,
+  placement: NoteMovePlacement,
+): void {
+  const target = notes.get(targetId);
+  if (!target) {
+    throw new Error("Note not found");
+  }
+  if (placement === "into") {
+    const kids = [...getChildren(targetId)];
+    for (const r of block) {
+      const rec = notes.get(r);
+      if (rec) {
+        rec.parentId = targetId;
+        kids.push(r);
+      }
+    }
+    setChildren(targetId, kids);
+    return;
+  }
+  const parentId = target.parentId;
+  const siblings = [...getChildren(parentId)];
+  const tIdx = siblings.indexOf(targetId);
+  const ins = placement === "before" ? tIdx : tIdx + 1;
+  for (const r of block) {
+    const rec = notes.get(r);
+    if (rec) {
+      rec.parentId = parentId;
+    }
+  }
+  if (tIdx < 0) {
+    siblings.push(...block);
+  } else {
+    siblings.splice(ins, 0, ...block);
+  }
+  setChildren(parentId, siblings);
+}
+
+function newNoteIdForAnchor(
+  anchorId: string | undefined,
+  relation: "child" | "sibling" | "root",
+): string {
+  if (relation === "root") {
+    return randomUUID();
+  }
+  if (!anchorId) {
+    return randomUUID();
+  }
+  const mountM = /^__nodex_mount_(\d+)$/.exec(anchorId);
+  if (mountM) {
+    return `r${mountM[1]}_${randomUUID()}`;
+  }
+  const rm = /^r(\d+)_/.exec(anchorId);
+  if (rm) {
+    return `r${rm[1]}_${randomUUID()}`;
+  }
+  return randomUUID();
+}
 
 function orderKey(parentId: string | null): string {
   return parentId ?? ROOT_KEY;
@@ -123,7 +272,20 @@ export function mergeMultipleRootsIfNeeded(): void {
   syncNullChildOrderFromRecords();
 }
 
+let seedSampleNotesEnabled = true;
+
+export function setSeedSampleNotesPreference(enabled: boolean): void {
+  seedSampleNotesEnabled = enabled;
+}
+
+export function getSeedSampleNotesPreference(): boolean {
+  return seedSampleNotesEnabled;
+}
+
 export function ensureNotesSeeded(registeredTypes: string[]): void {
+  if (!seedSampleNotesEnabled) {
+    return;
+  }
   if (notes.size > 0) {
     return;
   }
@@ -136,7 +298,6 @@ export function ensureNotesSeeded(registeredTypes: string[]): void {
   const { content: rootContent, metadata: rootMeta } = bodyForType(rootType);
   const rootTitle =
     rootType === "root" ? "Home" : "Workspace";
-  const topLevelIds: string[] = [];
   const homeId = randomUUID();
   notes.set(homeId, {
     id: homeId,
@@ -146,22 +307,23 @@ export function ensureNotesSeeded(registeredTypes: string[]): void {
     content: rootContent,
     metadata: rootMeta,
   });
-  topLevelIds.push(homeId);
   const childTypes = registeredTypes.filter((t) => t !== "root");
+  const childIds: string[] = [];
   for (const type of childTypes) {
     const id = randomUUID();
     const { content, metadata } = bodyForType(type);
     notes.set(id, {
       id,
-      parentId: null,
+      parentId: homeId,
       type,
       title: titleForType(type),
       content,
       metadata,
     });
-    topLevelIds.push(id);
+    childIds.push(id);
   }
-  setChildren(null, topLevelIds);
+  setChildren(null, [homeId]);
+  setChildren(homeId, childIds);
 }
 
 export function getNotesFlat(): NoteListRow[] {
@@ -229,6 +391,9 @@ function collectSubtreeIds(rootId: string): string[] {
 
 /** Remove a note and its descendants (any top-level note may be removed). */
 export function deleteNoteSubtree(noteId: string): void {
+  if (isWorkspaceMountNoteId(noteId)) {
+    throw new Error("Cannot delete workspace folder headers from the tree");
+  }
   if (!notes.get(noteId)) {
     throw new Error("Note not found");
   }
@@ -316,6 +481,20 @@ export function moveNotesBulk(
     throw new Error("Note not found");
   }
 
+  const workspaceSlots = new Set(
+    uniqueMinimal.map((id) => noteDataWorkspaceSlot(id)),
+  );
+  if (workspaceSlots.has(WORKSPACE_MOUNT_SENTINEL)) {
+    throw new Error("Cannot move workspace folder headers");
+  }
+  if (workspaceSlots.size !== 1) {
+    throw new Error(
+      "Cannot move selection that spans multiple project folders at once",
+    );
+  }
+  const srcSlot = [...workspaceSlots][0]!;
+  const destSlot = targetParentWorkspaceSlot(targetId, placement);
+
   for (const r of uniqueMinimal) {
     if (r === targetId) {
       throw new Error("Invalid move target");
@@ -331,6 +510,20 @@ export function moveNotesBulk(
         throw new Error("Cannot move into own subtree");
       }
     }
+  }
+
+  if (srcSlot !== destSlot) {
+    const sortedRemove = [...uniqueMinimal].sort(
+      (a, b) => (indexById.get(b) ?? 0) - (indexById.get(a) ?? 0),
+    );
+    const newRoots = uniqueMinimal.map((r) =>
+      cloneSubtreeToNewSlot(r, destSlot),
+    );
+    for (const r of sortedRemove) {
+      deleteNoteSubtree(r);
+    }
+    attachBlockAtPlacement(newRoots, targetId, placement);
+    return;
   }
 
   const sortedRemove = [...uniqueMinimal].sort(
@@ -390,6 +583,20 @@ export function moveNote(
 
   if (isDescendantOf(draggedId, targetId)) {
     throw new Error("Cannot move into own subtree");
+  }
+
+  if (isWorkspaceMountNoteId(draggedId)) {
+    throw new Error("Cannot move workspace folder headers");
+  }
+
+  const srcSlot = noteDataWorkspaceSlot(draggedId);
+  const destSlot = targetParentWorkspaceSlot(targetId, placement);
+
+  if (srcSlot !== destSlot) {
+    const newRoot = cloneSubtreeToNewSlot(draggedId, destSlot);
+    deleteNoteSubtree(draggedId);
+    insertClonedRootAt(newRoot, targetId, placement);
+    return;
   }
 
   removeFromParentList(draggedId);
@@ -461,10 +668,23 @@ export function duplicateSubtreeAt(
   if (!source || !target) {
     throw new Error("Note not found");
   }
+  if (isWorkspaceMountNoteId(sourceRootId)) {
+    throw new Error("Cannot duplicate workspace folder headers");
+  }
+  const srcSlot = noteDataWorkspaceSlot(sourceRootId);
+  const destSlot = targetParentWorkspaceSlot(targetId, placement);
+  if (srcSlot !== destSlot) {
+    const newRootId = cloneSubtreeToNewSlot(sourceRootId, destSlot);
+    insertClonedRootAt(newRootId, targetId, placement);
+    return { newRootId };
+  }
 
   function cloneRecursive(oldId: string): string {
     const old = notes.get(oldId)!;
-    const newId = randomUUID();
+    const newId =
+      srcSlot === 0 || srcSlot === WORKSPACE_MOUNT_SENTINEL
+        ? randomUUID()
+        : `r${srcSlot}_${randomUUID()}`;
     const oldChildIds = [...getChildren(oldId)];
     const newChildIds = oldChildIds.map(cloneRecursive);
     notes.set(newId, {
@@ -493,7 +713,7 @@ export function createNote(opts: {
   relation: "child" | "sibling" | "root";
   type: string;
 }): NoteRecord {
-  const id = randomUUID();
+  const id = newNoteIdForAnchor(opts.anchorId, opts.relation);
   const { content, metadata } = bodyForType(opts.type);
   const rec: NoteRecord = {
     id,
@@ -595,6 +815,118 @@ export type SerializedNotesState = {
   records: NoteRecord[];
   order: Record<string, string[]>;
 };
+
+/**
+ * Merge notes from an attached DB (native ids) under `__nodex_mount_{mountIndex}`.
+ */
+export function mergeAttachedSerializedIntoStore(
+  mountIndex: number,
+  folderAbsPath: string,
+  data: SerializedNotesState,
+  registeredTypes: string[],
+): void {
+  const mountId = `__nodex_mount_${mountIndex}`;
+  const rootType = registeredTypes.includes("root")
+    ? "root"
+    : registeredTypes[0]!;
+  const title = path.basename(folderAbsPath);
+  notes.set(mountId, {
+    id: mountId,
+    parentId: null,
+    type: rootType,
+    title,
+    content: `_Notes from added folder: \`${title}\`_`,
+    metadata: {
+      nodexWorkspaceMount: true,
+      nodexMountPath: folderAbsPath,
+    },
+  });
+
+  const pref = `r${mountIndex}_`;
+  const idMap = new Map<string, string>();
+  for (const r of data.records) {
+    idMap.set(r.id, pref + r.id);
+  }
+
+  for (const r of data.records) {
+    const newId = idMap.get(r.id)!;
+    const newParent =
+      r.parentId == null ? mountId : (idMap.get(r.parentId) ?? mountId);
+    notes.set(newId, {
+      id: newId,
+      parentId: newParent,
+      type: r.type,
+      title: r.title,
+      content: r.content,
+      metadata: r.metadata,
+    });
+  }
+
+  for (const [k, ids] of Object.entries(data.order)) {
+    if (!Array.isArray(ids)) {
+      continue;
+    }
+    const mappedKey = k === ROOT_KEY ? mountId : (idMap.get(k) ?? "");
+    if (mappedKey === "") {
+      continue;
+    }
+    const mappedIds = ids
+      .map((id) => idMap.get(id))
+      .filter((x): x is string => typeof x === "string");
+    setChildren(mappedKey, mappedIds);
+  }
+
+  const roots = [...getChildren(null), mountId];
+  setChildren(null, roots);
+}
+
+/**
+ * Seed Home + sample child notes under `__nodex_mount_{mountIndex}` when that folder’s DB was empty.
+ */
+export function seedAttachedWorkspaceIfEmpty(
+  mountIndex: number,
+  registeredTypes: string[],
+): void {
+  if (!seedSampleNotesEnabled || registeredTypes.length === 0) {
+    return;
+  }
+  const mountId = `__nodex_mount_${mountIndex}`;
+  if (getChildren(mountId).length > 0) {
+    return;
+  }
+  const pref = `r${mountIndex}_`;
+  const rootType = registeredTypes.includes("root")
+    ? "root"
+    : registeredTypes[0]!;
+  const { content: rootContent, metadata: rootMeta } = bodyForType(rootType);
+  const rootTitle = rootType === "root" ? "Home" : "Workspace";
+  const homeId = `${pref}${randomUUID()}`;
+  notes.set(homeId, {
+    id: homeId,
+    parentId: mountId,
+    type: rootType,
+    title: rootTitle,
+    content: rootContent,
+    metadata: rootMeta,
+  });
+  const childTypes = registeredTypes.filter((t) => t !== "root");
+  const childIds: string[] = [];
+  for (const type of childTypes) {
+    const id = `${pref}${randomUUID()}`;
+    const { content, metadata } = bodyForType(type);
+    notes.set(id, {
+      id,
+      parentId: homeId,
+      type,
+      title: titleForType(type),
+      content,
+      metadata,
+    });
+    childIds.push(id);
+  }
+  setChildren(mountId, [homeId]);
+  setChildren(homeId, childIds);
+}
 
 export function exportSerializedState(): SerializedNotesState {
   return {

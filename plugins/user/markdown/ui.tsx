@@ -1,6 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import DOMPurify from "dompurify";
+
+if (typeof window !== "undefined") {
+  DOMPurify.setConfig({
+    RETURN_TRUSTED_TYPE: false,
+    TRUSTED_TYPES_POLICY: {
+      createHTML: (html: string) => html,
+      createScriptURL: (url: string) => url,
+    },
+  });
+}
 import { marked } from "marked";
 import type { NotePayload } from "@nodex/plugin-ui";
 import {
@@ -44,7 +54,13 @@ declare global {
 
 function sanitizeMarkdownHtml(markdown: string): string {
   const raw = marked.parse(markdown, { async: false }) as string;
-  return DOMPurify.sanitize(raw);
+  return DOMPurify.sanitize(raw, {
+    RETURN_TRUSTED_TYPE: false,
+    TRUSTED_TYPES_POLICY: {
+      createHTML: (html: string) => html,
+      createScriptURL: (url: string) => url,
+    },
+  });
 }
 
 const previewStyles = `

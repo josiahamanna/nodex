@@ -35,7 +35,7 @@ export default function AssetsSidebarSection({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const r = await window.Nodex.listAssets(relDir);
+      const r = await window.Nodex.listAssets(relDir, projectRoot);
       if (cancelled) {
         return;
       }
@@ -95,8 +95,16 @@ export default function AssetsSidebarSection({
           >
             {expanded ? "▾" : "▸"}
           </span>
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Assets
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Assets
+            </span>
+            <span
+              className="truncate font-normal normal-case text-[10px] text-muted-foreground/80"
+              title={projectRoot}
+            >
+              {projectRoot.split(/[/\\]/).filter(Boolean).pop() ?? projectRoot}
+            </span>
           </span>
         </button>
         <button

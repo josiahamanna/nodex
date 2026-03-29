@@ -13,9 +13,11 @@ const IMAGE_EXT = new Set([
 
 type Props = {
   relativePath: string;
+  /** Which workspace project’s `assets/` tree (required when multiple folders are open). */
+  projectRoot: string;
 };
 
-export default function AssetPreview({ relativePath }: Props) {
+export default function AssetPreview({ relativePath, projectRoot }: Props) {
   const [info, setInfo] = useState<{
     name: string;
     ext: string;
@@ -33,7 +35,7 @@ export default function AssetPreview({ relativePath }: Props) {
     setTextBody(null);
     setTextErr(null);
     void (async () => {
-      const meta = await window.Nodex.getAssetInfo(relativePath);
+      const meta = await window.Nodex.getAssetInfo(relativePath, projectRoot);
       if (cancelled) {
         return;
       }
@@ -47,7 +49,7 @@ export default function AssetPreview({ relativePath }: Props) {
         setLoadDone(true);
         return;
       }
-      const tr = await window.Nodex.readAssetText(relativePath);
+      const tr = await window.Nodex.readAssetText(relativePath, projectRoot);
       if (cancelled) {
         return;
       }
@@ -61,10 +63,10 @@ export default function AssetPreview({ relativePath }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [relativePath]);
+  }, [relativePath, projectRoot]);
 
   const openExternal = () => {
-    void window.Nodex.openAssetExternal(relativePath);
+    void window.Nodex.openAssetExternal(relativePath, projectRoot);
   };
 
   if (!loadDone) {
@@ -114,7 +116,7 @@ export default function AssetPreview({ relativePath }: Props) {
         {isImage ? (
           <div className="flex h-full min-h-[200px] items-center justify-center">
             <img
-              src={window.Nodex.assetUrl(relativePath)}
+              src={window.Nodex.assetUrl(relativePath, projectRoot)}
               alt={info.name}
               className="max-h-full max-w-full object-contain"
             />

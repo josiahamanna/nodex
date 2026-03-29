@@ -21,16 +21,30 @@ import { resolveNodexPluginUiMonacoLib } from "./core/resolve-nodex-plugin-ui";
 import { setPluginProgressSink } from "./core/plugin-progress";
 import { packageManager } from "./core/package-manager";
 import { initJsxCompilerCache } from "./core/jsx-compiler";
-import { listProjectAssets, resolveAssetFilePath } from "./core/assets-fs";
+import {
+  listProjectAssets,
+  moveProjectAsset,
+  resolveAssetFilePath,
+} from "./core/assets-fs";
+import {
+  clearNodexUndoRedo,
+  nodexRedo,
+  nodexUndo,
+  pushNotesUndoSnapshot,
+  recordAssetMoveForUndo,
+} from "./core/nodex-undo";
 import {
   getNodexJsxCacheRoot,
   getNodexPluginCacheRoot,
   getNodexUserPluginsDir,
 } from "./core/nodex-paths";
+import { readAppPrefs, writeAppPrefs } from "./core/app-prefs";
 import { saveNotesState } from "./core/notes-persistence";
 import {
   activateProject,
+  activateWorkspace,
   deactivateProject,
+  getNormalizedWorkspaceRoots,
   readProjectPrefs,
 } from "./core/project-session";
 import {
@@ -39,6 +53,7 @@ import {
   duplicateSubtreeAt,
   ensureNotesSeeded,
   getFirstNote,
+  setSeedSampleNotesPreference,
   getNoteById,
   getNotesFlat,
   moveNote as moveNoteInStore,
@@ -85,6 +100,43 @@ let pluginLoader: PluginLoader;
 let notesPersistencePath: string | null = null;
 /** Opened Nodex project directory (contains `data/` and `assets/`). */
 let projectRootPath: string | null = null;
+/** All workspace folders (merged notes); first entry matches `projectRootPath`. */
+let workspaceRoots: string[] = [];
+
+function assetsRootForIpc(projectRootOpt: string | undefined): string | null {
+  if (projectRootOpt != null && projectRootOpt.length > 0) {
+    const abs = path.resolve(projectRootOpt);
+    for (const r of workspaceRoots) {
+      if (path.resolve(r) === abs) {
+        return abs;
+      }
+    }
+    return null;
+  }
+  return projectRootPath;
+}
+
+function parseAssetIpcPayload(payload: unknown): {
+  rel: string;
+  projectRoot?: string;
+} {
+  if (typeof payload === "string") {
+    return { rel: payload };
+  }
+  if (payload && typeof payload === "object") {
+    const o = payload as Record<string, unknown>;
+    const rel =
+      typeof o.relativePath === "string"
+        ? o.relativePath
+        : typeof o.rel === "string"
+          ? o.rel
+          : "";
+    const projectRoot =
+      typeof o.projectRoot === "string" ? o.projectRoot : undefined;
+    return { rel, projectRoot };
+  }
+  return { rel: "" };
+}
 
 function broadcastProjectRootChanged(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -97,11 +149,29 @@ function registerNodexAssetProtocol(): void {
     "nodex-asset",
     (request, callback) => {
       try {
-        if (!projectRootPath) {
+        const u = new URL(request.url);
+        const rootParam = u.searchParams.get("root");
+        let baseRoot: string | null = null;
+        if (rootParam) {
+          try {
+            const abs = path.resolve(decodeURIComponent(rootParam));
+            for (const r of workspaceRoots) {
+              if (path.resolve(r) === abs) {
+                baseRoot = abs;
+                break;
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!baseRoot) {
+          baseRoot = projectRootPath;
+        }
+        if (!baseRoot) {
           callback({ error: -2 });
           return;
         }
-        const u = new URL(request.url);
         let rel = decodeURIComponent(
           (u.pathname || "").replace(/^\/+/, ""),
         ).replace(/\\/g, "/");
@@ -116,7 +186,7 @@ function registerNodexAssetProtocol(): void {
             return;
           }
         }
-        const assetsRoot = path.resolve(path.join(projectRootPath, "assets"));
+        const assetsRoot = path.resolve(path.join(baseRoot, "assets"));
         const full = path.resolve(path.join(assetsRoot, ...segments));
         if (!full.startsWith(assetsRoot + path.sep) && full !== assetsRoot) {
           callback({ error: -2 });
@@ -130,31 +200,51 @@ function registerNodexAssetProtocol(): void {
   );
 }
 
+function applyWorkspaceActivateResult(res: {
+  ok: true;
+  root: string;
+  dbPath: string;
+  workspaceRoots: string[];
+}): void {
+  if (res.workspaceRoots.length === 0) {
+    projectRootPath = null;
+    notesPersistencePath = null;
+    workspaceRoots = [];
+    return;
+  }
+  projectRootPath = res.root;
+  notesPersistencePath = res.dbPath;
+  workspaceRoots = res.workspaceRoots;
+}
+
 function tryLoadSavedProject(
   userDataPath: string,
   registeredTypes: string[],
 ): void {
   const prefs = readProjectPrefs(userDataPath);
-  if (
-    prefs.lastProjectRoot &&
-    fs.existsSync(prefs.lastProjectRoot) &&
-    fs.statSync(prefs.lastProjectRoot).isDirectory()
-  ) {
-    const r = activateProject(
-      prefs.lastProjectRoot,
-      userDataPath,
-      registeredTypes,
-    );
-    if (r.ok) {
-      projectRootPath = r.root;
-      notesPersistencePath = r.dbPath;
-      console.log("[Main] Opened project:", projectRootPath);
-      return;
-    }
-    console.warn("[Main] Could not open saved project:", r.error);
+  const roots = getNormalizedWorkspaceRoots(prefs);
+  if (roots.length === 0) {
+    projectRootPath = null;
+    notesPersistencePath = null;
+    workspaceRoots = [];
+    clearNodexUndoRedo();
+    deactivateProject();
+    return;
   }
+  const r = activateWorkspace(roots, userDataPath, registeredTypes);
+  if (r.ok) {
+    applyWorkspaceActivateResult(r);
+    clearNodexUndoRedo();
+    if (workspaceRoots.length > 0) {
+      console.log("[Main] Opened workspace:", workspaceRoots.join(", "));
+    }
+    return;
+  }
+  console.warn("[Main] Could not open saved project:", r.error);
   projectRootPath = null;
   notesPersistencePath = null;
+  workspaceRoots = [];
+  clearNodexUndoRedo();
   deactivateProject();
 }
 
@@ -504,6 +594,8 @@ app.on("ready", () => {
 
   pluginLoader.loadAll(registry);
 
+  setSeedSampleNotesPreference(readAppPrefs(userDataPath).seedSampleNotes);
+
   registerNodexAssetProtocol();
   tryLoadSavedProject(userDataPath, registry.getRegisteredTypes());
   if (projectRootPath) {
@@ -530,6 +622,7 @@ app.on("ready", () => {
           throw new Error("Invalid note id");
         }
       }
+      pushNotesUndoSnapshot();
       deleteNoteSubtrees(ids as string[]);
       persistNotes();
     },
@@ -562,6 +655,7 @@ app.on("ready", () => {
       if (p !== "before" && p !== "after" && p !== "into") {
         throw new Error("Invalid placement");
       }
+      pushNotesUndoSnapshot();
       moveNotesBulkInStore(ids as string[], targetId, p);
       persistNotes();
     },
@@ -587,6 +681,7 @@ app.on("ready", () => {
       if (p !== "before" && p !== "after" && p !== "into") {
         throw new Error("Invalid placement");
       }
+      pushNotesUndoSnapshot();
       moveNoteInStore(draggedId, targetId, p);
       persistNotes();
     },
@@ -624,10 +719,12 @@ app.on("ready", () => {
         throw new Error("Invalid placement");
       }
       if (mode === "cut") {
+        pushNotesUndoSnapshot();
         moveNoteInStore(sourceId, targetId, placement);
         persistNotes();
         return {};
       }
+      pushNotesUndoSnapshot();
       const { newRootId } = duplicateSubtreeAt(sourceId, targetId, placement);
       persistNotes();
       return { newRootId };
@@ -637,7 +734,22 @@ app.on("ready", () => {
   ipcMain.handle(IPC_CHANNELS.PROJECT_GET_STATE, () => ({
     rootPath: projectRootPath,
     notesDbPath: notesPersistencePath,
+    workspaceRoots: [...workspaceRoots],
   }));
+
+  ipcMain.handle(IPC_CHANNELS.APP_GET_PREFS, () => readAppPrefs(userDataPath));
+
+  ipcMain.handle(
+    IPC_CHANNELS.APP_SET_SEED_SAMPLE_NOTES,
+    (_e, enabled: unknown) => {
+      if (typeof enabled !== "boolean") {
+        return { ok: false as const, error: "Invalid value" };
+      }
+      const next = writeAppPrefs(userDataPath, { seedSampleNotes: enabled });
+      setSeedSampleNotesPreference(next.seedSampleNotes);
+      return { ok: true as const, seedSampleNotes: next.seedSampleNotes };
+    },
+  );
 
   ipcMain.handle(IPC_CHANNELS.PROJECT_SELECT_FOLDER, async () => {
     const r = await showOpenDialogWithParent({
@@ -656,10 +768,49 @@ app.on("ready", () => {
     if (!res.ok) {
       return { ok: false as const, error: res.error };
     }
-    projectRootPath = res.root;
-    notesPersistencePath = res.dbPath;
+    applyWorkspaceActivateResult(res);
+    clearNodexUndoRedo();
     broadcastProjectRootChanged();
-    return { ok: true as const, rootPath: res.root };
+    return {
+      ok: true as const,
+      rootPath: projectRootPath,
+      workspaceRoots: [...workspaceRoots],
+    };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PROJECT_ADD_WORKSPACE_FOLDER, async () => {
+    if (!projectRootPath || workspaceRoots.length === 0) {
+      return {
+        ok: false as const,
+        error: "Open a project folder first (Notes → Open project).",
+      };
+    }
+    const r = await showOpenDialogWithParent({
+      properties: ["openDirectory", "createDirectory"],
+      title: "Add another project folder to the workspace",
+    });
+    if (r.canceled || r.filePaths.length === 0) {
+      return { ok: false as const, cancelled: true as const };
+    }
+    const chosen = path.resolve(r.filePaths[0]!);
+    if (workspaceRoots.includes(chosen)) {
+      return {
+        ok: false as const,
+        error: "That folder is already in the workspace.",
+      };
+    }
+    const next = [...workspaceRoots, chosen];
+    const res = activateWorkspace(next, userDataPath, registry.getRegisteredTypes());
+    if (!res.ok) {
+      return { ok: false as const, error: res.error };
+    }
+    applyWorkspaceActivateResult(res);
+    broadcastProjectRootChanged();
+    return {
+      ok: true as const,
+      rootPath: projectRootPath,
+      workspaceRoots: [...workspaceRoots],
+    };
   });
 
   ipcMain.handle(IPC_CHANNELS.PROJECT_OPEN_PATH, async (_e, absPath: unknown) => {
@@ -674,27 +825,81 @@ app.on("ready", () => {
     if (!res.ok) {
       return { ok: false as const, error: res.error };
     }
-    projectRootPath = res.root;
-    notesPersistencePath = res.dbPath;
+    applyWorkspaceActivateResult(res);
+    clearNodexUndoRedo();
     broadcastProjectRootChanged();
-    return { ok: true as const, rootPath: res.root };
+    return {
+      ok: true as const,
+      rootPath: projectRootPath,
+      workspaceRoots: [...workspaceRoots],
+    };
   });
 
-  ipcMain.handle(IPC_CHANNELS.ASSET_LIST, (_e, rel: unknown) => {
-    if (!projectRootPath) {
-      return { ok: false as const, error: "No project open" };
+  ipcMain.handle(IPC_CHANNELS.PROJECT_REVEAL_FOLDER, async (_e, folderPath: unknown) => {
+    if (typeof folderPath !== "string" || folderPath.length === 0) {
+      return { ok: false as const, error: "Invalid path" };
     }
-    return listProjectAssets(
-      projectRootPath,
-      typeof rel === "string" ? rel : "",
-    );
+    const abs = path.resolve(folderPath);
+    const allowed = workspaceRoots.some((r) => path.resolve(r) === abs);
+    if (!allowed) {
+      return {
+        ok: false as const,
+        error: "Path is not an open project folder",
+      };
+    }
+    const err = await shell.openPath(abs);
+    if (err) {
+      return { ok: false as const, error: err };
+    }
+    return { ok: true as const };
   });
 
-  ipcMain.handle(IPC_CHANNELS.ASSET_GET_INFO, (_e, rel: unknown) => {
-    if (!projectRootPath || typeof rel !== "string") {
+  ipcMain.handle(IPC_CHANNELS.PROJECT_REFRESH_WORKSPACE, () => {
+    if (workspaceRoots.length === 0) {
+      return { ok: false as const, error: "No workspace open" };
+    }
+    const res = activateWorkspace(
+      [...workspaceRoots],
+      userDataPath,
+      registry.getRegisteredTypes(),
+    );
+    if (!res.ok) {
+      return { ok: false as const, error: res.error };
+    }
+    applyWorkspaceActivateResult(res);
+    clearNodexUndoRedo();
+    broadcastProjectRootChanged();
+    return {
+      ok: true as const,
+      rootPath: projectRootPath,
+      workspaceRoots: [...workspaceRoots],
+    };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSET_LIST, (_e, payload: unknown) => {
+    const { rel, projectRoot: prOpt } = parseAssetIpcPayload(payload);
+    const root = assetsRootForIpc(prOpt);
+    if (!root) {
+      return {
+        ok: false as const,
+        error: prOpt
+          ? "Unknown project folder for assets"
+          : "No project open",
+      };
+    }
+    return listProjectAssets(root, rel);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSET_GET_INFO, (_e, payload: unknown) => {
+    const { rel, projectRoot: prOpt } = parseAssetIpcPayload(payload);
+    if (typeof rel !== "string" || rel.length === 0) {
       return null;
     }
-    const full = resolveAssetFilePath(projectRootPath, rel);
+    const root = assetsRootForIpc(prOpt);
+    if (!root) {
+      return null;
+    }
+    const full = resolveAssetFilePath(root, rel);
     if (!full) {
       return null;
     }
@@ -714,11 +919,16 @@ app.on("ready", () => {
   });
 
   const MAX_ASSET_TEXT = 2_000_000;
-  ipcMain.handle(IPC_CHANNELS.ASSET_READ_TEXT, (_e, rel: unknown) => {
-    if (!projectRootPath || typeof rel !== "string") {
+  ipcMain.handle(IPC_CHANNELS.ASSET_READ_TEXT, (_e, payload: unknown) => {
+    const { rel, projectRoot: prOpt } = parseAssetIpcPayload(payload);
+    if (typeof rel !== "string" || rel.length === 0) {
       return { ok: false as const, error: "Invalid request" };
     }
-    const full = resolveAssetFilePath(projectRootPath, rel);
+    const root = assetsRootForIpc(prOpt);
+    if (!root) {
+      return { ok: false as const, error: "No project open" };
+    }
+    const full = resolveAssetFilePath(root, rel);
     if (!full) {
       return { ok: false as const, error: "Not found" };
     }
@@ -737,11 +947,16 @@ app.on("ready", () => {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.ASSET_OPEN_EXTERNAL, async (_e, rel: unknown) => {
-    if (!projectRootPath || typeof rel !== "string") {
+  ipcMain.handle(IPC_CHANNELS.ASSET_OPEN_EXTERNAL, async (_e, payload: unknown) => {
+    const { rel, projectRoot: prOpt } = parseAssetIpcPayload(payload);
+    if (typeof rel !== "string" || rel.length === 0) {
       return { ok: false as const, error: "Invalid request" };
     }
-    const full = resolveAssetFilePath(projectRootPath, rel);
+    const root = assetsRootForIpc(prOpt);
+    if (!root) {
+      return { ok: false as const, error: "No project open" };
+    }
+    const full = resolveAssetFilePath(root, rel);
     if (!full) {
       return { ok: false as const, error: "Not found" };
     }
@@ -750,6 +965,77 @@ app.on("ready", () => {
       return { ok: false as const, error: err };
     }
     return { ok: true as const };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSET_MOVE, (_e, payload: unknown) => {
+    if (!payload || typeof payload !== "object") {
+      return { ok: false as const, error: "Invalid payload" };
+    }
+    const o = payload as Record<string, unknown>;
+    const fromProject =
+      typeof o.fromProject === "string" ? o.fromProject : "";
+    const fromRel = typeof o.fromRel === "string" ? o.fromRel : "";
+    const toProject = typeof o.toProject === "string" ? o.toProject : "";
+    const toDirRel = typeof o.toDirRel === "string" ? o.toDirRel : "";
+    if (!fromProject || !fromRel || !toProject) {
+      return { ok: false as const, error: "Invalid paths" };
+    }
+    const roots = workspaceRoots.map((w) => path.resolve(w));
+    const moved = moveProjectAsset(roots, fromProject, fromRel, toProject, toDirRel);
+    if (!moved.ok) {
+      return { ok: false as const, error: moved.error };
+    }
+    recordAssetMoveForUndo({
+      fromProject,
+      fromRel,
+      toProject,
+      toRel: moved.toRel,
+    });
+    return { ok: true as const, toRel: moved.toRel };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.NODEX_UNDO, () => {
+    if (!projectRootPath || workspaceRoots.length === 0) {
+      return {
+        ok: false as const,
+        error: "No workspace open",
+        touchedNotes: false,
+      };
+    }
+    const r = nodexUndo(workspaceRoots.map((w) => path.resolve(w)));
+    if (!r.ok) {
+      return {
+        ok: false as const,
+        error: r.error ?? "Undo failed",
+        touchedNotes: false,
+      };
+    }
+    if (r.touchedNotes) {
+      persistNotes();
+    }
+    return { ok: true as const, touchedNotes: r.touchedNotes === true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.NODEX_REDO, () => {
+    if (!projectRootPath || workspaceRoots.length === 0) {
+      return {
+        ok: false as const,
+        error: "No workspace open",
+        touchedNotes: false,
+      };
+    }
+    const r = nodexRedo(workspaceRoots.map((w) => path.resolve(w)));
+    if (!r.ok) {
+      return {
+        ok: false as const,
+        error: r.error ?? "Redo failed",
+        touchedNotes: false,
+      };
+    }
+    if (r.touchedNotes) {
+      persistNotes();
+    }
+    return { ok: true as const, touchedNotes: r.touchedNotes === true };
   });
 
   createWindow();
@@ -840,6 +1126,7 @@ ipcMain.handle(
     if (rel === "root") {
       anchorId = undefined;
     }
+    pushNotesUndoSnapshot();
     const created = createNoteInStore({
       anchorId,
       relation: rel,
@@ -861,6 +1148,7 @@ ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: strin
   if (typeof title !== "string") {
     throw new Error("Invalid title");
   }
+  pushNotesUndoSnapshot();
   renameNoteInStore(id, title);
   persistNotes();
 });

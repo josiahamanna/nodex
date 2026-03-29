@@ -112,26 +112,49 @@ declare global {
       getProjectState: () => Promise<{
         rootPath: string | null;
         notesDbPath: string | null;
+        workspaceRoots: string[];
       }>;
+      getAppPrefs: () => Promise<{ seedSampleNotes: boolean }>;
+      setSeedSampleNotes: (
+        enabled: boolean,
+      ) => Promise<
+        | { ok: true; seedSampleNotes: boolean }
+        | { ok: false; error: string }
+      >;
       selectProjectFolder: () => Promise<
-        | { ok: true; rootPath: string }
+        | { ok: true; rootPath: string | null; workspaceRoots: string[] }
         | { ok: false; cancelled: true }
         | { ok: false; error: string }
       >;
       openProjectPath: (
         absPath: string,
       ) => Promise<
-        { ok: true; rootPath: string } | { ok: false; error: string }
+        | { ok: true; rootPath: string | null; workspaceRoots: string[] }
+        | { ok: false; error: string }
+      >;
+      addWorkspaceFolder: () => Promise<
+        | { ok: true; rootPath: string | null; workspaceRoots: string[] }
+        | { ok: false; cancelled: true }
+        | { ok: false; error: string }
+      >;
+      revealProjectFolderInExplorer: (
+        absPath: string,
+      ) => Promise<{ ok: true } | { ok: false; error: string }>;
+      refreshWorkspace: () => Promise<
+        | { ok: true; rootPath: string | null; workspaceRoots: string[] }
+        | { ok: false; error: string }
       >;
       onProjectRootChanged: (callback: () => void) => () => void;
       listAssets: (
         relativePath: string,
+        projectRoot?: string,
       ) => Promise<
         | { ok: true; entries: { name: string; isDirectory: boolean }[] }
         | { ok: false; error: string }
       >;
       getAssetInfo: (
         relativePath: string,
+        projectRoot?: string,
       ) => Promise<{
         name: string;
         ext: string;
@@ -140,13 +163,31 @@ declare global {
       } | null>;
       readAssetText: (
         relativePath: string,
+        projectRoot?: string,
       ) => Promise<
         { ok: true; text: string } | { ok: false; error: string }
       >;
       openAssetExternal: (
         relativePath: string,
+        projectRoot?: string,
       ) => Promise<{ ok: true } | { ok: false; error: string }>;
-      assetUrl: (relativePath: string) => string;
+      moveProjectAsset: (payload: {
+        fromProject: string;
+        fromRel: string;
+        toProject: string;
+        toDirRel: string;
+      }) => Promise<
+        { ok: true; toRel: string } | { ok: false; error: string }
+      >;
+      nodexUndo: () => Promise<
+        | { ok: true; touchedNotes: boolean }
+        | { ok: false; error: string; touchedNotes?: boolean }
+      >;
+      nodexRedo: () => Promise<
+        | { ok: true; touchedNotes: boolean }
+        | { ok: false; error: string; touchedNotes?: boolean }
+      >;
+      assetUrl: (relativePath: string, projectRoot?: string) => string;
       onPluginProgress: (
         callback: (payload: {
           op: string;

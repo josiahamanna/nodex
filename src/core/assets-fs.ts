@@ -89,3 +89,108 @@ export function resolveAssetFilePath(
   }
   return full;
 }
+
+function resolveInAssetsRoot(
+  projectRoot: string,
+  rel: string,
+): { assetsRoot: string; full: string } | null {
+  const norm = safeAssetsRelativePath(rel);
+  if (norm === null) {
+    return null;
+  }
+  const assetsRoot = path.resolve(getProjectAssetsDir(projectRoot));
+  const full = path.resolve(
+    norm ? path.join(assetsRoot, norm) : assetsRoot,
+  );
+  if (!full.startsWith(assetsRoot + path.sep) && full !== assetsRoot) {
+    return null;
+  }
+  return { assetsRoot, full };
+}
+
+function isAllowedProjectRoot(
+  abs: string,
+  workspaceRoots: string[],
+): boolean {
+  const r = path.resolve(abs);
+  return workspaceRoots.some((w) => path.resolve(w) === r);
+}
+
+/**
+ * Move a file or directory from `fromRel` under one project’s `assets/` to a directory
+ * `toDirRel` under another (or same) project’s `assets/`. Stays strictly inside `assets/`;
+ * never beside the project folder on disk.
+ */
+export function moveProjectAsset(
+  workspaceRoots: string[],
+  fromProjectRoot: string,
+  fromRel: string,
+  toProjectRoot: string,
+  toDirRel: string,
+): { ok: true; toRel: string } | { ok: false; error: string } {
+  const roots = workspaceRoots.map((w) => path.resolve(w));
+  const fp = path.resolve(fromProjectRoot);
+  const tp = path.resolve(toProjectRoot);
+  if (!isAllowedProjectRoot(fp, roots) || !isAllowedProjectRoot(tp, roots)) {
+    return { ok: false, error: "Project not in workspace" };
+  }
+
+  const fromNorm = safeAssetsRelativePath(fromRel);
+  if (fromNorm === null || fromNorm === "") {
+    return { ok: false, error: "Invalid source path" };
+  }
+  const fromResolved = resolveInAssetsRoot(fromProjectRoot, fromNorm);
+  if (!fromResolved) {
+    return { ok: false, error: "Invalid source" };
+  }
+  if (!fs.existsSync(fromResolved.full)) {
+    return { ok: false, error: "Source missing" };
+  }
+
+  const toDirNorm = safeAssetsRelativePath(toDirRel);
+  if (toDirNorm === null) {
+    return { ok: false, error: "Invalid destination folder" };
+  }
+  const toDirResolved = resolveInAssetsRoot(toProjectRoot, toDirNorm);
+  if (!toDirResolved) {
+    return { ok: false, error: "Invalid destination" };
+  }
+  if (!fs.existsSync(toDirResolved.full)) {
+    return { ok: false, error: "Destination folder missing" };
+  }
+  if (!fs.statSync(toDirResolved.full).isDirectory()) {
+    return { ok: false, error: "Destination is not a folder" };
+  }
+
+  const base = path.basename(fromResolved.full);
+  const destFull = path.join(toDirResolved.full, base);
+  if (fs.existsSync(destFull)) {
+    return { ok: false, error: "A file or folder with that name already exists" };
+  }
+
+  try {
+    fs.renameSync(fromResolved.full, destFull);
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException;
+    if (err.code === "EXDEV") {
+      try {
+        fs.cpSync(fromResolved.full, destFull, { recursive: true });
+        fs.rmSync(fromResolved.full, { recursive: true, force: true });
+      } catch (e2) {
+        return {
+          ok: false,
+          error: e2 instanceof Error ? e2.message : String(e2),
+        };
+      }
+    } else {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(e),
+      };
+    }
+  }
+
+  const relToAssets = path.relative(toDirResolved.assetsRoot, destFull);
+  const toRel = relToAssets.split(path.sep).join("/");
+  return { ok: true, toRel };
+}

@@ -2821,11 +2821,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
         disabled={!pluginFolder || busy}
         onClick={() => void runInstallDependencies()}
         title="Install dependencies (⇧I)"
-        className="nodex-primary-fill min-h-8 shrink-0 rounded-sm border border-primary px-2.5 py-1 text-[11px] font-semibold shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-        style={{
-          backgroundColor: "hsl(var(--primary))",
-          color: "hsl(var(--primary-foreground))",
-        }}
+        className="min-h-7 shrink-0 rounded-sm border border-border bg-muted/50 px-2.5 py-1 text-[12px] text-foreground shadow-sm hover:bg-muted disabled:opacity-50"
       >
         Install dependencies
       </button>
@@ -2834,11 +2830,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
         disabled={!pluginFolder || busy}
         onClick={() => void bundleAndReload()}
         title="Bundle workspace and reload registry (⇧E)"
-        className="nodex-primary-fill min-h-8 shrink-0 rounded-sm border border-primary px-2.5 py-1 text-[11px] font-semibold shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-        style={{
-          backgroundColor: "hsl(var(--primary))",
-          color: "hsl(var(--primary-foreground))",
-        }}
+        className="min-h-7 shrink-0 rounded-sm border border-border bg-muted/50 px-2.5 py-1 text-[12px] text-foreground shadow-sm hover:bg-muted disabled:opacity-50"
       >
         Build &amp; load
       </button>

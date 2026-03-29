@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   Panel,
@@ -20,7 +20,6 @@ import {
 import NotesSidebarPanel from "./components/NotesSidebarPanel";
 import NoteViewer from "./components/NoteViewer";
 import AssetPreview from "./components/AssetPreview";
-import AssetsSidebarSection from "./components/AssetsSidebarSection";
 import PluginManager from "./components/PluginManager";
 import PluginIDE from "./components/PluginIDE";
 import SettingsView, {
@@ -42,6 +41,7 @@ import type {
   NoteMovePlacement,
   PasteSubtreePayload,
 } from "../preload";
+import { workspaceFolderPathForNote } from "../shared/note-workspace";
 
 const SHELL_SIDEBAR_COLLAPSED_KEY = "nodex-primary-sidebar-collapsed";
 const LEFT_EXPANDED_PCT = 22;
@@ -49,7 +49,7 @@ const LEFT_COLLAPSED_PCT = 3.2;
 
 type NotesMainPane =
   | { kind: "note" }
-  | { kind: "asset"; relativePath: string };
+  | { kind: "asset"; relativePath: string; projectRoot: string };
 
 function readShellSidebarCollapsed(): boolean {
   try {
@@ -92,9 +92,35 @@ const App: React.FC = () => {
   const [projectRoot, setProjectRoot] = useState<string | null | undefined>(
     undefined,
   );
+  const [workspaceRoots, setWorkspaceRoots] = useState<string[]>([]);
+  const [assetFsTick, setAssetFsTick] = useState(0);
   const [notesMainPane, setNotesMainPane] = useState<NotesMainPane>({
     kind: "note",
   });
+
+  const rootsList = useMemo(() => {
+    if (workspaceRoots.length > 0) {
+      return workspaceRoots;
+    }
+    return projectRoot ? [projectRoot] : [];
+  }, [workspaceRoots, projectRoot]);
+
+  const assetsContextRoot = useMemo(() => {
+    if (!projectRoot || rootsList.length === 0) {
+      return null;
+    }
+    if (currentNote?.id) {
+      const p = workspaceFolderPathForNote(currentNote.id, rootsList);
+      if (p) {
+        return p;
+      }
+    }
+    return rootsList[0] ?? null;
+  }, [currentNote?.id, rootsList, projectRoot]);
+
+  useEffect(() => {
+    setNotesMainPane((p) => (p.kind === "asset" ? { kind: "note" } : p));
+  }, [assetsContextRoot]);
 
   const setPrimaryTab = (t: PrimaryTab) => {
     setPrimaryTabState(t);
@@ -127,6 +153,7 @@ const App: React.FC = () => {
   useEffect(() => {
     void window.Nodex.getProjectState().then((s) => {
       setProjectRoot(s.rootPath);
+      setWorkspaceRoots(s.workspaceRoots ?? []);
     });
   }, []);
 
@@ -157,6 +184,7 @@ const App: React.FC = () => {
     const unsubProject = window.Nodex.onProjectRootChanged(() => {
       void window.Nodex.getProjectState().then((s) => {
         setProjectRoot(s.rootPath);
+        setWorkspaceRoots(s.workspaceRoots ?? []);
         setNotesMainPane({ kind: "note" });
       });
       void (async () => {
@@ -175,6 +203,39 @@ const App: React.FC = () => {
       unsubProject();
     };
   }, [dispatch]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (primaryTab !== "notes") {
+        return;
+      }
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") {
+        return;
+      }
+      const el = e.target as HTMLElement | null;
+      if (el?.closest("input, textarea, [contenteditable=true]")) {
+        return;
+      }
+      e.preventDefault();
+      void (async () => {
+        try {
+          const r = e.shiftKey
+            ? await window.Nodex.nodexRedo()
+            : await window.Nodex.nodexUndo();
+          if (!r.ok) {
+            return;
+          }
+          setAssetFsTick((t) => t + 1);
+          await dispatch(fetchAllNotes()).unwrap();
+          await dispatch(fetchNote()).unwrap();
+        } catch {
+          /* errors land in notes.error */
+        }
+      })();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [primaryTab, dispatch]);
 
   useEffect(() => {
     const id = currentNote?.id;
@@ -202,10 +263,25 @@ const App: React.FC = () => {
     return u;
   }, []);
 
+  const handleAddWorkspaceFolder = async () => {
+    const r = await window.Nodex.addWorkspaceFolder();
+    if (r.ok) {
+      setProjectRoot(r.rootPath ?? null);
+      setWorkspaceRoots(r.workspaceRoots ?? []);
+      try {
+        await dispatch(fetchAllNotes()).unwrap();
+        await dispatch(fetchNote()).unwrap();
+      } catch {
+        /* errors land in notes.error */
+      }
+    }
+  };
+
   const handleOpenProjectFolder = async () => {
     const r = await window.Nodex.selectProjectFolder();
     if (r.ok) {
-      setProjectRoot(r.rootPath);
+      setProjectRoot(r.rootPath ?? null);
+      setWorkspaceRoots(r.workspaceRoots ?? []);
       setNotesMainPane({ kind: "note" });
       try {
         await dispatch(fetchAllNotes()).unwrap();
@@ -214,6 +290,28 @@ const App: React.FC = () => {
         /* errors land in notes.error */
       }
     }
+  };
+
+  const handleRefreshWorkspace = async () => {
+    const r = await window.Nodex.refreshWorkspace();
+    if (r.ok) {
+      setProjectRoot(r.rootPath ?? null);
+      setWorkspaceRoots(r.workspaceRoots ?? []);
+      try {
+        await dispatch(fetchAllNotes()).unwrap();
+        await dispatch(fetchNote()).unwrap();
+      } catch {
+        /* errors land in notes.error */
+      }
+    }
+  };
+
+  const handleRevealProjectFolder = async (noteId: string) => {
+    const folder = workspaceFolderPathForNote(noteId, rootsList);
+    if (!folder) {
+      return;
+    }
+    await window.Nodex.revealProjectFolderInExplorer(folder);
   };
 
   const handleNoteSelect = (noteId: string) => {
@@ -263,8 +361,21 @@ const App: React.FC = () => {
     targetId: string;
     placement: NoteMovePlacement;
   }) => {
+    const prevId = currentNote?.id;
     await dispatch(moveNoteInTree(payload)).unwrap();
     await dispatch(fetchAllNotes()).unwrap();
+    const list = store.getState().notes.notesList;
+    if (prevId && !list.some((n) => n.id === prevId)) {
+      try {
+        if (list[0]) {
+          await dispatch(fetchNote(list[0].id)).unwrap();
+        } else {
+          await dispatch(fetchNote()).unwrap();
+        }
+      } catch {
+        /* errors land in notes.error */
+      }
+    }
   };
 
   const handleMoveNotesBulk = async (payload: {
@@ -272,8 +383,21 @@ const App: React.FC = () => {
     targetId: string;
     placement: NoteMovePlacement;
   }) => {
+    const prevId = currentNote?.id;
     await dispatch(moveNotesBulkInTree(payload)).unwrap();
     await dispatch(fetchAllNotes()).unwrap();
+    const list = store.getState().notes.notesList;
+    if (prevId && !list.some((n) => n.id === prevId)) {
+      try {
+        if (list[0]) {
+          await dispatch(fetchNote(list[0].id)).unwrap();
+        } else {
+          await dispatch(fetchNote()).unwrap();
+        }
+      } catch {
+        /* errors land in notes.error */
+      }
+    }
   };
 
   const handleDeleteNotes = async (ids: string[]) => {
@@ -364,7 +488,7 @@ const App: React.FC = () => {
       }
       return (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="min-h-0 flex-[2] overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-hidden">
             <NotesSidebarPanel
               notes={notesList}
               registeredTypes={registeredTypes}
@@ -376,14 +500,20 @@ const App: React.FC = () => {
               onMoveNotesBulk={handleMoveNotesBulk}
               onDeleteNotes={handleDeleteNotes}
               onPasteSubtree={handlePasteSubtree}
-            />
-          </div>
-          <div className="flex min-h-0 max-h-[42%] shrink-0 flex-col overflow-hidden border-t border-border">
-            <AssetsSidebarSection
-              projectRoot={projectRoot}
-              onOpenFile={(relativePath) =>
-                setNotesMainPane({ kind: "asset", relativePath })
+              onAddWorkspaceFolder={() => void handleAddWorkspaceFolder()}
+              onRevealProjectFolder={(id: string) =>
+                void handleRevealProjectFolder(id)
               }
+              onRefreshWorkspace={() => void handleRefreshWorkspace()}
+              workspaceRoots={rootsList}
+              onOpenProjectAsset={(pr, relativePath) =>
+                setNotesMainPane({
+                  kind: "asset",
+                  relativePath,
+                  projectRoot: pr,
+                })
+              }
+              assetFsTick={assetFsTick}
             />
           </div>
         </div>
@@ -444,7 +574,10 @@ const App: React.FC = () => {
       }
       if (notesMainPane.kind === "asset") {
         return (
-          <AssetPreview relativePath={notesMainPane.relativePath} />
+          <AssetPreview
+            relativePath={notesMainPane.relativePath}
+            projectRoot={notesMainPane.projectRoot}
+          />
         );
       }
       if (detailLoading && !currentNote) {

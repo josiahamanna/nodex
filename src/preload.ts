@@ -169,17 +169,32 @@ contextBridge.exposeInMainWorld("Nodex", {
   getProjectState: (): Promise<{
     rootPath: string | null;
     notesDbPath: string | null;
+    workspaceRoots: string[];
   }> => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_GET_STATE),
+  getAppPrefs: (): Promise<{ seedSampleNotes: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.APP_GET_PREFS),
+  setSeedSampleNotes: (
+    enabled: boolean,
+  ): Promise<
+    | { ok: true; seedSampleNotes: boolean }
+    | { ok: false; error: string }
+  > => ipcRenderer.invoke(IPC_CHANNELS.APP_SET_SEED_SAMPLE_NOTES, enabled),
   selectProjectFolder: (): Promise<
-    | { ok: true; rootPath: string }
+    | { ok: true; rootPath: string | null; workspaceRoots: string[] }
     | { ok: false; cancelled: true }
     | { ok: false; error: string }
   > => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_SELECT_FOLDER),
   openProjectPath: (
     absPath: string,
   ): Promise<
-    { ok: true; rootPath: string } | { ok: false; error: string }
+    | { ok: true; rootPath: string | null; workspaceRoots: string[] }
+    | { ok: false; error: string }
   > => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_OPEN_PATH, absPath),
+  addWorkspaceFolder: (): Promise<
+    | { ok: true; rootPath: string | null; workspaceRoots: string[] }
+    | { ok: false; cancelled: true }
+    | { ok: false; error: string }
+  > => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_ADD_WORKSPACE_FOLDER),
   onProjectRootChanged: (callback: () => void) => {
     const ch = IPC_CHANNELS.PROJECT_ROOT_CHANGED;
     ipcRenderer.on(ch, callback);
@@ -187,36 +202,90 @@ contextBridge.exposeInMainWorld("Nodex", {
   },
   listAssets: (
     relativePath: string,
+    projectRoot?: string,
   ): Promise<
     | { ok: true; entries: { name: string; isDirectory: boolean }[] }
     | { ok: false; error: string }
-  > => ipcRenderer.invoke(IPC_CHANNELS.ASSET_LIST, relativePath),
+  > =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.ASSET_LIST,
+      projectRoot !== undefined && projectRoot.length > 0
+        ? { relativePath, projectRoot }
+        : relativePath,
+    ),
   getAssetInfo: (
     relativePath: string,
+    projectRoot?: string,
   ): Promise<{
     name: string;
     ext: string;
     size: number;
     relativePath: string;
-  } | null> => ipcRenderer.invoke(IPC_CHANNELS.ASSET_GET_INFO, relativePath),
+  } | null> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.ASSET_GET_INFO,
+      projectRoot !== undefined && projectRoot.length > 0
+        ? { relativePath, projectRoot }
+        : relativePath,
+    ),
   readAssetText: (
     relativePath: string,
+    projectRoot?: string,
   ): Promise<
     { ok: true; text: string } | { ok: false; error: string }
-  > => ipcRenderer.invoke(IPC_CHANNELS.ASSET_READ_TEXT, relativePath),
+  > =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.ASSET_READ_TEXT,
+      projectRoot !== undefined && projectRoot.length > 0
+        ? { relativePath, projectRoot }
+        : relativePath,
+    ),
   openAssetExternal: (
     relativePath: string,
+    projectRoot?: string,
   ): Promise<{ ok: true } | { ok: false; error: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.ASSET_OPEN_EXTERNAL, relativePath),
+    ipcRenderer.invoke(
+      IPC_CHANNELS.ASSET_OPEN_EXTERNAL,
+      projectRoot !== undefined && projectRoot.length > 0
+        ? { relativePath, projectRoot }
+        : relativePath,
+    ),
+  moveProjectAsset: (payload: {
+    fromProject: string;
+    fromRel: string;
+    toProject: string;
+    toDirRel: string;
+  }): Promise<
+    | { ok: true; toRel: string }
+    | { ok: false; error: string }
+  > => ipcRenderer.invoke(IPC_CHANNELS.ASSET_MOVE, payload),
+  nodexUndo: (): Promise<
+    | { ok: true; touchedNotes: boolean }
+    | { ok: false; error: string; touchedNotes?: boolean }
+  > => ipcRenderer.invoke(IPC_CHANNELS.NODEX_UNDO),
+  nodexRedo: (): Promise<
+    | { ok: true; touchedNotes: boolean }
+    | { ok: false; error: string; touchedNotes?: boolean }
+  > => ipcRenderer.invoke(IPC_CHANNELS.NODEX_REDO),
   /** Build a URL loadable in the renderer for files under the project `assets/` tree. */
-  assetUrl: (relativePath: string): string => {
+  assetUrl: (relativePath: string, projectRoot?: string): string => {
     const parts = relativePath
       .replace(/\\/g, "/")
       .split("/")
       .filter(Boolean)
       .map((seg) => encodeURIComponent(seg));
-    return `nodex-asset:///${parts.join("/")}`;
+    let url = `nodex-asset:///${parts.join("/")}`;
+    if (projectRoot) {
+      url += `?root=${encodeURIComponent(projectRoot)}`;
+    }
+    return url;
   },
+  revealProjectFolderInExplorer: (
+    absPath: string,
+  ): Promise<{ ok: true } | { ok: false; error: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_REVEAL_FOLDER, absPath),
+  refreshWorkspace: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_REFRESH_WORKSPACE),
   onPluginProgress: (
     callback: (payload: {
       op: string;

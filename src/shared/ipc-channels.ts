@@ -84,11 +84,21 @@ export const IPC_CHANNELS = {
   PROJECT_GET_STATE: "project:get-state",
   PROJECT_SELECT_FOLDER: "project:select-folder",
   PROJECT_OPEN_PATH: "project:open-path",
+  PROJECT_ADD_WORKSPACE_FOLDER: "project:add-workspace-folder",
+  PROJECT_REVEAL_FOLDER: "project:reveal-folder",
+  PROJECT_REFRESH_WORKSPACE: "project:refresh-workspace",
   PROJECT_ROOT_CHANGED: "project:root-changed",
   ASSET_LIST: "asset:list",
   ASSET_GET_INFO: "asset:get-info",
   ASSET_READ_TEXT: "asset:read-text",
   ASSET_OPEN_EXTERNAL: "asset:open-external",
+  ASSET_MOVE: "asset:move",
+  /** Unified undo (notes snapshot or last asset move), LIFO. */
+  NODEX_UNDO: "nodex:undo",
+  NODEX_REDO: "nodex:redo",
+  /** App-wide preferences (userData JSON, not per-project). */
+  APP_GET_PREFS: "app:get-prefs",
+  APP_SET_SEED_SAMPLE_NOTES: "app:set-seed-sample-notes",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

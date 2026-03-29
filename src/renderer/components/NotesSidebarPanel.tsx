@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CreateNoteRelation,
@@ -7,10 +7,18 @@ import {
   PasteSubtreePayload,
 } from "../../preload";
 import { noteTypeInitials } from "../utils/note-type-initials";
+import {
+  buildWorkspaceSidebarSections,
+  type SidebarAssetsRow,
+} from "../../shared/sidebar-assets-rows";
+import ProjectAssetsInline from "./ProjectAssetsInline";
+import WorkspaceMountHeaderSurface from "./WorkspaceMountHeaderSurface";
 
 const DND_NOTE_MIME = "application/x-nodex-note-id";
 const DND_NOTE_IDS_MIME = "application/x-nodex-note-ids";
 const COLLAPSED_STORAGE_KEY = "nodex-sidebar-collapsed-ids";
+const WORKSPACE_SECTION_EXPANDED_KEY = "nodex-workspace-section-expanded";
+const WORKSPACE_MOUNT_ROW_RE = /^__nodex_mount_\d+$/;
 
 type ContextMenuState = {
   x: number;
@@ -47,6 +55,36 @@ function readCollapsedIds(): Set<string> {
 function writeCollapsedIds(ids: Set<string>): void {
   try {
     localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {
+    /* ignore */
+  }
+}
+
+function readWorkspaceSectionExpandedMap(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(WORKSPACE_SECTION_EXPANDED_KEY);
+    if (!raw) {
+      return {};
+    }
+    const o = JSON.parse(raw) as unknown;
+    if (!o || typeof o !== "object") {
+      return {};
+    }
+    const out: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+      if (typeof v === "boolean") {
+        out[k] = v;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function writeWorkspaceSectionExpandedMap(m: Record<string, boolean>): void {
+  try {
+    localStorage.setItem(WORKSPACE_SECTION_EXPANDED_KEY, JSON.stringify(m));
   } catch {
     /* ignore */
   }
@@ -165,6 +203,17 @@ export interface NotesSidebarPanelProps {
   }) => Promise<void>;
   onDeleteNotes: (ids: string[]) => Promise<void>;
   onPasteSubtree: (payload: PasteSubtreePayload) => Promise<void>;
+  /** Adds another on-disk project folder; notes trees are merged under the sidebar. */
+  onAddWorkspaceFolder?: () => void;
+  /** Opens the on-disk project folder that owns this note (file manager). */
+  onRevealProjectFolder?: (noteId: string) => void;
+  /** Reload merged notes from every open project folder. */
+  onRefreshWorkspace?: () => void;
+  /** Open disk `assets/` files in the main pane (per project folder). */
+  workspaceRoots: string[];
+  onOpenProjectAsset: (projectRoot: string, relativePath: string) => void;
+  /** Bumps to refresh inline asset trees after global undo/redo. */
+  assetFsTick?: number;
 }
 
 const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -172,6 +221,12 @@ const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     {children}
   </p>
 );
+
+function folderDisplayName(absPath: string): string {
+  const norm = absPath.replace(/\\/g, "/").replace(/\/+$/, "");
+  const parts = norm.split("/").filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1]! : absPath;
+}
 
 const ctxBtn =
   "block w-full rounded-sm px-2.5 py-1.5 text-left text-[12px] text-popover-foreground outline-none hover:bg-accent hover:text-accent-foreground transition-colors duration-150";
@@ -187,6 +242,12 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   onMoveNotesBulk,
   onDeleteNotes,
   onPasteSubtree,
+  onAddWorkspaceFolder,
+  onRevealProjectFolder,
+  onRefreshWorkspace,
+  workspaceRoots,
+  onOpenProjectAsset,
+  assetFsTick = 0,
 }) => {
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(readCollapsedIds);
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(() => new Set());
@@ -199,6 +260,9 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   } | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [dropHint, setDropHint] = useState<DropHint | null>(null);
+  const [workspaceSectionExpanded, setWorkspaceSectionExpanded] = useState<
+    Record<string, boolean>
+  >(() => readWorkspaceSectionExpandedMap());
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draggingBulkCount, setDraggingBulkCount] = useState(0);
   const draggingRef = useRef<string | null>(null);
@@ -210,7 +274,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   const lastTopLevelId = useMemo(() => {
     let last: string | null = null;
     for (const n of notes) {
-      if (n.depth === 0) {
+      if (n.depth === 0 && !WORKSPACE_MOUNT_ROW_RE.test(n.id)) {
         last = n.id;
       }
     }
@@ -326,6 +390,20 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
     });
   };
 
+  const toggleWorkspaceSection = useCallback((sectionKey: string) => {
+    setWorkspaceSectionExpanded((prev) => {
+      const wasOpen = prev[sectionKey] !== false;
+      const next = { ...prev };
+      if (wasOpen) {
+        next[sectionKey] = false;
+      } else {
+        delete next[sectionKey];
+      }
+      writeWorkspaceSectionExpandedMap(next);
+      return next;
+    });
+  }, []);
+
   const getTypeBadgeClass = (type: string): string => {
     switch (type) {
       case "markdown":
@@ -382,6 +460,12 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
     if (draggedId === targetId) {
       return false;
     }
+    if (
+      WORKSPACE_MOUNT_ROW_RE.test(targetId) &&
+      (placement === "before" || placement === "after")
+    ) {
+      return false;
+    }
     if (isStrictAncestor(draggedId, targetId, parents)) {
       return false;
     }
@@ -412,13 +496,29 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   };
 
   const idsToDragForRow = (noteId: string): string[] => {
+    if (WORKSPACE_MOUNT_ROW_RE.test(noteId)) {
+      return [];
+    }
     const sel = selectedNoteIds;
     if (sel.has(noteId) && sel.size > 1) {
       const bulk = new Set(sel);
-      return minimalSelectedRoots(bulk, parents);
+      return minimalSelectedRoots(bulk, parents).filter(
+        (id) => !WORKSPACE_MOUNT_ROW_RE.test(id),
+      );
     }
     return [noteId];
   };
+
+  const workspaceSections = useMemo(
+    () => buildWorkspaceSidebarSections(visibleNotes, workspaceRoots),
+    [visibleNotes, workspaceRoots],
+  );
+
+  const padForSectionNote = (note: NoteListItem, depthTrim: number) =>
+    6 + Math.max(0, note.depth - depthTrim) * 12;
+
+  const assetsDepthInSection = (row: SidebarAssetsRow, depthTrim: number) =>
+    Math.max(0, row.depth - depthTrim);
 
   const multiSelectCount = selectedNoteIds.size;
   const bulkDeleteRoots =
@@ -451,6 +551,23 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                     }}
                   >
                     Rename…
+                  </button>
+                ) : null}
+                {multiSelectCount <= 1 &&
+                menu.anchorId &&
+                onRevealProjectFolder ? (
+                  <button
+                    type="button"
+                    className={ctxBtn}
+                    onClick={() => {
+                      const id = menu.anchorId;
+                      closeMenu();
+                      if (id) {
+                        void onRevealProjectFolder(id);
+                      }
+                    }}
+                  >
+                    Open project folder…
                   </button>
                 ) : null}
                 {multiSelectCount <= 1 ? (
@@ -843,17 +960,39 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
         <div className="mb-1 flex items-center justify-between gap-2 px-1">
           <SectionLabel>Notes</SectionLabel>
-          {selectedNoteIds.size > 1 ? (
-            <button
-              type="button"
-              className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium text-sidebar-foreground/60 underline-offset-2 hover:text-sidebar-foreground hover:underline"
-              onClick={() => setSelectedNoteIds(new Set())}
-            >
-              Clear ({selectedNoteIds.size})
-            </button>
-          ) : (
-            <span className="w-px shrink-0" aria-hidden />
-          )}
+          <div className="flex min-w-0 shrink-0 items-center gap-1">
+            {onRefreshWorkspace ? (
+              <button
+                type="button"
+                className="rounded-sm border border-sidebar-border bg-sidebar-accent/40 px-1.5 py-0.5 text-[10px] font-medium text-sidebar-foreground/90 shadow-sm hover:bg-sidebar-accent"
+                title="Reload notes from all open project folders"
+                onClick={onRefreshWorkspace}
+              >
+                Refresh
+              </button>
+            ) : null}
+            {onAddWorkspaceFolder ? (
+              <button
+                type="button"
+                className="rounded-sm border border-sidebar-border bg-sidebar-accent/40 px-1.5 py-0.5 text-[10px] font-medium text-sidebar-foreground/90 shadow-sm hover:bg-sidebar-accent"
+                title="Add another project folder and merge its notes here"
+                onClick={onAddWorkspaceFolder}
+              >
+                Add folder
+              </button>
+            ) : null}
+            {selectedNoteIds.size > 1 ? (
+              <button
+                type="button"
+                className="rounded-sm px-1.5 py-0.5 text-[10px] font-medium text-sidebar-foreground/60 underline-offset-2 hover:text-sidebar-foreground hover:underline"
+                onClick={() => setSelectedNoteIds(new Set())}
+              >
+                Clear ({selectedNoteIds.size})
+              </button>
+            ) : !onAddWorkspaceFolder && !onRefreshWorkspace ? (
+              <span className="w-px shrink-0" aria-hidden />
+            ) : null}
+          </div>
         </div>
         <div
           className="min-h-[120px] rounded-md transition-shadow duration-150"
@@ -871,15 +1010,87 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
             });
           }}
         >
-          <ul
-            className={`flex flex-col gap-px ${draggingId ? "select-none" : ""}`}
-            role="list"
-          >
-            {visibleNotes.map((note) => {
-              const primarySelected = currentNoteId === note.id;
-              const inMulti = selectedNoteIds.has(note.id);
-              const selected = primarySelected || inMulti;
-              const pad = 6 + note.depth * 12;
+          {workspaceSections.map((sec) => {
+            const sectionOpen =
+              workspaceSectionExpanded[sec.sectionKey] !== false;
+            const headerMount = sec.mountNote;
+            return (
+              <section
+                key={sec.sectionKey}
+                className="mb-2 overflow-hidden rounded-lg border border-sidebar-border/50 bg-sidebar/15"
+              >
+                <div className="flex min-h-8 items-stretch border-b border-sidebar-border/50 bg-sidebar-accent/30">
+                  <button
+                    type="button"
+                    aria-expanded={sectionOpen}
+                    aria-label={
+                      sectionOpen ? "Collapse project" : "Expand project"
+                    }
+                    className="flex w-7 shrink-0 items-center justify-center border-r border-sidebar-border/40 text-sidebar-foreground/60 outline-none hover:bg-sidebar-accent/40 hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                    onClick={() => toggleWorkspaceSection(sec.sectionKey)}
+                  >
+                    <span className="text-[10px] leading-none">
+                      {sectionOpen ? "▾" : "▸"}
+                    </span>
+                  </button>
+                  {headerMount ? (
+                    <WorkspaceMountHeaderSurface
+                      mount={headerMount}
+                      draggingId={draggingId}
+                      currentNoteId={currentNoteId}
+                      selectedNoteIds={selectedNoteIds}
+                      dropHint={dropHint}
+                      setDropHint={setDropHint}
+                      draggingRef={draggingRef}
+                      draggingIdsRef={draggingIdsRef}
+                      setDraggingId={setDraggingId}
+                      setDraggingBulkCount={setDraggingBulkCount}
+                      parseDragIds={parseDragIds}
+                      placementFromPointer={placementFromPointer}
+                      dropAllowedOne={dropAllowedOne}
+                      dropAllowedMany={dropAllowedMany}
+                      onMoveNote={onMoveNote}
+                      onMoveNotesBulk={onMoveNotesBulk}
+                      handleRowClick={handleRowClick}
+                      onNoteSelect={onNoteSelect}
+                      setMenu={setMenu}
+                      getTypeBadgeClass={getTypeBadgeClass}
+                    />
+                  ) : (
+                    <div
+                      className="flex min-w-0 flex-1 items-center truncate px-2 py-1 font-mono text-[11px] text-sidebar-foreground/90"
+                      title={sec.projectRoot}
+                    >
+                      {folderDisplayName(sec.projectRoot)}
+                    </div>
+                  )}
+                </div>
+                {sectionOpen ? (
+                  <ul
+                    className={`m-0 flex list-none flex-col gap-px p-0 ${
+                      draggingId ? "select-none" : ""
+                    }`}
+                    role="list"
+                  >
+                    {sec.innerRows.map((row) => {
+                      if (row.kind === "assets") {
+                        return (
+                          <ProjectAssetsInline
+                            key={`${row.key}-${assetFsTick}`}
+                            projectRoot={row.projectRoot}
+                            depth={assetsDepthInSection(row, sec.depthTrim)}
+                            storageKey={row.key}
+                            onOpenFile={(rel) =>
+                              onOpenProjectAsset(row.projectRoot, rel)
+                            }
+                          />
+                        );
+                      }
+                      const note = row.note;
+                      const primarySelected = currentNoteId === note.id;
+                      const inMulti = selectedNoteIds.has(note.id);
+                      const selected = primarySelected || inMulti;
+                      const pad = padForSectionNote(note, sec.depthTrim);
               const hint =
                 dropHint?.targetId === note.id ? dropHint.placement : null;
               const showChevron = hasChildrenMap.has(note.id);
@@ -890,10 +1101,11 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
               return (
                 <li
                   key={note.id}
-                  draggable
+                  draggable={!WORKSPACE_MOUNT_ROW_RE.test(note.id)}
                   onDragStart={(e) => {
                     const dragIds = idsToDragForRow(note.id);
                     if (dragIds.length === 0) {
+                      e.preventDefault();
                       return;
                     }
                     draggingIdsRef.current = dragIds;
@@ -1080,7 +1292,11 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                             ? "bg-primary/15 text-sidebar-foreground ring-1 ring-inset ring-primary/35 hover:bg-primary/20"
                             : "bg-sidebar-accent text-sidebar-foreground before:pointer-events-none before:absolute before:left-1 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-primary before:content-[''] hover:bg-sidebar-accent"
                           : "text-sidebar-foreground hover:bg-sidebar-accent/70"
-                      } cursor-grab active:cursor-grabbing`}
+                      } ${
+                        draggingId === note.id
+                          ? "cursor-grabbing"
+                          : "cursor-default"
+                      }`}
                     >
                       {draggingBulkCount > 1 && draggingId === note.id ? (
                         <span className="absolute right-2 top-1/2 z-[5] -translate-y-1/2 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-primary-foreground shadow-sm">
@@ -1103,12 +1319,18 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                   </div>
                 </li>
               );
-            })}
-          </ul>
+                    })}
+                  </ul>
+                ) : null}
+              </section>
+            );
+          })}
         </div>
         <p className="mt-2 px-1 text-[10px] leading-snug text-sidebar-foreground/40">
-          Click: select · ⌘/Ctrl+click: multi · Shift+click: range · Drag: move
-          (top/mid/bottom = sibling / child / sibling). Right-click for menu.
+          Each project section can be collapsed (chevron). Note chevrons remember
+          their state when you reopen a section. Assets live under each project
+          (only under <span className="font-mono">assets/</span>). ⌘/Ctrl+Z undo
+          · ⌘/Ctrl+Shift+Z redo. Right-click notes for menu.
         </p>
         {clipboard ? (
           <p className="mt-1 px-1 text-[10px] text-sidebar-foreground/50">
