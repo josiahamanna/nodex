@@ -235,6 +235,13 @@ declare global {
         pluginName: string | null,
       ) => Promise<{ success: boolean }>;
       onIdeWorkspaceFsChanged: (callback: () => void) => () => void;
+      getMainDebugLogBuffer: () => Promise<
+        { ts: number; level: string; text: string }[]
+      >;
+      clearMainDebugLogBuffer: () => Promise<{ success: boolean }>;
+      onMainDebugLog: (
+        callback: (entry: { ts: number; level: string; text: string }) => void,
+      ) => () => void;
       reloadPluginRegistry: () => Promise<{ success: boolean; error?: string }>;
       getNativeThemeDark: () => Promise<boolean>;
       onNativeThemeChanged: (

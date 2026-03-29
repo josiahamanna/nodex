@@ -31,6 +31,12 @@ import {
   setNotePluginUiState,
 } from "./core/notes-store";
 import { registry } from "./core/registry";
+import {
+  clearMainDebugLogBuffer,
+  getMainDebugLogBuffer,
+  installMainProcessDebugLogTap,
+  setMainDebugLogWindow,
+} from "./main/main-process-debug-log";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
 import { toFileUri } from "./shared/file-uri";
 import {
@@ -181,6 +187,9 @@ const createWindow = (): void => {
 };
 
 app.on("ready", () => {
+  installMainProcessDebugLogTap();
+  setMainDebugLogWindow(() => mainWindow);
+
   nativeTheme.on("updated", broadcastNativeThemeToRenderers);
 
   ipcMain.handle(IPC_CHANNELS.UI_GET_NATIVE_THEME_DARK, () => {
@@ -1207,6 +1216,15 @@ ipcMain.handle(
     return pluginLoader.getIdePluginVirtualTypings(pluginName);
   },
 );
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_IDE_GET_MAIN_DEBUG_LOGS, () =>
+  getMainDebugLogBuffer(),
+);
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_IDE_CLEAR_MAIN_DEBUG_LOGS, () => {
+  clearMainDebugLogBuffer();
+  return { success: true as const };
+});
 
 ipcMain.handle(IPC_CHANNELS.PLUGIN_RELOAD_REGISTRY, async () => {
   try {

@@ -51,6 +51,11 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   const noteContentPersistTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  /** Latest pending body save (survives until flush or debounce fires). */
+  const pendingNoteContentRef = useRef<{
+    noteId: string;
+    content: string;
+  } | null>(null);
 
   const sendMessageToPlugin = useCallback((message: PluginMessage) => {
     if (iframeRef.current?.contentWindow) {
@@ -72,14 +77,31 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
     [dispatch],
   );
 
+  const flushPendingNoteContent = useCallback(() => {
+    if (noteContentPersistTimerRef.current) {
+      clearTimeout(noteContentPersistTimerRef.current);
+      noteContentPersistTimerRef.current = null;
+    }
+    const pending = pendingNoteContentRef.current;
+    pendingNoteContentRef.current = null;
+    if (pending) {
+      void dispatch(saveNoteContent(pending));
+    }
+  }, [dispatch]);
+
   const scheduleNoteContentPersist = useCallback(
     (noteId: string, content: string) => {
+      pendingNoteContentRef.current = { noteId, content };
       if (noteContentPersistTimerRef.current) {
         clearTimeout(noteContentPersistTimerRef.current);
       }
       noteContentPersistTimerRef.current = setTimeout(() => {
         noteContentPersistTimerRef.current = null;
-        void dispatch(saveNoteContent({ noteId, content }));
+        const p = pendingNoteContentRef.current;
+        pendingNoteContentRef.current = null;
+        if (p) {
+          void dispatch(saveNoteContent(p));
+        }
       }, 400);
     },
     [dispatch],
@@ -87,27 +109,21 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
 
   useEffect(() => {
     return () => {
+      flushPendingNoteContent();
       if (persistTimerRef.current) {
         clearTimeout(persistTimerRef.current);
         persistTimerRef.current = null;
       }
-      if (noteContentPersistTimerRef.current) {
-        clearTimeout(noteContentPersistTimerRef.current);
-        noteContentPersistTimerRef.current = null;
-      }
     };
-  }, []);
+  }, [flushPendingNoteContent]);
 
   useEffect(() => {
+    flushPendingNoteContent();
     if (persistTimerRef.current) {
       clearTimeout(persistTimerRef.current);
       persistTimerRef.current = null;
     }
-    if (noteContentPersistTimerRef.current) {
-      clearTimeout(noteContentPersistTimerRef.current);
-      noteContentPersistTimerRef.current = null;
-    }
-  }, [note.id]);
+  }, [note.id, flushPendingNoteContent]);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {

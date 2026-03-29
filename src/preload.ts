@@ -386,6 +386,20 @@ contextBridge.exposeInMainWorld("Nodex", {
     ipcRenderer.on(ch, fn);
     return () => ipcRenderer.removeListener(ch, fn);
   },
+  getMainDebugLogBuffer: (): Promise<
+    { ts: number; level: string; text: string }[]
+  > => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_IDE_GET_MAIN_DEBUG_LOGS),
+  clearMainDebugLogBuffer: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_IDE_CLEAR_MAIN_DEBUG_LOGS),
+  onMainDebugLog: (
+    callback: (entry: { ts: number; level: string; text: string }) => void,
+  ) => {
+    const ch = IPC_CHANNELS.PLUGIN_IDE_MAIN_DEBUG_LOG;
+    const fn = (_e: unknown, entry: unknown) =>
+      callback(entry as Parameters<typeof callback>[0]);
+    ipcRenderer.on(ch, fn);
+    return () => ipcRenderer.removeListener(ch, fn);
+  },
   reloadPluginRegistry: (): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_RELOAD_REGISTRY),
   getNativeThemeDark: (): Promise<boolean> =>

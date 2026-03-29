@@ -61,6 +61,10 @@ export const IPC_CHANNELS = {
   PLUGIN_IDE_WORKSPACE_FS_CHANGED: "plugin:ide-workspace-fs-changed",
   PLUGIN_GET_USER_PLUGINS_DIR: "plugin:get-user-plugins-dir",
   PLUGIN_RESET_USER_DATA_PLUGINS: "plugin:reset-user-plugins-dir",
+  /** Main-process debug log line (renderer listens; Plugin IDE panel). */
+  PLUGIN_IDE_MAIN_DEBUG_LOG: "plugin:ide-main-debug-log",
+  PLUGIN_IDE_GET_MAIN_DEBUG_LOGS: "plugin:ide-get-main-debug-logs",
+  PLUGIN_IDE_CLEAR_MAIN_DEBUG_LOGS: "plugin:ide-clear-main-debug-logs",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

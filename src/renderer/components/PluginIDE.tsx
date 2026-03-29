@@ -24,6 +24,7 @@ import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
 import { useTheme } from "../theme/ThemeContext";
 
 const PLUGIN_IDE_FILES_COLLAPSED_KEY = "plugin-ide-files-collapsed";
+const PLUGIN_IDE_BOTTOM_PANEL_COLLAPSED_KEY = "plugin-ide-bottom-panel-collapsed";
 const PLUGIN_IDE_TSC_ON_SAVE_KEY = "plugin-ide-tsc-on-save";
 const PLUGIN_IDE_RELOAD_ON_SAVE_KEY = "plugin-ide-reload-on-save";
 const PLUGIN_IDE_SNAPSHOT_KEY = "plugin-ide-workspace-snapshot-v1";
@@ -118,6 +119,14 @@ interface InstalledPkg {
   range: string;
   dev: boolean;
 }
+
+interface MainDebugLogLine {
+  ts: number;
+  level: string;
+  text: string;
+}
+
+type BottomDockTab = "debug" | "terminal";
 
 interface NpmSearchRow {
   name: string;
@@ -220,6 +229,8 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
   const [busy, setBusy] = useState(false);
   const [pathModal, setPathModal] = useState<PathModalState>(null);
   const filesPanelRef = useRef<ImperativePanelHandle | null>(null);
+  const bottomPanelRef = useRef<ImperativePanelHandle | null>(null);
+  const logScrollRef = useRef<HTMLPreElement | null>(null);
   const npmWrapRef = useRef<HTMLDivElement | null>(null);
 
   const [npmQuery, setNpmQuery] = useState("");
@@ -231,6 +242,8 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
   const [addAsDevDep, setAddAsDevDep] = useState(false);
   const [installedPkgs, setInstalledPkgs] = useState<InstalledPkg[]>([]);
   const [tscDiagnostics, setTscDiagnostics] = useState<TscDiagnostic[]>([]);
+  const [bottomDockTab, setBottomDockTab] = useState<BottomDockTab>("debug");
+  const [mainDebugLogs, setMainDebugLogs] = useState<MainDebugLogLine[]>([]);
   const [tscOnSave, setTscOnSave] = useState(
     () => localStorage.getItem(PLUGIN_IDE_TSC_ON_SAVE_KEY) === "1",
   );
@@ -627,6 +640,44 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     }, 0);
     return () => window.clearTimeout(id);
   }, []);
+
+  useEffect(() => {
+    const collapsed =
+      localStorage.getItem(PLUGIN_IDE_BOTTOM_PANEL_COLLAPSED_KEY) === "1";
+    const id = window.setTimeout(() => {
+      if (collapsed) {
+        bottomPanelRef.current?.collapse();
+      }
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  useEffect(() => {
+    let unsub: (() => void) | undefined;
+    void (async () => {
+      try {
+        const initial = await window.Nodex.getMainDebugLogBuffer();
+        setMainDebugLogs(initial);
+      } catch {
+        /* ignore */
+      }
+      unsub = window.Nodex.onMainDebugLog((entry) => {
+        setMainDebugLogs((prev) => {
+          const next = [...prev, entry];
+          const cap = 3000;
+          return next.length > cap ? next.slice(-cap) : next;
+        });
+      });
+    })();
+    return () => unsub?.();
+  }, []);
+
+  useEffect(() => {
+    const el = logScrollRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [mainDebugLogs]);
 
   const openFile = async (relativePath: string) => {
     const existing = tabs.find((t) => t.relativePath === relativePath);
@@ -1535,6 +1586,29 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
     }
   };
 
+  const toggleBottomPanel = () => {
+    const p = bottomPanelRef.current;
+    if (!p) {
+      return;
+    }
+    if (p.isCollapsed()) {
+      p.expand();
+      localStorage.removeItem(PLUGIN_IDE_BOTTOM_PANEL_COLLAPSED_KEY);
+    } else {
+      p.collapse();
+      localStorage.setItem(PLUGIN_IDE_BOTTOM_PANEL_COLLAPSED_KEY, "1");
+    }
+  };
+
+  const clearMainDebugLogs = async () => {
+    try {
+      await window.Nodex.clearMainDebugLogBuffer();
+      setMainDebugLogs([]);
+    } catch {
+      setMainDebugLogs([]);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
       <header className="relative z-40 shrink-0 border-b border-border bg-background">
@@ -1603,6 +1677,17 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
                     }}
                   >
                     Save all
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      toggleBottomPanel();
+                    }}
+                  >
+                    Toggle bottom panel
                   </button>
                   <button
                     type="button"
@@ -2116,10 +2201,16 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
       )}
 
       <PanelGroup
-        direction="horizontal"
-        autoSaveId="plugin-ide-panels"
+        direction="vertical"
+        autoSaveId="plugin-ide-vertical-dock"
         className="flex-1 min-h-0"
       >
+        <Panel defaultSize={78} minSize={35} className="min-h-0">
+          <PanelGroup
+            direction="horizontal"
+            autoSaveId="plugin-ide-panels"
+            className="h-full min-h-0"
+          >
         <Panel
           ref={filesPanelRef}
           collapsible
@@ -2300,6 +2391,128 @@ const PluginIDE: React.FC<PluginIDEProps> = ({ onPluginsChanged }) => {
               )}
             </div>
           </aside>
+        </Panel>
+          </PanelGroup>
+        </Panel>
+
+        <PanelResizeHandle className="nodex-panel-sash relative h-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-x-0 before:top-1/2 before:z-10 before:h-px before:-translate-y-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
+
+        <Panel
+          ref={bottomPanelRef}
+          collapsible
+          collapsedSize={0}
+          minSize={12}
+          defaultSize={24}
+          className="min-h-0 flex flex-col"
+          onCollapse={() =>
+            localStorage.setItem(PLUGIN_IDE_BOTTOM_PANEL_COLLAPSED_KEY, "1")
+          }
+          onExpand={() =>
+            localStorage.removeItem(PLUGIN_IDE_BOTTOM_PANEL_COLLAPSED_KEY)
+          }
+        >
+          <div className="flex h-full min-h-0 flex-col border-t border-border bg-muted/25 dark:bg-muted/15">
+            <div
+              className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border/80 bg-muted/40 px-2 py-1"
+              role="tablist"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={bottomDockTab === "debug"}
+                className={`rounded px-2.5 py-1 text-[11px] font-medium ${
+                  bottomDockTab === "debug"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setBottomDockTab("debug")}
+              >
+                Debug
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={bottomDockTab === "terminal"}
+                title="Reserved for a future integrated shell"
+                className={`rounded px-2.5 py-1 text-[11px] font-medium ${
+                  bottomDockTab === "terminal"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setBottomDockTab("terminal")}
+              >
+                Terminal
+              </button>
+              <span className="flex-1 min-w-[1rem]" />
+              {bottomDockTab === "debug" ? (
+                <button
+                  type="button"
+                  className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                  onClick={() => void clearMainDebugLogs()}
+                >
+                  Clear
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="rounded p-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                title="Hide bottom panel"
+                aria-label="Hide bottom panel"
+                onClick={() => toggleBottomPanel()}
+              >
+                Hide
+              </button>
+            </div>
+            {bottomDockTab === "debug" ? (
+              <pre
+                ref={logScrollRef}
+                className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11px] leading-relaxed text-foreground whitespace-pre-wrap break-words"
+              >
+                {mainDebugLogs.length === 0 ? (
+                  <span className="text-muted-foreground">
+                    Main process logs appear here (console.log / warn / error
+                    from Node). Open or close this panel from File → Toggle
+                    bottom panel.
+                  </span>
+                ) : (
+                  mainDebugLogs.map((line, i) => {
+                    const level = line.level;
+                    const color =
+                      level === "error"
+                        ? "text-red-700 dark:text-red-400"
+                        : level === "warn"
+                          ? "text-amber-800 dark:text-amber-300"
+                          : level === "debug"
+                            ? "text-violet-700 dark:text-violet-300"
+                            : "text-foreground/90";
+                    const t = new Date(line.ts);
+                    const stamp = t.toLocaleTimeString(undefined, {
+                      hour12: false,
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    });
+                    return (
+                      <div key={`${line.ts}-${i}`} className={color}>
+                        <span className="text-muted-foreground select-none">
+                          [{stamp}]{" "}
+                        </span>
+                        <span className="text-muted-foreground/80 uppercase text-[10px]">
+                          {level}{" "}
+                        </span>
+                        {line.text}
+                      </div>
+                    );
+                  })
+                )}
+              </pre>
+            ) : (
+              <div className="min-h-0 flex-1 overflow-auto p-4 text-[12px] text-muted-foreground">
+                An interactive terminal may be added here later. For now, use the
+                system terminal or your editor for shell commands.
+              </div>
+            )}
+          </div>
         </Panel>
       </PanelGroup>
     </div>
