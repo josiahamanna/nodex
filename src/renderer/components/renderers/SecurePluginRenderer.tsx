@@ -59,6 +59,14 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
     noteId: string;
     content: string;
   } | null>(null);
+  /**
+   * Note identity (`type:id`) last handled by UPDATE. When the user switches notes,
+   * `isReady` can still be true until async iframe reload finishes; sending UPDATE
+   * to the *old* plugin (e.g. TipTap) with the *new* note body treats markdown as
+   * HTML, corrupts it, and debounced save persists the garbage. Skip UPDATE on
+   * identity change — READY already sends RENDER for the new note.
+   */
+  const prevNoteKeyForUpdateRef = useRef<string | null>(null);
 
   const sendMessageToPlugin = useCallback((message: PluginMessage) => {
     if (iframeRef.current?.contentWindow) {
@@ -211,7 +219,13 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   }, [handleMessage]);
 
   useEffect(() => {
-    if (isReady && iframeRef.current) {
+    if (!isReady || !iframeRef.current) {
+      return;
+    }
+    const key = `${note.type}:${note.id}`;
+    const prev = prevNoteKeyForUpdateRef.current;
+    prevNoteKeyForUpdateRef.current = key;
+    if (prev === key) {
       sendMessageToPlugin({ type: MessageType.UPDATE, payload: note });
     }
   }, [isReady, note, sendMessageToPlugin]);
@@ -389,7 +403,7 @@ function createSandboxedHTML(
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
       padding: 1rem;
       background: hsl(var(--background, 0 0% 100%));
-      color: hsl(var(--foreground, 222.2 84% 4.9%));
+      color: hsl(var(--foreground, 222.2 47% 11%));
     }
   </style>
 </head>

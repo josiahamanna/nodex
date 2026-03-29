@@ -2732,7 +2732,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       >
         <input
           type="search"
-          className="w-full rounded-sm border border-input bg-background px-3 py-2 text-[12px]"
+          className="w-full rounded-sm border border-input bg-background px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground"
           placeholder="Search npm (2+ chars) or installed packages…"
           value={npmQuery}
           onChange={(e) => setNpmQuery(e.target.value)}
@@ -2806,12 +2806,13 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           </div>
         )}
       </div>
-      <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
+      <label className="flex cursor-pointer select-none items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
         <input
           type="checkbox"
           checked={addAsDevDep}
           onChange={(e) => setAddAsDevDep(e.target.checked)}
-          className="h-3.5 w-3.5 rounded-sm border-border"
+          className="h-3.5 w-3.5 shrink-0 cursor-pointer rounded border border-input bg-muted accent-primary"
+          style={{ accentColor: "hsl(var(--primary))" }}
         />
         devDependency
       </label>
@@ -2820,7 +2821,11 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
         disabled={!pluginFolder || busy}
         onClick={() => void runInstallDependencies()}
         title="Install dependencies (⇧I)"
-        className="min-h-8 shrink-0 rounded-sm border border-foreground bg-foreground px-2.5 py-1 text-[11px] font-semibold text-background shadow-sm transition-opacity hover:opacity-85 disabled:opacity-50"
+        className="nodex-primary-fill min-h-8 shrink-0 rounded-sm border border-primary px-2.5 py-1 text-[11px] font-semibold shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+        style={{
+          backgroundColor: "hsl(var(--primary))",
+          color: "hsl(var(--primary-foreground))",
+        }}
       >
         Install dependencies
       </button>
@@ -2829,7 +2834,11 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
         disabled={!pluginFolder || busy}
         onClick={() => void bundleAndReload()}
         title="Bundle workspace and reload registry (⇧E)"
-        className="min-h-8 shrink-0 rounded-sm border border-foreground bg-foreground px-2.5 py-1 text-[11px] font-semibold text-background shadow-sm transition-opacity hover:opacity-85 disabled:opacity-50"
+        className="nodex-primary-fill min-h-8 shrink-0 rounded-sm border border-primary px-2.5 py-1 text-[11px] font-semibold shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+        style={{
+          backgroundColor: "hsl(var(--primary))",
+          color: "hsl(var(--primary-foreground))",
+        }}
       >
         Build &amp; load
       </button>
@@ -2844,7 +2853,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
             Plugin
             <select
-              className="max-w-[14rem] rounded-sm border border-input bg-background px-2.5 py-1.5 text-[12px] shadow-sm"
+              className="max-w-[14rem] rounded-sm border border-border bg-muted/50 px-2.5 py-1.5 text-[12px] text-foreground shadow-sm hover:bg-muted"
               value={pluginFolder}
               onChange={(e) => {
                 setPluginFolder(e.target.value);
@@ -2865,7 +2874,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
             <div className="relative">
               <button
                 type="button"
-                className="min-h-7 rounded-sm border border-input bg-background px-2.5 py-1 text-[12px] text-foreground hover:bg-muted/50"
+                className="min-h-7 rounded-sm border border-border bg-muted/50 px-2.5 py-1 text-[12px] text-foreground shadow-sm hover:bg-muted"
                 aria-expanded={toolbarMenu === "file"}
                 aria-haspopup="true"
                 onClick={() =>
@@ -2955,7 +2964,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                     type="button"
                     role="menuitem"
                     disabled={!pluginFolder || !activePath || busy}
-                    className="w-full text-left px-3 py-2 text-sm text-red-800 hover:bg-red-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void onDeletePath();
@@ -3030,7 +3039,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
             <div className="relative">
               <button
                 type="button"
-                className="min-h-7 rounded-sm border border-input bg-background px-2.5 py-1 text-[12px] text-foreground hover:bg-muted/50"
+                className="min-h-7 rounded-sm border border-border bg-muted/50 px-2.5 py-1 text-[12px] text-foreground shadow-sm hover:bg-muted"
                 aria-expanded={toolbarMenu === "edit"}
                 aria-haspopup="true"
                 onClick={() =>
@@ -3130,7 +3139,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
             <div className="relative">
               <button
                 type="button"
-                className="min-h-7 rounded-sm border border-input bg-background px-2.5 py-1 text-[12px] text-foreground hover:bg-muted/50"
+                className="min-h-7 rounded-sm border border-border bg-muted/50 px-2.5 py-1 text-[12px] text-foreground shadow-sm hover:bg-muted"
                 aria-expanded={toolbarMenu === "build"}
                 aria-haspopup="true"
                 onClick={() =>
@@ -3162,7 +3171,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                     role="menuitem"
                     disabled={!pluginFolder || busy}
                     title="Remove external registration only (sources/ plugins are unchanged)"
-                    className="w-full text-left px-3 py-2 text-sm text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+                    className="w-full text-left px-3 py-2 text-sm text-amber-800 hover:bg-amber-500/15 dark:text-amber-200 dark:hover:bg-amber-500/20 disabled:opacity-50"
                     onClick={() => {
                       setToolbarMenu(null);
                       void removeExternalRegistration();

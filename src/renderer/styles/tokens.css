@@ -71,63 +71,67 @@
 }
 
 .dark {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
-  --card: 222.2 84% 4.9%;
-  --card-foreground: 210 40% 98%;
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 234 86% 70%;
-  --primary-foreground: 222.2 47.4% 11.2%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
+  /*
+   * VS Code Dark+ / Monaco-aligned neutrals (editor ~#1E1E1E, sidebar ~#252526).
+   * Replaces the old saturated blue-black (222.2 84% 4.9%) for a softer grey chrome.
+   */
+  --background: 0 0% 11.8%;
+  --foreground: 0 0% 93%;
+  --card: 0 0% 11.8%;
+  --card-foreground: 0 0% 93%;
+  --popover: 0 0% 16%;
+  --popover-foreground: 0 0% 93%;
+  --primary: 207 90% 54%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 17%;
+  --secondary-foreground: 0 0% 93%;
+  --muted: 0 0% 16%;
+  --muted-foreground: 0 0% 55%;
+  --accent: 0 0% 18%;
+  --accent-foreground: 0 0% 93%;
   --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 234 86% 70%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 20%;
+  --input: 0 0% 20%;
+  --ring: 207 90% 54%;
 
-  --sidebar-background: 222.2 84% 4.9%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-primary: 234 86% 70%;
-  --sidebar-primary-foreground: 222.2 47.4% 11.2%;
-  --sidebar-accent: 217.2 32.6% 17.5%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-border: 217.2 32.6% 17.5%;
-  --sidebar-ring: 212.7 26.8% 83.9%;
+  --sidebar-background: 0 0% 15%;
+  --sidebar-foreground: 0 0% 89%;
+  --sidebar-primary: 207 90% 54%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 0 0% 19%;
+  --sidebar-accent-foreground: 0 0% 93%;
+  --sidebar-border: 0 0% 18%;
+  --sidebar-ring: 207 90% 54%;
 
-  --editor-background: 222.2 84% 4.9%;
-  --editor-foreground: 210 40% 98%;
-  --editor-muted-foreground: 215 20.2% 65.1%;
-  --editor-border: 217.2 32.6% 17.5%;
-  --editor-line-highlight: 217.2 32.6% 17.5%;
-  --editor-selection: 217.2 91.2% 59.8%;
-  --editor-selection-foreground: 222.2 47.4% 11.2%;
-  --code-background: 217.2 32.6% 17.5%;
-  --code-foreground: 210 40% 98%;
+  --editor-background: 0 0% 11.8%;
+  --editor-foreground: 0 0% 93%;
+  --editor-muted-foreground: 0 0% 55%;
+  --editor-border: 0 0% 20%;
+  --editor-line-highlight: 0 0% 15%;
+  --editor-selection: 207 60% 48%;
+  --editor-selection-foreground: 0 0% 100%;
+  --code-background: 0 0% 16%;
+  --code-foreground: 0 0% 93%;
 
-  --resize-handle: 217.2 18% 28%;
-  --resize-handle-hover: 217.2 14% 42%;
-  --resize-handle-active: 217.2 14% 55%;
+  --resize-handle: 0 0% 24%;
+  --resize-handle-hover: 0 0% 32%;
+  --resize-handle-active: 0 0% 40%;
 
-  --titlebar-background: 222.2 84% 4.9%;
-  --titlebar-foreground: 210 40% 98%;
+  --titlebar-background: 0 0% 14%;
+  --titlebar-foreground: 0 0% 89%;
 
-  --scrollbar-thumb: 215 20.2% 45%;
-  --scrollbar-track: 217.2 32.6% 12%;
+  --scrollbar-thumb: 0 0% 36%;
+  --scrollbar-track: 0 0% 13%;
 
-  --badge-markdown-bg: 224.3 76% 20%;
-  --badge-markdown-fg: 213.3 97% 87%;
-  --badge-text-bg: 142 40% 18%;
-  --badge-text-fg: 142 70% 75%;
-  --badge-code-bg: 271 50% 22%;
-  --badge-code-fg: 270 95% 90%;
-  --badge-default-bg: 217.2 32.6% 17.5%;
-  --badge-default-fg: 210 40% 98%;
+  --badge-markdown-bg: 224 45% 22%;
+  --badge-markdown-fg: 213 70% 88%;
+  --badge-text-bg: 142 35% 20%;
+  --badge-text-fg: 142 55% 78%;
+  --badge-code-bg: 271 40% 24%;
+  --badge-code-fg: 270 80% 88%;
+  --badge-default-bg: 0 0% 18%;
+  --badge-default-fg: 0 0% 93%;
 }
 
 @media (prefers-reduced-motion: reduce) {
