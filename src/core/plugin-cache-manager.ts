@@ -132,6 +132,58 @@ export class PluginCacheManager {
     });
   }
 
+  /**
+   * Run `npm install` in an arbitrary directory (plugin workspace).
+   */
+  runNpmInstallInDir(
+    cwd: string,
+    onLog?: (line: string) => void,
+  ): Promise<{ ok: boolean; error?: string }> {
+    fs.mkdirSync(cwd, { recursive: true });
+    const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+    const args = [
+      "install",
+      "--ignore-scripts",
+      "--no-fund",
+      "--no-audit",
+      "--loglevel",
+      "warn",
+    ];
+
+    return new Promise((resolve) => {
+      const child = spawn(npmCmd, args, {
+        cwd,
+        env: process.env,
+        shell: process.platform === "win32",
+      });
+
+      const drain = (chunk: Buffer, isErr: boolean) => {
+        const text = chunk.toString();
+        for (const line of text.split(/\r?\n/)) {
+          if (line.trim()) {
+            onLog?.(isErr ? `[stderr] ${line}` : line);
+          }
+        }
+      };
+
+      child.stdout?.on("data", (c: Buffer) => drain(c, false));
+      child.stderr?.on("data", (c: Buffer) => drain(c, true));
+      child.on("error", (err) => {
+        resolve({ ok: false, error: err.message });
+      });
+      child.on("close", (code) => {
+        if (code === 0) {
+          resolve({ ok: true });
+        } else {
+          resolve({
+            ok: false,
+            error: `npm install exited with code ${code}`,
+          });
+        }
+      });
+    });
+  }
+
   directorySizeBytes(dir: string): number {
     if (!fs.existsSync(dir)) {
       return 0;

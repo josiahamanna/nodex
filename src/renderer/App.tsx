@@ -30,7 +30,10 @@ import PrimarySidebarShell, {
   type PrimaryTab,
 } from "./components/shell/PrimarySidebarShell";
 import EditorTabSidebar from "./components/shell/EditorTabSidebar";
-import PluginsSidebarList from "./components/shell/PluginsSidebarList";
+import PluginsSidebarList, {
+  type PluginsSidebarSelection,
+} from "./components/shell/PluginsSidebarList";
+import PluginPanelGeneral from "./components/PluginPanelGeneral";
 import { MainDebugDockProvider } from "./debug/MainDebugDockContext";
 import type {
   CreateNoteRelation,
@@ -73,9 +76,9 @@ const App: React.FC = () => {
   );
   const [settingsCategory, setSettingsCategory] =
     useState<SettingsCategory>("appearance");
-  const [pluginsSelectedId, setPluginsSelectedId] = useState<string | null>(
-    null,
-  );
+  const [pluginsShell, setPluginsShell] = useState<PluginsSidebarSelection>({
+    kind: "general",
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     readShellSidebarCollapsed,
   );
@@ -322,8 +325,9 @@ const App: React.FC = () => {
     }
     return (
       <PluginsSidebarList
-        selectedId={pluginsSelectedId}
-        onSelect={setPluginsSelectedId}
+        selection={pluginsShell}
+        onSelectGeneral={() => setPluginsShell({ kind: "general" })}
+        onSelectPlugin={(id) => setPluginsShell({ kind: "plugin", id })}
       />
     );
   };
@@ -366,10 +370,15 @@ const App: React.FC = () => {
     if (primaryTab === "settings") {
       return <SettingsView category={settingsCategory} />;
     }
+    if (pluginsShell.kind === "general") {
+      return (
+        <PluginPanelGeneral onPluginsChanged={handlePluginsChanged} />
+      );
+    }
     return (
       <PluginManager
         onPluginsChanged={handlePluginsChanged}
-        selectedPluginId={pluginsSelectedId}
+        selectedPluginId={pluginsShell.id}
       />
     );
   };

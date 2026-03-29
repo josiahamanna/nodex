@@ -5,8 +5,11 @@ import {
   dispatchIdeShellExpandFolder,
   dispatchIdeShellOpenFile,
   dispatchIdeShellPlugin,
+  dispatchIdeShellTreeFsOp,
+  dispatchIdeShellTreeSelection,
   IDE_SHELL_STATE_EVENT,
   type IdeShellAction,
+  type IdeShellActionPayload,
   type IdeShellStateDetail,
 } from "../../plugin-ide/ideShellBridge";
 
@@ -65,22 +68,56 @@ function buildFileTree(paths: string[]): FileTreeNode[] {
   return toArr(root);
 }
 
+/** Depth-first paths matching on-screen tree order (dirs then nested). */
+function collectTreePaths(nodes: FileTreeNode[], parentRel: string): string[] {
+  const out: string[] = [];
+  for (const n of nodes) {
+    const dirRel = parentRel ? `${parentRel}/${n.name}` : n.name;
+    const isDir = n.children.length > 0 || n.path === null;
+    if (isDir && n.children.length > 0) {
+      out.push(dirRel);
+      out.push(...collectTreePaths(n.children, dirRel));
+    } else if (!isDir && n.path) {
+      out.push(n.path);
+    }
+  }
+  return out;
+}
+
+const TREE_DND_MIME = "application/x-nodex-tree-dnd";
+
+type DndPayload = {
+  fromPlugin: string;
+  fromRel: string;
+  fromIsDir: boolean;
+};
+
 const menuBtn =
   "min-h-7 rounded-sm border border-input bg-background px-2 py-1 text-[11px] text-foreground hover:bg-muted/50";
-/** Fixed portal menu — must not use absolute under sidebar (center panel stacks on top). Block + no width shrinks to viewport; use explicit width so all menus match. */
 const menuPortalPanel =
   "fixed z-[1000] w-[min(18rem,calc(100vw-12px))] rounded-md border border-border bg-background py-1 shadow-lg";
 const menuItem =
   "block w-full px-3 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50";
 
-function fireAction(type: IdeShellAction): void {
-  dispatchIdeShellAction(type);
+function fireAction(
+  type: IdeShellAction,
+  payload?: IdeShellActionPayload,
+): void {
+  dispatchIdeShellAction(type, payload);
 }
 
-/** Align tree with plugin row: pl-6 + w-6 chevron + gap ≈ start of folder label. */
-const PLUGIN_TREE_ROOT_OFFSET_CLASS = "ml-[30px] border-l border-sidebar-border/50 pl-2";
+const PLUGIN_TREE_ROOT_OFFSET_CLASS =
+  "ml-[30px] border-l border-sidebar-border/50 pl-2";
 const TREE_DEPTH_PAD_BASE = 4;
 const TREE_DEPTH_STEP_PX = 14;
+
+type TreeCtxMenu = {
+  top: number;
+  left: number;
+  workspace: string;
+  path: string;
+  isDir: boolean;
+};
 
 const EditorTabSidebar: React.FC = () => {
   const [state, setState] = useState<IdeShellStateDetail>({
@@ -88,6 +125,8 @@ const EditorTabSidebar: React.FC = () => {
     folders: [],
     fileList: [],
     activePath: null,
+    treeSelectionWorkspace: "",
+    treeSelectedPaths: [],
     busy: false,
     dirtyTabCount: 0,
     hasActiveTab: false,
@@ -102,16 +141,25 @@ const EditorTabSidebar: React.FC = () => {
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
     null,
   );
+  const [ctxMenu, setCtxMenu] = useState<TreeCtxMenu | null>(null);
   const fileBtnRef = useRef<HTMLButtonElement | null>(null);
   const editBtnRef = useRef<HTMLButtonElement | null>(null);
   const buildBtnRef = useRef<HTMLButtonElement | null>(null);
   const menuPortalRef = useRef<HTMLDivElement | null>(null);
+  const ctxPortalRef = useRef<HTMLDivElement | null>(null);
+  const lastTreeClickRef = useRef<{ workspace: string; path: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     const onState = (e: Event) => {
       const d = (e as CustomEvent<IdeShellStateDetail>).detail;
       if (d && typeof d === "object") {
-        setState(d);
+        setState({
+          ...d,
+          treeSelectedPaths: d.treeSelectedPaths ?? [],
+          treeSelectionWorkspace: d.treeSelectionWorkspace ?? "",
+        });
       }
     };
     window.addEventListener(IDE_SHELL_STATE_EVENT, onState);
@@ -169,6 +217,30 @@ const EditorTabSidebar: React.FC = () => {
   }, [menu]);
 
   useEffect(() => {
+    if (!ctxMenu) {
+      return;
+    }
+    const onDown = (ev: MouseEvent) => {
+      const t = ev.target as Node;
+      if (ctxPortalRef.current?.contains(t)) {
+        return;
+      }
+      setCtxMenu(null);
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        setCtxMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ctxMenu]);
+
+  useEffect(() => {
     if (!menu) {
       return;
     }
@@ -195,6 +267,19 @@ const EditorTabSidebar: React.FC = () => {
   const hasOpen = state.hasActiveTab;
   const dirty = state.dirtyTabCount;
 
+  const canPathOp =
+    !!pf &&
+    !busy &&
+    (!!state.activePath ||
+      (state.treeSelectionWorkspace === pf &&
+        state.treeSelectedPaths.length > 0));
+
+  const singleTreeTarget =
+    state.treeSelectionWorkspace === pf && state.treeSelectedPaths.length === 1
+      ? state.treeSelectedPaths[0]
+      : null;
+  const canRename = !!pf && !busy && (!!singleTreeTarget || !!state.activePath);
+
   const toggleFolderExpanded = (folderName: string): void => {
     setExpandedFolders((prev) => {
       const nextOpen = !prev[folderName];
@@ -208,25 +293,166 @@ const EditorTabSidebar: React.FC = () => {
     });
   };
 
+  const handleTreeClick = (
+    ev: React.MouseEvent,
+    workspace: string,
+    relPath: string,
+    isDir: boolean,
+    orderedPaths: string[],
+  ): void => {
+    const mod = ev.metaKey || ev.ctrlKey;
+    if (ev.shiftKey && lastTreeClickRef.current?.workspace === workspace) {
+      const anchor = lastTreeClickRef.current.path;
+      const ia = orderedPaths.indexOf(anchor);
+      const ib = orderedPaths.indexOf(relPath);
+      if (ia >= 0 && ib >= 0) {
+        const lo = Math.min(ia, ib);
+        const hi = Math.max(ia, ib);
+        const range = orderedPaths.slice(lo, hi + 1);
+        dispatchIdeShellTreeSelection({ workspace, paths: range });
+        lastTreeClickRef.current = { workspace, path: relPath };
+        if (!isDir) {
+          dispatchIdeShellOpenFile(relPath, workspace);
+        } else {
+          dispatchIdeShellPlugin(workspace);
+        }
+        return;
+      }
+    }
+    if (mod && state.treeSelectionWorkspace === workspace) {
+      const set = new Set(state.treeSelectedPaths);
+      if (set.has(relPath)) {
+        set.delete(relPath);
+      } else {
+        set.add(relPath);
+      }
+      const next = [...set];
+      dispatchIdeShellTreeSelection({ workspace, paths: next });
+      lastTreeClickRef.current = { workspace, path: relPath };
+      if (!isDir) {
+        dispatchIdeShellOpenFile(relPath, workspace);
+      } else {
+        dispatchIdeShellPlugin(workspace);
+      }
+      return;
+    }
+    dispatchIdeShellTreeSelection({ workspace, paths: [relPath] });
+    lastTreeClickRef.current = { workspace, path: relPath };
+    if (!isDir) {
+      dispatchIdeShellOpenFile(relPath, workspace);
+    } else {
+      dispatchIdeShellPlugin(workspace);
+    }
+  };
+
+  const parseDnd = (ev: React.DragEvent): DndPayload | null => {
+    const raw = ev.dataTransfer.getData(TREE_DND_MIME);
+    if (!raw) {
+      return null;
+    }
+    try {
+      const p = JSON.parse(raw) as DndPayload;
+      if (
+        p &&
+        typeof p.fromPlugin === "string" &&
+        typeof p.fromRel === "string" &&
+        typeof p.fromIsDir === "boolean"
+      ) {
+        return p;
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  };
+
   const renderTreeNodes = (
     nodes: FileTreeNode[],
     depth: number,
     treePluginFolder: string,
+    parentRel: string,
+    orderedPaths: string[],
   ): React.ReactNode =>
     nodes.map((n) => {
       const isDir = n.children.length > 0 || n.path === null;
       const pad = TREE_DEPTH_PAD_BASE + depth * TREE_DEPTH_STEP_PX;
+      const dirRel = parentRel ? `${parentRel}/${n.name}` : n.name;
+      const selected =
+        state.treeSelectionWorkspace === treePluginFolder &&
+        state.treeSelectedPaths.includes(isDir && n.children.length > 0 ? dirRel : (n.path ?? ""));
       if (isDir && n.children.length > 0) {
+        const rowSelected = selected;
         return (
-          <li key={`${depth}-${n.name}`} className="list-none">
+          <li key={`${depth}-${dirRel}`} className="list-none">
             <div
-              className="truncate py-[3px] font-mono text-[12px] text-muted-foreground"
+              draggable
+              className={`flex cursor-grab truncate py-[3px] font-mono text-[12px] active:cursor-grabbing ${
+                rowSelected
+                  ? "border-l-2 border-primary bg-muted/50 text-foreground"
+                  : "border-l-2 border-transparent text-muted-foreground"
+              }`}
               style={{ paddingLeft: pad }}
+              onDragStart={(ev) => {
+                ev.dataTransfer.setData(
+                  TREE_DND_MIME,
+                  JSON.stringify({
+                    fromPlugin: treePluginFolder,
+                    fromRel: dirRel,
+                    fromIsDir: true,
+                  } satisfies DndPayload),
+                );
+                ev.dataTransfer.effectAllowed = "copyMove";
+              }}
+              onDragOver={(ev) => {
+                ev.preventDefault();
+                ev.dataTransfer.dropEffect = ev.shiftKey ? "copy" : "move";
+              }}
+              onDrop={(ev) => {
+                ev.preventDefault();
+                const p = parseDnd(ev);
+                if (!p) {
+                  return;
+                }
+                if (
+                  p.fromPlugin === treePluginFolder &&
+                  (p.fromRel === dirRel || dirRel.startsWith(p.fromRel + "/"))
+                ) {
+                  return;
+                }
+                dispatchIdeShellTreeFsOp({
+                  kind: ev.shiftKey ? "dndCopy" : "dndMove",
+                  fromPlugin: p.fromPlugin,
+                  fromRel: p.fromRel,
+                  fromIsDir: p.fromIsDir,
+                  toPlugin: treePluginFolder,
+                  toDirRel: dirRel,
+                });
+              }}
+              onContextMenu={(ev) => {
+                ev.preventDefault();
+                setCtxMenu({
+                  top: ev.clientY,
+                  left: ev.clientX,
+                  workspace: treePluginFolder,
+                  path: dirRel,
+                  isDir: true,
+                });
+              }}
+              onClick={(ev) =>
+                handleTreeClick(ev, treePluginFolder, dirRel, true, orderedPaths)
+              }
+              title={dirRel}
             >
               {n.name}
             </div>
             <ul className="m-0 p-0">
-              {renderTreeNodes(n.children, depth + 1, treePluginFolder)}
+              {renderTreeNodes(
+                n.children,
+                depth + 1,
+                treePluginFolder,
+                dirRel,
+                orderedPaths,
+              )}
             </ul>
           </li>
         );
@@ -234,19 +460,72 @@ const EditorTabSidebar: React.FC = () => {
       const rel = n.path ?? "";
       const active =
         state.activePath === rel && state.pluginFolder === treePluginFolder;
+      const rowSel =
+        state.treeSelectionWorkspace === treePluginFolder &&
+        state.treeSelectedPaths.includes(rel);
       return (
         <li key={rel || `${depth}-${n.name}`} className="list-none">
           <button
             type="button"
+            draggable
             style={{ paddingLeft: pad }}
-            className={`w-full truncate border-l-2 py-[4px] pr-2 text-left font-mono text-[12px] leading-snug transition-colors hover:bg-muted/50 ${
-              active
+            className={`w-full cursor-grab truncate border-l-2 py-[4px] pr-2 text-left font-mono text-[12px] leading-snug transition-colors hover:bg-muted/50 active:cursor-grabbing ${
+              active || rowSel
                 ? "border-primary bg-muted/50 font-medium text-foreground"
                 : "border-transparent text-foreground"
             }`}
             title={rel}
-            onClick={() =>
-              dispatchIdeShellOpenFile(rel, treePluginFolder)
+            onDragStart={(ev) => {
+              ev.dataTransfer.setData(
+                TREE_DND_MIME,
+                JSON.stringify({
+                  fromPlugin: treePluginFolder,
+                  fromRel: rel,
+                  fromIsDir: false,
+                } satisfies DndPayload),
+              );
+              ev.dataTransfer.effectAllowed = "copyMove";
+            }}
+            onDragOver={(ev) => {
+              ev.preventDefault();
+              ev.dataTransfer.dropEffect = ev.shiftKey ? "copy" : "move";
+            }}
+            onDrop={(ev) => {
+              ev.preventDefault();
+              const p = parseDnd(ev);
+              if (!p) {
+                return;
+              }
+              const parentDir = rel.includes("/")
+                ? rel.slice(0, rel.lastIndexOf("/"))
+                : "";
+              if (
+                p.fromPlugin === treePluginFolder &&
+                (p.fromRel === rel || rel.startsWith(p.fromRel + "/"))
+              ) {
+                return;
+              }
+              dispatchIdeShellTreeFsOp({
+                kind: ev.shiftKey ? "dndCopy" : "dndMove",
+                fromPlugin: p.fromPlugin,
+                fromRel: p.fromRel,
+                fromIsDir: p.fromIsDir,
+                toPlugin: treePluginFolder,
+                toDirRel: parentDir,
+              });
+            }}
+            onContextMenu={(ev) => {
+              ev.preventDefault();
+              setCtxMenu({
+                top: ev.clientY,
+                left: ev.clientX,
+                workspace: treePluginFolder,
+                path: rel,
+                isDir: false,
+              });
+            }}
+            onClick={(ev) =>
+              handleTreeClick(ev, treePluginFolder, rel, false, orderedPaths)
             }
           >
             {n.name}
@@ -344,7 +623,7 @@ const EditorTabSidebar: React.FC = () => {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={!pf || !state.activePath || busy}
+                  disabled={!canPathOp}
                   className={`${menuItem} text-red-800 hover:bg-red-50`}
                   onClick={() => {
                     setMenu(null);
@@ -356,7 +635,7 @@ const EditorTabSidebar: React.FC = () => {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={!pf || !state.activePath || busy}
+                  disabled={!canRename}
                   className={menuItem}
                   onClick={() => {
                     setMenu(null);
@@ -368,7 +647,7 @@ const EditorTabSidebar: React.FC = () => {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={!pf || !state.activePath || busy}
+                  disabled={!canPathOp}
                   className={menuItem}
                   onClick={() => {
                     setMenu(null);
@@ -376,6 +655,18 @@ const EditorTabSidebar: React.FC = () => {
                   }}
                 >
                   Copy
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!canPathOp}
+                  className={menuItem}
+                  onClick={() => {
+                    setMenu(null);
+                    fireAction("cut");
+                  }}
+                >
+                  Cut
                 </button>
                 <button
                   type="button"
@@ -544,6 +835,93 @@ const EditorTabSidebar: React.FC = () => {
         )
       : null;
 
+  const ctxPortal =
+    ctxMenu &&
+    createPortal(
+      <div
+        ref={ctxPortalRef}
+        role="menu"
+        className={menuPortalPanel}
+        style={{ top: ctxMenu.top, left: ctxMenu.left }}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          className={menuItem}
+          disabled={busy}
+          onClick={() => {
+            fireAction("copy", {
+              targetPaths: [ctxMenu.path],
+              targetWorkspace: ctxMenu.workspace,
+            });
+            setCtxMenu(null);
+          }}
+        >
+          Copy
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className={menuItem}
+          disabled={busy}
+          onClick={() => {
+            fireAction("cut", {
+              targetPaths: [ctxMenu.path],
+              targetWorkspace: ctxMenu.workspace,
+            });
+            setCtxMenu(null);
+          }}
+        >
+          Cut
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className={menuItem}
+          disabled={busy}
+          onClick={() => {
+            fireAction("rename", {
+              targetPaths: [ctxMenu.path],
+              targetWorkspace: ctxMenu.workspace,
+            });
+            setCtxMenu(null);
+          }}
+        >
+          Rename
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className={`${menuItem} text-red-800 hover:bg-red-50`}
+          disabled={busy}
+          onClick={() => {
+            fireAction("delete", {
+              targetPaths: [ctxMenu.path],
+              targetWorkspace: ctxMenu.workspace,
+            });
+            setCtxMenu(null);
+          }}
+        >
+          Delete
+        </button>
+        {ctxMenu.isDir ? (
+          <button
+            type="button"
+            role="menuitem"
+            className={menuItem}
+            disabled={busy}
+            onClick={() => {
+              fireAction("paste", { pasteIntoDir: ctxMenu.path });
+              setCtxMenu(null);
+            }}
+          >
+            Paste into folder
+          </button>
+        ) : null}
+      </div>,
+      document.body,
+    );
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="shrink-0 border-sidebar-border border-b px-1 py-1.5">
@@ -596,6 +974,8 @@ const EditorTabSidebar: React.FC = () => {
             {state.folders.map((folder) => {
               const open = !!expandedFolders[folder.name];
               const activeWs = folder.name === pf;
+              const tree = buildFileTree(folder.fileList ?? []);
+              const orderedPaths = collectTreePaths(tree, "");
               return (
                 <li key={folder.name} className="list-none">
                   <div
@@ -642,12 +1022,27 @@ const EditorTabSidebar: React.FC = () => {
                   {open && folder.fileList != null ? (
                     <ul
                       className={`m-0 list-none py-0.5 ${PLUGIN_TREE_ROOT_OFFSET_CLASS}`}
+                      onDragOver={(ev) => {
+                        ev.preventDefault();
+                        ev.dataTransfer.dropEffect = ev.shiftKey ? "copy" : "move";
+                      }}
+                      onDrop={(ev) => {
+                        ev.preventDefault();
+                        const p = parseDnd(ev);
+                        if (!p) {
+                          return;
+                        }
+                        dispatchIdeShellTreeFsOp({
+                          kind: ev.shiftKey ? "dndCopy" : "dndMove",
+                          fromPlugin: p.fromPlugin,
+                          fromRel: p.fromRel,
+                          fromIsDir: p.fromIsDir,
+                          toPlugin: folder.name,
+                          toDirRel: "",
+                        });
+                      }}
                     >
-                      {renderTreeNodes(
-                        buildFileTree(folder.fileList),
-                        0,
-                        folder.name,
-                      )}
+                      {renderTreeNodes(tree, 0, folder.name, "", orderedPaths)}
                     </ul>
                   ) : null}
                 </li>
@@ -657,6 +1052,7 @@ const EditorTabSidebar: React.FC = () => {
         )}
       </div>
       {menuPortal}
+      {ctxPortal}
     </div>
   );
 };

@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import Editor, { type BeforeMount, type OnMount } from "@monaco-editor/react";
 import {
   editor as monacoEditor,
@@ -30,9 +31,13 @@ import {
   IDE_SHELL_OPEN_FILE_EVENT,
   IDE_SHELL_PLUGIN_EVENT,
   IDE_SHELL_STATE_EVENT,
+  IDE_SHELL_TREE_FS_OP_EVENT,
+  IDE_SHELL_TREE_SELECTION_EVENT,
   type IdeShellAction,
+  type IdeShellActionPayload,
   type IdeShellOpenFileDetail,
   type IdeShellStateDetail,
+  type IdeShellTreeFsOpDetail,
 } from "../plugin-ide/ideShellBridge";
 
 const PLUGIN_IDE_FILES_COLLAPSED_KEY = "plugin-ide-files-collapsed";
@@ -45,11 +50,14 @@ const PLUGIN_IDE_TOOLBAR_MENU_PANEL =
 const PLUGIN_IDE_SNAPSHOT_KEY = "plugin-ide-workspace-snapshot-v1";
 const PLUGIN_IDE_MAX_SNAPSHOT_FILE_BYTES = 500 * 1024;
 const NPM_DEBOUNCE_MS = 280;
+const PLUGIN_IDE_CUSTOM_EDITOR_KEY = "plugin-ide-custom-editor-cmd";
 
 interface OpenTab {
   relativePath: string;
   content: string;
   savedContent: string;
+  /** Disk mtime when buffer last matched disk (open/save); null until known. */
+  diskMtimeMs: number | null;
 }
 
 interface StoredWorkspaceSnapshot {
@@ -128,6 +136,25 @@ function siblingCopyRelativePath(rel: string, isDir: boolean): string {
   return dir ? `${dir}/${next}` : next;
 }
 
+function basenameRel(rel: string): string {
+  const norm = rel.replace(/\\/g, "/").replace(/\/+$/, "");
+  const i = norm.lastIndexOf("/");
+  return i >= 0 ? norm.slice(i + 1) : norm;
+}
+
+/** First paste attempt: sibling duplicate, or `pasteIntoDir/baseName`. */
+function initialPasteDestRel(
+  sourceRel: string,
+  isDir: boolean,
+  pasteIntoDir?: string,
+): string {
+  const trimmed = pasteIntoDir?.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (trimmed) {
+    return `${trimmed}/${basenameRel(sourceRel)}`;
+  }
+  return siblingCopyRelativePath(sourceRel, isDir);
+}
+
 interface InstalledPkg {
   name: string;
   range: string;
@@ -201,6 +228,8 @@ const monacoBeforeMount: BeforeMount = () => {
 
 function sampleNoteForType(type: string): Note {
   const contentByType: Record<string, string> = {
+    root:
+      "# Documentation preview\n\n**Root** notes use the same Markdown UI as `markdown` notes.",
     markdown:
       "# Preview\n\nEdit the plugin and **Bundle & reload** to refresh.\n\n- Item one\n- Item two",
     text: "<p><strong>Rich text</strong> preview for this note type.</p>",
@@ -288,6 +317,28 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   const [formatOnSave, setFormatOnSave] = useState(
     () => localStorage.getItem(PLUGIN_IDE_FORMAT_ON_SAVE_KEY) === "1",
   );
+  const [diskConflictPath, setDiskConflictPath] = useState<string | null>(
+    null,
+  );
+  const diskConflictPathRef = useRef<string | null>(null);
+  diskConflictPathRef.current = diskConflictPath;
+  const [treeSelectedPaths, setTreeSelectedPaths] = useState<string[]>([]);
+  const [treeSelectionWorkspace, setTreeSelectionWorkspace] = useState("");
+  const [previewExpanded, setPreviewExpanded] = useState(false);
+  const [canScaffold, setCanScaffold] = useState(false);
+
+  useEffect(() => {
+    if (!previewExpanded) {
+      return;
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setPreviewExpanded(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewExpanded]);
   const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
   const pluginFolderRef = useRef("");
   const pendingShellOpenRef = useRef<string | null>(null);
@@ -300,9 +351,11 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   const reloadAfterSaveTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
-  const pathClipboardRef = useRef<{ rel: string; isDir: boolean } | null>(
-    null,
-  );
+  const pathClipboardRef = useRef<{
+    sourcePluginFolder: string;
+    entries: { rel: string; isDir: boolean }[];
+    mode: "copy" | "cut";
+  } | null>(null);
   const ideTypingsLoadedRef = useRef(false);
   const pluginDepTypingsDisposablesRef = useRef<{ dispose: () => void }[]>(
     [],
@@ -405,6 +458,39 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     }
   }, [pluginFolder]);
 
+  const checkDiskConflicts = useCallback(async () => {
+    const pf = pluginFolderRef.current;
+    if (!pf || diskConflictPathRef.current) {
+      return;
+    }
+    for (const t of tabsRef.current) {
+      if (t.content === t.savedContent) {
+        continue;
+      }
+      if (t.diskMtimeMs == null) {
+        continue;
+      }
+      try {
+        const meta = await window.Nodex.getPluginSourceFileMeta(
+          pf,
+          t.relativePath,
+        );
+        if (!meta) {
+          continue;
+        }
+        if (meta.mtimeMs > t.diskMtimeMs) {
+          setDiskConflictPath(t.relativePath);
+          setStatus(
+            `File changed on disk: ${t.relativePath} (unsaved edits in editor).`,
+          );
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
+
   const refreshWorkspaceFolders = useCallback(async () => {
     const list = await window.Nodex.listPluginWorkspaceFolders();
     setFolders(list);
@@ -444,13 +530,40 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   useEffect(() => {
     const off = window.Nodex.onIdeWorkspaceFsChanged(() => {
       void refreshFileList();
+      void checkDiskConflicts();
     });
     return off;
-  }, [refreshFileList]);
+  }, [refreshFileList, checkDiskConflicts]);
 
   useEffect(() => {
     void refreshFileList();
   }, [refreshFileList]);
+
+  useEffect(() => {
+    if (!pluginFolder) {
+      setCanScaffold(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const k = await window.Nodex.getPluginSourceEntryKind(
+          pluginFolder,
+          "manifest.json",
+        );
+        if (!cancelled) {
+          setCanScaffold(k === "missing");
+        }
+      } catch {
+        if (!cancelled) {
+          setCanScaffold(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pluginFolder, fileList]);
 
   useEffect(() => {
     const id = pluginFolder;
@@ -462,6 +575,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   }, [pluginFolder, flushWorkspaceSnapshot]);
 
   useEffect(() => {
+    setDiskConflictPath(null);
+    setTreeSelectedPaths([]);
+    setTreeSelectionWorkspace("");
     if (!pluginFolder) {
       setTabs([]);
       setActivePath(null);
@@ -476,15 +592,45 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       cursorByPathRef.current = {};
       prevActivePathForCursorRef.current = null;
     } else {
-      setTabs(snap.tabs);
+      const normalized: OpenTab[] = snap.tabs.map((t) => ({
+        relativePath: t.relativePath,
+        content: t.content,
+        savedContent: t.savedContent,
+        diskMtimeMs:
+          typeof (t as OpenTab).diskMtimeMs === "number"
+            ? (t as OpenTab).diskMtimeMs
+            : null,
+      }));
+      setTabs(normalized);
       const ap =
         snap.activePath &&
-        snap.tabs.some((t) => t.relativePath === snap.activePath)
+        normalized.some((t) => t.relativePath === snap.activePath)
           ? snap.activePath
-          : (snap.tabs[0]?.relativePath ?? null);
+          : (normalized[0]?.relativePath ?? null);
       setActivePath(ap);
       cursorByPathRef.current = { ...snap.cursors };
       prevActivePathForCursorRef.current = ap;
+      const pf = pluginFolder;
+      void (async () => {
+        const metas = await Promise.all(
+          normalized.map(async (t) => {
+            const m = await window.Nodex.getPluginSourceFileMeta(
+              pf,
+              t.relativePath,
+            );
+            return { rel: t.relativePath, mtime: m?.mtimeMs ?? null };
+          }),
+        );
+        setTabs((prev) =>
+          prev.map((t) => {
+            if (t.diskMtimeMs != null) {
+              return t;
+            }
+            const row = metas.find((x) => x.rel === t.relativePath);
+            return row ? { ...t, diskMtimeMs: row.mtime } : t;
+          }),
+        );
+      })();
     }
   }, [pluginFolder]);
 
@@ -706,9 +852,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
         pluginFolder,
         relativePath,
       );
+      const meta = await window.Nodex.getPluginSourceFileMeta(
+        pluginFolder,
+        relativePath,
+      );
       setTabs((prev) => [
         ...prev,
-        { relativePath, content, savedContent: content },
+        {
+          relativePath,
+          content,
+          savedContent: content,
+          diskMtimeMs: meta?.mtimeMs ?? null,
+        },
       ]);
       setActivePath(relativePath);
       setStatus(null);
@@ -839,10 +994,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       setStatus(res.error ?? "Save failed");
       return false;
     }
+    const afterMeta = await window.Nodex.getPluginSourceFileMeta(
+      pluginFolder,
+      activeTab.relativePath,
+    );
     setTabs((prev) =>
       prev.map((t) =>
         t.relativePath === activeTab.relativePath
-          ? { ...t, savedContent: t.content }
+          ? {
+              ...t,
+              savedContent: t.content,
+              diskMtimeMs: afterMeta?.mtimeMs ?? t.diskMtimeMs,
+            }
           : t,
       ),
     );
@@ -895,10 +1058,26 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           return false;
         }
       }
+      const mtimeByRel: Record<string, number | null> = {};
+      for (const t of dirty) {
+        const m = await window.Nodex.getPluginSourceFileMeta(
+          pluginFolder,
+          t.relativePath,
+        );
+        mtimeByRel[t.relativePath] = m?.mtimeMs ?? null;
+      }
       setTabs((prev) =>
-        prev.map((t) =>
-          t.content !== t.savedContent ? { ...t, savedContent: t.content } : t,
-        ),
+        prev.map((t) => {
+          if (!(t.relativePath in mtimeByRel)) {
+            return t;
+          }
+          return {
+            ...t,
+            savedContent: t.content,
+            diskMtimeMs:
+              mtimeByRel[t.relativePath] ?? t.diskMtimeMs,
+          };
+        }),
       );
       setStatus(`Saved ${dirty.length} file(s).`);
       if (tscOnSave) {
@@ -931,6 +1110,58 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     if (activePath === rel) {
       setActivePath(next[0]?.relativePath ?? null);
     }
+    if (diskConflictPath === rel) {
+      setDiskConflictPath(null);
+    }
+  };
+
+  const resolveDiskConflictReload = async () => {
+    const rel = diskConflictPath;
+    const pf = pluginFolder;
+    if (!rel || !pf) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const content = await window.Nodex.readPluginSourceFile(pf, rel);
+      const meta = await window.Nodex.getPluginSourceFileMeta(pf, rel);
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.relativePath === rel
+            ? {
+                ...t,
+                content,
+                savedContent: content,
+                diskMtimeMs: meta?.mtimeMs ?? null,
+              }
+            : t,
+        ),
+      );
+      setDiskConflictPath(null);
+      setStatus(`Reloaded ${rel} from disk.`);
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Reload from disk failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resolveDiskConflictKeepMine = async () => {
+    const rel = diskConflictPath;
+    const pf = pluginFolder;
+    if (!rel || !pf) {
+      return;
+    }
+    const meta = await window.Nodex.getPluginSourceFileMeta(pf, rel);
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.relativePath === rel
+          ? { ...t, diskMtimeMs: meta?.mtimeMs ?? t.diskMtimeMs }
+          : t,
+      ),
+    );
+    setDiskConflictPath(null);
+    setStatus(`Keeping editor version of ${rel}; disk baseline updated.`);
   };
 
   const bundleLocalOnly = async () => {
@@ -972,6 +1203,14 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           setBusy(false);
           return;
         }
+      }
+      const installRes = await window.Nodex.installPluginDependencies(
+        pluginFolder,
+      );
+      if (!installRes.success) {
+        setStatus(installRes.error ?? "npm install failed");
+        setBusy(false);
+        return;
       }
       const bundle = await window.Nodex.bundlePluginLocal(pluginFolder);
       if (!bundle.success) {
@@ -1150,10 +1389,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           setStatus(res.error ?? "Rename failed");
           return;
         }
+        const renamedMeta = await window.Nodex.getPluginSourceFileMeta(
+          pluginFolder,
+          toRel,
+        );
         setTabs((prev) =>
           prev.map((t) =>
             t.relativePath === pathModal.from
-              ? { ...t, relativePath: toRel }
+              ? {
+                  ...t,
+                  relativePath: toRel,
+                  diskMtimeMs: renamedMeta?.mtimeMs ?? t.diskMtimeMs,
+                }
               : t,
           ),
         );
@@ -1339,72 +1586,221 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     }
   };
 
-  const copyToInternalClipboard = async () => {
-    if (!pluginFolder || busy) {
+  const copyToInternalClipboard = async (opts?: {
+    paths?: string[];
+    sourceWorkspace?: string;
+  }) => {
+    if (busy) {
       return;
     }
-    if (!activePath) {
-      setStatus("Open a file to copy.");
+    const srcWs = opts?.sourceWorkspace ?? pluginFolder;
+    if (!srcWs) {
+      return;
+    }
+    const paths =
+      opts?.paths ??
+      (treeSelectionWorkspace === pluginFolder && treeSelectedPaths.length > 0
+        ? treeSelectedPaths
+        : activePath
+          ? [activePath]
+          : []);
+    if (paths.length === 0) {
+      setStatus("Select file(s) in the tree or open a file to copy.");
       return;
     }
     setBusy(true);
     try {
-      const kind = await window.Nodex.getPluginSourceEntryKind(
-        pluginFolder,
-        activePath,
-      );
-      if (kind === "missing") {
-        setStatus("Cannot copy: path not found.");
-        return;
+      const entries: { rel: string; isDir: boolean }[] = [];
+      for (const rel of paths) {
+        const kind = await window.Nodex.getPluginSourceEntryKind(srcWs, rel);
+        if (kind === "missing") {
+          setStatus(`Cannot copy: ${rel} not found.`);
+          return;
+        }
+        entries.push({ rel, isDir: kind === "dir" });
       }
       pathClipboardRef.current = {
-        rel: activePath,
-        isDir: kind === "dir",
+        sourcePluginFolder: srcWs,
+        entries,
+        mode: "copy",
       };
       setStatus(
-        `Copied ${activePath} (${kind === "dir" ? "folder" : "file"}) — use Paste to duplicate.`,
+        entries.length === 1
+          ? `Copied ${entries[0].rel} (${entries[0].isDir ? "folder" : "file"}) — use Paste.`
+          : `Copied ${entries.length} items — use Paste.`,
       );
     } finally {
       setBusy(false);
     }
   };
 
-  const pasteFromInternalClipboard = async () => {
-    if (!pluginFolder || busy) {
+  const cutToInternalClipboard = async (opts?: {
+    paths?: string[];
+    sourceWorkspace?: string;
+  }) => {
+    if (busy) {
       return;
     }
-    const clip = pathClipboardRef.current;
-    if (!clip) {
-      setStatus("Nothing to paste (Copy first).");
+    const srcWs = opts?.sourceWorkspace ?? pluginFolder;
+    if (!srcWs) {
+      return;
+    }
+    const paths =
+      opts?.paths ??
+      (treeSelectionWorkspace === pluginFolder && treeSelectedPaths.length > 0
+        ? treeSelectedPaths
+        : activePath
+          ? [activePath]
+          : []);
+    if (paths.length === 0) {
+      setStatus("Select file(s) in the tree or open a file to cut.");
       return;
     }
     setBusy(true);
     try {
-      let destRel = siblingCopyRelativePath(clip.rel, clip.isDir);
-      let attempt = 0;
-      let res = await window.Nodex.copyPluginSourceWithinWorkspace(
-        pluginFolder,
-        clip.rel,
-        destRel,
-      );
-      while (!res.success && attempt < 12) {
-        attempt += 1;
-        destRel = siblingCopyRelativePath(destRel, clip.isDir);
-        res = await window.Nodex.copyPluginSourceWithinWorkspace(
-          pluginFolder,
-          clip.rel,
-          destRel,
-        );
+      const entries: { rel: string; isDir: boolean }[] = [];
+      for (const rel of paths) {
+        const kind = await window.Nodex.getPluginSourceEntryKind(srcWs, rel);
+        if (kind === "missing") {
+          setStatus(`Cannot cut: ${rel} not found.`);
+          return;
+        }
+        entries.push({ rel, isDir: kind === "dir" });
       }
-      if (!res.success) {
-        setStatus(res.error ?? "Paste failed");
-        return;
+      pathClipboardRef.current = {
+        sourcePluginFolder: srcWs,
+        entries,
+        mode: "cut",
+      };
+      setStatus(
+        entries.length === 1
+          ? `Cut ${entries[0].rel} (${entries[0].isDir ? "folder" : "file"}) — use Paste to move.`
+          : `Cut ${entries.length} items — use Paste to move.`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pasteFromInternalClipboard = async (pasteIntoDir?: string) => {
+    if (!pluginFolder || busy) {
+      return;
+    }
+    const clip = pathClipboardRef.current;
+    if (!clip?.entries.length) {
+      setStatus("Nothing to paste (Copy or Cut first).");
+      return;
+    }
+    const isCut = clip.mode === "cut";
+    const srcFolder = clip.sourcePluginFolder;
+    setBusy(true);
+    try {
+      const movedMap = new Map<string, string>();
+      const lastNonDirs: string[] = [];
+      for (const ent of clip.entries) {
+        let destRel = initialPasteDestRel(
+          ent.rel,
+          ent.isDir,
+          pasteIntoDir,
+        );
+        let attempt = 0;
+        let res = isCut
+          ? await window.Nodex.movePluginSourceBetweenWorkspaces(
+              srcFolder,
+              ent.rel,
+              pluginFolder,
+              destRel,
+            )
+          : srcFolder === pluginFolder
+            ? await window.Nodex.copyPluginSourceWithinWorkspace(
+                pluginFolder,
+                ent.rel,
+                destRel,
+              )
+            : await window.Nodex.copyPluginSourceBetweenWorkspaces(
+                srcFolder,
+                ent.rel,
+                pluginFolder,
+                destRel,
+              );
+        while (!res.success && attempt < 12) {
+          attempt += 1;
+          destRel = siblingCopyRelativePath(destRel, ent.isDir);
+          res = isCut
+            ? await window.Nodex.movePluginSourceBetweenWorkspaces(
+                srcFolder,
+                ent.rel,
+                pluginFolder,
+                destRel,
+              )
+            : srcFolder === pluginFolder
+              ? await window.Nodex.copyPluginSourceWithinWorkspace(
+                  pluginFolder,
+                  ent.rel,
+                  destRel,
+                )
+              : await window.Nodex.copyPluginSourceBetweenWorkspaces(
+                  srcFolder,
+                  ent.rel,
+                  pluginFolder,
+                  destRel,
+                );
+        }
+        if (!res.success) {
+          setStatus(res.error ?? `Paste failed for ${ent.rel}`);
+          return;
+        }
+        movedMap.set(ent.rel, destRel);
+        if (!ent.isDir) {
+          lastNonDirs.push(destRel);
+        }
       }
       await refreshFileList();
-      if (!clip.isDir) {
-        await openFile(destRel);
+      if (isCut && srcFolder === pluginFolder) {
+        const metas = await Promise.all(
+          [...movedMap.entries()].map(async ([from, to]) => {
+            const m = await window.Nodex.getPluginSourceFileMeta(
+              pluginFolder,
+              to,
+            );
+            return { from, to, mtime: m?.mtimeMs ?? null };
+          }),
+        );
+        setTabs((prev) =>
+          prev.map((t) => {
+            const row = metas.find((x) => x.from === t.relativePath);
+            return row
+              ? {
+                  ...t,
+                  relativePath: row.to,
+                  diskMtimeMs: row.mtime ?? t.diskMtimeMs,
+                }
+              : t;
+          }),
+        );
+        setActivePath((ap) => {
+          const row = metas.find((x) => x.from === ap);
+          return row ? row.to : ap;
+        });
       }
-      setStatus(`Duplicated to ${destRel}`);
+      const openTarget = lastNonDirs[lastNonDirs.length - 1];
+      if (openTarget) {
+        await openFile(openTarget);
+      }
+      if (isCut) {
+        pathClipboardRef.current = null;
+        setStatus(
+          movedMap.size === 1
+            ? `Moved to ${[...movedMap.values()][0]}`
+            : `Moved ${movedMap.size} items.`,
+        );
+      } else {
+        setStatus(
+          movedMap.size === 1
+            ? `Duplicated to ${[...movedMap.values()][0]}`
+            : `Duplicated ${movedMap.size} items.`,
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -1430,12 +1826,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     }
   };
 
-  const openRenameModal = () => {
-    if (!pluginFolder || !activePath) {
-      setStatus("Open a file to rename.");
+  const openRenameModal = (fromPath?: string) => {
+    const from =
+      fromPath ??
+      (treeSelectionWorkspace === pluginFolder &&
+      treeSelectedPaths.length === 1
+        ? treeSelectedPaths[0]
+        : activePath);
+    if (!pluginFolder || !from) {
+      setStatus("Select a single file or folder in the tree to rename.");
       return;
     }
-    setPathModal({ kind: "rename", from: activePath, value: activePath });
+    setPathModal({ kind: "rename", from, value: from });
   };
 
   const addRegistryDependency = async (row: NpmSearchRow) => {
@@ -1529,42 +1931,296 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     }
   };
 
-  const onDeletePath = async () => {
-    if (!pluginFolder || busy) {
+  const onDeletePath = async (
+    explicitPaths?: string[],
+    explicitWorkspace?: string,
+  ) => {
+    const ws = explicitWorkspace ?? pluginFolder;
+    if (!ws || busy) {
       return;
     }
-    const target = activePath;
-    if (!target) {
-      setStatus("Select a file in the list (open it) to delete.");
+    const raw =
+      explicitPaths?.length
+        ? explicitPaths
+        : treeSelectionWorkspace === ws && treeSelectedPaths.length > 0
+          ? treeSelectedPaths
+          : ws === pluginFolder && activePath
+            ? [activePath]
+            : [];
+    if (raw.length === 0) {
+      setStatus("Select file(s) in the tree or open a file to delete.");
       return;
     }
-    if (!confirm(`Delete “${target}”? This cannot be undone.`)) {
+    const targets = [...new Set(raw)].sort(
+      (a, b) =>
+        b.split("/").length - a.split("/").length || b.localeCompare(a),
+    );
+    const msg =
+      targets.length === 1
+        ? `Delete “${targets[0]}”? This cannot be undone.`
+        : `Delete ${targets.length} paths? This cannot be undone.`;
+    if (!confirm(msg)) {
       return;
     }
     setBusy(true);
     setStatus(null);
     try {
-      const res = await window.Nodex.deletePluginSourcePath(
-        pluginFolder,
-        target,
-      );
-      if (!res.success) {
-        setStatus(res.error ?? "Delete failed");
-        return;
+      const deleted = new Set<string>();
+      for (const p of targets) {
+        if (
+          [...deleted].some(
+            (d) => p === d || p.startsWith(`${d}/`),
+          )
+        ) {
+          continue;
+        }
+        const res = await window.Nodex.deletePluginSourcePath(ws, p);
+        if (!res.success) {
+          setStatus(res.error ?? `Delete failed: ${p}`);
+          return;
+        }
+        deleted.add(p);
       }
-      const nextTabs = tabs.filter((t) => t.relativePath !== target);
-      setTabs(nextTabs);
-      setActivePath(
-        activePath === target
-          ? (nextTabs[0]?.relativePath ?? null)
-          : activePath,
+      const delSet = deleted;
+      if (ws === pluginFolder) {
+        const nextTabs = tabs.filter((t) => {
+          if (delSet.has(t.relativePath)) {
+            return false;
+          }
+          return ![...delSet].some((d) => t.relativePath.startsWith(`${d}/`));
+        });
+        setTabs(nextTabs);
+        if (
+          activePath &&
+          (delSet.has(activePath) ||
+            [...delSet].some((d) => activePath.startsWith(`${d}/`)))
+        ) {
+          setActivePath(nextTabs[0]?.relativePath ?? null);
+        }
+      }
+      if (treeSelectionWorkspace === ws) {
+        setTreeSelectedPaths((prev) =>
+          prev.filter(
+            (p) =>
+              !delSet.has(p) &&
+              ![...delSet].some((d) => p.startsWith(`${d}/`)),
+          ),
+        );
+      }
+      if (ws === pluginFolder) {
+        await refreshFileList();
+      } else {
+        try {
+          const files = await window.Nodex.listPluginSourceFiles(ws);
+          setFolderFilesCache((prev) => ({ ...prev, [ws]: files }));
+        } catch {
+          /* ignore */
+        }
+      }
+      setStatus(
+        deleted.size === 1
+          ? `Deleted ${[...deleted][0]}`
+          : `Deleted ${deleted.size} items.`,
       );
-      await refreshFileList();
-      setStatus(`Deleted ${target}`);
     } finally {
       setBusy(false);
     }
   };
+
+  const runTreeFsOp = useCallback(
+    async (d: IdeShellTreeFsOpDetail) => {
+      const isDup = d.kind === "dndCopy";
+      let destRel = d.toDirRel
+        ? `${d.toDirRel.replace(/\/+$/, "")}/${basenameRel(d.fromRel)}`
+        : basenameRel(d.fromRel);
+      let attempt = 0;
+      setBusy(true);
+      setStatus(null);
+      try {
+        let res = isDup
+          ? d.fromPlugin === d.toPlugin
+            ? await window.Nodex.copyPluginSourceWithinWorkspace(
+                d.toPlugin,
+                d.fromRel,
+                destRel,
+              )
+            : await window.Nodex.copyPluginSourceBetweenWorkspaces(
+                d.fromPlugin,
+                d.fromRel,
+                d.toPlugin,
+                destRel,
+              )
+          : await window.Nodex.movePluginSourceBetweenWorkspaces(
+              d.fromPlugin,
+              d.fromRel,
+              d.toPlugin,
+              destRel,
+            );
+        while (!res.success && attempt < 16) {
+          attempt += 1;
+          destRel = siblingCopyRelativePath(destRel, d.fromIsDir);
+          res = isDup
+            ? d.fromPlugin === d.toPlugin
+              ? await window.Nodex.copyPluginSourceWithinWorkspace(
+                  d.toPlugin,
+                  d.fromRel,
+                  destRel,
+                )
+              : await window.Nodex.copyPluginSourceBetweenWorkspaces(
+                  d.fromPlugin,
+                  d.fromRel,
+                  d.toPlugin,
+                  destRel,
+                )
+            : await window.Nodex.movePluginSourceBetweenWorkspaces(
+                d.fromPlugin,
+                d.fromRel,
+                d.toPlugin,
+                destRel,
+              );
+        }
+        if (!res.success) {
+          setStatus(res.error ?? "Drag and drop failed");
+          return;
+        }
+        if (d.toPlugin === pluginFolderRef.current) {
+          await refreshFileList();
+        }
+        try {
+          const files = await window.Nodex.listPluginSourceFiles(d.toPlugin);
+          setFolderFilesCache((prev) => ({ ...prev, [d.toPlugin]: files }));
+        } catch {
+          /* ignore */
+        }
+        if (
+          d.toPlugin === pluginFolderRef.current &&
+          !d.fromIsDir &&
+          isDup
+        ) {
+          await openFileRef.current(destRel);
+        }
+        setStatus(
+          isDup ? `Duplicated to ${destRel}` : `Moved to ${destRel}`,
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [refreshFileList],
+  );
+
+  const runScaffold = useCallback(async () => {
+    if (!pluginFolder || busy) {
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const r = await window.Nodex.scaffoldPluginWorkspace(pluginFolder);
+      if (!r.success) {
+        setStatus(r.error ?? "Scaffold failed");
+        return;
+      }
+      setCanScaffold(false);
+      await refreshFileList();
+      await refreshWorkspaceFolders();
+      setStatus(
+        "Plugin scaffolded — run Install dependencies, then bundle & reload.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [pluginFolder, busy, refreshFileList, refreshWorkspaceFolders]);
+
+  const runExternalEditorChoice = useCallback(
+    async (v: string) => {
+      if (!pluginFolder || !v) {
+        return;
+      }
+      if (v === "reveal") {
+        const r = await window.Nodex.revealPluginWorkspaceInFileManager(
+          pluginFolder,
+        );
+        setStatus(
+          r.success
+            ? "Opened folder in file manager."
+            : (r.error ?? "Reveal failed"),
+        );
+        return;
+      }
+      if (v === "custom") {
+        const prev = localStorage.getItem(PLUGIN_IDE_CUSTOM_EDITOR_KEY) ?? "";
+        const cmd = window.prompt(
+          "Shell command to run in the plugin folder (e.g. myeditor)",
+          prev,
+        );
+        if (!cmd?.trim()) {
+          return;
+        }
+        localStorage.setItem(PLUGIN_IDE_CUSTOM_EDITOR_KEY, cmd.trim());
+        const r = await window.Nodex.openPluginWorkspaceInEditor({
+          editor: "custom",
+          customBin: cmd.trim(),
+          pluginName: pluginFolder,
+        });
+        setStatus(
+          r.success ? `Launched: ${cmd.trim()}` : (r.error ?? "Launch failed"),
+        );
+        return;
+      }
+      const r = await window.Nodex.openPluginWorkspaceInEditor({
+        editor: v,
+        pluginName: pluginFolder,
+      });
+      setStatus(
+        r.success ? `Opened folder in ${v}.` : (r.error ?? "Launch failed"),
+      );
+    },
+    [pluginFolder],
+  );
+
+  const workspaceToolsControls = (
+    <>
+      {canScaffold ? (
+        <button
+          type="button"
+          disabled={busy}
+          className="rounded-sm border border-amber-600/50 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-950 hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-100"
+          onClick={() => void runScaffold()}
+        >
+          Initialize plugin
+        </button>
+      ) : null}
+      <select
+        className="max-w-[12rem] rounded-sm border border-input bg-background px-2 py-1 text-[11px]"
+        disabled={!pluginFolder || busy}
+        aria-label="Open plugin folder in external app"
+        defaultValue=""
+        onChange={(e) => {
+          const v = e.target.value;
+          e.target.value = "";
+          void runExternalEditorChoice(v);
+        }}
+      >
+        <option value="">Open folder in…</option>
+        <option value="vscode">VS Code</option>
+        <option value="cursor">Cursor</option>
+        <option value="windsurf">Windsurf</option>
+        <option value="anigravity">Antigravity</option>
+        <option value="custom">Custom command…</option>
+        <option value="reveal">File manager</option>
+      </select>
+      <button
+        type="button"
+        className="rounded-sm border border-input bg-background px-2 py-1 text-[11px] hover:bg-muted/50"
+        disabled={busy}
+        title="Electron DevTools for this window (inspect host + plugin iframe)"
+        onClick={() => void window.Nodex.toggleDeveloperTools()}
+      >
+        DevTools
+      </button>
+    </>
+  );
 
   const previewNote = useMemo(
     () => (previewType ? sampleNoteForType(previewType) : null),
@@ -1584,6 +2240,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     removeExternalRegistration,
     copyDistToFolder,
     copyToInternalClipboard,
+    cutToInternalClipboard,
     pasteFromInternalClipboard,
     openRenameModal,
     runInstallDependencies,
@@ -1606,6 +2263,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     removeExternalRegistration,
     copyDistToFolder,
     copyToInternalClipboard,
+    cutToInternalClipboard,
     pasteFromInternalClipboard,
     openRenameModal,
     runInstallDependencies,
@@ -1628,6 +2286,8 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       })),
       fileList,
       activePath,
+      treeSelectionWorkspace,
+      treeSelectedPaths,
       busy,
       dirtyTabCount,
       hasActiveTab: !!activeTab,
@@ -1645,6 +2305,8 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     folderFilesCache,
     fileList,
     activePath,
+    treeSelectionWorkspace,
+    treeSelectedPaths,
     busy,
     dirtyTabCount,
     activeTab,
@@ -1652,6 +2314,32 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     formatOnSave,
     reloadOnSave,
   ]);
+
+  useEffect(() => {
+    if (!shellLayout) {
+      return;
+    }
+    const onTreeSel = (e: Event) => {
+      const d = (e as CustomEvent<{ workspace: string; paths: string[] }>)
+        .detail;
+      if (d && typeof d.workspace === "string" && Array.isArray(d.paths)) {
+        setTreeSelectionWorkspace(d.workspace);
+        setTreeSelectedPaths(d.paths);
+      }
+    };
+    const onTreeFs = (e: Event) => {
+      const d = (e as CustomEvent<IdeShellTreeFsOpDetail>).detail;
+      if (d && typeof d === "object") {
+        void runTreeFsOp(d);
+      }
+    };
+    window.addEventListener(IDE_SHELL_TREE_SELECTION_EVENT, onTreeSel);
+    window.addEventListener(IDE_SHELL_TREE_FS_OP_EVENT, onTreeFs);
+    return () => {
+      window.removeEventListener(IDE_SHELL_TREE_SELECTION_EVENT, onTreeSel);
+      window.removeEventListener(IDE_SHELL_TREE_FS_OP_EVENT, onTreeFs);
+    };
+  }, [shellLayout, runTreeFsOp]);
 
   useEffect(() => {
     if (!shellLayout) {
@@ -1725,10 +2413,14 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       }
     };
     const onAction = (e: Event) => {
-      const t = (e as CustomEvent<{ type: IdeShellAction }>).detail?.type;
+      const detail = (
+        e as CustomEvent<{ type: IdeShellAction } & IdeShellActionPayload>
+      ).detail;
+      const t = detail?.type;
       if (!t) {
         return;
       }
+      const d = detail;
       const a = ideActionsRef.current;
       switch (t) {
         case "save":
@@ -1750,16 +2442,43 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           void a.onImportFolder();
           return;
         case "delete":
-          void a.onDeletePath();
+          void a.onDeletePath(d.targetPaths, d.targetWorkspace);
           return;
-        case "rename":
-          a.openRenameModal();
+        case "rename": {
+          const tw = d.targetWorkspace;
+          if (tw && tw !== pluginFolderRef.current) {
+            setPluginFolder(tw);
+            const p = d.targetPaths?.[0];
+            queueMicrotask(() => {
+              ideActionsRef.current.openRenameModal(p);
+            });
+          } else {
+            a.openRenameModal(d.targetPaths?.[0]);
+          }
           return;
+        }
         case "copy":
-          void a.copyToInternalClipboard();
+          void a.copyToInternalClipboard(
+            d.targetPaths?.length || d.targetWorkspace
+              ? {
+                  paths: d.targetPaths,
+                  sourceWorkspace: d.targetWorkspace,
+                }
+              : undefined,
+          );
+          return;
+        case "cut":
+          void a.cutToInternalClipboard(
+            d.targetPaths?.length || d.targetWorkspace
+              ? {
+                  paths: d.targetPaths,
+                  sourceWorkspace: d.targetWorkspace,
+                }
+              : undefined,
+          );
           return;
         case "paste":
-          void a.pasteFromInternalClipboard();
+          void a.pasteFromInternalClipboard(d.pasteIntoDir);
           return;
         case "copyDist":
           void a.copyDistToFolder();
@@ -1903,6 +2622,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       } else if (k === "c") {
         stop();
         void a.copyToInternalClipboard();
+      } else if (k === "x") {
+        stop();
+        void a.cutToInternalClipboard();
       } else if (k === "v") {
         stop();
         void a.pasteFromInternalClipboard();
@@ -2042,22 +2764,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
         disabled={!pluginFolder || busy}
         onClick={() => void runInstallDependencies()}
         title="Install dependencies (⇧I)"
-        aria-label="Install dependencies"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-foreground bg-foreground text-background shadow-sm transition-opacity hover:opacity-85 disabled:opacity-50"
+        className="min-h-8 shrink-0 rounded-sm border border-foreground bg-foreground px-2.5 py-1 text-[11px] font-semibold text-background shadow-sm transition-opacity hover:opacity-85 disabled:opacity-50"
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden
-        >
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="7 10 12 15 17 10" />
-          <line x1="12" y1="15" x2="12" y2="3" />
-        </svg>
+        Install dependencies
       </button>
       <button
         type="button"
@@ -2221,6 +2930,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                     }}
                   >
                     Copy
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || !activePath || busy}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void cutToInternalClipboard();
+                    }}
+                  >
+                    Cut
                   </button>
                   <button
                     type="button"
@@ -2433,13 +3154,67 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
               ) : null}
             </div>
           </div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {workspaceToolsControls}
+          </div>
         </div>
       </header>
+      ) : null}
+
+      {shellLayout ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Plugin IDE
+          </span>
+          {workspaceToolsControls}
+        </div>
       ) : null}
 
       <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-border bg-muted/30 px-4 py-3">
         {depsToolbarInner}
       </div>
+
+      {diskConflictPath && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+          <div
+            className="bg-background rounded-lg shadow-xl max-w-md w-full p-5 border border-amber-500/40"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="disk-conflict-title"
+          >
+            <h3
+              id="disk-conflict-title"
+              className="text-lg font-semibold text-foreground mb-2"
+            >
+              File changed on disk
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              <code className="text-xs font-mono bg-muted px-1">
+                {diskConflictPath}
+              </code>{" "}
+              was modified outside the editor while you have unsaved changes.
+            </p>
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button
+                type="button"
+                className="px-3 py-1.5 text-sm rounded bg-muted text-foreground hover:bg-muted"
+                disabled={busy}
+                onClick={() => void resolveDiskConflictKeepMine()}
+              >
+                Keep mine
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 text-sm rounded bg-amber-600 text-white hover:opacity-90 disabled:opacity-50"
+                disabled={busy}
+                onClick={() => void resolveDiskConflictReload()}
+              >
+                Reload from disk
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pathModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
@@ -2705,9 +3480,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
         <Panel defaultSize={30} minSize={18} className="min-w-0">
           <aside className="flex h-full min-h-0 flex-col border-l border-border bg-sidebar">
             <div className="shrink-0 border-b border-border px-4 py-3">
-              <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Preview note type
-              </label>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Preview note type
+                </label>
+                <button
+                  type="button"
+                  className="shrink-0 rounded-sm border border-input bg-background px-2 py-1 text-[10px] hover:bg-muted/50"
+                  onClick={() => setPreviewExpanded((x) => !x)}
+                >
+                  {previewExpanded ? "Restore" : "Maximize"}
+                </button>
+              </div>
               <select
                 className="w-full rounded-sm border border-input bg-background px-2.5 py-2 text-[12px]"
                 value={previewType}
@@ -2725,7 +3509,14 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
               </select>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
-              {previewNote && types.includes(previewType) ? (
+              {previewExpanded &&
+              previewNote &&
+              types.includes(previewType) ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-[11px] text-muted-foreground">
+                  <p>Preview is fullscreen over the app.</p>
+                  <p className="text-[10px]">Press Escape or Restore to exit.</p>
+                </div>
+              ) : previewNote && types.includes(previewType) ? (
                 <SecurePluginRenderer
                   key={`${pluginFolder}-${previewType}-${previewRev}`}
                   note={previewNote}
@@ -2740,6 +3531,39 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           </aside>
         </Panel>
       </PanelGroup>
+
+      {previewExpanded &&
+      previewNote &&
+      types.includes(previewType) &&
+      typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[2147483000] flex min-h-0 flex-col bg-background text-foreground shadow-2xl"
+              role="dialog"
+              aria-label="Plugin preview fullscreen"
+            >
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-muted/80 px-4 py-2">
+                <span className="text-[12px] font-medium">
+                  Preview · {previewType}
+                </span>
+                <button
+                  type="button"
+                  className="rounded-sm border border-input bg-background px-3 py-1 text-[11px] hover:bg-muted/50"
+                  onClick={() => setPreviewExpanded(false)}
+                >
+                  Restore
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <SecurePluginRenderer
+                  key={`fs-${pluginFolder}-${previewType}-${previewRev}`}
+                  note={previewNote}
+                />
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 };

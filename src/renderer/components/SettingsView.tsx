@@ -80,8 +80,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ category }) => {
             <kbd className={KBD}>⇧D</kbd> Copy dist
           </li>
           <li>
-            <kbd className={KBD}>⇧C</kbd> / <kbd className={KBD}>⇧V</kbd> Copy
-            / paste path
+            <kbd className={KBD}>⇧C</kbd> / <kbd className={KBD}>⇧X</kbd> /{" "}
+            <kbd className={KBD}>⇧V</kbd> Copy / cut / paste path
           </li>
           <li>
             <kbd className={KBD}>⇧M</kbd> / <kbd className={KBD}>F2</kbd> Rename
@@ -174,7 +174,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({ category }) => {
           </button>
           <p className="mt-1 text-[11px] text-muted-foreground">
             Electron DevTools for this renderer (same as a typical browser
-            inspector).
+            inspector). Use it while the Plugin IDE preview is open to debug the
+            host window; the plugin note UI runs inside a sandboxed iframe with
+            its own document.
           </p>
         </div>
         <div>

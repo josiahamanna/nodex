@@ -1,0 +1,123 @@
+import * as fs from "fs";
+import * as path from "path";
+
+const NODEX_SCOPE = /^@nodex\//;
+
+function shouldCopyPath(root: string, absPath: string): boolean {
+  const rel = path.relative(root, absPath);
+  if (rel.startsWith("..")) {
+    return true;
+  }
+  const parts = rel.split(path.sep);
+  return !parts.some((p) => p === "node_modules" || p === ".git");
+}
+
+function copyPackageTree(fromRoot: string, toRoot: string): void {
+  if (fs.existsSync(toRoot)) {
+    fs.rmSync(toRoot, { recursive: true, force: true });
+  }
+  fs.mkdirSync(toRoot, { recursive: true });
+
+  const walk = (fromDir: string, toDir: string): void => {
+    for (const ent of fs.readdirSync(fromDir, { withFileTypes: true })) {
+      const from = path.join(fromDir, ent.name);
+      const to = path.join(toDir, ent.name);
+      if (!shouldCopyPath(fromRoot, from)) {
+        continue;
+      }
+      if (ent.isDirectory()) {
+        fs.mkdirSync(to, { recursive: true });
+        walk(from, to);
+      } else if (ent.isFile() || ent.isSymbolicLink()) {
+        try {
+          fs.copyFileSync(from, to);
+        } catch {
+          /* skip broken symlinks */
+        }
+      }
+    }
+  };
+  walk(fromRoot, toRoot);
+}
+
+function candidateRepoRoots(): string[] {
+  const roots = new Set<string>();
+  roots.add(process.cwd());
+  if (path.isAbsolute(__dirname)) {
+    roots.add(path.resolve(__dirname, "..", ".."));
+    roots.add(path.resolve(__dirname, "..", "..", ".."));
+  }
+  return [...roots];
+}
+
+/**
+ * Discover `@nodex/*` package directories from monorepo `packages/*` and host
+ * `node_modules/@nodex/*`. Monorepo wins on name collision.
+ */
+export function discoverNodexScopedPackageDirs(): Map<string, string> {
+  const map = new Map<string, string>();
+
+  for (const root of candidateRepoRoots()) {
+    const packagesDir = path.join(root, "packages");
+    if (!fs.existsSync(packagesDir)) {
+      continue;
+    }
+    for (const ent of fs.readdirSync(packagesDir, { withFileTypes: true })) {
+      if (!ent.isDirectory() || ent.name.startsWith(".")) {
+        continue;
+      }
+      const pkgDir = path.join(packagesDir, ent.name);
+      const pj = path.join(pkgDir, "package.json");
+      if (!fs.existsSync(pj)) {
+        continue;
+      }
+      try {
+        const j = JSON.parse(fs.readFileSync(pj, "utf8")) as { name?: string };
+        if (typeof j.name === "string" && NODEX_SCOPE.test(j.name)) {
+          map.set(j.name, path.resolve(pkgDir));
+        }
+      } catch {
+        /* skip */
+      }
+    }
+  }
+
+  for (const root of candidateRepoRoots()) {
+    const scopeDir = path.join(root, "node_modules", "@nodex");
+    if (!fs.existsSync(scopeDir)) {
+      continue;
+    }
+    for (const ent of fs.readdirSync(scopeDir, { withFileTypes: true })) {
+      if (!ent.isDirectory() || ent.name.startsWith(".")) {
+        continue;
+      }
+      const fullName = `@nodex/${ent.name}`;
+      if (map.has(fullName)) {
+        continue;
+      }
+      const pkgDir = path.join(scopeDir, ent.name);
+      const pj = path.join(pkgDir, "package.json");
+      if (fs.existsSync(pj)) {
+        map.set(fullName, path.resolve(pkgDir));
+      }
+    }
+  }
+
+  return map;
+}
+
+/** Copy every discovered `@nodex/*` host package into the plugin workspace. */
+export function syncHostNodexScopedPackagesIntoWorkspace(
+  pluginPath: string,
+): void {
+  const destScope = path.join(pluginPath, "node_modules", "@nodex");
+  fs.mkdirSync(destScope, { recursive: true });
+  for (const [name, srcRoot] of discoverNodexScopedPackageDirs()) {
+    const short = name.replace(/^@nodex\//, "");
+    if (!short || short.includes("..") || short.includes("/")) {
+      continue;
+    }
+    const dest = path.join(destScope, short);
+    copyPackageTree(srcRoot, dest);
+  }
+}

@@ -115,6 +115,18 @@ contextBridge.exposeInMainWorld("Nodex", {
     path: string;
     error?: string;
   }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_RESET_USER_DATA_PLUGINS),
+  deletePluginBinAndCaches: (): Promise<{
+    success: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_MAINT_DELETE_BIN_AND_CACHES),
+  formatNodexPluginData: (): Promise<{
+    success: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_MAINT_FORMAT_NODEX),
+  deleteAllPluginSources: (): Promise<{
+    success: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_MAINT_DELETE_SOURCES),
   uninstallPlugin: (
     pluginName: string,
   ): Promise<{ success: boolean; error?: string }> =>
@@ -385,6 +397,32 @@ contextBridge.exposeInMainWorld("Nodex", {
       fromRelative,
       toRelative,
     ),
+  copyPluginSourceBetweenWorkspaces: (
+    fromPlugin: string,
+    fromRelative: string,
+    toPlugin: string,
+    toRelative: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_COPY_SOURCE_BETWEEN_WORKSPACES,
+      fromPlugin,
+      fromRelative,
+      toPlugin,
+      toRelative,
+    ),
+  movePluginSourceBetweenWorkspaces: (
+    fromPlugin: string,
+    fromRelative: string,
+    toPlugin: string,
+    toRelative: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_MOVE_SOURCE_BETWEEN_WORKSPACES,
+      fromPlugin,
+      fromRelative,
+      toPlugin,
+      toRelative,
+    ),
   copyPluginDistToFolder: (
     installedFolderName: string,
   ): Promise<{ success: boolean; error?: string }> =>
@@ -398,6 +436,29 @@ contextBridge.exposeInMainWorld("Nodex", {
       installedFolderName,
       relativePath,
     ),
+  getPluginSourceFileMeta: (
+    installedFolderName: string,
+    relativePath: string,
+  ): Promise<{ mtimeMs: number; size: number } | null> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.PLUGIN_GET_SOURCE_FILE_META,
+      installedFolderName,
+      relativePath,
+    ),
+  openPluginWorkspaceInEditor: (args: {
+    editor: string;
+    customBin?: string;
+    pluginName: string;
+  }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_OPEN_WORKSPACE_IN_EDITOR, args),
+  revealPluginWorkspaceInFileManager: (
+    pluginName: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_REVEAL_WORKSPACE, pluginName),
+  scaffoldPluginWorkspace: (
+    pluginName: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_SCAFFOLD_PLUGIN_WORKSPACE, pluginName),
   setIdeWorkspaceWatch: (
     pluginName: string | null,
   ): Promise<{ success: boolean }> =>

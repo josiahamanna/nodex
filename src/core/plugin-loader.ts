@@ -25,6 +25,8 @@ import {
   readDisabledPluginIds,
   writeDisabledPluginIds,
 } from "./plugin-disabled-store";
+import { syncHostNodexScopedPackagesIntoWorkspace } from "./nodex-host-packages";
+import { seedSamplePluginsToUserDir } from "./seed-user-plugins";
 
 const zipHandler = require("./zip-handler");
 
@@ -1321,7 +1323,42 @@ export class PluginLoader {
     return { success: true, warnings: result.warnings };
   }
 
-  /** Epic 3.1 / 3.2 — install npm deps into ~/.nodex/plugin-cache/<manifest.name>/ */
+  /**
+   * Ensure `package.json` exists for npm install (workspace = plugin source tree).
+   */
+  private ensureWorkspacePackageJsonForInstall(
+    pluginPath: string,
+    manifest: PluginManifest,
+  ): void {
+    const dest = path.join(pluginPath, "package.json");
+    if (fs.existsSync(dest)) {
+      return;
+    }
+    const deps = { ...(manifest.dependencies ?? {}) };
+    const devDeps = { ...(manifest.devDependencies ?? {}) };
+    if (
+      Object.keys(deps).length === 0 &&
+      Object.keys(devDeps).length === 0
+    ) {
+      throw new Error(
+        "No package.json in plugin and no manifest dependencies or devDependencies",
+      );
+    }
+    const pkg: Record<string, unknown> = {
+      name: `@nodex-plugin/${manifest.name}`,
+      version: manifest.version,
+      private: true,
+    };
+    if (Object.keys(deps).length > 0) {
+      pkg.dependencies = deps;
+    }
+    if (Object.keys(devDeps).length > 0) {
+      pkg.devDependencies = devDeps;
+    }
+    fs.writeFileSync(dest, JSON.stringify(pkg, null, 2), "utf8");
+  }
+
+  /** Install npm deps into the plugin workspace; copy host `@nodex/*` into `node_modules`. */
   async installPluginDependencies(pluginName: string): Promise<{
     success: boolean;
     error?: string;
@@ -1344,7 +1381,6 @@ export class PluginLoader {
       return { success: false, error: "Invalid manifest name" };
     }
 
-    pluginCacheManager.ensureRoot();
     const lines: string[] = [];
 
     emitPluginProgress({
@@ -1355,11 +1391,7 @@ export class PluginLoader {
     });
 
     try {
-      pluginCacheManager.syncPackageJsonToCache(pluginPath, {
-        name: manifest.name,
-        version: manifest.version,
-        dependencies: manifest.dependencies,
-      });
+      this.ensureWorkspacePackageJsonForInstall(pluginPath, manifest);
     } catch (e) {
       emitPluginProgress({
         op: "npm",
@@ -1373,8 +1405,8 @@ export class PluginLoader {
       };
     }
 
-    const result = await pluginCacheManager.runNpmInstall(
-      manifest.name,
+    const result = await pluginCacheManager.runNpmInstallInDir(
+      pluginPath,
       (line) => {
         lines.push(line);
         emitPluginProgress({
@@ -1387,6 +1419,22 @@ export class PluginLoader {
     );
 
     if (result.ok) {
+      try {
+        syncHostNodexScopedPackagesIntoWorkspace(pluginPath);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        emitPluginProgress({
+          op: "npm",
+          phase: "error",
+          message: `npm ok but @nodex sync failed: ${msg}`,
+          pluginName: manifest.name,
+        });
+        return {
+          success: false,
+          error: `@nodex package sync failed: ${msg}`,
+          log: lines.join("\n"),
+        };
+      }
       for (const key of [...this.devUiBundleCache.keys()]) {
         if (key.startsWith(`${pluginPath}:`)) {
           this.devUiBundleCache.delete(key);
@@ -1519,7 +1567,7 @@ export class PluginLoader {
 
     return {
       manifestName: manifest.name,
-      cacheDir: pluginCacheManager.getPluginCacheDir(manifest.name),
+      cacheDir: pluginPath,
       dependencies,
       dependencyCount,
       warnManyDeps: dependencyCount > 25,
@@ -1548,30 +1596,31 @@ export class PluginLoader {
       fs.readFileSync(path.join(pluginPath, "manifest.json"), "utf8"),
     );
 
-    const cacheDir = pluginCacheManager.getPluginCacheDir(manifest.name);
-    const cachePkg = path.join(cacheDir, "package.json");
+    const wsPkg = path.join(pluginPath, "package.json");
 
-    let declared: Record<string, string> = {};
-    if (fs.existsSync(cachePkg)) {
+    let declared: Record<string, string> = {
+      ...(manifest.dependencies ?? {}),
+    };
+    if (fs.existsSync(wsPkg)) {
       try {
-        const pkg = JSON.parse(fs.readFileSync(cachePkg, "utf8")) as {
+        const pkg = JSON.parse(fs.readFileSync(wsPkg, "utf8")) as {
           dependencies?: Record<string, string>;
         };
-        declared = { ...(pkg.dependencies ?? {}) };
+        declared = { ...declared, ...(pkg.dependencies ?? {}) };
       } catch {
         /* ignore */
       }
     }
 
     const resolved: Record<string, string> = {};
-    if (!fs.existsSync(path.join(cacheDir, "node_modules"))) {
+    if (!fs.existsSync(path.join(pluginPath, "node_modules"))) {
       return { declared, resolved };
     }
 
     try {
       const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
       const out = execFileSync(npmCmd, ["ls", "--json", "--depth=0"], {
-        cwd: cacheDir,
+        cwd: pluginPath,
         encoding: "utf8",
         maxBuffer: 32 * 1024 * 1024,
       });
@@ -1613,13 +1662,8 @@ export class PluginLoader {
       fs.readFileSync(path.join(pluginPath, "manifest.json"), "utf8"),
     );
 
-    pluginCacheManager.ensureRoot();
     try {
-      pluginCacheManager.syncPackageJsonToCache(pluginPath, {
-        name: manifest.name,
-        version: manifest.version,
-        dependencies: manifest.dependencies,
-      });
+      this.ensureWorkspacePackageJsonForInstall(pluginPath, manifest);
     } catch (e) {
       return {
         success: false,
@@ -1627,7 +1671,7 @@ export class PluginLoader {
       };
     }
 
-    const cwd = pluginCacheManager.getPluginCacheDir(manifest.name);
+    const cwd = pluginPath;
     const lines: string[] = [];
     const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
     const args = [...npmArgs, "--ignore-scripts", "--no-fund", "--no-audit"];
@@ -1663,6 +1707,17 @@ export class PluginLoader {
       });
       child.on("close", (code: number) => {
         if (code === 0) {
+          try {
+            syncHostNodexScopedPackagesIntoWorkspace(pluginPath);
+          } catch (e) {
+            resolve({
+              success: false,
+              error:
+                e instanceof Error ? e.message : String(e),
+              log: lines.join("\n"),
+            });
+            return;
+          }
           this.writeDepsSnapshot(pluginPath, manifest);
           resolve({ success: true, log: lines.join("\n") });
         } else {
@@ -1695,6 +1750,10 @@ export class PluginLoader {
       );
       if (isSafePluginName(manifest.name)) {
         pluginCacheManager.clearPlugin(manifest.name);
+      }
+      const nm = path.join(pluginPath, "node_modules");
+      if (fs.existsSync(nm)) {
+        fs.rmSync(nm, { recursive: true, force: true });
       }
       return { success: true };
     } catch (e) {
@@ -1920,6 +1979,211 @@ export class PluginLoader {
     return this.tryResolvePluginWorkspacePath(installedFolderName);
   }
 
+  /**
+   * Create minimal hybrid plugin files when manifest.json is missing (empty folder).
+   */
+  scaffoldPluginWorkspace(installedFolderName: string): {
+    success: boolean;
+    error?: string;
+  } {
+    if (!isSafePluginName(installedFolderName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    const base = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!base) {
+      return { success: false, error: "Plugin workspace not found" };
+    }
+    const manifestPath = path.join(base, "manifest.json");
+    if (fs.existsSync(manifestPath)) {
+      return {
+        success: false,
+        error: "manifest.json already exists — delete it first to re-scaffold",
+      };
+    }
+    const pluginId = installedFolderName;
+    fs.writeFileSync(
+      path.join(base, ".nodexplugin"),
+      `${JSON.stringify({ schema: "nodex-plugin-root", version: 1 }, null, 2)}\n`,
+      "utf8",
+    );
+    const manifest = {
+      name: pluginId,
+      version: "1.0.0",
+      type: "hybrid" as const,
+      main: "src/main.ts",
+      ui: "src/ui.tsx",
+      mode: "development" as const,
+      displayName: pluginId,
+      description: "New Nodex plugin (scaffolded from Plugin IDE)",
+      dependencies: {
+        react: "^19.2.0",
+        "react-dom": "^19.2.0",
+        "@nodex/plugin-ui": "^0.0.1",
+      },
+    };
+    fs.writeFileSync(
+      manifestPath,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      "utf8",
+    );
+    fs.mkdirSync(path.join(base, "src"), { recursive: true });
+    const mainTs = `interface PluginContext {
+  subscriptions: { dispose?: () => void }[];
+}
+
+interface Note {
+  id: string;
+  type: string;
+  title: string;
+  content: string;
+  metadata?: unknown;
+}
+
+interface PluginApi {
+  getUiBootstrap?: () => Promise<string>;
+  registerNoteRenderer: (
+    type: string,
+    renderer: { render: (note: Note) => string | Promise<string> },
+  ) => { dispose: () => void };
+}
+
+export function activate(context: PluginContext, api: PluginApi): void {
+  if (typeof api.getUiBootstrap !== "function") {
+    throw new Error("Manifest must declare ui (hybrid plugin).");
+  }
+  const disposable = api.registerNoteRenderer("${pluginId}-note", {
+    render: async (note: Note) => {
+      const ui = await api.getUiBootstrap!();
+      return \`window.__NODEX_NOTE__ = \${JSON.stringify(note)};\${ui}\`;
+    },
+  });
+  context.subscriptions.push(disposable);
+}
+
+export function deactivate(): void {}
+`;
+    fs.writeFileSync(path.join(base, "src/main.ts"), mainTs, "utf8");
+    const uiTsx = `import React from "react";
+import { createRoot } from "react-dom/client";
+import type { NotePayload } from "@nodex/plugin-ui";
+import {
+  useNodexHostMessages,
+  useNodexIframeApi,
+  useNotifyDisplayReady,
+} from "@nodex/plugin-ui";
+
+declare global {
+  interface Window {
+    __NODEX_NOTE__?: NotePayload;
+  }
+}
+
+function App() {
+  const note = window.__NODEX_NOTE__;
+  useNotifyDisplayReady(true);
+  useNodexHostMessages();
+  useNodexIframeApi();
+  if (!note) {
+    return <div className="p-4 text-sm">No note</div>;
+  }
+  return (
+    <div className="p-4 text-sm">
+      <strong>{note.title}</strong>
+      <pre className="mt-2 whitespace-pre-wrap font-mono text-xs">{note.content}</pre>
+    </div>
+  );
+}
+
+const el = document.getElementById("plugin-root");
+if (el) {
+  createRoot(el).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  );
+}
+`;
+    fs.writeFileSync(path.join(base, "src/ui.tsx"), uiTsx, "utf8");
+    const tsconfig = {
+      compilerOptions: {
+        target: "ES2020",
+        module: "ESNext",
+        moduleResolution: "bundler",
+        jsx: "react-jsx",
+        strict: true,
+        skipLibCheck: true,
+        esModuleInterop: true,
+        allowSyntheticDefaultImports: true,
+        resolveJsonModule: true,
+        noEmit: true,
+        lib: ["ES2020", "DOM", "DOM.Iterable"],
+      },
+      include: ["src/**/*.ts", "src/**/*.tsx"],
+    };
+    fs.writeFileSync(
+      path.join(base, "tsconfig.json"),
+      `${JSON.stringify(tsconfig, null, 2)}\n`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(base, ".prettierrc.json"),
+      `${JSON.stringify({ semi: true, singleQuote: false }, null, 2)}\n`,
+      "utf8",
+    );
+    const pkg = {
+      name: pluginId,
+      version: "1.0.0",
+      private: true,
+      dependencies: {
+        react: "^19.2.0",
+        "react-dom": "^19.2.0",
+        "@nodex/plugin-ui": "^0.0.1",
+      },
+      devDependencies: {
+        typescript: "^5.9.0",
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+      },
+    };
+    fs.writeFileSync(
+      path.join(base, "package.json"),
+      `${JSON.stringify(pkg, null, 2)}\n`,
+      "utf8",
+    );
+    this.invalidateDevUiCacheForWorkspace(base);
+    return { success: true };
+  }
+
+  getPluginSourceFileMeta(
+    installedFolderName: string,
+    relativePath: string,
+  ): { mtimeMs: number; size: number } | null {
+    if (!isSafeRelativePluginSourcePath(relativePath)) {
+      return null;
+    }
+    const base = this.tryResolvePluginWorkspacePath(installedFolderName);
+    if (!base) {
+      return null;
+    }
+    const abs = path.resolve(base, relativePath);
+    const rel = path.relative(base, abs);
+    if (rel.startsWith("..") || path.isAbsolute(rel) || rel === "") {
+      return null;
+    }
+    try {
+      if (!fs.existsSync(abs)) {
+        return null;
+      }
+      const st = fs.statSync(abs);
+      if (!st.isFile()) {
+        return null;
+      }
+      return { mtimeMs: st.mtimeMs, size: st.size };
+    } catch {
+      return null;
+    }
+  }
+
   getPluginSourceEntryKind(
     installedFolderName: string,
     relativePath: string,
@@ -2025,6 +2289,107 @@ export class PluginLoader {
       fs.copyFileSync(fromAbs, toAbs);
     }
     this.invalidateDevUiCacheForWorkspace(base);
+  }
+
+  /**
+   * Copy a file or directory from one plugin workspace to another (or same workspace).
+   */
+  copyPluginSourceBetweenWorkspaces(
+    fromPlugin: string,
+    fromRelative: string,
+    toPlugin: string,
+    toRelative: string,
+  ): void {
+    if (!isSafePluginName(fromPlugin) || !isSafePluginName(toPlugin)) {
+      throw new Error("Invalid plugin name");
+    }
+    if (
+      !isSafeRelativePluginSourcePath(fromRelative) ||
+      !isSafeRelativePluginSourcePath(toRelative)
+    ) {
+      throw new Error("Invalid path");
+    }
+    if (fromPlugin === toPlugin) {
+      this.copyPluginSourceWithinWorkspace(
+        fromPlugin,
+        fromRelative,
+        toRelative,
+      );
+      return;
+    }
+    const fromBase = this.tryResolvePluginWorkspacePath(fromPlugin);
+    const toBase = this.tryResolvePluginWorkspacePath(toPlugin);
+    if (!fromBase || !toBase) {
+      throw new Error("Plugin not found");
+    }
+    const fromAbs = path.resolve(fromBase, fromRelative);
+    const toAbs = path.resolve(toBase, toRelative);
+    const relFrom = path.relative(fromBase, fromAbs);
+    const relTo = path.relative(toBase, toAbs);
+    if (
+      relFrom.startsWith("..") ||
+      path.isAbsolute(relFrom) ||
+      relFrom === "" ||
+      relTo.startsWith("..") ||
+      path.isAbsolute(relTo) ||
+      relTo === ""
+    ) {
+      throw new Error("Invalid path");
+    }
+    if (!fs.existsSync(fromAbs)) {
+      throw new Error("Source path not found");
+    }
+    if (fs.existsSync(toAbs)) {
+      throw new Error("Destination already exists");
+    }
+    const normFrom = path.resolve(fromBase);
+    const normTo = path.resolve(toBase);
+    if (toAbs === fromAbs || toAbs.startsWith(fromAbs + path.sep)) {
+      throw new Error("Invalid copy destination");
+    }
+    if (fromAbs.startsWith(toAbs + path.sep)) {
+      throw new Error("Cannot copy a parent into its descendant");
+    }
+    const st = fs.statSync(fromAbs);
+    fs.mkdirSync(path.dirname(toAbs), { recursive: true });
+    if (st.isDirectory()) {
+      fs.cpSync(fromAbs, toAbs, { recursive: true });
+    } else {
+      fs.copyFileSync(fromAbs, toAbs);
+    }
+    this.invalidateDevUiCacheForWorkspace(normFrom);
+    this.invalidateDevUiCacheForWorkspace(normTo);
+  }
+
+  /**
+   * Move a file or directory between workspaces, or rename within one workspace.
+   */
+  movePluginSourceBetweenWorkspaces(
+    fromPlugin: string,
+    fromRelative: string,
+    toPlugin: string,
+    toRelative: string,
+  ): void {
+    if (!isSafePluginName(fromPlugin) || !isSafePluginName(toPlugin)) {
+      throw new Error("Invalid plugin name");
+    }
+    if (
+      !isSafeRelativePluginSourcePath(fromRelative) ||
+      !isSafeRelativePluginSourcePath(toRelative)
+    ) {
+      throw new Error("Invalid path");
+    }
+    if (fromPlugin === toPlugin) {
+      this.renamePluginSourcePath(fromPlugin, fromRelative, toRelative);
+      return;
+    }
+    this.copyPluginSourceBetweenWorkspaces(
+      fromPlugin,
+      fromRelative,
+      toPlugin,
+      toRelative,
+    );
+    this.deletePluginSourcePath(fromPlugin, fromRelative);
   }
 
   copyPluginDistContentsToDirectory(
@@ -2525,13 +2890,13 @@ export class PluginLoader {
       const manifest = JSON.parse(raw) as { name: string };
       const cacheNm = pluginCacheManager.getNodeModulesPath(manifest.name);
       const roots: string[] = [];
-      const a = path.join(base, "node_modules", "@types");
-      const b = path.join(cacheNm, "@types");
-      if (fs.existsSync(a)) {
-        roots.push(a);
+      const localTypes = path.join(base, "node_modules", "@types");
+      const cacheTypes = path.join(cacheNm, "@types");
+      if (fs.existsSync(localTypes)) {
+        roots.push(localTypes);
       }
-      if (fs.existsSync(b)) {
-        roots.push(b);
+      if (fs.existsSync(cacheTypes)) {
+        roots.push(cacheTypes);
       }
       if (roots.length > 0) {
         extraTypesRoots = roots;
@@ -2540,5 +2905,47 @@ export class PluginLoader {
       // optional
     }
     return typecheckPluginWorkspace(base, extraTypesRoots);
+  }
+
+  /** Empty `bin/`, `.plugin-main-cache`, global plugin-cache; reload. */
+  clearBinAndPluginCaches(registry: Registry): void {
+    const bin = this.userBinRoot();
+    if (fs.existsSync(bin)) {
+      fs.rmSync(bin, { recursive: true, force: true });
+    }
+    fs.mkdirSync(bin, { recursive: true });
+    const mc = path.join(this.userPluginsDir, ".plugin-main-cache");
+    if (fs.existsSync(mc)) {
+      fs.rmSync(mc, { recursive: true, force: true });
+    }
+    pluginCacheManager.clearAll();
+    this.reload(registry);
+  }
+
+  /** Remove and recreate `sources/` only; reload. */
+  deleteAllPluginSources(registry: Registry): void {
+    const s = this.userSourcesRoot();
+    if (fs.existsSync(s)) {
+      fs.rmSync(s, { recursive: true, force: true });
+    }
+    fs.mkdirSync(s, { recursive: true });
+    this.reload(registry);
+  }
+
+  /** Remove `~/.nodex` and user plugins root, re-seed samples, clear disabled flags, reload. */
+  formatNodexPluginData(registry: Registry): void {
+    const nodexDir = path.join(os.homedir(), ".nodex");
+    if (fs.existsSync(nodexDir)) {
+      fs.rmSync(nodexDir, { recursive: true, force: true });
+    }
+    if (fs.existsSync(this.userPluginsDir)) {
+      fs.rmSync(this.userPluginsDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(this.userPluginsDir, { recursive: true });
+    seedSamplePluginsToUserDir(this.userPluginsDir);
+    if (this.userDataPathForDisabled) {
+      writeDisabledPluginIds(this.userDataPathForDisabled, new Set());
+    }
+    this.reload(registry);
   }
 }

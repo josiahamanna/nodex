@@ -2,7 +2,7 @@ import { app } from "electron";
 import * as fs from "fs";
 import * as path from "path";
 
-/** Copied into `userData/plugins/sources/<name>` on first run if missing. */
+/** Copied into `~/.config/nodex/plugins/sources/<name>` on first run if missing. */
 const SAMPLE_PLUGIN_NAMES = ["markdown", "tiptap"] as const;
 
 function resolveSamplePluginSourceDir(name: string): string | null {
@@ -25,7 +25,7 @@ function resolveSamplePluginSourceDir(name: string): string | null {
 }
 
 /**
- * Seeds `userData/plugins/sources/<name>` from repo or packaged resources.
+ * Seeds `sources/<name>` under the user plugins root from repo or packaged resources.
  * Does not overwrite existing folders.
  */
 export function seedSamplePluginsToUserDir(userPluginsPath: string): void {

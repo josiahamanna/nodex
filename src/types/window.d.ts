@@ -70,6 +70,18 @@ declare global {
         path: string;
         error?: string;
       }>;
+      deletePluginBinAndCaches: () => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      formatNodexPluginData: () => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      deleteAllPluginSources: () => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
       uninstallPlugin: (
         pluginName: string,
       ) => Promise<{ success: boolean; error?: string }>;
@@ -240,6 +252,18 @@ declare global {
         fromRelative: string,
         toRelative: string,
       ) => Promise<{ success: boolean; error?: string }>;
+      copyPluginSourceBetweenWorkspaces: (
+        fromPlugin: string,
+        fromRelative: string,
+        toPlugin: string,
+        toRelative: string,
+      ) => Promise<{ success: boolean; error?: string }>;
+      movePluginSourceBetweenWorkspaces: (
+        fromPlugin: string,
+        fromRelative: string,
+        toPlugin: string,
+        toRelative: string,
+      ) => Promise<{ success: boolean; error?: string }>;
       copyPluginDistToFolder: (
         installedFolderName: string,
       ) => Promise<{ success: boolean; error?: string }>;
@@ -247,6 +271,21 @@ declare global {
         installedFolderName: string,
         relativePath: string,
       ) => Promise<"file" | "dir" | "missing">;
+      getPluginSourceFileMeta: (
+        installedFolderName: string,
+        relativePath: string,
+      ) => Promise<{ mtimeMs: number; size: number } | null>;
+      openPluginWorkspaceInEditor: (args: {
+        editor: string;
+        customBin?: string;
+        pluginName: string;
+      }) => Promise<{ success: boolean; error?: string }>;
+      revealPluginWorkspaceInFileManager: (
+        pluginName: string,
+      ) => Promise<{ success: boolean; error?: string }>;
+      scaffoldPluginWorkspace: (
+        pluginName: string,
+      ) => Promise<{ success: boolean; error?: string }>;
       setIdeWorkspaceWatch: (
         pluginName: string | null,
       ) => Promise<{ success: boolean }>;

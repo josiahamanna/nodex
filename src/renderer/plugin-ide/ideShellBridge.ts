@@ -15,6 +15,9 @@ export type IdeShellStateDetail = {
   /** Current plugin’s file list (same as entry in `folders` when loaded). */
   fileList: string[];
   activePath: string | null;
+  /** Workspace id that `treeSelectedPaths` belong to (sidebar file tree). */
+  treeSelectionWorkspace: string;
+  treeSelectedPaths: string[];
   busy: boolean;
   dirtyTabCount: number;
   hasActiveTab: boolean;
@@ -27,6 +30,8 @@ export const IDE_SHELL_PLUGIN_EVENT = "nodex-ide-shell-plugin";
 export const IDE_SHELL_OPEN_FILE_EVENT = "nodex-ide-shell-open-file";
 export const IDE_SHELL_EXPAND_FOLDER_EVENT = "nodex-ide-shell-expand-folder";
 export const IDE_SHELL_ACTION_EVENT = "nodex-ide-shell-action";
+export const IDE_SHELL_TREE_SELECTION_EVENT = "nodex-ide-shell-tree-selection";
+export const IDE_SHELL_TREE_FS_OP_EVENT = "nodex-ide-shell-tree-fs-op";
 
 export type IdeShellOpenFileDetail =
   | string
@@ -42,6 +47,7 @@ export type IdeShellAction =
   | "delete"
   | "rename"
   | "copy"
+  | "cut"
   | "paste"
   | "copyDist"
   | "bundle"
@@ -54,6 +60,27 @@ export type IdeShellAction =
   | "toggleTscOnSave"
   | "toggleFormatOnSave"
   | "toggleReloadOnSave";
+
+export type IdeShellTreeSelectionDetail = {
+  workspace: string;
+  paths: string[];
+};
+
+export type IdeShellTreeFsOpDetail = {
+  kind: "dndCopy" | "dndMove";
+  fromPlugin: string;
+  fromRel: string;
+  fromIsDir: boolean;
+  toPlugin: string;
+  toDirRel: string;
+};
+
+export type IdeShellActionPayload = {
+  targetPaths?: string[];
+  targetWorkspace?: string;
+  /** Paste / duplicate into this folder (relative to plugin root, no trailing slash). */
+  pasteIntoDir?: string;
+};
 
 export function dispatchIdeShellPlugin(folder: string): void {
   window.dispatchEvent(
@@ -81,8 +108,27 @@ export function dispatchIdeShellExpandFolder(folder: string): void {
   );
 }
 
-export function dispatchIdeShellAction(type: IdeShellAction): void {
+export function dispatchIdeShellAction(
+  type: IdeShellAction,
+  payload?: IdeShellActionPayload,
+): void {
   window.dispatchEvent(
-    new CustomEvent(IDE_SHELL_ACTION_EVENT, { detail: { type } }),
+    new CustomEvent(IDE_SHELL_ACTION_EVENT, {
+      detail: { type, ...payload },
+    }),
+  );
+}
+
+export function dispatchIdeShellTreeSelection(
+  detail: IdeShellTreeSelectionDetail,
+): void {
+  window.dispatchEvent(
+    new CustomEvent(IDE_SHELL_TREE_SELECTION_EVENT, { detail }),
+  );
+}
+
+export function dispatchIdeShellTreeFsOp(detail: IdeShellTreeFsOpDetail): void {
+  window.dispatchEvent(
+    new CustomEvent(IDE_SHELL_TREE_FS_OP_EVENT, { detail }),
   );
 }

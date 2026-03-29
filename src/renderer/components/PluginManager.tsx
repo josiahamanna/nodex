@@ -575,7 +575,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                 </code>
               </p>
               <p className="text-xs text-muted-foreground mb-2 break-all">
-                Cache: {installModal.plan.cacheDir}
+                Workspace: {installModal.plan.cacheDir}
               </p>
               {installModal.plan.depsChangedSinceLastInstall && (
                 <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
@@ -939,75 +939,83 @@ const PluginManager: React.FC<PluginManagerProps> = ({
           )}
         </div>
 
-        <div className="mt-10 pt-6 border-t border-border">
-          <h3 className="text-lg font-semibold text-foreground mb-2">
-            Dependency cache (Epic 3.1)
-          </h3>
-          <p className="text-sm text-muted-foreground mb-3">
-            npm packages install under{" "}
-            <code className="text-xs bg-muted px-1 rounded">
-              {cacheStats?.root ?? "~/.nodex/plugin-cache"}
-            </code>
-            . Bundling resolves modules from there when present. Install audit
-            lines append to{" "}
-            <code className="text-xs bg-muted px-1 rounded">
-              plugin-audit.jsonl
-            </code>{" "}
-            under app userData.
-          </p>
-          {cacheStats && (
-            <p className="text-sm text-foreground mb-3">
-              Total: <strong>{formatBytes(cacheStats.totalBytes)}</strong>
-              {cacheStats.plugins.length > 0 && (
-                <span className="text-muted-foreground">
-                  {" "}
-                  —{" "}
-                  {cacheStats.plugins
-                    .filter((p) => p.bytes > 0)
-                    .map((p) => `${p.name}: ${formatBytes(p.bytes)}`)
-                    .join("; ")}
-                </span>
+        {!embedded ? (
+          <>
+            <div className="mt-10 pt-6 border-t border-border">
+              <h3 className="text-lg font-semibold text-foreground mb-2">
+                Legacy dependency cache (~/.nodex/plugin-cache)
+              </h3>
+              <p className="text-sm text-muted-foreground mb-3">
+                Older installs used a global cache under{" "}
+                <code className="text-xs bg-muted px-1 rounded">
+                  {cacheStats?.root ?? "~/.nodex/plugin-cache"}
+                </code>
+                . New installs use each plugin&apos;s workspace{" "}
+                <code className="text-xs bg-muted px-1 rounded">node_modules</code>
+                . Install audit lines append to{" "}
+                <code className="text-xs bg-muted px-1 rounded">
+                  plugin-audit.jsonl
+                </code>{" "}
+                under app userData.
+              </p>
+              {cacheStats && (
+                <p className="text-sm text-foreground mb-3">
+                  Total: <strong>{formatBytes(cacheStats.totalBytes)}</strong>
+                  {cacheStats.plugins.length > 0 && (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      —{" "}
+                      {cacheStats.plugins
+                        .filter((p) => p.bytes > 0)
+                        .map((p) => `${p.name}: ${formatBytes(p.bytes)}`)
+                        .join("; ")}
+                    </span>
+                  )}
+                </p>
               )}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={handleClearAllCaches}
-            disabled={working !== null}
-            className="px-3 py-1 text-sm bg-orange-100 text-orange-900 rounded hover:bg-orange-200 font-medium disabled:opacity-50"
-          >
-            Clear all dependency caches
-          </button>
-        </div>
+              <button
+                type="button"
+                onClick={handleClearAllCaches}
+                disabled={working !== null}
+                className="px-3 py-1 text-sm bg-orange-100 text-orange-900 rounded hover:bg-orange-200 font-medium disabled:opacity-50"
+              >
+                Clear all dependency caches
+              </button>
+            </div>
 
-        <div className="mt-10 pt-6 border-t border-destructive/30">
-          <h3 className="text-lg font-semibold text-destructive mb-2">
-            Danger zone
-          </h3>
-          <p className="text-sm text-muted-foreground mb-2">
-            User plugins directory (Electron{" "}
-            <code className="text-xs bg-muted px-1 rounded">userData/plugins</code>
-            ):
-          </p>
-          <p className="text-xs font-mono break-all text-foreground mb-3 rounded border border-border bg-muted/40 p-2">
-            {userPluginsPath ?? "Loading path…"}
-          </p>
-          <p className="text-sm text-muted-foreground mb-3">
-            Deletes this entire folder, recreates it, re-seeds sample plugins,
-            and reloads the registry. Use when you want a one-shot wipe of
-            imported plugin sources and builds.
-          </p>
-          <button
-            type="button"
-            onClick={() => void handleResetUserPluginsDirectory()}
-            disabled={working !== null}
-            className="px-3 py-1.5 text-sm font-medium rounded bg-destructive text-destructive-foreground hover:opacity-90 disabled:opacity-50"
-          >
-            {working === "reset-user-plugins"
-              ? "Resetting…"
-              : "Delete user plugins folder (reset)"}
-          </button>
-        </div>
+            <div className="mt-10 pt-6 border-t border-destructive/30">
+              <h3 className="text-lg font-semibold text-destructive mb-2">
+                Danger zone
+              </h3>
+              <p className="text-sm text-muted-foreground mb-2">
+                User plugins directory (
+                <code className="text-xs bg-muted px-1 rounded">
+                  ~/.config/nodex/plugins
+                </code>
+                ):
+              </p>
+              <p className="text-xs font-mono break-all text-foreground mb-3 rounded border border-border bg-muted/40 p-2">
+                {userPluginsPath ?? "Loading path…"}
+              </p>
+              <p className="text-sm text-muted-foreground mb-3">
+                Deletes this entire folder, recreates it, re-seeds sample
+                plugins, and reloads the registry. Use when you want a one-shot
+                wipe of imported plugin sources and builds. For more options,
+                open the Plugins tab → General.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleResetUserPluginsDirectory()}
+                disabled={working !== null}
+                className="px-3 py-1.5 text-sm font-medium rounded bg-destructive text-destructive-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                {working === "reset-user-plugins"
+                  ? "Resetting…"
+                  : "Delete user plugins folder (reset)"}
+              </button>
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );

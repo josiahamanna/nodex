@@ -62,6 +62,10 @@ const defaultSampleContent: Record<
   string,
   { content: string; metadata?: Record<string, unknown> }
 > = {
+  root: {
+    content:
+      "# Welcome to Nodex\n\nThis **Home** note is the workspace root — use it as your documentation landing page.\n\n## Tips\n\n- Add child notes for topics, specs, and runbooks.\n- Use **Markdown** notes for readable docs; other note types showcase plugins.\n- The tree on the left is your single outline for everything in this workspace.\n\n---\n\n_Edit this page anytime to match your project._",
+  },
   markdown: {
     content:
       "# Hello World\n\nThis is a **markdown** note rendered by a plugin!\n\n## Features\n\n- Dynamic plugin loading\n- Component registry\n- Hot reload support",
@@ -78,6 +82,7 @@ const defaultSampleContent: Record<
 };
 
 const defaultTypeToTitle: Record<string, string> = {
+  root: "Home",
   markdown: "Markdown Note",
   text: "Rich Text Note",
   code: "Code Editor",
@@ -156,19 +161,24 @@ export function ensureNotesSeeded(registeredTypes: string[]): void {
   if (registeredTypes.length === 0) {
     return;
   }
-  const rootType = registeredTypes[0]!;
+  const rootType = registeredTypes.includes("root")
+    ? "root"
+    : registeredTypes[0]!;
   const { content: rootContent, metadata: rootMeta } = bodyForType(rootType);
+  const rootTitle =
+    rootType === "root" ? "Home" : "Workspace";
   const rootId = randomUUID();
   notes.set(rootId, {
     id: rootId,
     parentId: null,
     type: rootType,
-    title: "Workspace",
+    title: rootTitle,
     content: rootContent,
     metadata: rootMeta,
   });
+  const childTypes = registeredTypes.filter((t) => t !== "root");
   const childIds: string[] = [];
-  for (const type of registeredTypes) {
+  for (const type of childTypes) {
     const id = randomUUID();
     const { content, metadata } = bodyForType(type);
     notes.set(id, {

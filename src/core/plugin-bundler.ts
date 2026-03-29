@@ -196,12 +196,16 @@ function readManifest(pluginPath: string): PluginManifest {
   return JSON.parse(raw) as PluginManifest;
 }
 
-/** Resolve extra node_modules from ~/.nodex/plugin-cache/<name>/ (Epic 3.1). */
+/** Prefer workspace `node_modules`, then legacy ~/.nodex/plugin-cache. */
 function cacheNodeModulesPath(pluginPath: string): string | undefined {
   try {
     const manifest = readManifest(pluginPath);
-    const nm = pluginCacheManager.getNodeModulesPath(manifest.name);
-    return fs.existsSync(nm) ? nm : undefined;
+    const localNm = path.join(pluginPath, "node_modules");
+    if (fs.existsSync(localNm)) {
+      return localNm;
+    }
+    const cacheNm = pluginCacheManager.getNodeModulesPath(manifest.name);
+    return fs.existsSync(cacheNm) ? cacheNm : undefined;
   } catch {
     return undefined;
   }

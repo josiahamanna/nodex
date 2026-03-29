@@ -1,3 +1,4 @@
+import { spawn } from "child_process";
 import {
   app,
   BrowserWindow,
@@ -5,8 +6,10 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
+  shell,
 } from "electron";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { appendPluginAudit } from "./core/plugin-audit";
 import { pluginCacheManager } from "./core/plugin-cache-manager";
@@ -115,16 +118,13 @@ function getDialogParent(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined;
 }
 
-/** `userData/plugins` with resolution checks — must match PluginLoader root. */
+/** `~/.config/nodex/plugins` — must match PluginLoader root. */
 function resolveVerifiedUserPluginsPath(): string {
-  const ud = path.resolve(app.getPath("userData"));
-  const pl = path.resolve(path.join(ud, "plugins"));
-  if (path.basename(pl) !== "plugins") {
-    throw new Error("Invalid plugins directory name");
-  }
-  const rel = path.relative(ud, pl).split(path.sep).join("/");
-  if (rel !== "plugins") {
-    throw new Error("Plugins path must be userData/plugins");
+  const home = path.resolve(app.getPath("home"));
+  const pl = path.resolve(path.join(home, ".config", "nodex", "plugins"));
+  const rel = path.relative(home, pl).split(path.sep).join("/");
+  if (rel !== ".config/nodex/plugins") {
+    throw new Error("Invalid plugins directory path");
   }
   return pl;
 }
@@ -295,7 +295,7 @@ app.on("ready", () => {
   pluginCacheManager.ensureRoot();
 
   const userDataPath = app.getPath("userData");
-  const pluginsPath = path.join(userDataPath, "plugins");
+  const pluginsPath = resolveVerifiedUserPluginsPath();
   const bundledCore = resolveBundledCorePluginsDir();
   const bundledRoots = bundledCore ? [bundledCore] : [];
   console.log("[Main] User plugins dir:", pluginsPath);
@@ -1004,6 +1004,70 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_COPY_SOURCE_BETWEEN_WORKSPACES,
+  async (
+    _event,
+    fromPlugin: string,
+    fromRelative: string,
+    toPlugin: string,
+    toRelative: string,
+  ) => {
+    if (!isSafePluginName(fromPlugin) || !isSafePluginName(toPlugin)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    if (typeof fromRelative !== "string" || typeof toRelative !== "string") {
+      return { success: false, error: "Invalid path" };
+    }
+    try {
+      pluginLoader.copyPluginSourceBetweenWorkspaces(
+        fromPlugin,
+        fromRelative,
+        toPlugin,
+        toRelative,
+      );
+      return { success: true };
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_MOVE_SOURCE_BETWEEN_WORKSPACES,
+  async (
+    _event,
+    fromPlugin: string,
+    fromRelative: string,
+    toPlugin: string,
+    toRelative: string,
+  ) => {
+    if (!isSafePluginName(fromPlugin) || !isSafePluginName(toPlugin)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    if (typeof fromRelative !== "string" || typeof toRelative !== "string") {
+      return { success: false, error: "Invalid path" };
+    }
+    try {
+      pluginLoader.movePluginSourceBetweenWorkspaces(
+        fromPlugin,
+        fromRelative,
+        toPlugin,
+        toRelative,
+      );
+      return { success: true };
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
+ipcMain.handle(
   IPC_CHANNELS.PLUGIN_GET_SOURCE_ENTRY_KIND,
   async (_event, installedFolderName: string, relativePath: string) => {
     if (!isSafePluginName(installedFolderName)) {
@@ -1016,6 +1080,120 @@ ipcMain.handle(
       installedFolderName,
       relativePath,
     );
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_GET_SOURCE_FILE_META,
+  async (_event, installedFolderName: string, relativePath: string) => {
+    if (!isSafePluginName(installedFolderName)) {
+      return null;
+    }
+    if (typeof relativePath !== "string") {
+      return null;
+    }
+    return pluginLoader.getPluginSourceFileMeta(
+      installedFolderName,
+      relativePath,
+    );
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_OPEN_WORKSPACE_IN_EDITOR,
+  async (
+    _event,
+    payload: { editor: string; customBin?: string; pluginName: string },
+  ) => {
+    if (
+      !payload ||
+      typeof payload.pluginName !== "string" ||
+      !isSafePluginName(payload.pluginName)
+    ) {
+      return { success: false as const, error: "Invalid plugin" };
+    }
+    const root = pluginLoader.getPluginWorkspaceAbsolutePath(
+      payload.pluginName,
+    );
+    if (!root || !fs.existsSync(root)) {
+      return { success: false as const, error: "Workspace path not found" };
+    }
+    let cmd: string;
+    switch (payload.editor) {
+      case "vscode":
+        cmd = "code";
+        break;
+      case "cursor":
+        cmd = "cursor";
+        break;
+      case "windsurf":
+        cmd = "windsurf";
+        break;
+      case "anigravity":
+        cmd = "antigravity";
+        break;
+      case "custom":
+        if (!payload.customBin?.trim()) {
+          return {
+            success: false as const,
+            error: "Custom command required",
+          };
+        }
+        cmd = payload.customBin.trim();
+        break;
+      default:
+        return { success: false as const, error: "Unknown editor" };
+    }
+    try {
+      const child = spawn(cmd, ["."], {
+        cwd: root,
+        shell: true,
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+      return { success: true as const };
+    } catch (e) {
+      return {
+        success: false as const,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_REVEAL_WORKSPACE,
+  async (_event, pluginName: string) => {
+    if (!isSafePluginName(pluginName)) {
+      return { success: false as const, error: "Invalid plugin" };
+    }
+    const root = pluginLoader.getPluginWorkspaceAbsolutePath(pluginName);
+    if (!root || !fs.existsSync(root)) {
+      return { success: false as const, error: "Workspace path not found" };
+    }
+    const err = await shell.openPath(root);
+    if (err) {
+      return { success: false as const, error: err };
+    }
+    return { success: true as const };
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PLUGIN_SCAFFOLD_PLUGIN_WORKSPACE,
+  async (_event, pluginName: string) => {
+    if (!isSafePluginName(pluginName)) {
+      return { success: false as const, error: "Invalid plugin name" };
+    }
+    try {
+      return pluginLoader.scaffoldPluginWorkspace(pluginName);
+    } catch (e) {
+      return {
+        success: false as const,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
   },
 );
 
@@ -1357,6 +1535,54 @@ ipcMain.handle(IPC_CHANNELS.PLUGIN_RESET_USER_DATA_PLUGINS, async () => {
   } catch (e) {
     pathResult.error = e instanceof Error ? e.message : String(e);
     return pathResult;
+  }
+});
+
+function broadcastPluginsChanged(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(IPC_CHANNELS.PLUGINS_CHANGED);
+  }
+}
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_MAINT_DELETE_BIN_AND_CACHES, async () => {
+  try {
+    pluginLoader.clearBinAndPluginCaches(registry);
+    setIdeWorkspaceWatch(null);
+    broadcastPluginsChanged();
+    return { success: true as const };
+  } catch (e) {
+    return {
+      success: false as const,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+});
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_MAINT_FORMAT_NODEX, async () => {
+  try {
+    pluginLoader.formatNodexPluginData(registry);
+    setIdeWorkspaceWatch(null);
+    broadcastPluginsChanged();
+    return { success: true as const };
+  } catch (e) {
+    return {
+      success: false as const,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+});
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_MAINT_DELETE_SOURCES, async () => {
+  try {
+    pluginLoader.deleteAllPluginSources(registry);
+    setIdeWorkspaceWatch(null);
+    broadcastPluginsChanged();
+    return { success: true as const };
+  } catch (e) {
+    return {
+      success: false as const,
+      error: e instanceof Error ? e.message : String(e),
+    };
   }
 });
 
