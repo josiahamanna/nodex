@@ -24,6 +24,9 @@ declare global {
       postMessage: (data: unknown) => void;
       /** Persist JSON-serializable UI state (debounced on host). */
       postPluginUiState?: (state: unknown) => void;
+      notifyDisplayReady?: () => void;
+      /** Persist note body for the current note (debounced on host). */
+      saveNoteContent?: (content: string) => void;
       onMessage: ((message: unknown) => void) | null;
     };
   }

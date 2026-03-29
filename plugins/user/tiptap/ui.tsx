@@ -6,6 +6,7 @@ import StarterKit from "@tiptap/starter-kit";
 import type { NotePayload } from "@nodex/plugin-ui";
 import {
   useNodexHostMessages,
+  useNodexIframeApi,
   useNotifyDisplayReady,
 } from "@nodex/plugin-ui";
 
@@ -114,9 +115,14 @@ function EditorApp() {
 
   const [showToolbar, setShowToolbar] = useState(initialToolbar);
 
-  const persistToolbar = useCallback((show: boolean) => {
-    window.Nodex.postPluginUiState?.({ showToolbar: show });
-  }, []);
+  const { postPluginUiState, saveNoteContent } = useNodexIframeApi();
+
+  const persistToolbar = useCallback(
+    (show: boolean) => {
+      postPluginUiState({ showToolbar: show });
+    },
+    [postPluginUiState],
+  );
 
   const applyHydratedState = useCallback((state: unknown) => {
     const t = toolbarFromPluginState(state);
@@ -135,13 +141,16 @@ function EditorApp() {
           "outline: none; min-height: 360px; padding: 1rem; line-height: 1.75; font-family: system-ui, sans-serif;",
       },
     },
+    onUpdate: ({ editor: ed }) => {
+      saveNoteContent(ed.getHTML());
+    },
   });
 
   const onNotePayload = useCallback(
     (payload: NotePayload) => {
       window.__NODEX_NOTE__ = payload;
       const next = payload.content;
-      if (editor && !editor.isDestroyed) {
+      if (editor && !editor.isDestroyed && editor.getHTML() !== next) {
         editor.commands.setContent(next, false);
       }
       const t = toolbarFromNoteMetadata(payload.metadata);

@@ -27,6 +27,7 @@ import {
   moveNote as moveNoteInStore,
   moveNotesBulk as moveNotesBulkInStore,
   renameNote as renameNoteInStore,
+  setNoteContent as setNoteContentInStore,
   setNotePluginUiState,
 } from "./core/notes-store";
 import { registry } from "./core/registry";
@@ -525,6 +526,23 @@ ipcMain.handle(
       throw new Error("Invalid note id");
     }
     setNotePluginUiState(noteId, state);
+    persistNotes();
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.SAVE_NOTE_CONTENT,
+  async (_event, noteId: string, content: string) => {
+    const registeredTypes = registry.getRegisteredTypes();
+    ensureNotesSeeded(registeredTypes);
+
+    if (!isValidNoteId(noteId)) {
+      throw new Error("Invalid note id");
+    }
+    if (typeof content !== "string") {
+      throw new Error("Invalid content");
+    }
+    setNoteContentInStore(noteId, content);
     persistNotes();
   },
 );

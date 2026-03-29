@@ -35,6 +35,7 @@ declare global {
         noteId: string,
         state: unknown,
       ) => Promise<void>;
+      saveNoteContent: (noteId: string, content: string) => Promise<void>;
       getComponent: (type: string) => Promise<string | null>;
       getPluginHTML: (type: string, note: Note) => Promise<string | null>;
       getRegisteredTypes: () => Promise<string[]>;

@@ -18,6 +18,8 @@ export interface NodexIframeApi {
   postMessage: (data: unknown) => void;
   postPluginUiState?: (state: unknown) => void;
   notifyDisplayReady?: () => void;
+  /** Persist note `content` for the open note (host debounces IPC). */
+  saveNoteContent?: (content: string) => void;
   onMessage: ((msg: HostToPluginMessage) => void) | null;
 }
 
@@ -41,6 +43,7 @@ export function useNodexIframeApi(): {
   postMessage: (data: unknown) => void;
   postPluginUiState: (state: unknown) => void;
   notifyDisplayReady: () => void;
+  saveNoteContent: (content: string) => void;
 } {
   return useMemo(
     () => ({
@@ -52,6 +55,9 @@ export function useNodexIframeApi(): {
       },
       notifyDisplayReady: () => {
         window.Nodex?.notifyDisplayReady?.();
+      },
+      saveNoteContent: (content: string) => {
+        window.Nodex?.saveNoteContent?.(content);
       },
     }),
     [],

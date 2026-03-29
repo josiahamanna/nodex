@@ -11,6 +11,7 @@ import { attachReactToPluginWindow } from "../../../shared/react-bridge";
 import { useTheme } from "../../theme/ThemeContext";
 import type { AppDispatch } from "../../store";
 import {
+  saveNoteContent,
   saveNotePluginUiState,
 } from "../../store/notesSlice";
 import { receiveSnapshot } from "../../store/pluginUiSlice";
@@ -47,6 +48,9 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   const inheritThemeRef = useRef(true);
   const deferDisplayRef = useRef(false);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noteContentPersistTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
 
   const sendMessageToPlugin = useCallback((message: PluginMessage) => {
     if (iframeRef.current?.contentWindow) {
@@ -68,11 +72,28 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
     [dispatch],
   );
 
+  const scheduleNoteContentPersist = useCallback(
+    (noteId: string, content: string) => {
+      if (noteContentPersistTimerRef.current) {
+        clearTimeout(noteContentPersistTimerRef.current);
+      }
+      noteContentPersistTimerRef.current = setTimeout(() => {
+        noteContentPersistTimerRef.current = null;
+        void dispatch(saveNoteContent({ noteId, content }));
+      }, 400);
+    },
+    [dispatch],
+  );
+
   useEffect(() => {
     return () => {
       if (persistTimerRef.current) {
         clearTimeout(persistTimerRef.current);
         persistTimerRef.current = null;
+      }
+      if (noteContentPersistTimerRef.current) {
+        clearTimeout(noteContentPersistTimerRef.current);
+        noteContentPersistTimerRef.current = null;
       }
     };
   }, []);
@@ -81,6 +102,10 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
     if (persistTimerRef.current) {
       clearTimeout(persistTimerRef.current);
       persistTimerRef.current = null;
+    }
+    if (noteContentPersistTimerRef.current) {
+      clearTimeout(noteContentPersistTimerRef.current);
+      noteContentPersistTimerRef.current = null;
     }
   }, [note.id]);
 
@@ -104,6 +129,14 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
 
       if (event.data?.type === MessageType.CONTENT_READY) {
         setContentReady(true);
+        return;
+      }
+
+      if (event.data?.type === MessageType.SAVE_NOTE_CONTENT) {
+        const raw = event.data as { content?: unknown };
+        if (typeof raw.content === "string") {
+          scheduleNoteContentPersist(noteRef.current.id, raw.content);
+        }
         return;
       }
 
@@ -141,7 +174,7 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
           break;
       }
     },
-    [schedulePluginUiPersist, sendMessageToPlugin],
+    [scheduleNoteContentPersist, schedulePluginUiPersist, sendMessageToPlugin],
   );
 
   useEffect(() => {
@@ -208,6 +241,7 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
         themeCss,
         dark: resolvedDark,
         inheritTheme: inherit,
+        saveNoteContentType: MessageType.SAVE_NOTE_CONTENT,
         pluginUiSnapshotType: MessageType.PLUGIN_UI_SNAPSHOT,
         pluginUiProtocolVersion: PLUGIN_UI_PROTOCOL_VERSION,
       });
@@ -281,6 +315,7 @@ function createSandboxedHTML(
     themeCss: string;
     dark: boolean;
     inheritTheme: boolean;
+    saveNoteContentType: string;
     pluginUiSnapshotType: string;
     pluginUiProtocolVersion: number;
   },
@@ -289,6 +324,7 @@ function createSandboxedHTML(
     themeCss,
     dark,
     inheritTheme,
+    saveNoteContentType,
     pluginUiSnapshotType,
     pluginUiProtocolVersion,
   } = opts;
@@ -349,6 +385,10 @@ function createSandboxedHTML(
         try {
           window.parent.postMessage({ type: '${MessageType.CONTENT_READY}' }, '*');
         } catch (e) {}
+      };
+      window.Nodex.saveNoteContent = function (content) {
+        if (typeof content !== 'string') return;
+        window.parent.postMessage({ type: '${saveNoteContentType}', content: content }, '*');
       };
       window.Nodex.onMessage = null;
       window.addEventListener('message', function (event) {

@@ -5,6 +5,7 @@ import { marked } from "marked";
 import type { NotePayload } from "@nodex/plugin-ui";
 import {
   useNodexHostMessages,
+  useNodexIframeApi,
   useNotifyDisplayReady,
 } from "@nodex/plugin-ui";
 
@@ -79,9 +80,14 @@ function App() {
   const [content, setContent] = useState(initial);
   const [mode, setMode] = useState<ViewMode>(initialMode);
 
-  const persistViewMode = useCallback((m: ViewMode) => {
-    window.Nodex.postPluginUiState?.({ viewMode: m });
-  }, []);
+  const { postPluginUiState, saveNoteContent } = useNodexIframeApi();
+
+  const persistViewMode = useCallback(
+    (m: ViewMode) => {
+      postPluginUiState({ viewMode: m });
+    },
+    [postPluginUiState],
+  );
 
   const applyHydratedState = useCallback((state: unknown) => {
     const vm = viewModeFromPluginState(state);
@@ -92,7 +98,8 @@ function App() {
 
   const onNotePayload = useCallback((payload: NotePayload) => {
     window.__NODEX_NOTE__ = payload;
-    setContent(payload.content ?? "");
+    const next = payload.content ?? "";
+    setContent((prev) => (next === prev ? prev : next));
     const vm = viewModeFromNoteMetadata(payload.metadata);
     if (vm) {
       setMode(vm);
@@ -125,7 +132,11 @@ function App() {
   const editPane = (grow: boolean) => (
     <textarea
       value={content}
-      onChange={(e) => setContent(e.target.value)}
+      onChange={(e) => {
+        const v = e.target.value;
+        setContent(v);
+        saveNoteContent(v);
+      }}
       spellCheck={false}
       style={{
         ...textareaBase,

@@ -642,6 +642,25 @@ export function renameNote(id: string, title: string): void {
   n.title = t;
 }
 
+const MAX_NOTE_CONTENT_CHARS = 5_000_000;
+
+/** Update note body (iframe editors call via host IPC). */
+export function setNoteContent(noteId: string, content: string): void {
+  if (typeof content !== "string") {
+    throw new Error("Content must be a string");
+  }
+  if (content.length > MAX_NOTE_CONTENT_CHARS) {
+    throw new Error(
+      `Content exceeds maximum length (${MAX_NOTE_CONTENT_CHARS} characters)`,
+    );
+  }
+  const n = notes.get(noteId);
+  if (!n) {
+    throw new Error("Note not found");
+  }
+  n.content = content;
+}
+
 /** Persist plugin iframe UI snapshot under `metadata.pluginUiState`. */
 export function setNotePluginUiState(noteId: string, state: unknown): void {
   const err = validatePluginUiStateSize(state);

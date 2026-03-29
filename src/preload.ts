@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld("Nodex", {
     ipcRenderer.invoke(IPC_CHANNELS.PASTE_SUBTREE, payload),
   saveNotePluginUiState: (noteId: string, state: unknown): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.SAVE_NOTE_PLUGIN_UI_STATE, noteId, state),
+  saveNoteContent: (noteId: string, content: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SAVE_NOTE_CONTENT, noteId, content),
   getComponent: (type: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_COMPONENT, type),
   getPluginHTML: (type: string, note: Note): Promise<string | null> =>

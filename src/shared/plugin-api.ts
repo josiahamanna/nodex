@@ -25,6 +25,8 @@ export enum MessageType {
   CONTENT_READY = "content_ready",
   UPDATE = "update",
   ACTION = "action",
+  /** Iframe → host: persist current note `content` (debounced on host). */
+  SAVE_NOTE_CONTENT = "save_note_content",
   /** Iframe → host: versioned JSON snapshot for persistence (see plugin-state-protocol.ts). */
   PLUGIN_UI_SNAPSHOT = "plugin_ui_snapshot",
   /** Host → iframe: hydrate from note.metadata.pluginUiState. */

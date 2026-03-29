@@ -12,6 +12,7 @@ export const IPC_CHANNELS = {
   MOVE_NOTES_BULK: "note:move-bulk",
   PASTE_SUBTREE: "note:paste-subtree",
   SAVE_NOTE_PLUGIN_UI_STATE: "note:save-plugin-ui-state",
+  SAVE_NOTE_CONTENT: "note:save-content",
   GET_COMPONENT: "plugin:get-component",
   GET_PLUGIN_HTML: "plugin:get-html",
   GET_REGISTERED_TYPES: "plugin:get-registered-types",

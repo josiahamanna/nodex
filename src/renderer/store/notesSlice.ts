@@ -111,6 +111,14 @@ export const saveNotePluginUiState = createAsyncThunk(
   },
 );
 
+export const saveNoteContent = createAsyncThunk(
+  "notes/saveNoteContent",
+  async ({ noteId, content }: { noteId: string; content: string }) => {
+    await window.Nodex.saveNoteContent(noteId, content);
+    return { noteId, content };
+  },
+);
+
 const notesSlice = createSlice({
   name: "notes",
   initialState,
@@ -193,6 +201,16 @@ const notesSlice = createSlice({
       .addCase(saveNotePluginUiState.rejected, (state, action) => {
         state.error =
           action.error.message || "Failed to save plugin UI state";
+      })
+      .addCase(saveNoteContent.fulfilled, (state, action) => {
+        const { noteId, content } = action.payload;
+        if (state.currentNote?.id === noteId) {
+          state.currentNote = { ...state.currentNote, content };
+        }
+      })
+      .addCase(saveNoteContent.rejected, (state, action) => {
+        state.error =
+          action.error.message || "Failed to save note content";
       });
   },
 });
