@@ -21,6 +21,7 @@ import {
   DND_NOTE_IDS_MIME,
   DND_NOTE_MIME,
   folderDisplayName,
+  isStrictAncestor,
   minimalSelectedRoots,
   parentMapFromNotes,
   parseDragIds,

@@ -1,0 +1,148 @@
+import { randomUUID } from "crypto";
+import {
+  getChildren,
+  notes,
+  setChildren,
+} from "./notes-store-core";
+
+const defaultSampleContent: Record<
+  string,
+  { content: string; metadata?: Record<string, unknown> }
+> = {
+  root: {
+    content:
+      "# Welcome to Nodex\n\nThis **Home** note is the workspace root — use it as your documentation landing page.\n\n## Tips\n\n- Add child notes for topics, specs, and runbooks.\n- Use **Markdown** notes for readable docs; other note types showcase plugins.\n- The tree on the left is your single outline for everything in this workspace.\n\n---\n\n_Edit this page anytime to match your project._",
+  },
+  markdown: {
+    content:
+      "# Hello World\n\nThis is a **markdown** note rendered by a plugin!\n\n## Features\n\n- Dynamic plugin loading\n- Component registry\n- Hot reload support",
+  },
+  text: {
+    content:
+      "<h1>Rich Text Editor</h1><p>This note uses <strong>Tiptap</strong> for rich text editing.</p>",
+  },
+  code: {
+    content:
+      'function hello() {\n  console.log("Hello from Monaco!");\n}\n\nhello();',
+    metadata: { language: "javascript" },
+  },
+};
+
+const defaultTypeToTitle: Record<string, string> = {
+  root: "Home",
+  markdown: "Markdown Note",
+  text: "Rich Text Note",
+  code: "Code Editor",
+};
+
+export function titleForType(type: string): string {
+  return (
+    defaultTypeToTitle[type] ||
+    `${type.charAt(0).toUpperCase() + type.slice(1)} Note`
+  );
+}
+
+export function bodyForType(type: string): {
+  content: string;
+  metadata?: Record<string, unknown>;
+} {
+  const sc = defaultSampleContent[type];
+  return {
+    content: sc?.content || `Sample content for ${type}`,
+    metadata: sc?.metadata,
+  };
+}
+
+export function pickWorkspaceOverviewType(
+  registeredTypes: string[],
+): string | null {
+  if (registeredTypes.length === 0) {
+    return null;
+  }
+  if (registeredTypes.includes("markdown")) {
+    return "markdown";
+  }
+  if (registeredTypes.includes("root")) {
+    return "root";
+  }
+  return registeredTypes[0]!;
+}
+
+export function overviewTitleAndBody(overviewType: string): {
+  title: string;
+  content: string;
+  metadata?: Record<string, unknown>;
+} {
+  if (overviewType === "markdown") {
+    return {
+      title: "Home",
+      content: defaultSampleContent.root.content,
+    };
+  }
+  const { content, metadata } = bodyForType(overviewType);
+  return {
+    title: overviewType === "root" ? "Home" : titleForType(overviewType),
+    content,
+    metadata,
+  };
+}
+
+export function childTypesBelowOverview(
+  registeredTypes: string[],
+  overviewType: string,
+): string[] {
+  return registeredTypes.filter(
+    (t) => t !== "root" && t !== overviewType,
+  );
+}
+
+let seedSampleNotesEnabled = true;
+
+export function setSeedSampleNotesPreference(enabled: boolean): void {
+  seedSampleNotesEnabled = enabled;
+}
+
+export function getSeedSampleNotesPreference(): boolean {
+  return seedSampleNotesEnabled;
+}
+
+export function ensureNotesSeeded(registeredTypes: string[]): void {
+  if (!seedSampleNotesEnabled) {
+    return;
+  }
+  if (notes.size > 0) {
+    return;
+  }
+  const overviewType = pickWorkspaceOverviewType(registeredTypes);
+  if (!overviewType) {
+    return;
+  }
+  const { title: overviewTitle, content, metadata } =
+    overviewTitleAndBody(overviewType);
+  const homeId = randomUUID();
+  notes.set(homeId, {
+    id: homeId,
+    parentId: null,
+    type: overviewType,
+    title: overviewTitle,
+    content,
+    metadata,
+  });
+  const childTypes = childTypesBelowOverview(registeredTypes, overviewType);
+  const childIds: string[] = [];
+  for (const type of childTypes) {
+    const id = randomUUID();
+    const body = bodyForType(type);
+    notes.set(id, {
+      id,
+      parentId: homeId,
+      type,
+      title: titleForType(type),
+      content: body.content,
+      metadata: body.metadata,
+    });
+    childIds.push(id);
+  }
+  setChildren(null, [homeId]);
+  setChildren(homeId, childIds);
+}

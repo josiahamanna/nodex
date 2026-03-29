@@ -17,11 +17,6 @@ import {
   pasteSubtree,
   renameNote,
 } from "./store/notesSlice";
-import NotesSidebarPanel from "./components/NotesSidebarPanel";
-import NoteViewer from "./components/NoteViewer";
-import AssetPreview from "./components/AssetPreview";
-import PluginManager from "./components/PluginManager";
-import PluginIDE from "./components/PluginIDE";
 import SettingsView, {
   type SettingsCategory,
 } from "./components/SettingsView";
@@ -30,11 +25,16 @@ import PrimarySidebarShell, {
   writeStoredPrimaryTab,
   type PrimaryTab,
 } from "./components/shell/PrimarySidebarShell";
-import EditorTabSidebar from "./components/shell/EditorTabSidebar";
-import PluginsSidebarList, {
-  type PluginsSidebarSelection,
-} from "./components/shell/PluginsSidebarList";
-import PluginPanelGeneral from "./components/PluginPanelGeneral";
+import type { PluginsSidebarSelection } from "./components/shell/PluginsSidebarList";
+import { AppShellBody } from "./app/AppShellBody";
+import { AppShellMainColumn } from "./app/AppShellMainColumn";
+import {
+  LEFT_COLLAPSED_PCT,
+  LEFT_EXPANDED_PCT,
+  readShellSidebarCollapsed,
+  writeShellSidebarCollapsed,
+} from "./app/app-shell-storage";
+import type { NotesMainPane } from "./app/app-shell-types";
 import { MainDebugDockProvider } from "./debug/MainDebugDockContext";
 import type {
   CreateNoteRelation,
@@ -42,34 +42,6 @@ import type {
   PasteSubtreePayload,
 } from "../preload";
 import { workspaceFolderPathForNote } from "../shared/note-workspace";
-
-const SHELL_SIDEBAR_COLLAPSED_KEY = "nodex-primary-sidebar-collapsed";
-const LEFT_EXPANDED_PCT = 22;
-const LEFT_COLLAPSED_PCT = 3.2;
-
-type NotesMainPane =
-  | { kind: "note" }
-  | { kind: "asset"; relativePath: string; projectRoot: string };
-
-function readShellSidebarCollapsed(): boolean {
-  try {
-    return localStorage.getItem(SHELL_SIDEBAR_COLLAPSED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeShellSidebarCollapsed(collapsed: boolean): void {
-  try {
-    if (collapsed) {
-      localStorage.setItem(SHELL_SIDEBAR_COLLAPSED_KEY, "1");
-    } else {
-      localStorage.removeItem(SHELL_SIDEBAR_COLLAPSED_KEY);
-    }
-  } catch {
-    /* ignore */
-  }
-}
 
 const App: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -440,195 +412,6 @@ const App: React.FC = () => {
     }
   };
 
-  const settingsNavBtn = (cat: SettingsCategory, label: string) => {
-    const active = settingsCategory === cat;
-    return (
-      <button
-        key={cat}
-        type="button"
-        className={`w-full border-sidebar-border border-b px-3 py-2.5 text-left text-[12px] transition-colors ${
-          active
-            ? "bg-sidebar-accent font-medium text-foreground"
-            : "text-sidebar-foreground/85 hover:bg-sidebar-accent/40"
-        }`}
-        onClick={() => setSettingsCategory(cat)}
-      >
-        {label}
-      </button>
-    );
-  };
-
-  const shellBody = () => {
-    if (primaryTab === "notes") {
-      if (projectRoot === undefined) {
-        return (
-          <div className="flex min-h-0 flex-1 items-center justify-center p-3">
-            <div className="text-[11px] text-muted-foreground">Loading…</div>
-          </div>
-        );
-      }
-      if (!projectRoot) {
-        return (
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-            <p className="text-[12px] leading-snug text-muted-foreground">
-              Open a project folder to load notes (
-              <span className="font-mono text-[11px]">data/nodex.sqlite</span>)
-              and browse files under{" "}
-              <span className="font-mono text-[11px]">assets/</span>.
-            </p>
-            <button
-              type="button"
-              className="rounded-md border border-border bg-background px-3 py-2 text-left text-[12px] font-medium hover:bg-muted/60"
-              onClick={() => void handleOpenProjectFolder()}
-            >
-              Open project…
-            </button>
-          </div>
-        );
-      }
-      return (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <NotesSidebarPanel
-              notes={notesList}
-              registeredTypes={registeredTypes}
-              currentNoteId={currentNote?.id}
-              onNoteSelect={handleNoteSelect}
-              onCreateNote={handleCreateNote}
-              onRenameNote={handleRenameNote}
-              onMoveNote={handleMoveNote}
-              onMoveNotesBulk={handleMoveNotesBulk}
-              onDeleteNotes={handleDeleteNotes}
-              onPasteSubtree={handlePasteSubtree}
-              onAddWorkspaceFolder={() => void handleAddWorkspaceFolder()}
-              onRevealProjectFolder={(id: string) =>
-                void handleRevealProjectFolder(id)
-              }
-              onRefreshWorkspace={() => void handleRefreshWorkspace()}
-              workspaceRoots={rootsList}
-              onOpenProjectAsset={(pr, relativePath) =>
-                setNotesMainPane({
-                  kind: "asset",
-                  relativePath,
-                  projectRoot: pr,
-                })
-              }
-              assetFsTick={assetFsTick}
-            />
-          </div>
-        </div>
-      );
-    }
-    if (primaryTab === "editor") {
-      return (
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <EditorTabSidebar />
-        </div>
-      );
-    }
-    if (primaryTab === "settings") {
-      return (
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {settingsNavBtn("appearance", "Appearance")}
-          {settingsNavBtn("debug", "Debug")}
-          {settingsNavBtn("keyboard", "Keyboard shortcuts")}
-        </div>
-      );
-    }
-    return (
-      <PluginsSidebarList
-        selection={pluginsShell}
-        onSelectGeneral={() => setPluginsShell({ kind: "general" })}
-        onSelectPlugin={(id) => setPluginsShell({ kind: "plugin", id })}
-      />
-    );
-  };
-
-  const mainColumn = () => {
-    if (primaryTab === "notes") {
-      if (projectRoot === undefined) {
-        return (
-          <div className="flex h-full items-center justify-center p-8">
-            <div className="text-[12px] text-muted-foreground">Loading…</div>
-          </div>
-        );
-      }
-      if (!projectRoot) {
-        return (
-          <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
-            <p className="max-w-md text-center text-[13px] text-muted-foreground">
-              Choose a folder for this workspace. Notes live in SQLite under{" "}
-              <span className="font-mono text-[12px]">data/</span>; put
-              attachments and other files in{" "}
-              <span className="font-mono text-[12px]">assets/</span>.
-            </p>
-            <button
-              type="button"
-              className="rounded-md border border-border bg-background px-4 py-2 text-[13px] font-medium hover:bg-muted/60"
-              onClick={() => void handleOpenProjectFolder()}
-            >
-              Open project…
-            </button>
-          </div>
-        );
-      }
-      if (notesMainPane.kind === "asset") {
-        return (
-          <AssetPreview
-            relativePath={notesMainPane.relativePath}
-            projectRoot={notesMainPane.projectRoot}
-          />
-        );
-      }
-      if (detailLoading && !currentNote) {
-        return (
-          <div className="flex h-full items-center justify-center p-8">
-            <div className="text-[12px] text-muted-foreground">Loading…</div>
-          </div>
-        );
-      }
-      if (currentNote) {
-        return (
-          <NoteViewer
-            note={currentNote}
-            onTitleCommit={(title) =>
-              handleRenameNote(currentNote.id, title)
-            }
-          />
-        );
-      }
-      return (
-        <div className="flex h-full items-center justify-center p-8">
-          <div className="text-[12px] text-muted-foreground">
-            No note selected
-          </div>
-        </div>
-      );
-    }
-    if (primaryTab === "editor") {
-      return (
-        <PluginIDE
-          shellLayout
-          onPluginsChanged={handlePluginsChanged}
-        />
-      );
-    }
-    if (primaryTab === "settings") {
-      return <SettingsView category={settingsCategory} />;
-    }
-    if (pluginsShell.kind === "general") {
-      return (
-        <PluginPanelGeneral onPluginsChanged={handlePluginsChanged} />
-      );
-    }
-    return (
-      <PluginManager
-        onPluginsChanged={handlePluginsChanged}
-        selectedPluginId={pluginsShell.id}
-      />
-    );
-  };
-
   return (
     <div className="nodex-app-pad box-border flex h-screen min-h-0 flex-col bg-muted/45 text-foreground dark:bg-muted/25">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-sm box-border">
@@ -650,14 +433,57 @@ const App: React.FC = () => {
               sidebarCollapsed={sidebarCollapsed}
               onToggleSidebarCollapsed={onToggleSidebarCollapsed}
             >
-              {shellBody()}
+              <AppShellBody
+                primaryTab={primaryTab}
+                projectRoot={projectRoot}
+                notesList={notesList}
+                registeredTypes={registeredTypes}
+                currentNoteId={currentNote?.id}
+                rootsList={rootsList}
+                assetFsTick={assetFsTick}
+                settingsCategory={settingsCategory}
+                setSettingsCategory={setSettingsCategory}
+                pluginsShell={pluginsShell}
+                setPluginsShell={setPluginsShell}
+                onNoteSelect={handleNoteSelect}
+                onCreateNote={handleCreateNote}
+                onRenameNote={handleRenameNote}
+                onMoveNote={handleMoveNote}
+                onMoveNotesBulk={handleMoveNotesBulk}
+                onDeleteNotes={handleDeleteNotes}
+                onPasteSubtree={handlePasteSubtree}
+                onAddWorkspaceFolder={() => void handleAddWorkspaceFolder()}
+                onRevealProjectFolder={(id: string) =>
+                  void handleRevealProjectFolder(id)
+                }
+                onRefreshWorkspace={() => void handleRefreshWorkspace()}
+                onOpenProjectFolder={() => void handleOpenProjectFolder()}
+                onOpenProjectAsset={(pr, relativePath) =>
+                  setNotesMainPane({
+                    kind: "asset",
+                    relativePath,
+                    projectRoot: pr,
+                  })
+                }
+              />
             </PrimarySidebarShell>
           </Panel>
           <PanelResizeHandle className="nodex-panel-sash relative w-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-y-0 before:left-1/2 before:z-10 before:w-px before:-translate-x-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
           <Panel defaultSize={78} minSize={50} className="nodex-panel-shell min-w-0">
             <MainDebugDockProvider>
               <main className="box-border h-full min-h-0 flex-1 overflow-hidden">
-                {mainColumn()}
+                <AppShellMainColumn
+                  primaryTab={primaryTab}
+                  projectRoot={projectRoot}
+                  notesMainPane={notesMainPane}
+                  detailLoading={detailLoading}
+                  currentNote={currentNote}
+                  settingsCategory={settingsCategory}
+                  pluginsShell={pluginsShell}
+                  onOpenProjectFolder={() => void handleOpenProjectFolder()}
+                  onRenameNote={handleRenameNote}
+                  onPluginsChanged={handlePluginsChanged}
+                />
               </main>
             </MainDebugDockProvider>
           </Panel>
