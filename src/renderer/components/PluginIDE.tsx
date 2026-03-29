@@ -1517,7 +1517,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       await refreshTypes();
       onPluginsChanged?.();
       setStatus(
-        `Imported new workspace "${res.folderName}" (${res.imported?.length ?? 0} file(s)).${formatImportedPathsForStatus(res.imported)}`,
+        `Registered plugin "${res.folderName}" in place (not copied to sources/). npm install runs in that folder.`,
       );
     } finally {
       setBusy(false);

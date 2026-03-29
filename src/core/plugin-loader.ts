@@ -2533,8 +2533,8 @@ if (el) {
   }
 
   /**
-   * Copy an external plugin folder into `sources/<folderName>` when none is selected in the IDE.
-   * Requires `manifest.json` at the root of the imported directory.
+   * Register an external plugin folder in place (same as IDE “load parent” entries): no copy into
+   * `sources/`. Resolution uses `manifest.name` as id; `npm install` and edits happen on disk there.
    */
   importDirectoryAsNewWorkspace(
     absoluteDir: string,
@@ -2551,67 +2551,60 @@ if (el) {
     if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
       return { success: false, error: "Not a directory" };
     }
-    if (!fs.existsSync(path.join(rootDir, "manifest.json"))) {
+    const manifestPath = path.join(rootDir, "manifest.json");
+    if (!fs.existsSync(manifestPath)) {
       return {
         success: false,
         error:
           "Selected folder must contain manifest.json at its root (Nodex plugin layout).",
       };
     }
+    let manifest: PluginManifest;
+    try {
+      manifest = JSON.parse(
+        fs.readFileSync(manifestPath, "utf8"),
+      ) as PluginManifest;
+    } catch {
+      return { success: false, error: "Invalid manifest.json" };
+    }
+    if (
+      typeof manifest.name !== "string" ||
+      !isSafePluginName(manifest.name)
+    ) {
+      return {
+        success: false,
+        error:
+          "manifest.json must declare a valid `name` (plugin id) for registration.",
+      };
+    }
+    const id = manifest.name;
+    const fromSources = path.join(this.userSourcesRoot(), id);
+    if (fs.existsSync(path.join(fromSources, "manifest.json"))) {
+      return {
+        success: false,
+        error: `Plugin "${id}" already exists under sources/. Remove or rename it first, or open that copy instead.`,
+      };
+    }
     try {
       fs.mkdirSync(this.userPluginsDir, { recursive: true });
-      fs.mkdirSync(this.userSourcesRoot(), { recursive: true });
     } catch (e) {
       return {
         success: false,
-        error: `Could not create plugin folders (${this.userPluginsDir}): ${
+        error: `Could not create plugin data dir (${this.userPluginsDir}): ${
           e instanceof Error ? e.message : String(e)
         }`,
       };
     }
-    let folderName = path
-      .basename(rootDir)
-      .replace(/[^a-zA-Z0-9._-]/g, "-")
-      .replace(/^-+|-+$/g, "");
-    if (!folderName) {
-      folderName = "imported-plugin";
-    }
-    if (!isSafePluginName(folderName)) {
-      return { success: false, error: "Invalid workspace folder name" };
-    }
-    const dest = path.join(this.userSourcesRoot(), folderName);
-    if (fs.existsSync(dest)) {
-      return {
-        success: false,
-        error: `Workspace folder "${folderName}" already exists under sources/. Choose another folder or remove it first.`,
-      };
-    }
-    fs.mkdirSync(dest, { recursive: true });
-    const copied = this.copyExternalDirectoryTreeIntoBase(dest, rootDir, "");
-    if (!copied.success) {
-      try {
-        fs.rmSync(dest, { recursive: true, force: true });
-      } catch {
-        /* ignore */
-      }
-      return copied;
-    }
-    if (!fs.existsSync(path.join(dest, "manifest.json"))) {
-      try {
-        fs.rmSync(dest, { recursive: true, force: true });
-      } catch {
-        /* ignore */
-      }
-      return {
-        success: false,
-        error: "Import did not produce manifest.json in workspace (copy failed).",
-      };
-    }
-    this.invalidateDevUiCacheForWorkspace(dest);
+    const map = new Map(
+      this.readExternalPluginEntries().map((e) => [e.id, e]),
+    );
+    map.set(id, { id, path: rootDir });
+    this.writeExternalPluginEntries([...map.values()].sort((a, b) => a.id.localeCompare(b.id)));
+    this.invalidateDevUiCacheForWorkspace(rootDir);
     return {
       success: true,
-      folderName,
-      imported: copied.imported,
+      folderName: id,
+      imported: [],
     };
   }
 

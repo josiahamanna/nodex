@@ -1353,7 +1353,7 @@ ipcMain.handle(IPC_CHANNELS.PLUGIN_SELECT_IMPORT_FILES, async () => {
 ipcMain.handle(IPC_CHANNELS.PLUGIN_SELECT_IMPORT_DIRECTORY, async () => {
   const result = await showOpenDialogWithParent({
     properties: ["openDirectory"],
-    title: "Import folder into plugin workspace",
+    title: "Choose folder (plugin root or folder to merge into current plugin)",
   });
   if (result.canceled || result.filePaths.length === 0) {
     return null;
