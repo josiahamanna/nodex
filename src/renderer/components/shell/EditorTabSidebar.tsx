@@ -67,11 +67,11 @@ function buildFileTree(paths: string[]): FileTreeNode[] {
 
 const menuBtn =
   "min-h-7 rounded-sm border border-input bg-background px-2 py-1 text-[11px] text-foreground hover:bg-muted/50";
-/** Fixed portal menu — must not use absolute under sidebar (center panel stacks on top). */
+/** Fixed portal menu — must not use absolute under sidebar (center panel stacks on top). Block + no width shrinks to viewport; use explicit width so all menus match. */
 const menuPortalPanel =
-  "fixed z-[1000] rounded-md border border-border bg-background py-1 shadow-lg";
+  "fixed z-[1000] w-[min(18rem,calc(100vw-12px))] rounded-md border border-border bg-background py-1 shadow-lg";
 const menuItem =
-  "w-full px-3 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50";
+  "block w-full px-3 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50";
 
 function fireAction(type: IdeShellAction): void {
   dispatchIdeShellAction(type);
@@ -261,7 +261,7 @@ const EditorTabSidebar: React.FC = () => {
           <div
             ref={menuPortalRef}
             role="menu"
-            className={`${menuPortalPanel} ${menu === "build" ? "min-w-[13rem]" : "min-w-[12rem]"}`}
+            className={menuPortalPanel}
             style={{
               top: menuPos.top,
               left: menuPos.left,

@@ -39,6 +39,9 @@ const PLUGIN_IDE_FILES_COLLAPSED_KEY = "plugin-ide-files-collapsed";
 const PLUGIN_IDE_TSC_ON_SAVE_KEY = "plugin-ide-tsc-on-save";
 const PLUGIN_IDE_FORMAT_ON_SAVE_KEY = "plugin-ide-format-on-save";
 const PLUGIN_IDE_RELOAD_ON_SAVE_KEY = "plugin-ide-reload-on-save";
+/** Same width as shell `EditorTabSidebar` menus (fixed avoids full-width `fixed`/`absolute` panels). */
+const PLUGIN_IDE_TOOLBAR_MENU_PANEL =
+  "absolute left-0 top-full z-50 mt-1 w-[min(18rem,calc(100vw-12px))] rounded-md border border-border bg-background py-1 shadow-lg";
 const PLUGIN_IDE_SNAPSHOT_KEY = "plugin-ide-workspace-snapshot-v1";
 const PLUGIN_IDE_MAX_SNAPSHOT_FILE_BYTES = 500 * 1024;
 const NPM_DEBOUNCE_MS = 280;
@@ -2108,7 +2111,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
               </button>
               {toolbarMenu === "file" ? (
                 <div
-                  className="absolute left-0 top-full z-50 mt-1 min-w-[12rem] rounded-md border border-border bg-background py-1 shadow-lg"
+                  className={PLUGIN_IDE_TOOLBAR_MENU_PANEL}
                   role="menu"
                 >
                   <button
@@ -2261,7 +2264,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
               </button>
               {toolbarMenu === "edit" ? (
                 <div
-                  className="absolute left-0 top-full z-50 mt-1 min-w-[14rem] rounded-md border border-border bg-background py-1 shadow-lg"
+                  className={PLUGIN_IDE_TOOLBAR_MENU_PANEL}
                   role="menu"
                 >
                   <button
@@ -2361,7 +2364,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
               </button>
               {toolbarMenu === "build" ? (
                 <div
-                  className="absolute left-0 top-full z-50 mt-1 min-w-[13rem] rounded-md border border-border bg-background py-1 shadow-lg"
+                  className={PLUGIN_IDE_TOOLBAR_MENU_PANEL}
                   role="menu"
                 >
                   <button

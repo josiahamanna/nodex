@@ -170,6 +170,7 @@ const createWindow = (): void => {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    /** No in-window menu; Linux/Windows use `removeMenu()` below. */
     autoHideMenuBar: true,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
@@ -178,6 +179,9 @@ const createWindow = (): void => {
       sandbox: false,
     },
   });
+  if (process.platform !== "darwin") {
+    mainWindow.removeMenu();
+  }
   mainWindow.setMenuBarVisibility(false);
 
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
