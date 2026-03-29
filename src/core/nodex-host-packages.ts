@@ -12,10 +12,30 @@ function shouldCopyPath(root: string, absPath: string): boolean {
   return !parts.some((p) => p === "node_modules" || p === ".git");
 }
 
-function copyPackageTree(fromRoot: string, toRoot: string): void {
-  if (fs.existsSync(toRoot)) {
+/**
+ * Remove a path so we can replace it with a real directory. Broken symlinks
+ * make `fs.existsSync` false, but the name still occupies the parent — then
+ * `mkdirSync` fails with ENOENT unless we `unlink` the symlink first.
+ */
+function removePathForCopyDestination(toRoot: string): void {
+  let st: fs.Stats;
+  try {
+    st = fs.lstatSync(toRoot);
+  } catch {
+    return;
+  }
+  if (st.isSymbolicLink() || st.isFile()) {
+    fs.unlinkSync(toRoot);
+    return;
+  }
+  if (st.isDirectory()) {
     fs.rmSync(toRoot, { recursive: true, force: true });
   }
+}
+
+function copyPackageTree(fromRoot: string, toRoot: string): void {
+  removePathForCopyDestination(toRoot);
+  fs.mkdirSync(path.dirname(toRoot), { recursive: true });
   fs.mkdirSync(toRoot, { recursive: true });
 
   const walk = (fromDir: string, toDir: string): void => {

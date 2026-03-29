@@ -19,6 +19,8 @@ import {
 } from "./store/notesSlice";
 import NotesSidebarPanel from "./components/NotesSidebarPanel";
 import NoteViewer from "./components/NoteViewer";
+import AssetPreview from "./components/AssetPreview";
+import AssetsSidebarSection from "./components/AssetsSidebarSection";
 import PluginManager from "./components/PluginManager";
 import PluginIDE from "./components/PluginIDE";
 import SettingsView, {
@@ -44,6 +46,10 @@ import type {
 const SHELL_SIDEBAR_COLLAPSED_KEY = "nodex-primary-sidebar-collapsed";
 const LEFT_EXPANDED_PCT = 22;
 const LEFT_COLLAPSED_PCT = 3.2;
+
+type NotesMainPane =
+  | { kind: "note" }
+  | { kind: "asset"; relativePath: string };
 
 function readShellSidebarCollapsed(): boolean {
   try {
@@ -83,6 +89,12 @@ const App: React.FC = () => {
     readShellSidebarCollapsed,
   );
   const leftPanelRef = useRef<ImperativePanelHandle>(null);
+  const [projectRoot, setProjectRoot] = useState<string | null | undefined>(
+    undefined,
+  );
+  const [notesMainPane, setNotesMainPane] = useState<NotesMainPane>({
+    kind: "note",
+  });
 
   const setPrimaryTab = (t: PrimaryTab) => {
     setPrimaryTabState(t);
@@ -113,6 +125,12 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    void window.Nodex.getProjectState().then((s) => {
+      setProjectRoot(s.rootPath);
+    });
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
@@ -136,9 +154,25 @@ const App: React.FC = () => {
       })();
     });
 
+    const unsubProject = window.Nodex.onProjectRootChanged(() => {
+      void window.Nodex.getProjectState().then((s) => {
+        setProjectRoot(s.rootPath);
+        setNotesMainPane({ kind: "note" });
+      });
+      void (async () => {
+        try {
+          await dispatch(fetchAllNotes()).unwrap();
+          await dispatch(fetchNote()).unwrap();
+        } catch {
+          /* errors land in notes.error */
+        }
+      })();
+    });
+
     return () => {
       cancelled = true;
       unsubscribe();
+      unsubProject();
     };
   }, [dispatch]);
 
@@ -168,7 +202,22 @@ const App: React.FC = () => {
     return u;
   }, []);
 
+  const handleOpenProjectFolder = async () => {
+    const r = await window.Nodex.selectProjectFolder();
+    if (r.ok) {
+      setProjectRoot(r.rootPath);
+      setNotesMainPane({ kind: "note" });
+      try {
+        await dispatch(fetchAllNotes()).unwrap();
+        await dispatch(fetchNote()).unwrap();
+      } catch {
+        /* errors land in notes.error */
+      }
+    }
+  };
+
   const handleNoteSelect = (noteId: string) => {
+    setNotesMainPane({ kind: "note" });
     void (async () => {
       try {
         await dispatch(fetchAllNotes()).unwrap();
@@ -287,20 +336,56 @@ const App: React.FC = () => {
 
   const shellBody = () => {
     if (primaryTab === "notes") {
+      if (projectRoot === undefined) {
+        return (
+          <div className="flex min-h-0 flex-1 items-center justify-center p-3">
+            <div className="text-[11px] text-muted-foreground">Loading…</div>
+          </div>
+        );
+      }
+      if (!projectRoot) {
+        return (
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+            <p className="text-[12px] leading-snug text-muted-foreground">
+              Open a project folder to load notes (
+              <span className="font-mono text-[11px]">data/nodex.sqlite</span>)
+              and browse files under{" "}
+              <span className="font-mono text-[11px]">assets/</span>.
+            </p>
+            <button
+              type="button"
+              className="rounded-md border border-border bg-background px-3 py-2 text-left text-[12px] font-medium hover:bg-muted/60"
+              onClick={() => void handleOpenProjectFolder()}
+            >
+              Open project…
+            </button>
+          </div>
+        );
+      }
       return (
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <NotesSidebarPanel
-            notes={notesList}
-            registeredTypes={registeredTypes}
-            currentNoteId={currentNote?.id}
-            onNoteSelect={handleNoteSelect}
-            onCreateNote={handleCreateNote}
-            onRenameNote={handleRenameNote}
-            onMoveNote={handleMoveNote}
-            onMoveNotesBulk={handleMoveNotesBulk}
-            onDeleteNotes={handleDeleteNotes}
-            onPasteSubtree={handlePasteSubtree}
-          />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 flex-[2] overflow-hidden">
+            <NotesSidebarPanel
+              notes={notesList}
+              registeredTypes={registeredTypes}
+              currentNoteId={currentNote?.id}
+              onNoteSelect={handleNoteSelect}
+              onCreateNote={handleCreateNote}
+              onRenameNote={handleRenameNote}
+              onMoveNote={handleMoveNote}
+              onMoveNotesBulk={handleMoveNotesBulk}
+              onDeleteNotes={handleDeleteNotes}
+              onPasteSubtree={handlePasteSubtree}
+            />
+          </div>
+          <div className="flex min-h-0 max-h-[42%] shrink-0 flex-col overflow-hidden border-t border-border">
+            <AssetsSidebarSection
+              projectRoot={projectRoot}
+              onOpenFile={(relativePath) =>
+                setNotesMainPane({ kind: "asset", relativePath })
+              }
+            />
+          </div>
         </div>
       );
     }
@@ -331,6 +416,37 @@ const App: React.FC = () => {
 
   const mainColumn = () => {
     if (primaryTab === "notes") {
+      if (projectRoot === undefined) {
+        return (
+          <div className="flex h-full items-center justify-center p-8">
+            <div className="text-[12px] text-muted-foreground">Loading…</div>
+          </div>
+        );
+      }
+      if (!projectRoot) {
+        return (
+          <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
+            <p className="max-w-md text-center text-[13px] text-muted-foreground">
+              Choose a folder for this workspace. Notes live in SQLite under{" "}
+              <span className="font-mono text-[12px]">data/</span>; put
+              attachments and other files in{" "}
+              <span className="font-mono text-[12px]">assets/</span>.
+            </p>
+            <button
+              type="button"
+              className="rounded-md border border-border bg-background px-4 py-2 text-[13px] font-medium hover:bg-muted/60"
+              onClick={() => void handleOpenProjectFolder()}
+            >
+              Open project…
+            </button>
+          </div>
+        );
+      }
+      if (notesMainPane.kind === "asset") {
+        return (
+          <AssetPreview relativePath={notesMainPane.relativePath} />
+        );
+      }
       if (detailLoading && !currentNote) {
         return (
           <div className="flex h-full items-center justify-center p-8">

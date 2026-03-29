@@ -33,6 +33,7 @@ import {
   IDE_SHELL_STATE_EVENT,
   IDE_SHELL_TREE_FS_OP_EVENT,
   IDE_SHELL_TREE_SELECTION_EVENT,
+  dispatchIdeShellExpandFolder,
   type IdeShellAction,
   type IdeShellActionPayload,
   type IdeShellOpenFileDetail,
@@ -48,6 +49,9 @@ const PLUGIN_IDE_RELOAD_ON_SAVE_KEY = "plugin-ide-reload-on-save";
 const PLUGIN_IDE_TOOLBAR_MENU_PANEL =
   "absolute left-0 top-full z-50 mt-1 w-[min(18rem,calc(100vw-12px))] rounded-md border border-border bg-background py-1 shadow-lg";
 const PLUGIN_IDE_SNAPSHOT_KEY = "plugin-ide-workspace-snapshot-v1";
+
+/** Placeholder from main `listPluginSourceFiles` when `node_modules` exists (not a real file). */
+const NODE_MODULES_LIST_MARKER = "node_modules/";
 const PLUGIN_IDE_MAX_SNAPSHOT_FILE_BYTES = 500 * 1024;
 const NPM_DEBOUNCE_MS = 280;
 const PLUGIN_IDE_CUSTOM_EDITOR_KEY = "plugin-ide-custom-editor-cmd";
@@ -140,6 +144,11 @@ function basenameRel(rel: string): string {
   const norm = rel.replace(/\\/g, "/").replace(/\/+$/, "");
   const i = norm.lastIndexOf("/");
   return i >= 0 ? norm.slice(i + 1) : norm;
+}
+
+/** Tree / UI may use trailing `/` for directories; IPC entry APIs accept both. */
+function normalizePluginRelPath(rel: string): string {
+  return rel.replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
 /** First paste attempt: sibling duplicate, or `pasteIntoDir/baseName`. */
@@ -842,6 +851,10 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   }, [shellLayout]);
 
   const openFile = async (relativePath: string) => {
+    if (relativePath.endsWith("/")) {
+      setStatus("Folders cannot be opened in the editor — use the tree for context actions.");
+      return;
+    }
     const existing = tabs.find((t) => t.relativePath === relativePath);
     if (existing) {
       setActivePath(relativePath);
@@ -1470,7 +1483,36 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     }
   };
 
-  const onImportFolder = async () => {
+  const onImportFolderIntoWorkspace = useCallback(async () => {
+    if (!pluginFolder || busy) {
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const dir = await window.Nodex.selectImportDirectory();
+      if (!dir) {
+        return;
+      }
+      const res = await window.Nodex.importDirectoryIntoWorkspace(
+        pluginFolder,
+        dir,
+        "",
+      );
+      if (!res.success) {
+        setStatus(res.error ?? "Import failed");
+        return;
+      }
+      await refreshFileList();
+      setStatus(
+        `Imported ${res.imported?.length ?? 0} file(s) from folder under plugin root.${formatImportedPathsForStatus(res.imported)}`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [pluginFolder, busy, refreshFileList]);
+
+  const onImportNewWorkspace = useCallback(async () => {
     if (busy) {
       return;
     }
@@ -1481,22 +1523,6 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       if (!dir) {
         return;
       }
-      if (pluginFolder) {
-        const res = await window.Nodex.importDirectoryIntoWorkspace(
-          pluginFolder,
-          dir,
-          "",
-        );
-        if (!res.success) {
-          setStatus(res.error ?? "Import failed");
-          return;
-        }
-        await refreshFileList();
-        setStatus(
-          `Imported ${res.imported?.length ?? 0} file(s) from folder under plugin root.${formatImportedPathsForStatus(res.imported)}`,
-        );
-        return;
-      }
       const res = await window.Nodex.importDirectoryAsNewWorkspace(dir);
       if (!res.success) {
         setStatus(res.error ?? "Import failed");
@@ -1505,6 +1531,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       await refreshWorkspaceFolders();
       if (res.folderName) {
         setPluginFolder(res.folderName);
+        dispatchIdeShellExpandFolder(res.folderName);
       }
       const reload = await window.Nodex.reloadPluginRegistry();
       if (!reload.success) {
@@ -1522,7 +1549,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     } finally {
       setBusy(false);
     }
-  };
+  }, [busy, refreshWorkspaceFolders, refreshTypes, onPluginsChanged]);
+
+  const onImportFolder = useCallback(async () => {
+    if (busy) {
+      return;
+    }
+    if (pluginFolder) {
+      await onImportFolderIntoWorkspace();
+    } else {
+      await onImportNewWorkspace();
+    }
+  }, [busy, pluginFolder, onImportFolderIntoWorkspace, onImportNewWorkspace]);
 
   const loadNodexFromParent = async () => {
     if (busy) {
@@ -1558,13 +1596,14 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     }
   };
 
-  const removeExternalRegistration = async () => {
-    if (!pluginFolder || busy) {
+  const removeExternalRegistration = async (explicitId?: string) => {
+    const id = explicitId ?? pluginFolder;
+    if (!id || busy) {
       return;
     }
     if (
       !confirm(
-        `Remove “${pluginFolder}” from the external workspace list? (Does not delete files on disk.)`,
+        `Remove “${id}” from the IDE workspace list? (Does not delete files on disk. Plugins under sources/ must be disabled in Plugin Manager.)`,
       )
     ) {
       return;
@@ -1572,15 +1611,17 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     setBusy(true);
     setStatus(null);
     try {
-      const r = await window.Nodex.removeExternalPluginWorkspace(pluginFolder);
+      const r = await window.Nodex.removeExternalPluginWorkspace(id);
       if (!r.success) {
         setStatus(r.error ?? "Remove failed");
         return;
       }
-      setTabs([]);
-      setActivePath(null);
+      if (id === pluginFolder) {
+        setTabs([]);
+        setActivePath(null);
+      }
       await refreshWorkspaceFolders();
-      setStatus(`Removed external registration for ${pluginFolder}.`);
+      setStatus(`Removed workspace registration for ${id}.`);
     } finally {
       setBusy(false);
     }
@@ -1612,12 +1653,13 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     try {
       const entries: { rel: string; isDir: boolean }[] = [];
       for (const rel of paths) {
-        const kind = await window.Nodex.getPluginSourceEntryKind(srcWs, rel);
+        const nrel = normalizePluginRelPath(rel);
+        const kind = await window.Nodex.getPluginSourceEntryKind(srcWs, nrel);
         if (kind === "missing") {
-          setStatus(`Cannot copy: ${rel} not found.`);
+          setStatus(`Cannot copy: ${nrel} not found.`);
           return;
         }
-        entries.push({ rel, isDir: kind === "dir" });
+        entries.push({ rel: nrel, isDir: kind === "dir" });
       }
       pathClipboardRef.current = {
         sourcePluginFolder: srcWs,
@@ -1660,12 +1702,13 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     try {
       const entries: { rel: string; isDir: boolean }[] = [];
       for (const rel of paths) {
-        const kind = await window.Nodex.getPluginSourceEntryKind(srcWs, rel);
+        const nrel = normalizePluginRelPath(rel);
+        const kind = await window.Nodex.getPluginSourceEntryKind(srcWs, nrel);
         if (kind === "missing") {
-          setStatus(`Cannot cut: ${rel} not found.`);
+          setStatus(`Cannot cut: ${nrel} not found.`);
           return;
         }
-        entries.push({ rel, isDir: kind === "dir" });
+        entries.push({ rel: nrel, isDir: kind === "dir" });
       }
       pathClipboardRef.current = {
         sourcePluginFolder: srcWs,
@@ -1827,16 +1870,17 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   };
 
   const openRenameModal = (fromPath?: string) => {
-    const from =
+    const rawFrom =
       fromPath ??
       (treeSelectionWorkspace === pluginFolder &&
       treeSelectedPaths.length === 1
         ? treeSelectedPaths[0]
         : activePath);
-    if (!pluginFolder || !from) {
+    if (!pluginFolder || !rawFrom) {
       setStatus("Select a single file or folder in the tree to rename.");
       return;
     }
+    const from = normalizePluginRelPath(rawFrom);
     setPathModal({ kind: "rename", from, value: from });
   };
 
@@ -1926,6 +1970,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       }
       setStatus("Dependencies installed.");
       onPluginsChanged?.();
+      await refreshFileList();
     } finally {
       setBusy(false);
     }
@@ -1951,7 +1996,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
       setStatus("Select file(s) in the tree or open a file to delete.");
       return;
     }
-    const targets = [...new Set(raw)].sort(
+    const targets = [...new Set(raw.map(normalizePluginRelPath))].sort(
       (a, b) =>
         b.split("/").length - a.split("/").length || b.localeCompare(a),
     );
@@ -2029,10 +2074,14 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
 
   const runTreeFsOp = useCallback(
     async (d: IdeShellTreeFsOpDetail) => {
+      const fromRel = normalizePluginRelPath(d.fromRel);
+      const toDirNorm = d.toDirRel
+        ? normalizePluginRelPath(d.toDirRel)
+        : "";
       const isDup = d.kind === "dndCopy";
-      let destRel = d.toDirRel
-        ? `${d.toDirRel.replace(/\/+$/, "")}/${basenameRel(d.fromRel)}`
-        : basenameRel(d.fromRel);
+      let destRel = toDirNorm
+        ? `${toDirNorm}/${basenameRel(fromRel)}`
+        : basenameRel(fromRel);
       let attempt = 0;
       setBusy(true);
       setStatus(null);
@@ -2041,18 +2090,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           ? d.fromPlugin === d.toPlugin
             ? await window.Nodex.copyPluginSourceWithinWorkspace(
                 d.toPlugin,
-                d.fromRel,
+                fromRel,
                 destRel,
               )
             : await window.Nodex.copyPluginSourceBetweenWorkspaces(
                 d.fromPlugin,
-                d.fromRel,
+                fromRel,
                 d.toPlugin,
                 destRel,
               )
           : await window.Nodex.movePluginSourceBetweenWorkspaces(
               d.fromPlugin,
-              d.fromRel,
+              fromRel,
               d.toPlugin,
               destRel,
             );
@@ -2063,18 +2112,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
             ? d.fromPlugin === d.toPlugin
               ? await window.Nodex.copyPluginSourceWithinWorkspace(
                   d.toPlugin,
-                  d.fromRel,
+                  fromRel,
                   destRel,
                 )
               : await window.Nodex.copyPluginSourceBetweenWorkspaces(
                   d.fromPlugin,
-                  d.fromRel,
+                  fromRel,
                   d.toPlugin,
                   destRel,
                 )
             : await window.Nodex.movePluginSourceBetweenWorkspaces(
                 d.fromPlugin,
-                d.fromRel,
+                fromRel,
                 d.toPlugin,
                 destRel,
               );
@@ -2236,6 +2285,8 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     reloadOnly,
     onImportFiles,
     onImportFolder,
+    onImportFolderIntoWorkspace,
+    onImportNewWorkspace,
     loadNodexFromParent,
     removeExternalRegistration,
     copyDistToFolder,
@@ -2259,6 +2310,8 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     reloadOnly,
     onImportFiles,
     onImportFolder,
+    onImportFolderIntoWorkspace,
+    onImportNewWorkspace,
     loadNodexFromParent,
     removeExternalRegistration,
     copyDistToFolder,
@@ -2439,7 +2492,10 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           void a.onImportFiles();
           return;
         case "importFolder":
-          void a.onImportFolder();
+          void a.onImportFolderIntoWorkspace();
+          return;
+        case "importNewWorkspace":
+          void a.onImportNewWorkspace();
           return;
         case "delete":
           void a.onDeletePath(d.targetPaths, d.targetWorkspace);
@@ -2535,7 +2591,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           void a.loadNodexFromParent();
           return;
         case "removeExternal":
-          void a.removeExternalRegistration();
+          void a.removeExternalRegistration(d.targetWorkspace);
           return;
         default:
           return;
@@ -3216,77 +3272,80 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
         </div>
       )}
 
-      {pathModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-          <div
-            className="bg-background rounded-lg shadow-xl max-w-md w-full p-5 border border-border"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="path-modal-title"
-          >
-            <h3
-              id="path-modal-title"
-              className="text-lg font-semibold text-foreground mb-2"
+      {pathModal &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-[60000] flex items-center justify-center bg-black/40 p-4">
+            <div
+              className="bg-background rounded-lg shadow-xl max-w-md w-full p-5 border border-border"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="path-modal-title"
             >
-              {pathModal.kind === "newFile"
-                ? "New file"
-                : pathModal.kind === "newFolder"
-                  ? "New folder"
-                  : "Rename"}
-            </h3>
-            <p className="text-sm text-muted-foreground mb-3">
-              {pathModal.kind === "rename"
-                ? "New path relative to plugin root."
-                : (
-                    <>
-                      Path relative to plugin root (use{" "}
-                      <code className="text-xs bg-muted px-1">/</code> for
-                      subfolders).
-                    </>
-                  )}
-            </p>
-            <input
-              type="text"
-              className="w-full border border-input rounded px-2 py-2 text-sm font-mono mb-4"
-              value={pathModal.value}
-              onChange={(e) =>
-                setPathModal({
-                  ...pathModal,
-                  value: e.target.value,
-                })
-              }
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void submitPathModal();
+              <h3
+                id="path-modal-title"
+                className="text-lg font-semibold text-foreground mb-2"
+              >
+                {pathModal.kind === "newFile"
+                  ? "New file"
+                  : pathModal.kind === "newFolder"
+                    ? "New folder"
+                    : "Rename"}
+              </h3>
+              <p className="text-sm text-muted-foreground mb-3">
+                {pathModal.kind === "rename"
+                  ? "New path relative to plugin root."
+                  : (
+                      <>
+                        Path relative to plugin root (use{" "}
+                        <code className="text-xs bg-muted px-1">/</code> for
+                        subfolders).
+                      </>
+                    )}
+              </p>
+              <input
+                type="text"
+                className="w-full border border-input rounded px-2 py-2 text-sm font-mono mb-4"
+                value={pathModal.value}
+                onChange={(e) =>
+                  setPathModal({
+                    ...pathModal,
+                    value: e.target.value,
+                  })
                 }
-              }}
-              autoFocus
-            />
-            <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                className="px-3 py-1.5 text-sm rounded bg-muted text-foreground hover:bg-muted"
-                onClick={() => setPathModal(null)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="nodex-primary-fill rounded px-3 py-1.5 text-sm hover:opacity-90 disabled:opacity-50"
-                style={{
-                  backgroundColor: "hsl(var(--primary))",
-                  color: "hsl(var(--primary-foreground))",
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void submitPathModal();
+                  }
                 }}
-                disabled={busy}
-                onClick={() => void submitPathModal()}
-              >
-                Create
-              </button>
+                autoFocus
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  className="px-3 py-1.5 text-sm rounded bg-muted text-foreground hover:bg-muted"
+                  onClick={() => setPathModal(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="nodex-primary-fill rounded px-3 py-1.5 text-sm hover:opacity-90 disabled:opacity-50"
+                  style={{
+                    backgroundColor: "hsl(var(--primary))",
+                    color: "hsl(var(--primary-foreground))",
+                  }}
+                  disabled={busy}
+                  onClick={() => void submitPathModal()}
+                >
+                  Create
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
 
       {tscDiagnostics.length > 0 && (
         <div className="max-h-40 shrink-0 overflow-y-auto border-b border-border bg-rose-50/50 px-4 py-3 text-[11px] dark:bg-rose-950/20">
@@ -3359,18 +3418,27 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                 <ul className="min-h-0 flex-1 overflow-y-auto py-1">
                   {fileList.map((f) => (
                     <li key={f}>
-                      <button
-                        type="button"
-                        onClick={() => void openFile(f)}
-                        className={`w-full truncate border-l-2 py-[5px] pl-4 pr-3 text-left font-mono text-[13px] leading-snug transition-colors hover:bg-muted/50 ${
-                          activePath === f
-                            ? "border-primary bg-muted/60 font-medium text-foreground"
-                            : "border-transparent text-foreground"
-                        }`}
-                        title={f}
-                      >
-                        {f}
-                      </button>
+                      {f === NODE_MODULES_LIST_MARKER ? (
+                        <div
+                          className="cursor-default border-l-2 border-transparent py-[5px] pl-4 pr-3 font-mono text-[13px] leading-snug text-muted-foreground"
+                          title="npm dependencies (folder exists on disk; not listed here)"
+                        >
+                          {f}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void openFile(f)}
+                          className={`w-full truncate border-l-2 py-[5px] pl-4 pr-3 text-left font-mono text-[13px] leading-snug transition-colors hover:bg-muted/50 ${
+                            activePath === f
+                              ? "border-primary bg-muted/60 font-medium text-foreground"
+                              : "border-transparent text-foreground"
+                          }`}
+                          title={f}
+                        >
+                          {f}
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -3520,6 +3588,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                 <SecurePluginRenderer
                   key={`${pluginFolder}-${previewType}-${previewRev}`}
                   note={previewNote}
+                  persistToNotesStore={false}
                 />
               ) : (
                 <div className="px-4 py-4 text-[11px] leading-relaxed text-muted-foreground">
@@ -3558,6 +3627,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                 <SecurePluginRenderer
                   key={`fs-${pluginFolder}-${previewType}-${previewRev}`}
                   note={previewNote}
+                  persistToNotesStore={false}
                 />
               </div>
             </div>,

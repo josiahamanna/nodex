@@ -6,6 +6,8 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
+  protocol,
+  session,
   shell,
 } from "electron";
 import * as fs from "fs";
@@ -19,14 +21,18 @@ import { resolveNodexPluginUiMonacoLib } from "./core/resolve-nodex-plugin-ui";
 import { setPluginProgressSink } from "./core/plugin-progress";
 import { packageManager } from "./core/package-manager";
 import { initJsxCompilerCache } from "./core/jsx-compiler";
+import { listProjectAssets, resolveAssetFilePath } from "./core/assets-fs";
 import {
-  getLegacyNotesJsonPath,
-  getNodexDatabasePath,
   getNodexJsxCacheRoot,
   getNodexPluginCacheRoot,
   getNodexUserPluginsDir,
 } from "./core/nodex-paths";
-import { bootstrapNotesTree, saveNotesState } from "./core/notes-persistence";
+import { saveNotesState } from "./core/notes-persistence";
+import {
+  activateProject,
+  deactivateProject,
+  readProjectPrefs,
+} from "./core/project-session";
 import {
   createNote as createNoteInStore,
   deleteNoteSubtrees,
@@ -58,12 +64,99 @@ import {
   isValidNoteType,
 } from "./shared/validators";
 
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "nodex-asset",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
+
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 let mainWindow: BrowserWindow | null = null;
 let pluginLoader: PluginLoader;
 let notesPersistencePath: string | null = null;
+/** Opened Nodex project directory (contains `data/` and `assets/`). */
+let projectRootPath: string | null = null;
+
+function broadcastProjectRootChanged(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(IPC_CHANNELS.PROJECT_ROOT_CHANGED);
+  }
+}
+
+function registerNodexAssetProtocol(): void {
+  session.defaultSession.protocol.registerFileProtocol(
+    "nodex-asset",
+    (request, callback) => {
+      try {
+        if (!projectRootPath) {
+          callback({ error: -2 });
+          return;
+        }
+        const u = new URL(request.url);
+        let rel = decodeURIComponent(
+          (u.pathname || "").replace(/^\/+/, ""),
+        ).replace(/\\/g, "/");
+        if (!rel || rel.includes("..")) {
+          callback({ error: -2 });
+          return;
+        }
+        const segments = rel.split("/").filter(Boolean);
+        for (const s of segments) {
+          if (s.startsWith(".") || s === "..") {
+            callback({ error: -2 });
+            return;
+          }
+        }
+        const assetsRoot = path.resolve(path.join(projectRootPath, "assets"));
+        const full = path.resolve(path.join(assetsRoot, ...segments));
+        if (!full.startsWith(assetsRoot + path.sep) && full !== assetsRoot) {
+          callback({ error: -2 });
+          return;
+        }
+        callback({ path: full });
+      } catch {
+        callback({ error: -2 });
+      }
+    },
+  );
+}
+
+function tryLoadSavedProject(
+  userDataPath: string,
+  registeredTypes: string[],
+): void {
+  const prefs = readProjectPrefs(userDataPath);
+  if (
+    prefs.lastProjectRoot &&
+    fs.existsSync(prefs.lastProjectRoot) &&
+    fs.statSync(prefs.lastProjectRoot).isDirectory()
+  ) {
+    const r = activateProject(
+      prefs.lastProjectRoot,
+      userDataPath,
+      registeredTypes,
+    );
+    if (r.ok) {
+      projectRootPath = r.root;
+      notesPersistencePath = r.dbPath;
+      console.log("[Main] Opened project:", projectRootPath);
+      return;
+    }
+    console.warn("[Main] Could not open saved project:", r.error);
+  }
+  projectRootPath = null;
+  notesPersistencePath = null;
+  deactivateProject();
+}
 
 function persistNotes(): void {
   if (!notesPersistencePath) {
@@ -73,6 +166,12 @@ function persistNotes(): void {
     saveNotesState();
   } catch (e) {
     console.warn("[Main] Failed to save notes:", e);
+  }
+}
+
+function assertProjectOpenForNotes(): void {
+  if (!projectRootPath) {
+    throw new Error("Open a project folder first (Notes → Open project).");
   }
 }
 
@@ -185,6 +284,24 @@ const createWindow = (): void => {
   if (process.env.NODE_ENV === "development") {
     mainWindow.webContents.openDevTools();
   }
+
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || input.isAutoRepeat) {
+      return;
+    }
+    const primary = input.control || input.meta;
+    if (!primary || input.alt || input.shift) {
+      return;
+    }
+    if (input.key.toLowerCase() !== "r") {
+      return;
+    }
+    event.preventDefault();
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.webContents.reload();
+  });
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -387,13 +504,13 @@ app.on("ready", () => {
 
   pluginLoader.loadAll(registry);
 
-  notesPersistencePath = getNodexDatabasePath(userDataPath);
-  console.log("[Main] Notes database:", notesPersistencePath);
-  bootstrapNotesTree(
-    notesPersistencePath,
-    getLegacyNotesJsonPath(userDataPath),
-    registry.getRegisteredTypes(),
-  );
+  registerNodexAssetProtocol();
+  tryLoadSavedProject(userDataPath, registry.getRegisteredTypes());
+  if (projectRootPath) {
+    console.log("[Main] Notes database:", notesPersistencePath);
+  } else {
+    console.log("[Main] No project open — use Open project to choose a folder.");
+  }
 
   ipcMain.removeHandler(IPC_CHANNELS.MOVE_NOTE);
   ipcMain.removeHandler(IPC_CHANNELS.MOVE_NOTES_BULK);
@@ -402,6 +519,7 @@ app.on("ready", () => {
   ipcMain.handle(
     IPC_CHANNELS.DELETE_NOTES,
     async (_event, ids: unknown) => {
+      assertProjectOpenForNotes();
       const registeredTypes = registry.getRegisteredTypes();
       ensureNotesSeeded(registeredTypes);
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -422,6 +540,7 @@ app.on("ready", () => {
       _event,
       payload: { ids: string[]; targetId: string; placement: string },
     ) => {
+      assertProjectOpenForNotes();
       const registeredTypes = registry.getRegisteredTypes();
       ensureNotesSeeded(registeredTypes);
       if (!payload || typeof payload !== "object") {
@@ -453,6 +572,7 @@ app.on("ready", () => {
       _event,
       payload: { draggedId: string; targetId: string; placement: string },
     ) => {
+      assertProjectOpenForNotes();
       const registeredTypes = registry.getRegisteredTypes();
       ensureNotesSeeded(registeredTypes);
 
@@ -482,6 +602,7 @@ app.on("ready", () => {
         placement: string;
       },
     ) => {
+      assertProjectOpenForNotes();
       const registeredTypes = registry.getRegisteredTypes();
       ensureNotesSeeded(registeredTypes);
 
@@ -513,6 +634,124 @@ app.on("ready", () => {
     },
   );
 
+  ipcMain.handle(IPC_CHANNELS.PROJECT_GET_STATE, () => ({
+    rootPath: projectRootPath,
+    notesDbPath: notesPersistencePath,
+  }));
+
+  ipcMain.handle(IPC_CHANNELS.PROJECT_SELECT_FOLDER, async () => {
+    const r = await showOpenDialogWithParent({
+      properties: ["openDirectory", "createDirectory"],
+      title: "Open Nodex project folder",
+    });
+    if (r.canceled || r.filePaths.length === 0) {
+      return { ok: false as const, cancelled: true as const };
+    }
+    const chosen = r.filePaths[0]!;
+    const res = activateProject(
+      chosen,
+      userDataPath,
+      registry.getRegisteredTypes(),
+    );
+    if (!res.ok) {
+      return { ok: false as const, error: res.error };
+    }
+    projectRootPath = res.root;
+    notesPersistencePath = res.dbPath;
+    broadcastProjectRootChanged();
+    return { ok: true as const, rootPath: res.root };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PROJECT_OPEN_PATH, async (_e, absPath: unknown) => {
+    if (typeof absPath !== "string" || absPath.length === 0) {
+      return { ok: false as const, error: "Invalid path" };
+    }
+    const res = activateProject(
+      absPath,
+      userDataPath,
+      registry.getRegisteredTypes(),
+    );
+    if (!res.ok) {
+      return { ok: false as const, error: res.error };
+    }
+    projectRootPath = res.root;
+    notesPersistencePath = res.dbPath;
+    broadcastProjectRootChanged();
+    return { ok: true as const, rootPath: res.root };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSET_LIST, (_e, rel: unknown) => {
+    if (!projectRootPath) {
+      return { ok: false as const, error: "No project open" };
+    }
+    return listProjectAssets(
+      projectRootPath,
+      typeof rel === "string" ? rel : "",
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSET_GET_INFO, (_e, rel: unknown) => {
+    if (!projectRootPath || typeof rel !== "string") {
+      return null;
+    }
+    const full = resolveAssetFilePath(projectRootPath, rel);
+    if (!full) {
+      return null;
+    }
+    try {
+      const st = fs.statSync(full);
+      const base = path.basename(full);
+      const ext = path.extname(base).slice(1).toLowerCase();
+      return {
+        name: base,
+        ext,
+        size: st.size,
+        relativePath: rel.replace(/\\/g, "/"),
+      };
+    } catch {
+      return null;
+    }
+  });
+
+  const MAX_ASSET_TEXT = 2_000_000;
+  ipcMain.handle(IPC_CHANNELS.ASSET_READ_TEXT, (_e, rel: unknown) => {
+    if (!projectRootPath || typeof rel !== "string") {
+      return { ok: false as const, error: "Invalid request" };
+    }
+    const full = resolveAssetFilePath(projectRootPath, rel);
+    if (!full) {
+      return { ok: false as const, error: "Not found" };
+    }
+    try {
+      const st = fs.statSync(full);
+      if (st.size > MAX_ASSET_TEXT) {
+        return { ok: false as const, error: "File too large for text preview" };
+      }
+      const text = fs.readFileSync(full, "utf8");
+      return { ok: true as const, text };
+    } catch (e) {
+      return {
+        ok: false as const,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSET_OPEN_EXTERNAL, async (_e, rel: unknown) => {
+    if (!projectRootPath || typeof rel !== "string") {
+      return { ok: false as const, error: "Invalid request" };
+    }
+    const full = resolveAssetFilePath(projectRootPath, rel);
+    if (!full) {
+      return { ok: false as const, error: "Not found" };
+    }
+    const err = await shell.openPath(full);
+    if (err) {
+      return { ok: false as const, error: err };
+    }
+    return { ok: true as const };
+  });
+
   createWindow();
 
   setPluginProgressSink((payload) => {
@@ -535,6 +774,12 @@ app.on("activate", () => {
 });
 
 ipcMain.handle(IPC_CHANNELS.GET_NOTE, async (_event, noteId?: string) => {
+  if (!projectRootPath) {
+    if (noteId !== undefined) {
+      throw new Error("Open a project folder first (Notes → Open project).");
+    }
+    return null;
+  }
   const registeredTypes = registry.getRegisteredTypes();
   ensureNotesSeeded(registeredTypes);
 
@@ -559,6 +804,9 @@ ipcMain.handle(IPC_CHANNELS.GET_NOTE, async (_event, noteId?: string) => {
 });
 
 ipcMain.handle(IPC_CHANNELS.GET_ALL_NOTES, async () => {
+  if (!projectRootPath) {
+    return [];
+  }
   const registeredTypes = registry.getRegisteredTypes();
   ensureNotesSeeded(registeredTypes);
   return getNotesFlat();
@@ -570,6 +818,7 @@ ipcMain.handle(
     _event,
     payload: { anchorId?: string; relation: string; type: string },
   ) => {
+    assertProjectOpenForNotes();
     const registeredTypes = registry.getRegisteredTypes();
     ensureNotesSeeded(registeredTypes);
 
@@ -602,6 +851,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: string) => {
+  assertProjectOpenForNotes();
   const registeredTypes = registry.getRegisteredTypes();
   ensureNotesSeeded(registeredTypes);
 
@@ -618,6 +868,7 @@ ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: strin
 ipcMain.handle(
   IPC_CHANNELS.SAVE_NOTE_PLUGIN_UI_STATE,
   async (_event, noteId: string, state: unknown) => {
+    assertProjectOpenForNotes();
     const registeredTypes = registry.getRegisteredTypes();
     ensureNotesSeeded(registeredTypes);
 
@@ -632,6 +883,7 @@ ipcMain.handle(
 ipcMain.handle(
   IPC_CHANNELS.SAVE_NOTE_CONTENT,
   async (_event, noteId: string, content: string) => {
+    assertProjectOpenForNotes();
     const registeredTypes = registry.getRegisteredTypes();
     ensureNotesSeeded(registeredTypes);
 

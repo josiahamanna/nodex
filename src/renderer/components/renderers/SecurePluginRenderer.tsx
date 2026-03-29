@@ -22,6 +22,8 @@ import {
 
 interface SecurePluginRendererProps {
   note: Note;
+  /** When false, plugin saves (body + plugin UI state) are not sent to the main notes store. Use for IDE preview with synthetic note ids. */
+  persistToNotesStore?: boolean;
 }
 
 const BRIDGE_REQUEST = "nodex-request-bridge";
@@ -35,6 +37,7 @@ const PLUGIN_IFRAME_CSP_CONNECT_DEV =
 
 const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   note,
+  persistToNotesStore = true,
 }) => {
   const dispatch = useDispatch<AppDispatch>();
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -139,7 +142,9 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
       }
 
       if (isPluginUiSnapshotMessage(event.data)) {
-        schedulePluginUiPersist(noteRef.current.id, event.data.state);
+        if (persistToNotesStore) {
+          schedulePluginUiPersist(noteRef.current.id, event.data.state);
+        }
         return;
       }
 
@@ -149,9 +154,11 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
       }
 
       if (event.data?.type === MessageType.SAVE_NOTE_CONTENT) {
-        const raw = event.data as { content?: unknown };
-        if (typeof raw.content === "string") {
-          scheduleNoteContentPersist(noteRef.current.id, raw.content);
+        if (persistToNotesStore) {
+          const raw = event.data as { content?: unknown };
+          if (typeof raw.content === "string") {
+            scheduleNoteContentPersist(noteRef.current.id, raw.content);
+          }
         }
         return;
       }
@@ -190,7 +197,12 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
           break;
       }
     },
-    [scheduleNoteContentPersist, schedulePluginUiPersist, sendMessageToPlugin],
+    [
+      persistToNotesStore,
+      scheduleNoteContentPersist,
+      schedulePluginUiPersist,
+      sendMessageToPlugin,
+    ],
   );
 
   useEffect(() => {

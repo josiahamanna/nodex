@@ -109,6 +109,44 @@ declare global {
         plugins: { name: string; bytes: number }[];
       }>;
       onPluginsChanged: (callback: () => void) => () => void;
+      getProjectState: () => Promise<{
+        rootPath: string | null;
+        notesDbPath: string | null;
+      }>;
+      selectProjectFolder: () => Promise<
+        | { ok: true; rootPath: string }
+        | { ok: false; cancelled: true }
+        | { ok: false; error: string }
+      >;
+      openProjectPath: (
+        absPath: string,
+      ) => Promise<
+        { ok: true; rootPath: string } | { ok: false; error: string }
+      >;
+      onProjectRootChanged: (callback: () => void) => () => void;
+      listAssets: (
+        relativePath: string,
+      ) => Promise<
+        | { ok: true; entries: { name: string; isDirectory: boolean }[] }
+        | { ok: false; error: string }
+      >;
+      getAssetInfo: (
+        relativePath: string,
+      ) => Promise<{
+        name: string;
+        ext: string;
+        size: number;
+        relativePath: string;
+      } | null>;
+      readAssetText: (
+        relativePath: string,
+      ) => Promise<
+        { ok: true; text: string } | { ok: false; error: string }
+      >;
+      openAssetExternal: (
+        relativePath: string,
+      ) => Promise<{ ok: true } | { ok: false; error: string }>;
+      assetUrl: (relativePath: string) => string;
       onPluginProgress: (
         callback: (payload: {
           op: string;

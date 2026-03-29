@@ -19,6 +19,12 @@ type FileTreeNode = {
   children: FileTreeNode[];
 };
 
+/** Matches `listPluginSourceFiles` placeholder when `node_modules` exists. */
+const NODE_MODULES_LIST_MARKER = "node_modules/";
+function isNodeModulesListMarker(rel: string): boolean {
+  return rel === NODE_MODULES_LIST_MARKER;
+}
+
 function buildFileTree(paths: string[]): FileTreeNode[] {
   type Acc = {
     seg: string;
@@ -29,6 +35,9 @@ function buildFileTree(paths: string[]): FileTreeNode[] {
   for (const p of paths) {
     const norm = p.replace(/\\/g, "/");
     const parts = norm.split("/").filter(Boolean);
+    if (parts.length === 0) {
+      continue;
+    }
     let level = root;
     let acc = "";
     for (let i = 0; i < parts.length; i++) {
@@ -68,15 +77,22 @@ function buildFileTree(paths: string[]): FileTreeNode[] {
   return toArr(root);
 }
 
+function pathLooksLikeDir(p: string | null): boolean {
+  return p != null && p.endsWith("/");
+}
+
 /** Depth-first paths matching on-screen tree order (dirs then nested). */
 function collectTreePaths(nodes: FileTreeNode[], parentRel: string): string[] {
   const out: string[] = [];
   for (const n of nodes) {
     const dirRel = parentRel ? `${parentRel}/${n.name}` : n.name;
-    const isDir = n.children.length > 0 || n.path === null;
+    const isDir =
+      n.children.length > 0 || n.path === null || pathLooksLikeDir(n.path);
     if (isDir && n.children.length > 0) {
       out.push(dirRel);
       out.push(...collectTreePaths(n.children, dirRel));
+    } else if (isDir && n.children.length === 0 && n.path && pathLooksLikeDir(n.path)) {
+      out.push(n.path);
     } else if (!isDir && n.path) {
       out.push(n.path);
     }
@@ -95,7 +111,7 @@ type DndPayload = {
 const menuBtn =
   "min-h-7 rounded-sm border border-input bg-background px-2 py-1 text-[11px] text-foreground hover:bg-muted/50";
 const menuPortalPanel =
-  "fixed z-[1000] w-[min(18rem,calc(100vw-12px))] rounded-md border border-border bg-background py-1 shadow-lg";
+  "fixed z-[60000] w-[min(18rem,calc(100vw-12px))] rounded-md border border-border bg-background py-1 shadow-lg";
 const menuItem =
   "block w-full px-3 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50";
 
@@ -104,6 +120,11 @@ function fireAction(
   payload?: IdeShellActionPayload,
 ): void {
   dispatchIdeShellAction(type, payload);
+}
+
+/** Paths from the tree may use a trailing `/` for directories; IPC expects no trailing slash. */
+function fsRelFromTreePath(p: string): string {
+  return p.replace(/\/+$/, "");
 }
 
 const PLUGIN_TREE_ROOT_OFFSET_CLASS =
@@ -118,6 +139,9 @@ type TreeCtxMenu = {
   path: string;
   isDir: boolean;
 };
+
+/** Right-clicked the plugin workspace title row (not a file path). */
+const WORKSPACE_TITLE_CTX_PATH = "\0workspace-title";
 
 const EditorTabSidebar: React.FC = () => {
   const [state, setState] = useState<IdeShellStateDetail>({
@@ -221,6 +245,9 @@ const EditorTabSidebar: React.FC = () => {
       return;
     }
     const onDown = (ev: MouseEvent) => {
+      if (ev.button !== 0) {
+        return;
+      }
       const t = ev.target as Node;
       if (ctxPortalRef.current?.contains(t)) {
         return;
@@ -312,7 +339,9 @@ const EditorTabSidebar: React.FC = () => {
         dispatchIdeShellTreeSelection({ workspace, paths: range });
         lastTreeClickRef.current = { workspace, path: relPath };
         if (!isDir) {
-          dispatchIdeShellOpenFile(relPath, workspace);
+          if (!isNodeModulesListMarker(relPath)) {
+            dispatchIdeShellOpenFile(relPath, workspace);
+          }
         } else {
           dispatchIdeShellPlugin(workspace);
         }
@@ -330,7 +359,9 @@ const EditorTabSidebar: React.FC = () => {
       dispatchIdeShellTreeSelection({ workspace, paths: next });
       lastTreeClickRef.current = { workspace, path: relPath };
       if (!isDir) {
-        dispatchIdeShellOpenFile(relPath, workspace);
+        if (!isNodeModulesListMarker(relPath)) {
+          dispatchIdeShellOpenFile(relPath, workspace);
+        }
       } else {
         dispatchIdeShellPlugin(workspace);
       }
@@ -339,7 +370,9 @@ const EditorTabSidebar: React.FC = () => {
     dispatchIdeShellTreeSelection({ workspace, paths: [relPath] });
     lastTreeClickRef.current = { workspace, path: relPath };
     if (!isDir) {
-      dispatchIdeShellOpenFile(relPath, workspace);
+      if (!isNodeModulesListMarker(relPath)) {
+        dispatchIdeShellOpenFile(relPath, workspace);
+      }
     } else {
       dispatchIdeShellPlugin(workspace);
     }
@@ -374,12 +407,19 @@ const EditorTabSidebar: React.FC = () => {
     orderedPaths: string[],
   ): React.ReactNode =>
     nodes.map((n) => {
-      const isDir = n.children.length > 0 || n.path === null;
+      const isDir =
+        n.children.length > 0 ||
+        n.path === null ||
+        pathLooksLikeDir(n.path);
       const pad = TREE_DEPTH_PAD_BASE + depth * TREE_DEPTH_STEP_PX;
       const dirRel = parentRel ? `${parentRel}/${n.name}` : n.name;
+      const rowPath =
+        isDir && n.children.length > 0
+          ? dirRel
+          : (n.path ?? dirRel);
       const selected =
         state.treeSelectionWorkspace === treePluginFolder &&
-        state.treeSelectedPaths.includes(isDir && n.children.length > 0 ? dirRel : (n.path ?? ""));
+        state.treeSelectedPaths.includes(rowPath);
       if (isDir && n.children.length > 0) {
         const rowSelected = selected;
         return (
@@ -443,7 +483,10 @@ const EditorTabSidebar: React.FC = () => {
               }
               title={dirRel}
             >
-              {n.name}
+              <span className="mr-1 inline-block w-3 shrink-0 text-[10px] text-muted-foreground/90">
+                ▸
+              </span>
+              <span className="font-medium">{n.name}</span>
             </div>
             <ul className="m-0 p-0">
               {renderTreeNodes(
@@ -463,6 +506,106 @@ const EditorTabSidebar: React.FC = () => {
       const rowSel =
         state.treeSelectionWorkspace === treePluginFolder &&
         state.treeSelectedPaths.includes(rel);
+      if (isNodeModulesListMarker(rel)) {
+        return (
+          <li key={rel} className="list-none">
+            <div
+              className={`w-full cursor-default truncate border-l-2 py-[4px] pr-2 text-left font-mono text-[12px] leading-snug text-muted-foreground ${
+                rowSel ? "border-primary bg-muted/50" : "border-transparent"
+              }`}
+              style={{ paddingLeft: pad }}
+              title="npm dependencies (on disk; not opened in editor)"
+              onContextMenu={(ev) => {
+                ev.preventDefault();
+                setCtxMenu({
+                  top: ev.clientY,
+                  left: ev.clientX,
+                  workspace: treePluginFolder,
+                  path: "node_modules",
+                  isDir: true,
+                });
+              }}
+              onClick={(ev) =>
+                handleTreeClick(ev, treePluginFolder, rel, false, orderedPaths)
+              }
+            >
+              <span className="mr-1 inline-block w-3 shrink-0 text-[10px]">▸</span>
+              {n.name}
+            </div>
+          </li>
+        );
+      }
+      if (pathLooksLikeDir(rel) && !isNodeModulesListMarker(rel)) {
+        const fsRel = fsRelFromTreePath(rel);
+        return (
+          <li key={rel} className="list-none">
+            <div
+              draggable
+              style={{ paddingLeft: pad }}
+              className={`flex w-full cursor-grab truncate border-l-2 py-[4px] pr-2 text-left font-mono text-[12px] leading-snug active:cursor-grabbing ${
+                rowSel
+                  ? "border-primary bg-muted/50 font-medium text-foreground"
+                  : "border-transparent text-muted-foreground"
+              }`}
+              title={rel}
+              onDragStart={(ev) => {
+                ev.dataTransfer.setData(
+                  TREE_DND_MIME,
+                  JSON.stringify({
+                    fromPlugin: treePluginFolder,
+                    fromRel: fsRel,
+                    fromIsDir: true,
+                  } satisfies DndPayload),
+                );
+                ev.dataTransfer.effectAllowed = "copyMove";
+              }}
+              onDragOver={(ev) => {
+                ev.preventDefault();
+                ev.dataTransfer.dropEffect = ev.shiftKey ? "copy" : "move";
+              }}
+              onDrop={(ev) => {
+                ev.preventDefault();
+                const p = parseDnd(ev);
+                if (!p) {
+                  return;
+                }
+                if (
+                  p.fromPlugin === treePluginFolder &&
+                  (p.fromRel === fsRel || fsRel.startsWith(p.fromRel + "/"))
+                ) {
+                  return;
+                }
+                dispatchIdeShellTreeFsOp({
+                  kind: ev.shiftKey ? "dndCopy" : "dndMove",
+                  fromPlugin: p.fromPlugin,
+                  fromRel: p.fromRel,
+                  fromIsDir: p.fromIsDir,
+                  toPlugin: treePluginFolder,
+                  toDirRel: fsRel,
+                });
+              }}
+              onContextMenu={(ev) => {
+                ev.preventDefault();
+                setCtxMenu({
+                  top: ev.clientY,
+                  left: ev.clientX,
+                  workspace: treePluginFolder,
+                  path: fsRel,
+                  isDir: true,
+                });
+              }}
+              onClick={(ev) =>
+                handleTreeClick(ev, treePluginFolder, rel, true, orderedPaths)
+              }
+            >
+              <span className="mr-1 inline-block w-3 shrink-0 text-[10px] text-muted-foreground/90">
+                ▸
+              </span>
+              <span className="font-medium">{n.name}</span>
+            </div>
+          </li>
+        );
+      }
       return (
         <li key={rel || `${depth}-${n.name}`} className="list-none">
           <button
@@ -528,6 +671,9 @@ const EditorTabSidebar: React.FC = () => {
               handleTreeClick(ev, treePluginFolder, rel, false, orderedPaths)
             }
           >
+            <span className="mr-1 inline-block w-3 shrink-0 text-center text-[10px] text-muted-foreground">
+              ·
+            </span>
             {n.name}
           </button>
         </li>
@@ -611,14 +757,28 @@ const EditorTabSidebar: React.FC = () => {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={busy}
+                  disabled={!pf || busy}
                   className={menuItem}
+                  title="Copy files from a chosen folder into the current plugin root"
                   onClick={() => {
                     setMenu(null);
                     fireAction("importFolder");
                   }}
                 >
-                  Import folder
+                  Import folder into plugin…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={busy}
+                  className={menuItem}
+                  title="Pick a plugin folder on disk and register it as another workspace"
+                  onClick={() => {
+                    setMenu(null);
+                    fireAction("importNewWorkspace");
+                  }}
+                >
+                  Add plugin workspace…
                 </button>
                 <button
                   type="button"
@@ -773,12 +933,13 @@ const EditorTabSidebar: React.FC = () => {
                   role="menuitem"
                   disabled={!pf || busy}
                   className={`${menuItem} text-amber-900 hover:bg-amber-50`}
+                  title="Only removes plugins registered via “Load parent” or “Add plugin workspace”. Plugins under userData sources/ stay in the manager."
                   onClick={() => {
                     setMenu(null);
                     fireAction("removeExternal");
                   }}
                 >
-                  Remove external
+                  Remove from IDE list
                 </button>
                 <button
                   type="button"
@@ -844,80 +1005,127 @@ const EditorTabSidebar: React.FC = () => {
         className={menuPortalPanel}
         style={{ top: ctxMenu.top, left: ctxMenu.left }}
       >
-        <button
-          type="button"
-          role="menuitem"
-          className={menuItem}
-          disabled={busy}
-          onClick={() => {
-            fireAction("copy", {
-              targetPaths: [ctxMenu.path],
-              targetWorkspace: ctxMenu.workspace,
-            });
-            setCtxMenu(null);
-          }}
-        >
-          Copy
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          className={menuItem}
-          disabled={busy}
-          onClick={() => {
-            fireAction("cut", {
-              targetPaths: [ctxMenu.path],
-              targetWorkspace: ctxMenu.workspace,
-            });
-            setCtxMenu(null);
-          }}
-        >
-          Cut
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          className={menuItem}
-          disabled={busy}
-          onClick={() => {
-            fireAction("rename", {
-              targetPaths: [ctxMenu.path],
-              targetWorkspace: ctxMenu.workspace,
-            });
-            setCtxMenu(null);
-          }}
-        >
-          Rename
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          className={`${menuItem} text-red-800 hover:bg-red-50`}
-          disabled={busy}
-          onClick={() => {
-            fireAction("delete", {
-              targetPaths: [ctxMenu.path],
-              targetWorkspace: ctxMenu.workspace,
-            });
-            setCtxMenu(null);
-          }}
-        >
-          Delete
-        </button>
-        {ctxMenu.isDir ? (
-          <button
-            type="button"
-            role="menuitem"
-            className={menuItem}
-            disabled={busy}
-            onClick={() => {
-              fireAction("paste", { pasteIntoDir: ctxMenu.path });
-              setCtxMenu(null);
-            }}
-          >
-            Paste into folder
-          </button>
-        ) : null}
+        {ctxMenu.path === WORKSPACE_TITLE_CTX_PATH ? (
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              className={menuItem}
+              disabled={busy}
+              onClick={() => {
+                dispatchIdeShellPlugin(ctxMenu.workspace);
+                setCtxMenu(null);
+              }}
+            >
+              Open this workspace
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={menuItem}
+              disabled={busy}
+              onClick={() => {
+                fireAction("importNewWorkspace");
+                setCtxMenu(null);
+              }}
+            >
+              Add plugin workspace…
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={`${menuItem} text-amber-900 hover:bg-amber-50`}
+              disabled={busy}
+              onClick={() => {
+                fireAction("removeExternal", {
+                  targetWorkspace: ctxMenu.workspace,
+                });
+                setCtxMenu(null);
+              }}
+            >
+              Remove from IDE list
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              className={menuItem}
+              disabled={busy}
+              onClick={() => {
+                fireAction("copy", {
+                  targetPaths: [fsRelFromTreePath(ctxMenu.path)],
+                  targetWorkspace: ctxMenu.workspace,
+                });
+                setCtxMenu(null);
+              }}
+            >
+              Copy
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={menuItem}
+              disabled={busy}
+              onClick={() => {
+                fireAction("cut", {
+                  targetPaths: [fsRelFromTreePath(ctxMenu.path)],
+                  targetWorkspace: ctxMenu.workspace,
+                });
+                setCtxMenu(null);
+              }}
+            >
+              Cut
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={menuItem}
+              disabled={busy}
+              onClick={() => {
+                fireAction("rename", {
+                  targetPaths: [fsRelFromTreePath(ctxMenu.path)],
+                  targetWorkspace: ctxMenu.workspace,
+                });
+                setCtxMenu(null);
+              }}
+            >
+              Rename
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={`${menuItem} text-red-800 hover:bg-red-50`}
+              disabled={busy}
+              onClick={() => {
+                fireAction("delete", {
+                  targetPaths: [fsRelFromTreePath(ctxMenu.path)],
+                  targetWorkspace: ctxMenu.workspace,
+                });
+                setCtxMenu(null);
+              }}
+            >
+              Delete
+            </button>
+            {ctxMenu.isDir ? (
+              <button
+                type="button"
+                role="menuitem"
+                className={menuItem}
+                disabled={busy}
+                onClick={() => {
+                  fireAction("paste", {
+                    pasteIntoDir: fsRelFromTreePath(ctxMenu.path),
+                  });
+                  setCtxMenu(null);
+                }}
+              >
+                Paste into folder
+              </button>
+            ) : null}
+          </>
+        )}
       </div>,
       document.body,
     );
@@ -966,8 +1174,8 @@ const EditorTabSidebar: React.FC = () => {
         </div>
         {state.folders.length === 0 ? (
           <p className="px-3 py-3 text-[11px] text-muted-foreground">
-            No plugin workspaces yet. Import or load a parent folder from the
-            Build menu.
+            No plugin workspaces yet. Use File → Add plugin workspace…, or Build
+            → Load parent (.nodexplugin).
           </p>
         ) : (
           <ul className="m-0 list-none py-1">
@@ -1007,6 +1215,16 @@ const EditorTabSidebar: React.FC = () => {
                       }`}
                       title={`Open workspace ${folder.name}`}
                       onClick={() => dispatchIdeShellPlugin(folder.name)}
+                      onContextMenu={(ev) => {
+                        ev.preventDefault();
+                        setCtxMenu({
+                          top: ev.clientY,
+                          left: ev.clientX,
+                          workspace: folder.name,
+                          path: WORKSPACE_TITLE_CTX_PATH,
+                          isDir: true,
+                        });
+                      }}
                     >
                       {folder.name}
                     </button>

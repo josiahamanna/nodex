@@ -44,6 +44,8 @@ export type IdeShellAction =
   | "newFolder"
   | "importFiles"
   | "importFolder"
+  /** Register a new plugin folder (always uses import-as-new-workspace). */
+  | "importNewWorkspace"
   | "delete"
   | "rename"
   | "copy"

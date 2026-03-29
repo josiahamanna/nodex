@@ -166,6 +166,57 @@ contextBridge.exposeInMainWorld("Nodex", {
     return () =>
       ipcRenderer.removeListener(IPC_CHANNELS.PLUGINS_CHANGED, callback);
   },
+  getProjectState: (): Promise<{
+    rootPath: string | null;
+    notesDbPath: string | null;
+  }> => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_GET_STATE),
+  selectProjectFolder: (): Promise<
+    | { ok: true; rootPath: string }
+    | { ok: false; cancelled: true }
+    | { ok: false; error: string }
+  > => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_SELECT_FOLDER),
+  openProjectPath: (
+    absPath: string,
+  ): Promise<
+    { ok: true; rootPath: string } | { ok: false; error: string }
+  > => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_OPEN_PATH, absPath),
+  onProjectRootChanged: (callback: () => void) => {
+    const ch = IPC_CHANNELS.PROJECT_ROOT_CHANGED;
+    ipcRenderer.on(ch, callback);
+    return () => ipcRenderer.removeListener(ch, callback);
+  },
+  listAssets: (
+    relativePath: string,
+  ): Promise<
+    | { ok: true; entries: { name: string; isDirectory: boolean }[] }
+    | { ok: false; error: string }
+  > => ipcRenderer.invoke(IPC_CHANNELS.ASSET_LIST, relativePath),
+  getAssetInfo: (
+    relativePath: string,
+  ): Promise<{
+    name: string;
+    ext: string;
+    size: number;
+    relativePath: string;
+  } | null> => ipcRenderer.invoke(IPC_CHANNELS.ASSET_GET_INFO, relativePath),
+  readAssetText: (
+    relativePath: string,
+  ): Promise<
+    { ok: true; text: string } | { ok: false; error: string }
+  > => ipcRenderer.invoke(IPC_CHANNELS.ASSET_READ_TEXT, relativePath),
+  openAssetExternal: (
+    relativePath: string,
+  ): Promise<{ ok: true } | { ok: false; error: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.ASSET_OPEN_EXTERNAL, relativePath),
+  /** Build a URL loadable in the renderer for files under the project `assets/` tree. */
+  assetUrl: (relativePath: string): string => {
+    const parts = relativePath
+      .replace(/\\/g, "/")
+      .split("/")
+      .filter(Boolean)
+      .map((seg) => encodeURIComponent(seg));
+    return `nodex-asset:///${parts.join("/")}`;
+  },
   onPluginProgress: (
     callback: (payload: {
       op: string;

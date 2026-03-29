@@ -372,8 +372,10 @@ export class PluginLoader {
   }
 
   /**
-   * Editable plugin tree: `sources/<name>` if present, else IDE-registered external
-   * path, else legacy flat `userData/plugins/<name>`.
+   * Editable plugin tree: IDE-registered external folder first (the folder you opened
+   * in the Plugin IDE), then `sources/<name>`, then legacy flat `userData/plugins/<name>`.
+   * External wins so `npm install`, bundle, and file ops run where you are actually
+   * editing — not under `sources/` unless there is no external entry.
    */
   private tryResolvePluginWorkspacePath(
     installedFolderName: string,
@@ -381,13 +383,13 @@ export class PluginLoader {
     if (!isSafePluginName(installedFolderName)) {
       return null;
     }
-    const fromSources = path.join(this.userSourcesRoot(), installedFolderName);
-    if (fs.existsSync(path.join(fromSources, "manifest.json"))) {
-      return fromSources;
-    }
     const ext = this.resolveExternalWorkspacePath(installedFolderName);
     if (ext) {
       return ext;
+    }
+    const fromSources = path.join(this.userSourcesRoot(), installedFolderName);
+    if (fs.existsSync(path.join(fromSources, "manifest.json"))) {
+      return fromSources;
     }
     if (PluginLoader.RESERVED_TOP_LEVEL.has(installedFolderName)) {
       return null;
@@ -1833,7 +1835,11 @@ export class PluginLoader {
     return abs;
   }
 
-  /** Epic 4 — list editable source files (excludes node_modules, dist, .git). */
+  /**
+   * Epic 4 — list editable source files (skips walking node_modules, dist, .git).
+   * If `node_modules/` exists, a single placeholder path `node_modules/` is included
+   * so the IDE shows that dependencies are present without listing every file.
+   */
   listPluginSourceFiles(installedFolderName: string): string[] {
     if (!isSafePluginName(installedFolderName)) {
       throw new Error("Invalid plugin name");
@@ -1842,6 +1848,7 @@ export class PluginLoader {
     if (!pluginPath) {
       throw new Error("Plugin not found");
     }
+    const NODE_MODULES_MARKER = "node_modules/";
     const out: string[] = [];
     const walk = (dir: string): void => {
       for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -1849,17 +1856,28 @@ export class PluginLoader {
           continue;
         }
         const full = path.join(dir, ent.name);
+        const rel = path.relative(pluginPath, full);
+        if (rel.startsWith("..") || path.isAbsolute(rel)) {
+          continue;
+        }
+        const relPosix = rel.split(path.sep).join("/");
         if (ent.isDirectory()) {
+          out.push(`${relPosix}/`);
           walk(full);
         } else if (ent.isFile()) {
-          const rel = path.relative(pluginPath, full);
-          if (!rel.startsWith("..") && !path.isAbsolute(rel)) {
-            out.push(rel.split(path.sep).join("/"));
-          }
+          out.push(relPosix);
         }
       }
     };
     walk(pluginPath);
+    const nm = path.join(pluginPath, "node_modules");
+    try {
+      if (fs.existsSync(nm) && fs.statSync(nm).isDirectory()) {
+        out.push(NODE_MODULES_MARKER);
+      }
+    } catch {
+      /* ignore */
+    }
     out.sort();
     return out;
   }

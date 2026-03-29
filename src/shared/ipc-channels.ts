@@ -80,6 +80,15 @@ export const IPC_CHANNELS = {
   PLUGIN_GET_INVENTORY: "plugin:get-inventory",
   /** Renderer → main: structured client log (console, debug dock, daily file). */
   NODEX_CLIENT_LOG: "nodex:client-log",
+  /** Opened project folder (notes DB + assets). */
+  PROJECT_GET_STATE: "project:get-state",
+  PROJECT_SELECT_FOLDER: "project:select-folder",
+  PROJECT_OPEN_PATH: "project:open-path",
+  PROJECT_ROOT_CHANGED: "project:root-changed",
+  ASSET_LIST: "asset:list",
+  ASSET_GET_INFO: "asset:get-info",
+  ASSET_READ_TEXT: "asset:read-text",
+  ASSET_OPEN_EXTERNAL: "asset:open-external",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

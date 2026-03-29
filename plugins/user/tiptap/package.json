@@ -10,6 +10,6 @@
     "styled-components": "^6.3.12"
   },
   "devDependencies": {
-    "@nodex/plugin-ui": "file:../../packages/nodex-plugin-ui"
+    "@nodex/plugin-ui": "file:../../../packages/nodex-plugin-ui"
   }
 }
