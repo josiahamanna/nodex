@@ -1,8 +1,10 @@
 import { execFileSync, spawn } from "child_process";
 import * as crypto from "crypto";
+import { app } from "electron";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { getNodexDerivedCacheRoot } from "./nodex-paths";
 import { Registry } from "./registry";
 import {
   isSafePluginName,
@@ -2662,7 +2664,7 @@ if (el) {
   }
 
   /**
-   * Monaco cannot see ~/.nodex/plugin-cache deps when the workspace has no
+   * Monaco cannot see global plugin-cache deps when the workspace has no
    * local node_modules. Register virtual file:// entries under
    * `<workspace>/node_modules/...` backed by cache (or local) package files.
    */
@@ -2932,12 +2934,21 @@ if (el) {
     this.reload(registry);
   }
 
-  /** Remove `~/.nodex` and user plugins root, re-seed samples, clear disabled flags, reload. */
+  /** Remove Electron `cache/nodex`, legacy `~/.nodex`, user plugins root; re-seed; clear disabled; reload. */
   formatNodexPluginData(registry: Registry): void {
-    const nodexDir = path.join(os.homedir(), ".nodex");
-    if (fs.existsSync(nodexDir)) {
-      fs.rmSync(nodexDir, { recursive: true, force: true });
+    const legacyNodex = path.join(os.homedir(), ".nodex");
+    if (fs.existsSync(legacyNodex)) {
+      fs.rmSync(legacyNodex, { recursive: true, force: true });
     }
+    try {
+      const cacheTree = getNodexDerivedCacheRoot(app.getPath("userData"));
+      if (fs.existsSync(cacheTree)) {
+        fs.rmSync(cacheTree, { recursive: true, force: true });
+      }
+    } catch {
+      /* ignore */
+    }
+    pluginCacheManager.ensureRoot();
     if (fs.existsSync(this.userPluginsDir)) {
       fs.rmSync(this.userPluginsDir, { recursive: true, force: true });
     }

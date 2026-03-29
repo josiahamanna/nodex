@@ -196,7 +196,7 @@ function readManifest(pluginPath: string): PluginManifest {
   return JSON.parse(raw) as PluginManifest;
 }
 
-/** Prefer workspace `node_modules`, then legacy ~/.nodex/plugin-cache. */
+/** Prefer workspace `node_modules`, then global plugin-cache (Electron cache dir). */
 function cacheNodeModulesPath(pluginPath: string): string | undefined {
   try {
     const manifest = readManifest(pluginPath);

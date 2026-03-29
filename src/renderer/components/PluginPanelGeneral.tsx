@@ -57,7 +57,7 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
   const handleDeleteBinAndCaches = async () => {
     if (
       !window.confirm(
-        "Remove all plugins from bin/, clear ~/.nodex/plugin-cache, and clear the TypeScript main cache under the plugins folder? Sources are kept.",
+        "Remove all plugins from bin/, clear the global npm plugin cache (app cache folder), and clear the TypeScript main cache under the plugins folder? Sources are kept.",
       )
     ) {
       return;
@@ -85,10 +85,10 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
   };
 
   const handleFormat = async () => {
-    const display = path ?? "~/.config/nodex/plugins";
+    const display = path ?? "user plugins folder";
     if (
       !window.confirm(
-        `Format Nodex plugin data?\n\nThis deletes:\n• ${display}\n• ~/.nodex (including global npm plugin cache)\n\nSample markdown/tiptap sources will be re-seeded. Plugin disable flags are reset. Bundled core plugins are unchanged.`,
+        `Format Nodex plugin data?\n\nThis deletes:\n• ${display}\n• userData/nodex-cache (including global npm plugin cache)\n• Legacy ~/.nodex if present\n\nSample markdown/tiptap sources will be re-seeded. Plugin disable flags are reset. Bundled core plugins are unchanged.`,
       )
     ) {
       return;
@@ -136,7 +136,7 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
           Empties <code className="rounded bg-muted px-1">bin/</code>, removes{" "}
           <code className="rounded bg-muted px-1">.plugin-main-cache</code> under
           the plugins root, and clears{" "}
-          <code className="rounded bg-muted px-1">~/.nodex/plugin-cache</code>.
+          <code className="rounded bg-muted px-1">userData/nodex-cache/plugin-cache</code>.
           Does not remove <code className="rounded bg-muted px-1">sources/</code>.
         </p>
         <button
@@ -170,8 +170,9 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
       <section className="space-y-3 border-t border-destructive/25 pt-6">
         <h3 className="text-[12px] font-semibold text-destructive">Format</h3>
         <p className="text-[11px] text-muted-foreground">
-          Removes <code className="rounded bg-muted px-1">~/.nodex</code> and the
-          entire plugins directory, then re-seeds sample plugins and resets
+          Removes <code className="rounded bg-muted px-1">userData/nodex-cache</code>,
+          legacy <code className="rounded bg-muted px-1">~/.nodex</code> if present,
+          and the entire plugins directory, then re-seeds sample plugins and resets
           disabled-plugin flags.
         </p>
         <button

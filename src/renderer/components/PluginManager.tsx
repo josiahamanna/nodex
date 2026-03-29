@@ -324,7 +324,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
   const handleClearAllCaches = async () => {
     if (
       !confirm(
-        "Remove all ~/.nodex/plugin-cache data? Bundles will need reinstalling.",
+        "Remove all global plugin dependency cache data (app cache folder)? Bundles will need reinstalling.",
       )
     ) {
       return;
@@ -943,12 +943,12 @@ const PluginManager: React.FC<PluginManagerProps> = ({
           <>
             <div className="mt-10 pt-6 border-t border-border">
               <h3 className="text-lg font-semibold text-foreground mb-2">
-                Legacy dependency cache (~/.nodex/plugin-cache)
+                Global dependency cache (app cache)
               </h3>
               <p className="text-sm text-muted-foreground mb-3">
-                Older installs used a global cache under{" "}
+                Per-plugin npm installs may use a global cache under{" "}
                 <code className="text-xs bg-muted px-1 rounded">
-                  {cacheStats?.root ?? "~/.nodex/plugin-cache"}
+                  {cacheStats?.root ?? "…/nodex-cache/plugin-cache"}
                 </code>
                 . New installs use each plugin&apos;s workspace{" "}
                 <code className="text-xs bg-muted px-1 rounded">node_modules</code>
@@ -988,10 +988,8 @@ const PluginManager: React.FC<PluginManagerProps> = ({
                 Danger zone
               </h3>
               <p className="text-sm text-muted-foreground mb-2">
-                User plugins directory (
-                <code className="text-xs bg-muted px-1 rounded">
-                  ~/.config/nodex/plugins
-                </code>
+                User plugins directory (under Electron userData, typically{" "}
+                <code className="text-xs bg-muted px-1 rounded">…/plugins</code>
                 ):
               </p>
               <p className="text-xs font-mono break-all text-foreground mb-3 rounded border border-border bg-muted/40 p-2">

@@ -11,14 +11,19 @@ export interface PackageJsonSource {
 }
 
 /**
- * Per-plugin dependency install root: ~/.nodex/plugin-cache/<pluginName>/
- * (Epic 3.1 — isolated cache; node_modules live here, not in the shipped dev zip.)
+ * Per-plugin dependency install root under Electron `app.getPath("cache")/nodex/plugin-cache/<name>/`.
+ * Call `setRoot()` from main after `app` is ready (cross-platform).
  */
 export class PluginCacheManager {
-  private readonly root: string;
+  private root: string;
 
-  constructor() {
-    this.root = path.join(os.homedir(), ".nodex", "plugin-cache");
+  constructor(initialRoot: string) {
+    this.root = initialRoot;
+  }
+
+  /** Must be called before `ensureRoot` / installs when overriding the default. */
+  setRoot(absPath: string): void {
+    this.root = absPath;
   }
 
   getRoot(): string {
@@ -246,4 +251,6 @@ export class PluginCacheManager {
   }
 }
 
-export const pluginCacheManager = new PluginCacheManager();
+export const pluginCacheManager = new PluginCacheManager(
+  path.join(os.homedir(), ".nodex", "plugin-cache"),
+);

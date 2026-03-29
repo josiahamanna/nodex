@@ -15,19 +15,48 @@ const NoteViewer: React.FC<NoteViewerProps> = ({ note, onTitleCommit }) => {
   const { showToast } = useToast();
 
   useEffect(() => {
+    let cancelled = false;
+    let warnTimer: ReturnType<typeof setTimeout> | null = null;
+
     const checkPlugin = async () => {
       const types = await window.Nodex.getRegisteredTypes();
+      if (cancelled) {
+        return;
+      }
       const ok = types.includes(note.type);
       setHasPlugin(ok);
+      if (warnTimer) {
+        clearTimeout(warnTimer);
+        warnTimer = null;
+      }
       if (!ok) {
-        showToast({
-          severity: "warning",
-          message: `No plugin installed for note type "${note.type}". Install one from Plugin Manager.`,
-          mergeKey: `note-no-plugin:${note.type}`,
-        });
+        warnTimer = setTimeout(() => {
+          void (async () => {
+            const again = await window.Nodex.getRegisteredTypes();
+            if (cancelled || again.includes(note.type)) {
+              return;
+            }
+            showToast({
+              severity: "warning",
+              message: `No plugin installed for note type "${note.type}". Install one from Plugin Manager.`,
+              mergeKey: `note-no-plugin:${note.type}`,
+            });
+          })();
+        }, 450);
       }
     };
+
     void checkPlugin();
+    const off = window.Nodex.onPluginsChanged(() => {
+      void checkPlugin();
+    });
+    return () => {
+      cancelled = true;
+      if (warnTimer) {
+        clearTimeout(warnTimer);
+      }
+      off();
+    };
   }, [note.type, showToast]);
 
   useLayoutEffect(() => {

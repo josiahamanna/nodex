@@ -2,7 +2,7 @@ import { app } from "electron";
 import * as fs from "fs";
 import * as path from "path";
 
-/** Copied into `~/.config/nodex/plugins/sources/<name>` on first run if missing. */
+/** Copied into `userData/plugins/sources/<name>` on first run if missing. */
 const SAMPLE_PLUGIN_NAMES = ["markdown", "tiptap"] as const;
 
 function resolveSamplePluginSourceDir(name: string): string | null {

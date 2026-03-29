@@ -1,17 +1,24 @@
 import * as fs from "fs";
-import * as path from "path";
 import {
   ensureNotesSeeded,
-  exportSerializedState,
-  getTreeRootId,
+  getNotesFlat,
   importSerializedState,
   mergeMultipleRootsIfNeeded,
   resetNotesStore,
 } from "./notes-store";
+import {
+  closeNotesSqlite,
+  countNotesInDb,
+  getNotesDatabase,
+  initNotesSqlite,
+  loadFromDatabase,
+  saveToDatabase,
+} from "./notes-sqlite";
 
 export type NotesLoadResult = "ok" | "missing" | "invalid";
 
-export function loadNotesState(filePath: string): NotesLoadResult {
+/** Load notes from legacy `notes-tree.json` into memory (migration only). */
+export function loadNotesStateFromJsonFile(filePath: string): NotesLoadResult {
   if (!fs.existsSync(filePath)) {
     return "missing";
   }
@@ -28,28 +35,60 @@ export function loadNotesState(filePath: string): NotesLoadResult {
   }
 }
 
-export function saveNotesState(filePath: string): void {
-  const dir = path.dirname(filePath);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(exportSerializedState()), "utf8");
+export function saveNotesState(): void {
+  const db = getNotesDatabase();
+  if (!db) {
+    throw new Error("Notes database not initialized");
+  }
+  saveToDatabase(db);
 }
 
+/**
+ * Open SQLite, migrate from legacy JSON if DB empty, seed if still empty.
+ * `dbPath` = e.g. userData/data/nodex.sqlite; `legacyJsonPath` = userData/notes-tree.json
+ */
 export function bootstrapNotesTree(
-  filePath: string,
+  dbPath: string,
+  legacyJsonPath: string,
   registeredTypes: string[],
 ): void {
-  const loaded = loadNotesState(filePath);
-  if (loaded !== "ok") {
-    if (loaded === "invalid") {
-      resetNotesStore();
+  const db = initNotesSqlite(dbPath);
+
+  if (countNotesInDb(db) === 0 && fs.existsSync(legacyJsonPath)) {
+    resetNotesStore();
+    const migrated = loadNotesStateFromJsonFile(legacyJsonPath);
+    if (migrated === "ok" && getNotesFlat().length > 0) {
+      saveToDatabase(db);
+      try {
+        fs.renameSync(legacyJsonPath, `${legacyJsonPath}.migrated.bak`);
+      } catch {
+        /* non-fatal */
+      }
     }
+  }
+
+  resetNotesStore();
+
+  if (countNotesInDb(db) === 0) {
     ensureNotesSeeded(registeredTypes);
-    saveNotesState(filePath);
+    saveToDatabase(db);
     return;
   }
-  if (!getTreeRootId() && registeredTypes.length > 0) {
+
+  if (!loadFromDatabase(db)) {
     resetNotesStore();
     ensureNotesSeeded(registeredTypes);
-    saveNotesState(filePath);
+    saveToDatabase(db);
+    return;
+  }
+
+  mergeMultipleRootsIfNeeded();
+
+  if (getNotesFlat().length === 0 && registeredTypes.length > 0) {
+    resetNotesStore();
+    ensureNotesSeeded(registeredTypes);
+    saveToDatabase(db);
   }
 }
+
+export { closeNotesSqlite };

@@ -145,7 +145,6 @@ function clipboardTouchesDeleted(
 export interface NotesSidebarPanelProps {
   notes: NoteListItem[];
   registeredTypes: string[];
-  workspaceRootId: string | null;
   currentNoteId?: string;
   onNoteSelect: (noteId: string) => void;
   onCreateNote: (payload: {
@@ -180,7 +179,6 @@ const ctxBtn =
 const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   notes,
   registeredTypes,
-  workspaceRootId,
   currentNoteId,
   onNoteSelect,
   onCreateNote,
@@ -207,6 +205,17 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   const draggingIdsRef = useRef<string[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
   const parents = useMemo(() => parentMapFromNotes(notes), [notes]);
+
+  /** Last top-level note in outline order — paste “into workspace” appends after this sibling. */
+  const lastTopLevelId = useMemo(() => {
+    let last: string | null = null;
+    for (const n of notes) {
+      if (n.depth === 0) {
+        last = n.id;
+      }
+    }
+    return last;
+  }, [notes]);
 
   const noteIdSet = useMemo(() => new Set(notes.map((n) => n.id)), [notes]);
 
@@ -370,10 +379,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
     targetId: string,
     placement: NoteMovePlacement,
   ): boolean => {
-    if (!workspaceRootId || draggedId === targetId) {
-      return false;
-    }
-    if (draggedId === workspaceRootId) {
+    if (draggedId === targetId) {
       return false;
     }
     if (isStrictAncestor(draggedId, targetId, parents)) {
@@ -406,15 +412,9 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   };
 
   const idsToDragForRow = (noteId: string): string[] => {
-    if (noteId === workspaceRootId) {
-      return [];
-    }
     const sel = selectedNoteIds;
     if (sel.has(noteId) && sel.size > 1) {
       const bulk = new Set(sel);
-      if (workspaceRootId) {
-        bulk.delete(workspaceRootId);
-      }
       return minimalSelectedRoots(bulk, parents);
     }
     return [noteId];
@@ -423,9 +423,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   const multiSelectCount = selectedNoteIds.size;
   const bulkDeleteRoots =
     multiSelectCount > 1
-      ? minimalSelectedRoots(selectedNoteIds, parents).filter(
-          (id) => id !== workspaceRootId,
-        )
+      ? minimalSelectedRoots(selectedNoteIds, parents)
       : [];
 
   const contextMenuPortal =
@@ -455,7 +453,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                     Rename…
                   </button>
                 ) : null}
-                {multiSelectCount <= 1 && menu.anchorId !== workspaceRootId ? (
+                {multiSelectCount <= 1 ? (
                   <button
                     type="button"
                     className={ctxBtn}
@@ -520,8 +518,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                     Delete {bulkDeleteRoots.length}…
                   </button>
                 ) : null}
-                {multiSelectCount <= 1 &&
-                menu.anchorId !== workspaceRootId ? (
+                {multiSelectCount <= 1 ? (
                   <button
                     type="button"
                     className={ctxBtn}
@@ -584,32 +581,30 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                     >
                       Paste as child
                     </button>
-                    {menu.anchorId !== workspaceRootId ? (
-                      <button
-                        type="button"
-                        className={ctxBtn}
-                        onClick={async () => {
-                          if (!clipboard || !menu.anchorId) {
-                            return;
+                    <button
+                      type="button"
+                      className={ctxBtn}
+                      onClick={async () => {
+                        if (!clipboard || !menu.anchorId) {
+                          return;
+                        }
+                        try {
+                          await onPasteSubtree({
+                            ...clipboard,
+                            targetId: menu.anchorId,
+                            placement: "after",
+                          });
+                          if (clipboard.mode === "cut") {
+                            setClipboard(null);
                           }
-                          try {
-                            await onPasteSubtree({
-                              ...clipboard,
-                              targetId: menu.anchorId,
-                              placement: "after",
-                            });
-                            if (clipboard.mode === "cut") {
-                              setClipboard(null);
-                            }
-                          } catch {
-                            /* surfaced in app */
-                          }
-                          closeMenu();
-                        }}
-                      >
-                        Paste as sibling
-                      </button>
-                    ) : null}
+                        } catch {
+                          /* surfaced in app */
+                        }
+                        closeMenu();
+                      }}
+                    >
+                      Paste as sibling
+                    </button>
                   </>
                 ) : null}
                 <div className="my-1 h-px bg-border" />
@@ -626,25 +621,23 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                 >
                   New child…
                 </button>
-                {menu.anchorId !== workspaceRootId ? (
-                  <button
-                    type="button"
-                    className={ctxBtn}
-                    onClick={() =>
-                      setMenu({
-                        ...menu,
-                        step: "pickType",
-                        pickRelation: "sibling",
-                      })
-                    }
-                  >
-                    New sibling…
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  className={ctxBtn}
+                  onClick={() =>
+                    setMenu({
+                      ...menu,
+                      step: "pickType",
+                      pickRelation: "sibling",
+                    })
+                  }
+                >
+                  New sibling…
+                </button>
               </>
             ) : (
               <>
-                {clipboard && workspaceRootId ? (
+                {clipboard && lastTopLevelId ? (
                   <>
                     <button
                       type="button"
@@ -656,8 +649,8 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                         try {
                           await onPasteSubtree({
                             ...clipboard,
-                            targetId: workspaceRootId,
-                            placement: "into",
+                            targetId: lastTopLevelId,
+                            placement: "after",
                           });
                           if (clipboard.mode === "cut") {
                             setClipboard(null);
@@ -684,7 +677,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                     })
                   }
                 >
-                  New note under workspace…
+                  New top-level note…
                 </button>
               </>
             )}
@@ -709,35 +702,39 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
               Note type
             </p>
             <div className="max-h-48 overflow-y-auto px-1">
-              {registeredTypes.length === 0 ? (
+              {registeredTypes.filter((t) => t !== "root").length === 0 ? (
                 <p className="px-2 py-1 text-[11px] text-muted-foreground">
                   No types loaded
                 </p>
               ) : (
-                registeredTypes.map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    className={ctxBtn}
-                    onClick={async () => {
-                      const rel = menu.pickRelation ?? "root";
-                      const anchorId =
-                        rel === "root" ? undefined : menu.anchorId ?? undefined;
-                      try {
-                        await onCreateNote({
-                          relation: rel,
-                          type,
-                          anchorId,
-                        });
-                        closeMenu();
-                      } catch {
-                        /* surfaced in app */
-                      }
-                    }}
-                  >
-                    {type}
-                  </button>
-                ))
+                registeredTypes
+                  .filter((t) => t !== "root")
+                  .map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      className={ctxBtn}
+                      onClick={async () => {
+                        const rel = menu.pickRelation ?? "root";
+                        const anchorId =
+                          rel === "root"
+                            ? undefined
+                            : menu.anchorId ?? undefined;
+                        try {
+                          await onCreateNote({
+                            relation: rel,
+                            type,
+                            anchorId,
+                          });
+                          closeMenu();
+                        } catch {
+                          /* surfaced in app */
+                        }
+                      }}
+                    >
+                      {type}
+                    </button>
+                  ))
               )}
             </div>
           </>
@@ -812,10 +809,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
         const hi = Math.max(a, idx);
         const next = new Set<string>();
         for (let i = lo; i <= hi; i++) {
-          const id = visibleNotes[i]!.id;
-          if (id !== workspaceRootId) {
-            next.add(id);
-          }
+          next.add(visibleNotes[i]!.id);
         }
         setSelectedNoteIds(next);
         void onNoteSelect(noteId);
@@ -823,10 +817,6 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
       }
     }
     if (e.metaKey || e.ctrlKey) {
-      if (noteId === workspaceRootId) {
-        void onNoteSelect(noteId);
-        return;
-      }
       setSelectedNoteIds((prev) => {
         const next = new Set(prev);
         if (next.has(noteId)) {
@@ -890,7 +880,6 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
               const inMulti = selectedNoteIds.has(note.id);
               const selected = primarySelected || inMulti;
               const pad = 6 + note.depth * 12;
-              const isRoot = note.id === workspaceRootId;
               const hint =
                 dropHint?.targetId === note.id ? dropHint.placement : null;
               const showChevron = hasChildrenMap.has(note.id);
@@ -901,11 +890,8 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
               return (
                 <li
                   key={note.id}
-                  draggable={!isRoot}
+                  draggable
                   onDragStart={(e) => {
-                    if (isRoot) {
-                      return;
-                    }
                     const dragIds = idsToDragForRow(note.id);
                     if (dragIds.length === 0) {
                       return;
@@ -1094,9 +1080,9 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                             ? "bg-primary/15 text-sidebar-foreground ring-1 ring-inset ring-primary/35 hover:bg-primary/20"
                             : "bg-sidebar-accent text-sidebar-foreground before:pointer-events-none before:absolute before:left-1 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-primary before:content-[''] hover:bg-sidebar-accent"
                           : "text-sidebar-foreground hover:bg-sidebar-accent/70"
-                      } ${isRoot ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
+                      } cursor-grab active:cursor-grabbing`}
                     >
-                      {!isRoot && draggingBulkCount > 1 && draggingId === note.id ? (
+                      {draggingBulkCount > 1 && draggingId === note.id ? (
                         <span className="absolute right-2 top-1/2 z-[5] -translate-y-1/2 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-primary-foreground shadow-sm">
                           {draggingBulkCount}
                         </span>
@@ -1112,11 +1098,6 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
                         }`}
                       >
                         {note.title}
-                        {isRoot ? (
-                          <span className="ml-1 text-[9px] font-normal text-sidebar-foreground/45">
-                            (workspace)
-                          </span>
-                        ) : null}
                       </span>
                     </button>
                   </div>

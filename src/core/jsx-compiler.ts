@@ -1,6 +1,7 @@
-import * as fs from "fs";
-import * as path from "path";
 import * as crypto from "crypto";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 
 // @ts-ignore - Babel standalone doesn't have perfect types
 const Babel = require("@babel/standalone");
@@ -177,6 +178,18 @@ export class JSXCompiler {
   }
 }
 
-export const jsxCompiler = new JSXCompiler(
-  path.join(process.env.HOME || process.env.USERPROFILE || "~", ".nodex", "jsx-cache")
-);
+let jsxCompilerInstance: JSXCompiler | null = null;
+
+/** Call from main after `app.whenReady` with `getNodexJsxCacheRoot(app.getPath("userData"))`. */
+export function initJsxCompilerCache(cacheDir: string): void {
+  jsxCompilerInstance = new JSXCompiler(cacheDir);
+}
+
+export function getJsxCompiler(): JSXCompiler {
+  if (!jsxCompilerInstance) {
+    jsxCompilerInstance = new JSXCompiler(
+      path.join(os.tmpdir(), "nodex-jsx-cache"),
+    );
+  }
+  return jsxCompilerInstance;
+}

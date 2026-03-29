@@ -18,6 +18,14 @@ import { seedSamplePluginsToUserDir } from "./core/seed-user-plugins";
 import { resolveNodexPluginUiMonacoLib } from "./core/resolve-nodex-plugin-ui";
 import { setPluginProgressSink } from "./core/plugin-progress";
 import { packageManager } from "./core/package-manager";
+import { initJsxCompilerCache } from "./core/jsx-compiler";
+import {
+  getLegacyNotesJsonPath,
+  getNodexDatabasePath,
+  getNodexJsxCacheRoot,
+  getNodexPluginCacheRoot,
+  getNodexUserPluginsDir,
+} from "./core/nodex-paths";
 import { bootstrapNotesTree, saveNotesState } from "./core/notes-persistence";
 import {
   createNote as createNoteInStore,
@@ -27,7 +35,6 @@ import {
   getFirstNote,
   getNoteById,
   getNotesFlat,
-  getTreeRootId,
   moveNote as moveNoteInStore,
   moveNotesBulk as moveNotesBulkInStore,
   renameNote as renameNoteInStore,
@@ -63,7 +70,7 @@ function persistNotes(): void {
     return;
   }
   try {
-    saveNotesState(notesPersistencePath);
+    saveNotesState();
   } catch (e) {
     console.warn("[Main] Failed to save notes:", e);
   }
@@ -116,17 +123,6 @@ function setIdeWorkspaceWatch(pluginName: string | null): void {
 
 function getDialogParent(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined;
-}
-
-/** `~/.config/nodex/plugins` — must match PluginLoader root. */
-function resolveVerifiedUserPluginsPath(): string {
-  const home = path.resolve(app.getPath("home"));
-  const pl = path.resolve(path.join(home, ".config", "nodex", "plugins"));
-  const rel = path.relative(home, pl).split(path.sep).join("/");
-  if (rel !== ".config/nodex/plugins") {
-    throw new Error("Invalid plugins directory path");
-  }
-  return pl;
 }
 
 /** Avoid passing `undefined` as the first argument to `showOpenDialog` (can break on some platforms). */
@@ -292,10 +288,12 @@ app.on("ready", () => {
     }
   });
 
-  pluginCacheManager.ensureRoot();
-
   const userDataPath = app.getPath("userData");
-  const pluginsPath = resolveVerifiedUserPluginsPath();
+  pluginCacheManager.setRoot(getNodexPluginCacheRoot(userDataPath));
+  pluginCacheManager.ensureRoot();
+  initJsxCompilerCache(getNodexJsxCacheRoot(userDataPath));
+
+  const pluginsPath = getNodexUserPluginsDir(userDataPath);
   const bundledCore = resolveBundledCorePluginsDir();
   const bundledRoots = bundledCore ? [bundledCore] : [];
   console.log("[Main] User plugins dir:", pluginsPath);
@@ -389,8 +387,13 @@ app.on("ready", () => {
 
   pluginLoader.loadAll(registry);
 
-  notesPersistencePath = path.join(userDataPath, "notes-tree.json");
-  bootstrapNotesTree(notesPersistencePath, registry.getRegisteredTypes());
+  notesPersistencePath = getNodexDatabasePath(userDataPath);
+  console.log("[Main] Notes database:", notesPersistencePath);
+  bootstrapNotesTree(
+    notesPersistencePath,
+    getLegacyNotesJsonPath(userDataPath),
+    registry.getRegisteredTypes(),
+  );
 
   ipcMain.removeHandler(IPC_CHANNELS.MOVE_NOTE);
   ipcMain.removeHandler(IPC_CHANNELS.MOVE_NOTES_BULK);
@@ -498,10 +501,6 @@ app.on("ready", () => {
         placement !== "into"
       ) {
         throw new Error("Invalid placement");
-      }
-      const rootId = getTreeRootId();
-      if (mode === "cut" && rootId && sourceId === rootId) {
-        throw new Error("Cannot cut the workspace root");
       }
       if (mode === "cut") {
         moveNoteInStore(sourceId, targetId, placement);
@@ -1503,7 +1502,7 @@ ipcMain.handle(IPC_CHANNELS.PLUGIN_RELOAD_REGISTRY, async () => {
 
 ipcMain.handle(IPC_CHANNELS.PLUGIN_GET_USER_PLUGINS_DIR, () => {
   try {
-    return { path: resolveVerifiedUserPluginsPath() };
+    return { path: getNodexUserPluginsDir(app.getPath("userData")) };
   } catch (e) {
     return {
       path: "",
@@ -1518,7 +1517,7 @@ ipcMain.handle(IPC_CHANNELS.PLUGIN_RESET_USER_DATA_PLUGINS, async () => {
     path: "",
   };
   try {
-    const pluginsPath = resolveVerifiedUserPluginsPath();
+    const pluginsPath = getNodexUserPluginsDir(app.getPath("userData"));
     pathResult.path = pluginsPath;
     if (fs.existsSync(pluginsPath)) {
       fs.rmSync(pluginsPath, { recursive: true, force: true });

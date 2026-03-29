@@ -54,7 +54,15 @@ export class Registry {
   }
 
   getRenderer(type: string): PluginRenderer | null {
-    return this.renderers.get(type) || null;
+    const direct = this.renderers.get(type);
+    if (direct) {
+      return direct;
+    }
+    /** Workspace home notes use `root`; same UI as markdown (markdown plugin may only register `markdown`). */
+    if (type === "root") {
+      return this.renderers.get("markdown") ?? null;
+    }
+    return null;
   }
 
   getComponent(type: string): string | null {
@@ -67,7 +75,10 @@ export class Registry {
       ...this.components.keys(),
       ...this.renderers.keys(),
     ]);
-    return Array.from(types);
+    if (types.has("markdown") && !types.has("root")) {
+      types.add("root");
+    }
+    return [...types].sort();
   }
 
   clear(): void {

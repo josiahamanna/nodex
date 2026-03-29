@@ -118,39 +118,8 @@ export function isDescendantOf(ancestorId: string, nodeId: string): boolean {
   return false;
 }
 
-export function getTreeRootId(): string | null {
-  let found: string | null = null;
-  for (const [id, n] of notes) {
-    if (n.parentId === null) {
-      if (found !== null) {
-        return null;
-      }
-      found = id;
-    }
-  }
-  return found;
-}
-
-/** If multiple roots exist (legacy data), reparent extras under the first root. */
+/** Repair `childOrder` for `null` parent from `parentId` on records. */
 export function mergeMultipleRootsIfNeeded(): void {
-  const roots: string[] = [];
-  for (const [id, n] of notes) {
-    if (n.parentId === null) {
-      roots.push(id);
-    }
-  }
-  if (roots.length > 1) {
-    const keeper = roots[0]!;
-    const tail = roots.slice(1);
-    const kids = [...getChildren(keeper), ...tail];
-    setChildren(keeper, kids);
-    for (const id of tail) {
-      const r = notes.get(id);
-      if (r) {
-        r.parentId = keeper;
-      }
-    }
-  }
   syncNullChildOrderFromRecords();
 }
 
@@ -167,32 +136,32 @@ export function ensureNotesSeeded(registeredTypes: string[]): void {
   const { content: rootContent, metadata: rootMeta } = bodyForType(rootType);
   const rootTitle =
     rootType === "root" ? "Home" : "Workspace";
-  const rootId = randomUUID();
-  notes.set(rootId, {
-    id: rootId,
+  const topLevelIds: string[] = [];
+  const homeId = randomUUID();
+  notes.set(homeId, {
+    id: homeId,
     parentId: null,
     type: rootType,
     title: rootTitle,
     content: rootContent,
     metadata: rootMeta,
   });
+  topLevelIds.push(homeId);
   const childTypes = registeredTypes.filter((t) => t !== "root");
-  const childIds: string[] = [];
   for (const type of childTypes) {
     const id = randomUUID();
     const { content, metadata } = bodyForType(type);
     notes.set(id, {
       id,
-      parentId: rootId,
+      parentId: null,
       type,
       title: titleForType(type),
       content,
       metadata,
     });
-    childIds.push(id);
+    topLevelIds.push(id);
   }
-  setChildren(rootId, childIds);
-  setChildren(null, [rootId]);
+  setChildren(null, topLevelIds);
 }
 
 export function getNotesFlat(): NoteListRow[] {
@@ -258,12 +227,8 @@ function collectSubtreeIds(rootId: string): string[] {
   return out;
 }
 
-/** Remove a note and its descendants. Cannot delete the workspace root. */
+/** Remove a note and its descendants (any top-level note may be removed). */
 export function deleteNoteSubtree(noteId: string): void {
-  const workspaceRootId = getTreeRootId();
-  if (!workspaceRootId || noteId === workspaceRootId) {
-    throw new Error("Cannot delete workspace root");
-  }
   if (!notes.get(noteId)) {
     throw new Error("Note not found");
   }
@@ -315,17 +280,9 @@ export function moveNotesBulk(
   targetId: string,
   placement: NoteMovePlacement,
 ): void {
-  const workspaceRootId = getTreeRootId();
-  if (!workspaceRootId) {
-    throw new Error("No workspace root");
-  }
-
   const idSet = new Set(noteIds);
   const minimal: string[] = [];
   for (const id of noteIds) {
-    if (id === workspaceRootId) {
-      throw new Error("Cannot move workspace root");
-    }
     if (!notes.get(id)) {
       throw new Error("Note not found");
     }
@@ -398,24 +355,7 @@ export function moveNotesBulk(
     return;
   }
 
-  if (targetId === workspaceRootId) {
-    const kids = [...getChildren(workspaceRootId)];
-    if (placement === "before") {
-      kids.unshift(...block);
-    } else {
-      kids.push(...block);
-    }
-    for (const r of block) {
-      const rec = notes.get(r);
-      if (rec) {
-        rec.parentId = workspaceRootId;
-      }
-    }
-    setChildren(workspaceRootId, kids);
-    return;
-  }
-
-  const parentId = target.parentId ?? workspaceRootId;
+  const parentId = target.parentId;
   const siblings = [...getChildren(parentId)];
   const tIdx = siblings.indexOf(targetId);
   const ins = placement === "before" ? tIdx : tIdx + 1;
@@ -438,13 +378,6 @@ export function moveNote(
   targetId: string,
   placement: NoteMovePlacement,
 ): void {
-  const workspaceRootId = getTreeRootId();
-  if (!workspaceRootId) {
-    throw new Error("No workspace root");
-  }
-  if (draggedId === workspaceRootId) {
-    throw new Error("Cannot move the workspace root");
-  }
   if (draggedId === targetId) {
     return;
   }
@@ -469,19 +402,7 @@ export function moveNote(
     return;
   }
 
-  if (targetId === workspaceRootId) {
-    const kids = [...getChildren(workspaceRootId)];
-    if (placement === "before") {
-      kids.unshift(draggedId);
-    } else {
-      kids.push(draggedId);
-    }
-    dragged.parentId = workspaceRootId;
-    setChildren(workspaceRootId, kids);
-    return;
-  }
-
-  const parentId = target.parentId ?? workspaceRootId;
+  const parentId = target.parentId;
   const siblings = [...getChildren(parentId)];
   const tIdx = siblings.indexOf(targetId);
   if (tIdx < 0) {
@@ -500,11 +421,14 @@ function insertClonedRootAt(
   cloneRootId: string,
   targetId: string,
   placement: NoteMovePlacement,
-  workspaceRootId: string,
 ): void {
   const cloneRoot = notes.get(cloneRootId);
   if (!cloneRoot) {
     throw new Error("Clone missing");
+  }
+  const target = notes.get(targetId);
+  if (!target) {
+    throw new Error("Target not found");
   }
   if (placement === "into") {
     const kids = [...getChildren(targetId)];
@@ -513,19 +437,7 @@ function insertClonedRootAt(
     setChildren(targetId, kids);
     return;
   }
-  if (targetId === workspaceRootId) {
-    const kids = [...getChildren(workspaceRootId)];
-    if (placement === "before") {
-      kids.unshift(cloneRootId);
-    } else {
-      kids.push(cloneRootId);
-    }
-    cloneRoot.parentId = workspaceRootId;
-    setChildren(workspaceRootId, kids);
-    return;
-  }
-  const target = notes.get(targetId)!;
-  const parentId = target.parentId ?? workspaceRootId;
+  const parentId = target.parentId;
   const siblings = [...getChildren(parentId)];
   const tIdx = siblings.indexOf(targetId);
   const ins = placement === "before" ? tIdx : tIdx + 1;
@@ -544,10 +456,6 @@ export function duplicateSubtreeAt(
   targetId: string,
   placement: NoteMovePlacement,
 ): { newRootId: string } {
-  const workspaceRootId = getTreeRootId();
-  if (!workspaceRootId) {
-    throw new Error("No workspace root");
-  }
   const source = notes.get(sourceRootId);
   const target = notes.get(targetId);
   if (!source || !target) {
@@ -576,7 +484,7 @@ export function duplicateSubtreeAt(
   }
 
   const newRootId = cloneRecursive(sourceRootId);
-  insertClonedRootAt(newRootId, targetId, placement, workspaceRootId);
+  insertClonedRootAt(newRootId, targetId, placement);
   return { newRootId };
 }
 
@@ -585,11 +493,6 @@ export function createNote(opts: {
   relation: "child" | "sibling" | "root";
   type: string;
 }): NoteRecord {
-  const workspaceRootId = getTreeRootId();
-  if (!workspaceRootId) {
-    throw new Error("No workspace root");
-  }
-
   const id = randomUUID();
   const { content, metadata } = bodyForType(opts.type);
   const rec: NoteRecord = {
@@ -601,11 +504,12 @@ export function createNote(opts: {
     metadata,
   };
 
+  /** "Root" relation = new top-level note (forest), not a child of a single workspace root. */
   if (opts.relation === "root") {
-    rec.parentId = workspaceRootId;
+    rec.parentId = null;
     notes.set(id, rec);
-    const ch = [...getChildren(workspaceRootId), id];
-    setChildren(workspaceRootId, ch);
+    const ch = [...getChildren(null), id];
+    setChildren(null, ch);
     return rec;
   }
 
@@ -626,7 +530,7 @@ export function createNote(opts: {
     return rec;
   }
 
-  const parentId = anchor.parentId ?? workspaceRootId;
+  const parentId = anchor.parentId;
   rec.parentId = parentId;
   notes.set(id, rec);
   const siblings = [...getChildren(parentId)];

@@ -209,8 +209,6 @@ const App: React.FC = () => {
     }
   };
 
-  const workspaceRootId = notesList[0]?.id ?? null;
-
   const handleMoveNote = async (payload: {
     draggedId: string;
     targetId: string;
@@ -294,7 +292,6 @@ const App: React.FC = () => {
           <NotesSidebarPanel
             notes={notesList}
             registeredTypes={registeredTypes}
-            workspaceRootId={workspaceRootId}
             currentNoteId={currentNote?.id}
             onNoteSelect={handleNoteSelect}
             onCreateNote={handleCreateNote}
