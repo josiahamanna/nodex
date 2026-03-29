@@ -47,6 +47,12 @@ declare global {
         warnings?: string[];
       }>;
       getInstalledPlugins: () => Promise<string[]>;
+      getUserPluginsDirectory: () => Promise<{ path: string; error?: string }>;
+      resetUserPluginsDirectory: () => Promise<{
+        success: boolean;
+        path: string;
+        error?: string;
+      }>;
       uninstallPlugin: (
         pluginName: string,
       ) => Promise<{ success: boolean; error?: string }>;

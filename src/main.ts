@@ -105,6 +105,20 @@ function getDialogParent(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined;
 }
 
+/** `userData/plugins` with resolution checks — must match PluginLoader root. */
+function resolveVerifiedUserPluginsPath(): string {
+  const ud = path.resolve(app.getPath("userData"));
+  const pl = path.resolve(path.join(ud, "plugins"));
+  if (path.basename(pl) !== "plugins") {
+    throw new Error("Invalid plugins directory name");
+  }
+  const rel = path.relative(ud, pl).split(path.sep).join("/");
+  if (rel !== "plugins") {
+    throw new Error("Plugins path must be userData/plugins");
+  }
+  return pl;
+}
+
 /** Avoid passing `undefined` as the first argument to `showOpenDialog` (can break on some platforms). */
 function showOpenDialogWithParent(
   options: Electron.OpenDialogOptions,
@@ -1188,6 +1202,43 @@ ipcMain.handle(IPC_CHANNELS.PLUGIN_RELOAD_REGISTRY, async () => {
       success: false,
       error: e instanceof Error ? e.message : String(e),
     };
+  }
+});
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_GET_USER_PLUGINS_DIR, () => {
+  try {
+    return { path: resolveVerifiedUserPluginsPath() };
+  } catch (e) {
+    return {
+      path: "",
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+});
+
+ipcMain.handle(IPC_CHANNELS.PLUGIN_RESET_USER_DATA_PLUGINS, async () => {
+  const pathResult: { success: boolean; path: string; error?: string } = {
+    success: false,
+    path: "",
+  };
+  try {
+    const pluginsPath = resolveVerifiedUserPluginsPath();
+    pathResult.path = pluginsPath;
+    if (fs.existsSync(pluginsPath)) {
+      fs.rmSync(pluginsPath, { recursive: true, force: true });
+    }
+    fs.mkdirSync(pluginsPath, { recursive: true });
+    seedSamplePluginsToUserDir(pluginsPath);
+    setIdeWorkspaceWatch(null);
+    pluginLoader.reload(registry);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.PLUGINS_CHANGED);
+    }
+    pathResult.success = true;
+    return pathResult;
+  } catch (e) {
+    pathResult.error = e instanceof Error ? e.message : String(e);
+    return pathResult;
   }
 });
 

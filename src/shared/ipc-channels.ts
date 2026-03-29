@@ -58,6 +58,8 @@ export const IPC_CHANNELS = {
   PLUGIN_GET_SOURCE_ENTRY_KIND: "plugin:get-source-entry-kind",
   PLUGIN_IDE_SET_WORKSPACE_WATCH: "plugin:ide-set-workspace-watch",
   PLUGIN_IDE_WORKSPACE_FS_CHANGED: "plugin:ide-workspace-fs-changed",
+  PLUGIN_GET_USER_PLUGINS_DIR: "plugin:get-user-plugins-dir",
+  PLUGIN_RESET_USER_DATA_PLUGINS: "plugin:reset-user-plugins-dir",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

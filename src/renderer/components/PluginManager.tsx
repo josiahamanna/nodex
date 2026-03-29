@@ -50,6 +50,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
       Awaited<ReturnType<typeof window.Nodex.getPluginManifestUi>>
     >
   >({});
+  const [userPluginsPath, setUserPluginsPath] = useState<string | null>(null);
   const skipConfirmRef = useRef(
     typeof localStorage !== "undefined" &&
       localStorage.getItem(SKIP_INSTALL_CONFIRM_KEY) === "1",
@@ -97,6 +98,14 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
     refreshCacheStats();
     refreshLoadIssues();
   }, [refreshCacheStats, refreshLoadIssues]);
+
+  useEffect(() => {
+    void window.Nodex.getUserPluginsDirectory().then((res) => {
+      if (res.path) {
+        setUserPluginsPath(res.path);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     return window.Nodex.onPluginProgress((p) => {
@@ -307,6 +316,56 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
       text: "All plugin dependency caches cleared.",
     });
     await refreshCacheStats();
+  };
+
+  const handleResetUserPluginsDirectory = async () => {
+    const displayPath =
+      userPluginsPath ?? "(path unavailable — check main process logs)";
+    if (
+      !window.confirm(
+        `Delete the entire user plugins folder and reset to a clean state?\n\n${displayPath}\n\nThis removes sources/, bin/, IDE metadata under that folder. Sample markdown/tiptap plugins will be re-seeded if missing. Bundled core plugins are not removed. This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    if (
+      !window.confirm(
+        "Second confirmation: permanently delete that folder now?",
+      )
+    ) {
+      return;
+    }
+    setWorking("reset-user-plugins");
+    setMessage(null);
+    try {
+      const res = await window.Nodex.resetUserPluginsDirectory();
+      if (res.success) {
+        setMessage({
+          type: "success",
+          text: `User plugins folder was reset.\n${res.path}`,
+        });
+        onPluginsChanged?.();
+        await loadPlugins();
+        await refreshLoadIssues();
+        await refreshCacheStats();
+        const again = await window.Nodex.getUserPluginsDirectory();
+        if (again.path) {
+          setUserPluginsPath(again.path);
+        }
+      } else {
+        setMessage({
+          type: "error",
+          text: res.error ?? "Failed to reset user plugins folder",
+        });
+      }
+    } catch (e) {
+      setMessage({
+        type: "error",
+        text: e instanceof Error ? e.message : "Failed to reset user plugins folder",
+      });
+    } finally {
+      setWorking(null);
+    }
   };
 
   const handleBundleLocal = async (pluginName: string) => {
@@ -804,6 +863,35 @@ const PluginManager: React.FC<PluginManagerProps> = ({ onPluginsChanged }) => {
             className="px-3 py-1 text-sm bg-orange-100 text-orange-900 rounded hover:bg-orange-200 font-medium disabled:opacity-50"
           >
             Clear all dependency caches
+          </button>
+        </div>
+
+        <div className="mt-10 pt-6 border-t border-destructive/30">
+          <h3 className="text-lg font-semibold text-destructive mb-2">
+            Danger zone
+          </h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            User plugins directory (Electron{" "}
+            <code className="text-xs bg-muted px-1 rounded">userData/plugins</code>
+            ):
+          </p>
+          <p className="text-xs font-mono break-all text-foreground mb-3 rounded border border-border bg-muted/40 p-2">
+            {userPluginsPath ?? "Loading path…"}
+          </p>
+          <p className="text-sm text-muted-foreground mb-3">
+            Deletes this entire folder, recreates it, re-seeds sample plugins,
+            and reloads the registry. Use when you want a one-shot wipe of
+            imported plugin sources and builds.
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleResetUserPluginsDirectory()}
+            disabled={working !== null}
+            className="px-3 py-1.5 text-sm font-medium rounded bg-destructive text-destructive-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            {working === "reset-user-plugins"
+              ? "Resetting…"
+              : "Delete user plugins folder (reset)"}
           </button>
         </div>
       </div>

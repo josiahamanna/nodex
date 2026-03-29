@@ -84,6 +84,13 @@ contextBridge.exposeInMainWorld("Nodex", {
   }> => ipcRenderer.invoke(IPC_CHANNELS.IMPORT_PLUGIN, zipPath),
   getInstalledPlugins: (): Promise<string[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_INSTALLED_PLUGINS),
+  getUserPluginsDirectory: (): Promise<{ path: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_GET_USER_PLUGINS_DIR),
+  resetUserPluginsDirectory: (): Promise<{
+    success: boolean;
+    path: string;
+    error?: string;
+  }> => ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_RESET_USER_DATA_PLUGINS),
   uninstallPlugin: (
     pluginName: string,
   ): Promise<{ success: boolean; error?: string }> =>
