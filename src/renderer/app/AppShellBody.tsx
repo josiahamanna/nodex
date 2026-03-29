@@ -29,20 +29,20 @@ export type AppShellBodyProps = {
     anchorId?: string;
     relation: CreateNoteRelation;
     type: string;
-  }) => void | Promise<void>;
-  onRenameNote: (id: string, title: string) => void | Promise<void>;
+  }) => Promise<void>;
+  onRenameNote: (id: string, title: string) => Promise<void>;
   onMoveNote: (payload: {
     draggedId: string;
     targetId: string;
     placement: NoteMovePlacement;
-  }) => void | Promise<void>;
+  }) => Promise<void>;
   onMoveNotesBulk: (payload: {
     ids: string[];
     targetId: string;
     placement: NoteMovePlacement;
-  }) => void | Promise<void>;
-  onDeleteNotes: (ids: string[]) => void | Promise<void>;
-  onPasteSubtree: (p: PasteSubtreePayload) => void | Promise<void>;
+  }) => Promise<void>;
+  onDeleteNotes: (ids: string[]) => Promise<void>;
+  onPasteSubtree: (p: PasteSubtreePayload) => Promise<void>;
   onAddWorkspaceFolder: () => void;
   onRevealProjectFolder: (id: string) => void;
   onRefreshWorkspace: () => void;
