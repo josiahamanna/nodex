@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { ClientLogPayload } from "./shared/client-log";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
+import { buildCanonicalNodexAssetHref } from "./shared/nodex-asset-path";
 import type { NodexRendererApi } from "./shared/nodex-renderer-api";
 
 export type {
@@ -135,6 +136,20 @@ const api: NodexRendererApi = {
         ? { relativePath, projectRoot }
         : relativePath,
     ),
+  listAssetsByCategory: (category, projectRoot) =>
+    ipcRenderer.invoke(IPC_CHANNELS.ASSET_LIST_BY_CATEGORY, {
+      category,
+      ...(projectRoot !== undefined && projectRoot.length > 0
+        ? { projectRoot }
+        : {}),
+    }),
+  pickImportMediaFile: (category, projectRoot) =>
+    ipcRenderer.invoke(IPC_CHANNELS.ASSET_PICK_IMPORT, {
+      category,
+      ...(projectRoot !== undefined && projectRoot.length > 0
+        ? { projectRoot }
+        : {}),
+    }),
   getAssetInfo: (relativePath, projectRoot) =>
     ipcRenderer.invoke(
       IPC_CHANNELS.ASSET_GET_INFO,
@@ -158,20 +173,20 @@ const api: NodexRendererApi = {
     ),
   moveProjectAsset: (payload) =>
     ipcRenderer.invoke(IPC_CHANNELS.ASSET_MOVE, payload),
+  revealAssetInFileManager: (relativePath, projectRoot) =>
+    ipcRenderer.invoke(IPC_CHANNELS.ASSET_REVEAL_IN_FILE_MANAGER, {
+      relativePath,
+      projectRoot,
+    }),
   nodexUndo: () => ipcRenderer.invoke(IPC_CHANNELS.NODEX_UNDO),
   nodexRedo: () => ipcRenderer.invoke(IPC_CHANNELS.NODEX_REDO),
-  assetUrl: (relativePath, projectRoot) => {
-    const parts = relativePath
-      .replace(/\\/g, "/")
-      .split("/")
-      .filter(Boolean)
-      .map((seg) => encodeURIComponent(seg));
-    let url = `nodex-asset:///${parts.join("/")}`;
-    if (projectRoot) {
-      url += `?root=${encodeURIComponent(projectRoot)}`;
-    }
-    return url;
-  },
+  assetUrl: (relativePath, projectRoot) =>
+    buildCanonicalNodexAssetHref(
+      relativePath,
+      projectRoot !== undefined && projectRoot.length > 0
+        ? projectRoot
+        : undefined,
+    ),
   revealProjectFolderInExplorer: (absPath) =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_REVEAL_FOLDER, absPath),
   refreshWorkspace: () =>

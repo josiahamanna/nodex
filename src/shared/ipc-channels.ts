@@ -98,10 +98,14 @@ export const IPC_CHANNELS = {
   PROJECT_SET_WORKSPACE_LABEL: "project:set-workspace-label",
   PROJECT_ROOT_CHANGED: "project:root-changed",
   ASSET_LIST: "asset:list",
+  ASSET_LIST_BY_CATEGORY: "asset:list-by-category",
+  ASSET_PICK_IMPORT: "asset:pick-import",
   ASSET_GET_INFO: "asset:get-info",
   ASSET_READ_TEXT: "asset:read-text",
   ASSET_OPEN_EXTERNAL: "asset:open-external",
   ASSET_MOVE: "asset:move",
+  /** Reveal `assets/<relativePath>` in the OS file manager (file → show in folder). */
+  ASSET_REVEAL_IN_FILE_MANAGER: "asset:reveal-in-file-manager",
   /** Unified undo (notes snapshot or last asset move), LIFO. */
   NODEX_UNDO: "nodex:undo",
   NODEX_REDO: "nodex:redo",

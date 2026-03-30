@@ -4,7 +4,7 @@ This document is the **normative contract** for how Nodex **iframe plugins** syn
 
 It is **not** about copying sample folders into `userData` (that is [src/core/seed-user-plugins.ts](../../src/core/seed-user-plugins.ts) and [plugin-prod-dev-layout.md](./plugin-prod-dev-layout.md)).
 
-**Sample plugin layout**: `plugin-sources/markdown` and `plugin-sources/tiptap` are the canonical React examples (including `@nodex/plugin-ui`). The same trees are mirrored under `plugins/markdown` and `plugins/tiptap` for `forge.config.js` `extraResource` packaging. First-run seeding prefers `plugins/<name>` and falls back to `plugin-sources/<name>` when the former is absent (unpackaged dev).
+**Sample plugin layout**: `plugin-sources/markdown` and `plugin-sources/tiptap` are the canonical React examples (including `@nodex/plugin-ui`). The same trees live under `plugins/user/markdown` and `plugins/user/tiptap`, shipped via `plugins/user` in `forge.config.js` `extraResource`. First-run seeding prefers `plugins/user/<name>`, then `plugins/<name>`, then `plugin-sources/<name>` (unpackaged dev).
 
 ## Cross-references
 

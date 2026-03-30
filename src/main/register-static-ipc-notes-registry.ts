@@ -9,6 +9,7 @@ import {
   setNoteContent as setNoteContentInStore,
   setNotePluginUiState,
 } from "../core/notes-store";
+import { MAX_NOTE_CONTENT_CHARS } from "../core/notes-store-duplicate-create";
 import { registry } from "../core/registry";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import type { Note } from "../shared/nodex-renderer-api";
@@ -60,11 +61,19 @@ ipcMain.handle(IPC_CHANNELS.GET_ALL_NOTES, async () => {
   return getNotesFlat();
 });
 
+const MAX_NOTE_TITLE_CHARS = 4_000;
+
 ipcMain.handle(
   IPC_CHANNELS.CREATE_NOTE,
   async (
     _event,
-    payload: { anchorId?: string; relation: string; type: string },
+    payload: {
+      anchorId?: string;
+      relation: string;
+      type: string;
+      content?: string;
+      title?: string;
+    },
   ) => {
     assertProjectOpenForNotes();
     const registeredTypes = registry.getRegisteredTypes();
@@ -89,11 +98,29 @@ ipcMain.handle(
     if (rel === "root") {
       anchorId = undefined;
     }
+    if (payload.content !== undefined) {
+      if (typeof payload.content !== "string") {
+        throw new Error("Invalid content");
+      }
+      if (payload.content.length > MAX_NOTE_CONTENT_CHARS) {
+        throw new Error("Content too large");
+      }
+    }
+    if (payload.title !== undefined) {
+      if (typeof payload.title !== "string") {
+        throw new Error("Invalid title");
+      }
+      if (payload.title.length > MAX_NOTE_TITLE_CHARS) {
+        throw new Error("Title too long");
+      }
+    }
     pushNotesUndoSnapshot();
     const created = createNoteInStore({
       anchorId,
       relation: rel,
       type,
+      content: payload.content,
+      title: payload.title,
     });
     persistNotes();
     return { id: created.id };

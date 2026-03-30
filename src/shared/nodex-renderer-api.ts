@@ -4,6 +4,7 @@
  */
 
 import type { ClientLogPayload } from "./client-log";
+import type { AssetMediaCategory } from "./asset-media";
 
 export interface Note {
   id: string;
@@ -62,6 +63,8 @@ export type NodexRendererApi = {
     anchorId?: string;
     relation: CreateNoteRelation;
     type: string;
+    content?: string;
+    title?: string;
   }) => Promise<{ id: string }>;
   renameNote: (id: string, title: string) => Promise<void>;
   deleteNotes: (ids: string[]) => Promise<void>;
@@ -212,6 +215,19 @@ export type NodexRendererApi = {
     | { ok: true; entries: { name: string; isDirectory: boolean }[] }
     | { ok: false; error: string }
   >;
+  listAssetsByCategory: (
+    category: AssetMediaCategory,
+    projectRoot?: string,
+  ) => Promise<
+    | { ok: true; files: { relativePath: string; name: string }[] }
+    | { ok: false; error: string }
+  >;
+  pickImportMediaFile: (
+    category: AssetMediaCategory,
+    projectRoot?: string,
+  ) => Promise<
+    { ok: true; assetRel: string } | { ok: false; error: string }
+  >;
   getAssetInfo: (
     relativePath: string,
     projectRoot?: string,
@@ -235,6 +251,11 @@ export type NodexRendererApi = {
     toProject: string;
     toDirRel: string;
   }) => Promise<{ ok: true; toRel: string } | { ok: false; error: string }>;
+  /** `relativePath` under `assets/`; use `""` for the assets folder root. */
+  revealAssetInFileManager: (
+    relativePath: string,
+    projectRoot: string,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   nodexUndo: () => Promise<
     | { ok: true; touchedNotes: boolean }
     | { ok: false; error: string; touchedNotes?: boolean }

@@ -1,21 +1,31 @@
-import React, { useEffect, useState } from "react";
-
-const IMAGE_EXT = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "webp",
-  "svg",
-  "bmp",
-  "ico",
-]);
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  extMatchesCategory,
+  type AssetMediaCategory,
+} from "../../shared/asset-media";
 
 type Props = {
   relativePath: string;
   /** Which workspace project’s `assets/` tree (required when multiple folders are open). */
   projectRoot: string;
 };
+
+function categoryFromExt(ext: string): AssetMediaCategory | null {
+  const e = ext.toLowerCase();
+  if (extMatchesCategory(e, "pdf")) {
+    return "pdf";
+  }
+  if (extMatchesCategory(e, "image")) {
+    return "image";
+  }
+  if (extMatchesCategory(e, "video")) {
+    return "video";
+  }
+  if (extMatchesCategory(e, "audio")) {
+    return "audio";
+  }
+  return null;
+}
 
 export default function AssetPreview({ relativePath, projectRoot }: Props) {
   const [info, setInfo] = useState<{
@@ -27,6 +37,13 @@ export default function AssetPreview({ relativePath, projectRoot }: Props) {
   const [loadDone, setLoadDone] = useState(false);
   const [textBody, setTextBody] = useState<string | null>(null);
   const [textErr, setTextErr] = useState<string | null>(null);
+
+  const mediaCategory = useMemo(() => {
+    if (!info) {
+      return null;
+    }
+    return categoryFromExt(info.ext);
+  }, [info]);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,8 +61,8 @@ export default function AssetPreview({ relativePath, projectRoot }: Props) {
         setLoadDone(true);
         return;
       }
-      const ext = meta.ext.toLowerCase();
-      if (IMAGE_EXT.has(ext)) {
+      const cat = categoryFromExt(meta.ext);
+      if (cat) {
         setLoadDone(true);
         return;
       }
@@ -92,8 +109,7 @@ export default function AssetPreview({ relativePath, projectRoot }: Props) {
     );
   }
 
-  const ext = info.ext.toLowerCase();
-  const isImage = IMAGE_EXT.has(ext);
+  const assetSrc = window.Nodex.assetUrl(relativePath, projectRoot);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -113,13 +129,31 @@ export default function AssetPreview({ relativePath, projectRoot }: Props) {
         </button>
       </header>
       <div className="min-h-0 flex-1 overflow-auto p-4">
-        {isImage ? (
+        {mediaCategory === "image" ? (
           <div className="flex h-full min-h-[200px] items-center justify-center">
             <img
-              src={window.Nodex.assetUrl(relativePath, projectRoot)}
+              src={assetSrc}
               alt={info.name}
               className="max-h-full max-w-full object-contain"
             />
+          </div>
+        ) : mediaCategory === "pdf" ? (
+          <iframe
+            title={info.name}
+            src={assetSrc}
+            className="h-[min(100%,calc(100vh-12rem))] min-h-[420px] w-full rounded-md border border-border"
+          />
+        ) : mediaCategory === "video" ? (
+          <div className="flex justify-center">
+            <video
+              src={assetSrc}
+              controls
+              className="max-h-[min(100%,calc(100vh-12rem))] max-w-full rounded-md"
+            />
+          </div>
+        ) : mediaCategory === "audio" ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-8">
+            <audio src={assetSrc} controls className="w-full max-w-md" />
           </div>
         ) : textBody !== null ? (
           <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed">

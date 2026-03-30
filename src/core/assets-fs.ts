@@ -1,6 +1,14 @@
 import * as fs from "fs";
 import * as path from "path";
+import type { AssetMediaCategory } from "../shared/asset-media";
+import { extMatchesCategory } from "../shared/asset-media";
 import { getProjectAssetsDir } from "./project-session";
+
+export type AssetFileRef = {
+  /** Path relative to `assets/` using forward slashes */
+  relativePath: string;
+  name: string;
+};
 
 export type AssetListEntry = {
   name: string;
@@ -108,6 +116,21 @@ function resolveInAssetsRoot(
   return { assetsRoot, full };
 }
 
+/** Existing file or directory under `assets/`, or the assets directory itself when `relativePath` is `""`. */
+export function resolveExistingAssetEntryPath(
+  projectRoot: string,
+  relativePath: string,
+): string | null {
+  const r = resolveInAssetsRoot(projectRoot, relativePath);
+  if (!r) {
+    return null;
+  }
+  if (!fs.existsSync(r.full)) {
+    return null;
+  }
+  return r.full;
+}
+
 function isAllowedProjectRoot(
   abs: string,
   workspaceRoots: string[],
@@ -193,4 +216,135 @@ export function moveProjectAsset(
   const relToAssets = path.relative(toDirResolved.assetsRoot, destFull);
   const toRel = relToAssets.split(path.sep).join("/");
   return { ok: true, toRel };
+}
+
+function walkAssetFiles(
+  assetsRoot: string,
+  dirAbs: string,
+  dirRelPosix: string,
+  category: AssetMediaCategory,
+  out: AssetFileRef[],
+): void {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dirAbs, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    if (ent.name.startsWith(".")) {
+      continue;
+    }
+    const full = path.join(dirAbs, ent.name);
+    const relPosix = dirRelPosix
+      ? `${dirRelPosix}/${ent.name}`
+      : ent.name;
+    if (ent.isDirectory()) {
+      walkAssetFiles(assetsRoot, full, relPosix, category, out);
+      continue;
+    }
+    if (!ent.isFile()) {
+      continue;
+    }
+    const ext = path.extname(ent.name).slice(1).toLowerCase();
+    if (!extMatchesCategory(ext, category)) {
+      continue;
+    }
+    out.push({ relativePath: relPosix, name: ent.name });
+  }
+}
+
+/**
+ * Recursively list files under `assets/` whose extension matches the media category.
+ */
+export function listProjectAssetsByCategory(
+  projectRoot: string,
+  category: AssetMediaCategory,
+):
+  | { ok: true; files: AssetFileRef[] }
+  | { ok: false; error: string } {
+  const assetsRoot = path.resolve(getProjectAssetsDir(projectRoot));
+  if (!fs.existsSync(assetsRoot) || !fs.statSync(assetsRoot).isDirectory()) {
+    return { ok: false, error: "Assets folder missing" };
+  }
+  const out: AssetFileRef[] = [];
+  walkAssetFiles(assetsRoot, assetsRoot, "", category, out);
+  out.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  return { ok: true, files: out };
+}
+
+function isAllowedProjectRootForImport(
+  abs: string,
+  workspaceRoots: string[],
+): boolean {
+  const r = path.resolve(abs);
+  return workspaceRoots.some((w) => path.resolve(w) === r);
+}
+
+function uniqueDestPath(dir: string, baseName: string): string {
+  let dest = path.join(dir, baseName);
+  if (!fs.existsSync(dest)) {
+    return dest;
+  }
+  const ext = path.extname(baseName);
+  const stem = ext ? baseName.slice(0, -ext.length) : baseName;
+  for (let i = 1; i < 10_000; i++) {
+    const name = `${stem} (${i})${ext}`;
+    dest = path.join(dir, name);
+    if (!fs.existsSync(dest)) {
+      return dest;
+    }
+  }
+  return path.join(dir, `${stem}-${Date.now()}${ext}`);
+}
+
+const IMPORTS_SUBDIR = "_imports";
+
+/**
+ * Copy an external file into `assets/_imports/` for the given project.
+ */
+export function importExternalFileIntoAssets(
+  workspaceRoots: string[],
+  projectRoot: string,
+  sourceAbsPath: string,
+):
+  | { ok: true; assetRel: string }
+  | { ok: false; error: string } {
+  const roots = workspaceRoots.map((w) => path.resolve(w));
+  const pr = path.resolve(projectRoot);
+  if (!isAllowedProjectRootForImport(pr, roots)) {
+    return { ok: false, error: "Project not in workspace" };
+  }
+  let src: string;
+  try {
+    src = path.resolve(sourceAbsPath);
+  } catch {
+    return { ok: false, error: "Invalid source path" };
+  }
+  if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
+    return { ok: false, error: "Source file not found" };
+  }
+  const assetsRoot = path.resolve(getProjectAssetsDir(pr));
+  const importDir = path.join(assetsRoot, IMPORTS_SUBDIR);
+  try {
+    fs.mkdirSync(importDir, { recursive: true });
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+  const baseName = path.basename(src);
+  const destAbs = uniqueDestPath(importDir, baseName);
+  try {
+    fs.copyFileSync(src, destAbs);
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+  const relToAssets = path.relative(assetsRoot, destAbs);
+  const assetRel = relToAssets.split(path.sep).join("/");
+  return { ok: true, assetRel };
 }

@@ -37,7 +37,7 @@ export class PluginLoaderBase {
   /** User-installed plugins (import, IDE edits, uninstall). */
   protected userPluginsDir: string;
   /**
-   * Read-only roots scanned before userPluginsDir (e.g. shipped `plugins/core`).
+   * Read-only roots scanned before userPluginsDir (e.g. shipped `plugins/system`, `plugins/user`, optional `plugins/core`).
    * Same note `type` registered later wins — user plugins override bundled.
    */
   protected bundledCoreRoots: string[];

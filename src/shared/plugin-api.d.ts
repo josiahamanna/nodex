@@ -6,6 +6,8 @@ export {};
 
 declare global {
   interface Window {
+    /** Injected project root for `nodex-asset:` URLs in sandboxed plugins. */
+    __NODEX_ASSET_PROJECT_ROOT__?: string;
     __NODEX_NOTE__?: {
       id?: string;
       type?: string;
@@ -27,6 +29,19 @@ declare global {
       notifyDisplayReady?: () => void;
       /** Persist note body for the current note (debounced on host). */
       saveNoteContent?: (content: string) => void;
+      /** Build `nodex-asset:` URL for a path under `assets/` (injected in sandbox). */
+      assetUrl?: (relativePath: string, projectRoot?: string) => string;
+      listAssetsByCategory?: (
+        category: string,
+      ) => Promise<
+        | { ok: true; files: { relativePath: string; name: string }[] }
+        | { ok: false; error: string }
+      >;
+      pickImportMediaFile?: (
+        category: string,
+      ) => Promise<
+        { ok: true; assetRel: string } | { ok: false; error: string }
+      >;
       onMessage: ((message: unknown) => void) | null;
     };
   }

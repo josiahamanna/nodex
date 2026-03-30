@@ -1,4 +1,5 @@
 import { ipcMain, shell } from "electron";
+import * as fs from "fs";
 import * as path from "path";
 import { readAppPrefs, writeAppPrefs } from "../core/app-prefs";
 import {
@@ -143,22 +144,49 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.PROJECT_REVEAL_FOLDER, async (_e, folderPath: unknown) => {
-    if (typeof folderPath !== "string" || folderPath.length === 0) {
-      return { ok: false as const, error: "Invalid path" };
-    }
-    const abs = path.resolve(folderPath);
-    const allowed = ctx.workspaceRoots.some((r) => path.resolve(r) === abs);
-    if (!allowed) {
+    try {
+      if (typeof folderPath !== "string" || folderPath.length === 0) {
+        return { ok: false as const, error: "Invalid path" };
+      }
+      const abs = path.resolve(folderPath);
+      const allowed = ctx.workspaceRoots.some((r) => path.resolve(r) === abs);
+      if (!allowed) {
+        return {
+          ok: false as const,
+          error: "Path is not an open project folder",
+        };
+      }
+      if (!fs.existsSync(abs)) {
+        return { ok: false as const, error: "Path does not exist" };
+      }
+      let err: string;
+      try {
+        const OPEN_PATH_TIMEOUT_MS = 60_000;
+        err = await Promise.race([
+          shell.openPath(abs),
+          new Promise<string>((_, reject) =>
+            setTimeout(
+              () => reject(new Error("Timed out opening folder in file manager")),
+              OPEN_PATH_TIMEOUT_MS,
+            ),
+          ),
+        ]);
+      } catch (e) {
+        return {
+          ok: false as const,
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+      if (err) {
+        return { ok: false as const, error: err };
+      }
+      return { ok: true as const };
+    } catch (e) {
       return {
         ok: false as const,
-        error: "Path is not an open project folder",
+        error: e instanceof Error ? e.message : String(e),
       };
     }
-    const err = await shell.openPath(abs);
-    if (err) {
-      return { ok: false as const, error: err };
-    }
-    return { ok: true as const };
   });
 
   ipcMain.handle(

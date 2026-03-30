@@ -45,6 +45,20 @@ export function dropAllowedOne(
   return true;
 }
 
+/** Dragging an asset file onto the tree (not an existing note id). */
+export function dropAllowedAssetOnNote(
+  targetId: string,
+  placement: NoteMovePlacement,
+): boolean {
+  if (
+    WORKSPACE_MOUNT_ROW_RE.test(targetId) &&
+    (placement === "before" || placement === "after")
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function dropAllowedMany(
   draggedIds: string[],
   targetId: string,

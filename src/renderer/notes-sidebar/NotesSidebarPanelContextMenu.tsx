@@ -40,6 +40,8 @@ export interface NotesSidebarPanelContextMenuProps {
     anchorId?: string;
     relation: CreateNoteRelation;
     type: string;
+    content?: string;
+    title?: string;
   }) => Promise<void>;
   onRevealProjectFolder?: (noteId: string) => void;
   openRename: (id: string, title: string) => void;

@@ -19,11 +19,19 @@ import {
   buildIframeThemeCss,
   NODEX_IFRAME_THEME_MESSAGE,
 } from "../../theme/iframe-theme";
+import { isAssetMediaCategory } from "../../../shared/asset-media";
+import {
+  PLUGIN_IFRAME_ASSET_LIST,
+  PLUGIN_IFRAME_ASSET_PICK,
+  PLUGIN_IFRAME_ASSET_RESPONSE,
+} from "../../../shared/plugin-iframe-asset-bridge";
 
 interface SecurePluginRendererProps {
   note: Note;
   /** When false, plugin saves (body + plugin UI state) are not sent to the main notes store. Use for IDE preview with synthetic note ids. */
   persistToNotesStore?: boolean;
+  /** Absolute project folder for this note’s `assets/` (multi-root); drives iframe assetUrl + list/import bridge. */
+  assetProjectRoot?: string | null;
 }
 
 const BRIDGE_REQUEST = "nodex-request-bridge";
@@ -35,14 +43,21 @@ const PLUGIN_IFRAME_CSP_CONNECT_DEV =
     ? " connect-src http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss://localhost:* wss://127.0.0.1:*"
     : "";
 
+/** Chromium built-in PDF viewer nests extension frames (same ID as Chrome). */
+const PLUGIN_IFRAME_CSP_PDF_FRAME =
+  " chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/";
+
 const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
   note,
   persistToNotesStore = true,
+  assetProjectRoot = null,
 }) => {
   const dispatch = useDispatch<AppDispatch>();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const noteRef = useRef(note);
   noteRef.current = note;
+  const assetProjectRootRef = useRef<string | null>(assetProjectRoot);
+  assetProjectRootRef.current = assetProjectRoot;
   const [isReady, setIsReady] = useState(false);
   const [contentReady, setContentReady] = useState(false);
   const [deferDisplay, setDeferDisplay] = useState(false);
@@ -171,6 +186,72 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
         return;
       }
 
+      const assetData = event.data as {
+        type?: string;
+        requestId?: string;
+        category?: string;
+      };
+      if (assetData?.type === PLUGIN_IFRAME_ASSET_LIST && assetData.requestId) {
+        const reqId = assetData.requestId;
+        const catRaw = assetData.category;
+        if (!isAssetMediaCategory(catRaw)) {
+          iframeWin.postMessage(
+            {
+              type: PLUGIN_IFRAME_ASSET_RESPONSE,
+              requestId: reqId,
+              ok: false,
+              error: "Invalid category",
+            },
+            "*",
+          );
+          return;
+        }
+        const root = assetProjectRootRef.current;
+        void window.Nodex.listAssetsByCategory(catRaw, root ?? undefined).then(
+          (r) => {
+            iframeWin.postMessage(
+              {
+                type: PLUGIN_IFRAME_ASSET_RESPONSE,
+                requestId: reqId,
+                ...r,
+              },
+              "*",
+            );
+          },
+        );
+        return;
+      }
+      if (assetData?.type === PLUGIN_IFRAME_ASSET_PICK && assetData.requestId) {
+        const reqId = assetData.requestId;
+        const catRaw = assetData.category;
+        if (!isAssetMediaCategory(catRaw)) {
+          iframeWin.postMessage(
+            {
+              type: PLUGIN_IFRAME_ASSET_RESPONSE,
+              requestId: reqId,
+              ok: false,
+              error: "Invalid category",
+            },
+            "*",
+          );
+          return;
+        }
+        const root = assetProjectRootRef.current;
+        void window.Nodex.pickImportMediaFile(catRaw, root ?? undefined).then(
+          (r) => {
+            iframeWin.postMessage(
+              {
+                type: PLUGIN_IFRAME_ASSET_RESPONSE,
+                requestId: reqId,
+                ...r,
+              },
+              "*",
+            );
+          },
+        );
+        return;
+      }
+
       const message: PluginMessage = event.data;
 
       switch (message.type) {
@@ -286,6 +367,10 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
         saveNoteContentType: MessageType.SAVE_NOTE_CONTENT,
         pluginUiSnapshotType: MessageType.PLUGIN_UI_SNAPSHOT,
         pluginUiProtocolVersion: PLUGIN_UI_PROTOCOL_VERSION,
+        assetProjectRoot,
+        iframeAssetListType: PLUGIN_IFRAME_ASSET_LIST,
+        iframeAssetPickType: PLUGIN_IFRAME_ASSET_PICK,
+        iframeAssetResponseType: PLUGIN_IFRAME_ASSET_RESPONSE,
       });
 
       if (iframeRef.current) {
@@ -295,7 +380,7 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load plugin");
     }
-  }, [note.id, note.type, resolvedDark]);
+  }, [note.id, note.type, resolvedDark, assetProjectRoot]);
 
   useEffect(() => {
     void loadPluginContent();
@@ -326,9 +411,9 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
 
   return (
     <div className="relative h-full min-h-0 w-full">
+      {/** No `sandbox` — Chromium can block nested PDF/media (`nodex-asset:`) as ERR_BLOCKED_BY_CLIENT; srcdoc CSP still isolates plugin markup. */}
       <iframe
         ref={iframeRef}
-        sandbox="allow-scripts allow-same-origin"
         className={`h-full w-full border-0 transition-opacity duration-150 ${
           showHostLoader ? "pointer-events-none opacity-0" : "opacity-100"
         }`}
@@ -360,6 +445,10 @@ function createSandboxedHTML(
     saveNoteContentType: string;
     pluginUiSnapshotType: string;
     pluginUiProtocolVersion: number;
+    assetProjectRoot: string | null;
+    iframeAssetListType: string;
+    iframeAssetPickType: string;
+    iframeAssetResponseType: string;
   },
 ): string {
   const {
@@ -369,7 +458,12 @@ function createSandboxedHTML(
     saveNoteContentType,
     pluginUiSnapshotType,
     pluginUiProtocolVersion,
+    assetProjectRoot,
+    iframeAssetListType,
+    iframeAssetPickType,
+    iframeAssetResponseType,
   } = opts;
+  const rootJson = JSON.stringify(assetProjectRoot ?? "");
   const themeStyle =
     inheritTheme && themeCss.length > 0
       ? `<style id="nodex-theme">${escapeForInlineStyle(themeCss)}</style>`
@@ -394,7 +488,7 @@ function createSandboxedHTML(
 <html class="${dark ? "dark" : ""}">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline' blob:; img-src data: blob:; font-src data: blob:;${PLUGIN_IFRAME_CSP_CONNECT_DEV}">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline' blob:; img-src 'self' nodex-asset: data: blob:; media-src 'self' nodex-asset: data: blob:; frame-src 'self' nodex-asset: blob: data: about:${PLUGIN_IFRAME_CSP_PDF_FRAME}; object-src 'self' nodex-asset: blob: data:; font-src data: blob:;${PLUGIN_IFRAME_CSP_CONNECT_DEV}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   ${themeStyle}
   <style>
@@ -431,6 +525,66 @@ function createSandboxedHTML(
       window.Nodex.saveNoteContent = function (content) {
         if (typeof content !== 'string') return;
         window.parent.postMessage({ type: '${saveNoteContentType}', content: content }, '*');
+      };
+      window.__NODEX_ASSET_PROJECT_ROOT__ = ${rootJson};
+      window.Nodex.assetUrl = function (relativePath, projectRoot) {
+        var root =
+          projectRoot !== undefined && projectRoot !== null && String(projectRoot) !== ''
+            ? String(projectRoot)
+            : (window.__NODEX_ASSET_PROJECT_ROOT__ || '');
+        function normalizeAssetRel(p) {
+          p = String(p == null ? '' : p).trim();
+          if (!p) return '';
+          if (p.toLowerCase().indexOf('nodex-asset:') === 0) {
+            try {
+              var u = new URL(p);
+              var pathn = (u.pathname || '').replace(/^\\/+/, '').replace(/\\\\/g, '/');
+              var h = u.hostname || '';
+              if (h) {
+                try { h = decodeURIComponent(h); } catch (e0) {}
+                pathn = pathn ? h + '/' + pathn : h;
+              }
+              if (!pathn || pathn.indexOf('..') >= 0) return '';
+              try {
+                return decodeURIComponent(pathn);
+              } catch (e1) {
+                return '';
+              }
+            } catch (e2) {
+              return '';
+            }
+          }
+          return p.replace(/^\\/+/, '').replace(/\\\\/g, '/');
+        }
+        var norm = normalizeAssetRel(relativePath);
+        var parts = norm.split('/').map(function (s) { return s.trim(); }).filter(Boolean).map(encodeURIComponent);
+        var u = new URL('nodex-asset:///' + parts.join('/'));
+        if (root) {
+          u.searchParams.set('root', root);
+        }
+        return u.href;
+      };
+      function nodexAssetBridgeRequest(kind, category) {
+        return new Promise(function (resolve) {
+          var id = 'a' + Math.random().toString(36).slice(2) + Date.now();
+          function handler(ev) {
+            var d = ev.data;
+            if (!d || d.type !== '${iframeAssetResponseType}' || d.requestId !== id) return;
+            window.removeEventListener('message', handler);
+            resolve(d);
+          }
+          window.addEventListener('message', handler);
+          window.parent.postMessage(
+            { type: kind, requestId: id, category: category },
+            '*',
+          );
+        });
+      }
+      window.Nodex.listAssetsByCategory = function (category) {
+        return nodexAssetBridgeRequest('${iframeAssetListType}', category);
+      };
+      window.Nodex.pickImportMediaFile = function (category) {
+        return nodexAssetBridgeRequest('${iframeAssetPickType}', category);
       };
       window.Nodex.onMessage = null;
       window.addEventListener('message', function (event) {

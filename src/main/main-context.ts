@@ -1,6 +1,6 @@
 import type { BrowserWindow } from "electron";
+import type { FSWatcher } from "chokidar";
 import type { PluginLoader } from "../core/plugin-loader";
-import * as fs from "fs";
 
 /** Mutable main-process state shared across IPC modules (set during `app.ready`). */
 export const ctx = {
@@ -9,7 +9,7 @@ export const ctx = {
   notesPersistencePath: null as string | null,
   projectRootPath: null as string | null,
   workspaceRoots: [] as string[],
-  ideWorkspaceWatch: null as fs.FSWatcher | null,
+  ideWorkspaceWatch: null as FSWatcher | null,
   ideWorkspaceWatchTimer: null as ReturnType<typeof setTimeout> | null,
 };
 

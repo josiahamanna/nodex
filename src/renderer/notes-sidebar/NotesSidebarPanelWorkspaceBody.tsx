@@ -1,10 +1,25 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import type { NoteListItem, NoteMovePlacement } from "../../preload";
+import type {
+  CreateNoteRelation,
+  NoteListItem,
+  NoteMovePlacement,
+} from "../../preload";
+import { noteTypeFromAssetFilename } from "../../shared/asset-media";
+import {
+  sameWorkspaceFolderPath,
+  workspaceFolderPathForNote,
+} from "../../shared/note-workspace";
 import type { SidebarAssetsRow, SidebarWorkspaceSection } from "../../shared/sidebar-assets-rows";
+import {
+  DND_ASSET_MIME,
+  parseSidebarAssetDragPayload,
+} from "../../shared/sidebar-asset-dnd";
 import { noteTypeInitials } from "../utils/note-type-initials";
 import ProjectAssetsInline from "../components/ProjectAssetsInline";
+import { useToast } from "../toast/ToastContext";
 import WorkspaceMountHeaderSurface from "../components/WorkspaceMountHeaderSurface";
 import NotesSidebarPanelWorkspaceToolbar from "./NotesSidebarPanelWorkspaceToolbar";
+import { dropAllowedAssetOnNote } from "./notes-sidebar-panel-dnd";
 import {
   DND_NOTE_IDS_MIME,
   DND_NOTE_MIME,
@@ -29,6 +44,15 @@ export interface NotesSidebarPanelWorkspaceBodyProps {
   toggleWorkspaceSection: (sectionKey: string) => void;
   assetFsTick: number;
   onOpenProjectAsset: (projectRoot: string, relativePath: string) => void;
+  registeredTypes: string[];
+  workspaceRoots: string[];
+  onCreateNote: (payload: {
+    anchorId?: string;
+    relation: CreateNoteRelation;
+    type: string;
+    content?: string;
+    title?: string;
+  }) => Promise<void>;
   currentNoteId?: string;
   collapsedIds: Set<string>;
   draggingId: string | null;
@@ -95,6 +119,9 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
   toggleWorkspaceSection,
   assetFsTick,
   onOpenProjectAsset,
+  registeredTypes,
+  workspaceRoots,
+  onCreateNote,
   currentNoteId,
   collapsedIds,
   draggingId,
@@ -169,6 +196,7 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
   const reorderBtn =
     "flex h-3.5 w-5 shrink-0 items-center justify-center rounded-sm text-[10px] leading-none text-sidebar-foreground/70 outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-25";
 
+  const { showToast } = useToast();
   const assetsDepthInSection = (row: SidebarAssetsRow, depthTrim: number) =>
     Math.max(0, row.depth - depthTrim);
 
@@ -451,15 +479,40 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                           setDropHint(null);
                         }}
                         onDragOver={(e) => {
+                          const fromAsset = e.dataTransfer.types.includes(
+                            DND_ASSET_MIME,
+                          );
                           const fromMime =
                             e.dataTransfer.types.includes(DND_NOTE_IDS_MIME) ||
                             e.dataTransfer.types.includes(DND_NOTE_MIME) ||
                             e.dataTransfer.types.includes("text/plain");
-                          if (!fromMime) {
+                          if (!fromAsset && !fromMime) {
                             return;
                           }
                           e.preventDefault();
-                          e.dataTransfer.dropEffect = "move";
+                          e.dataTransfer.dropEffect = fromAsset ? "copy" : "move";
+                          const placement = placementFromPointer(
+                            e,
+                            e.currentTarget as HTMLElement,
+                          );
+                          if (fromAsset) {
+                            if (!dropAllowedAssetOnNote(note.id, placement)) {
+                              setDropHint(null);
+                              return;
+                            }
+                            setDropHint((h) =>
+                              h?.targetId === note.id &&
+                              h?.placement === placement &&
+                              h?.sectionKey === sec.sectionKey
+                                ? h
+                                : {
+                                    targetId: note.id,
+                                    placement,
+                                    sectionKey: sec.sectionKey,
+                                  },
+                            );
+                            return;
+                          }
                           const raw = draggingIdsRef.current.length
                             ? draggingIdsRef.current
                             : draggingRef.current
@@ -468,10 +521,6 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                           if (raw.length === 0) {
                             return;
                           }
-                          const placement = placementFromPointer(
-                            e,
-                            e.currentTarget as HTMLElement,
-                          );
                           const ok =
                             raw.length === 1
                               ? dropAllowedOne(raw[0]!, note.id, placement)
@@ -513,6 +562,66 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                         onDrop={(e) => {
                           e.preventDefault();
                           setDropHint(null);
+                          const placement = placementFromPointer(
+                            e,
+                            e.currentTarget as HTMLElement,
+                          );
+                          const assetPayload = parseSidebarAssetDragPayload(e);
+                          if (assetPayload) {
+                            if (!dropAllowedAssetOnNote(note.id, placement)) {
+                              return;
+                            }
+                            const targetRoot = workspaceFolderPathForNote(
+                              note.id,
+                              workspaceRoots,
+                            );
+                            if (
+                              !targetRoot ||
+                              !sameWorkspaceFolderPath(
+                                targetRoot,
+                                assetPayload.fromProject,
+                              )
+                            ) {
+                              return;
+                            }
+                            const base =
+                              assetPayload.fromRel.split("/").pop() ??
+                              assetPayload.fromRel;
+                            const mediaType = noteTypeFromAssetFilename(base);
+                            if (mediaType == null) {
+                              showToast({
+                                severity: "warning",
+                                message: `File type not supported: ${base}`,
+                              });
+                              return;
+                            }
+                            if (!registeredTypes.includes(mediaType)) {
+                              showToast({
+                                severity: "warning",
+                                message: `That note type isn't available (${mediaType}).`,
+                              });
+                              return;
+                            }
+                            const relation: CreateNoteRelation =
+                              placement === "into" ? "child" : "sibling";
+                            const dot = base.lastIndexOf(".");
+                            const title =
+                              dot > 0 ? base.slice(0, dot) : base;
+                            const content = JSON.stringify({
+                              assetRel: assetPayload.fromRel.replace(
+                                /\\/g,
+                                "/",
+                              ),
+                            });
+                            void onCreateNote({
+                              anchorId: note.id,
+                              relation,
+                              type: mediaType,
+                              content,
+                              title,
+                            });
+                            return;
+                          }
                           const raw = parseDragIds(e);
                           draggingRef.current = null;
                           draggingIdsRef.current = [];
@@ -521,10 +630,6 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                           if (raw.length === 0) {
                             return;
                           }
-                          const placement = placementFromPointer(
-                            e,
-                            e.currentTarget as HTMLElement,
-                          );
                           const ok =
                             raw.length === 1
                               ? dropAllowedOne(raw[0]!, note.id, placement)

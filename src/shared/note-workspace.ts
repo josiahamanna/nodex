@@ -22,6 +22,13 @@ export function noteDataWorkspaceSlot(noteId: string): number {
 }
 
 /** Absolute project folder for this note (which `data/nodex.sqlite` / `assets/` belong to). */
+/** Loose compare of absolute project folder paths (Windows vs POSIX separators). */
+export function sameWorkspaceFolderPath(a: string, b: string): boolean {
+  const na = a.replace(/\\/g, "/").replace(/\/+$/u, "");
+  const nb = b.replace(/\\/g, "/").replace(/\/+$/u, "");
+  return na === nb;
+}
+
 export function workspaceFolderPathForNote(
   noteId: string,
   workspaceRoots: string[],

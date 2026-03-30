@@ -2,6 +2,10 @@ const KNOWN: Record<string, string> = {
   markdown: "MD",
   text: "RT",
   code: "CD",
+  pdf: "PDF",
+  image: "IM",
+  video: "VD",
+  audio: "AU",
 };
 
 /** Two-character type label for sidebar rows. */

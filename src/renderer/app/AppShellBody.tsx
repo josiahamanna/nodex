@@ -30,6 +30,8 @@ export type AppShellBodyProps = {
     anchorId?: string;
     relation: CreateNoteRelation;
     type: string;
+    content?: string;
+    title?: string;
   }) => Promise<void>;
   onRenameNote: (id: string, title: string) => Promise<void>;
   onMoveNote: (payload: {

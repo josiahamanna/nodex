@@ -46,6 +46,8 @@ export const createNote = createAsyncThunk(
     anchorId?: string;
     relation: CreateNoteRelation;
     type: string;
+    content?: string;
+    title?: string;
   }) => {
     return await window.Nodex.createNote(payload);
   },

@@ -20,6 +20,8 @@ export interface NotesSidebarPanelProps {
     anchorId?: string;
     relation: CreateNoteRelation;
     type: string;
+    content?: string;
+    title?: string;
   }) => Promise<void>;
   onRenameNote: (id: string, title: string) => Promise<void>;
   onMoveNote: (payload: {
@@ -157,6 +159,9 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
         toggleCollapsed={core.toggleCollapsed}
         padForSectionNote={core.padForSectionNote}
         clipboard={core.clipboard}
+        registeredTypes={registeredTypes}
+        workspaceRoots={workspaceRoots}
+        onCreateNote={onCreateNote}
       />
     </div>
   );

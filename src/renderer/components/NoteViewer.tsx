@@ -5,10 +5,16 @@ import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
 
 interface NoteViewerProps {
   note: Note;
+  /** Project folder that owns this note’s `assets/` (multi-root workspaces). */
+  assetProjectRoot?: string | null;
   onTitleCommit: (title: string) => void | Promise<void>;
 }
 
-const NoteViewer: React.FC<NoteViewerProps> = ({ note, onTitleCommit }) => {
+const NoteViewer: React.FC<NoteViewerProps> = ({
+  note,
+  assetProjectRoot = null,
+  onTitleCommit,
+}) => {
   const [hasPlugin, setHasPlugin] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [titleEditing, setTitleEditing] = useState(false);
@@ -71,7 +77,12 @@ const NoteViewer: React.FC<NoteViewerProps> = ({ note, onTitleCommit }) => {
 
   const renderNote = () => {
     if (hasPlugin) {
-      return <SecurePluginRenderer note={note} />;
+      return (
+        <SecurePluginRenderer
+          note={note}
+          assetProjectRoot={assetProjectRoot}
+        />
+      );
     }
 
     return (
@@ -143,8 +154,8 @@ const NoteViewer: React.FC<NoteViewerProps> = ({ note, onTitleCommit }) => {
           ) : null}
         </div>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-3">
-        <div className="min-h-0 flex-1">{renderNote()}</div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-3">
+        <div className="flex min-h-0 flex-1 flex-col">{renderNote()}</div>
       </div>
     </div>
   );

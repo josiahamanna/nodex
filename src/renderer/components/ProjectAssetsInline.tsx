@@ -1,8 +1,11 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  DND_ASSET_MIME,
+  type SidebarAssetDragPayload,
+} from "../../shared/sidebar-asset-dnd";
 
-const DND_ASSET_MIME = "application/x-nodex-asset";
-
-type DragPayload = { fromProject: string; fromRel: string };
+type DragPayload = SidebarAssetDragPayload;
 
 function assetDirname(rel: string): string {
   const s = rel.replace(/\\/g, "/");
@@ -70,10 +73,35 @@ export default function ProjectAssetsInline({
   const [tick, setTick] = useState(0);
   const [dragOverDir, setDragOverDir] = useState<string | null>(null);
   const [dropZoneActive, setDropZoneActive] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    fullRel: string;
+  } | null>(null);
+  const ctxMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setRelDir("");
   }, [projectRoot]);
+
+  useEffect(() => {
+    if (!ctxMenu) {
+      return;
+    }
+    const onDown = (e: MouseEvent) => {
+      if (ctxMenuRef.current?.contains(e.target as Node)) {
+        return;
+      }
+      setCtxMenu(null);
+    };
+    const t = window.setTimeout(() => {
+      document.addEventListener("mousedown", onDown);
+    }, 0);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [ctxMenu]);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,6 +211,16 @@ export default function ProjectAssetsInline({
           <button
             type="button"
             className="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-sidebar-accent/50"
+            title="Open assets folder in file manager"
+            onClick={() => {
+              void window.Nodex.revealAssetInFileManager("", projectRoot);
+            }}
+          >
+            Open folder
+          </button>
+          <button
+            type="button"
+            className="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-sidebar-accent/50"
             onClick={() => refresh()}
           >
             Refresh
@@ -267,6 +305,15 @@ export default function ProjectAssetsInline({
                             onOpenFile(fullRel);
                           }
                         }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setCtxMenu({
+                            x: e.clientX,
+                            y: e.clientY,
+                            fullRel,
+                          });
+                        }}
                       >
                         <span className="w-3 shrink-0 text-center text-[9px] text-muted-foreground">
                           {ent.isDirectory ? "▸" : "·"}
@@ -319,6 +366,29 @@ export default function ProjectAssetsInline({
           </div>
         ) : null}
       </div>
+      {ctxMenu && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={ctxMenuRef}
+              role="menu"
+              className="fixed z-[200] min-w-[200px] rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
+              style={{ left: ctxMenu.x, top: ctxMenu.y }}
+            >
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-muted/80"
+                onClick={() => {
+                  const rel = ctxMenu.fullRel;
+                  setCtxMenu(null);
+                  void window.Nodex.revealAssetInFileManager(rel, projectRoot);
+                }}
+              >
+                Open containing folder
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
     </li>
   );
 }

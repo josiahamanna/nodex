@@ -21,10 +21,9 @@ import { ctx, getPluginLoader } from "./main-context";
 import { createMainWindow } from "./create-main-window";
 import {
   registerNodexAssetProtocol,
-  resolveBundledCorePluginsDir,
+  resolveBundledReadonlyPluginRoots,
   tryLoadSavedProject,
 } from "./main-helpers";
-import { registerRunAppReadyAssetsUndoIpc } from "./register-run-app-ready-assets-undo-ipc";
 import { registerRunAppReadyEarlyIpc } from "./register-run-app-ready-early-ipc";
 import { registerRunAppReadyNotesTreeIpc } from "./register-run-app-ready-notes-ipc";
 import { registerRunAppReadyProjectIpc } from "./register-run-app-ready-project-ipc";
@@ -43,14 +42,13 @@ export function runAppReady(): void {
   initJsxCompilerCache(getNodexJsxCacheRoot(userDataPath));
 
   const pluginsPath = getNodexUserPluginsDir(userDataPath);
-  const bundledCore = resolveBundledCorePluginsDir();
-  const bundledRoots = bundledCore ? [bundledCore] : [];
+  const bundledRoots = resolveBundledReadonlyPluginRoots();
   console.log("[Main] User plugins dir:", pluginsPath);
-  if (bundledCore) {
-    console.log("[Main] Bundled core plugins:", bundledCore);
+  if (bundledRoots.length > 0) {
+    console.log("[Main] Bundled readonly plugin roots:", bundledRoots);
   } else if (!app.isPackaged) {
     console.warn(
-      "[Main] No bundled core plugins dir (expected ./plugins/core for dev).",
+      "[Main] No bundled plugin roots found (expected ./plugins/system and/or ./plugins/user).",
     );
   }
 
@@ -77,7 +75,6 @@ export function runAppReady(): void {
 
   registerRunAppReadyNotesTreeIpc();
   registerRunAppReadyProjectIpc(userDataPath);
-  registerRunAppReadyAssetsUndoIpc();
 
   createMainWindow();
 

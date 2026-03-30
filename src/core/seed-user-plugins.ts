@@ -7,13 +7,23 @@ const SAMPLE_PLUGIN_NAMES = ["markdown", "tiptap"] as const;
 
 function resolveSamplePluginSourceDir(name: string): string | null {
   if (app.isPackaged) {
-    const fromResources = path.join(process.resourcesPath, name);
-    if (fs.existsSync(path.join(fromResources, "manifest.json"))) {
-      return fromResources;
+    const packagedCandidates = [
+      path.join(process.resourcesPath, "user", name),
+      path.join(process.resourcesPath, "plugins", "user", name),
+      path.join(process.resourcesPath, name),
+    ];
+    for (const dir of packagedCandidates) {
+      if (fs.existsSync(path.join(dir, "manifest.json"))) {
+        return dir;
+      }
     }
     return null;
   }
   const appRoot = app.getAppPath();
+  const fromUser = path.join(appRoot, "plugins", "user", name);
+  if (fs.existsSync(path.join(fromUser, "manifest.json"))) {
+    return fromUser;
+  }
   const fromRepo = path.join(appRoot, "plugins", name);
   if (fs.existsSync(path.join(fromRepo, "manifest.json"))) {
     return fromRepo;

@@ -108,9 +108,9 @@ useNotifyDisplayReady({ enabled: true });
 
 Raw API (no React): `window.Nodex.notifyDisplayReady?.()` still works — it posts `content_ready` to the parent. Call after first meaningful paint (e.g. double `requestAnimationFrame` or after async init). Equivalent: `window.parent.postMessage({ type: "content_ready" }, "*")` if you must not rely on `Nodex`.
 
-Seed plugins (`plugin-sources/markdown`, `plugin-sources/tiptap`, mirrored under `plugins/markdown` and `plugins/tiptap` for packaging) use the SDK for host messages and display-ready.
+Seed plugins (`plugin-sources/markdown`, `plugin-sources/tiptap`, mirrored under `plugins/user/markdown` and `plugins/user/tiptap`, packaged via `plugins/user` in Forge) use the SDK for host messages and display-ready.
 
-**Seeding**: On first run, `seed-user-plugins` copies from `plugins/<name>` when present, else from `plugin-sources/<name>` (dev, unpackaged).
+**Seeding**: On first run, `seed-user-plugins` copies from `plugins/user/<name>` when present, else `plugins/<name>`, else `plugin-sources/<name>` (dev, unpackaged).
 
 ---
 

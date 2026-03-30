@@ -18,6 +18,9 @@ export type AppShellMainColumnProps = {
   notesMainPane: NotesMainPane;
   detailLoading: boolean;
   currentNote: Note | null;
+  assetProjectRootForNote: string | null;
+  /** First workspace folder for Plugin IDE preview `nodex-asset` URLs (`?root=`). */
+  idePreviewAssetProjectRoot: string | null;
   settingsCategory: SettingsCategory;
   pluginsShell: PluginsSidebarSelection;
   onOpenProjectFolder: () => void;
@@ -32,6 +35,8 @@ export function AppShellMainColumn(props: AppShellMainColumnProps): React.ReactN
     notesMainPane,
     detailLoading,
     currentNote,
+    assetProjectRootForNote,
+    idePreviewAssetProjectRoot,
     settingsCategory,
     pluginsShell,
     onOpenProjectFolder,
@@ -85,6 +90,7 @@ export function AppShellMainColumn(props: AppShellMainColumnProps): React.ReactN
       return (
         <NoteViewer
           note={currentNote}
+          assetProjectRoot={assetProjectRootForNote}
           onTitleCommit={(title) => onRenameNote(currentNote.id, title)}
         />
       );
@@ -99,7 +105,11 @@ export function AppShellMainColumn(props: AppShellMainColumnProps): React.ReactN
   }
   if (primaryTab === "editor") {
     return (
-      <PluginIDE shellLayout onPluginsChanged={onPluginsChanged} />
+      <PluginIDE
+        shellLayout
+        onPluginsChanged={onPluginsChanged}
+        previewAssetProjectRoot={idePreviewAssetProjectRoot}
+      />
     );
   }
   if (primaryTab === "settings") {

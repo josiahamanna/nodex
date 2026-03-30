@@ -71,11 +71,14 @@ interface PluginIDEProps {
   onPluginsChanged?: () => void;
   /** VS Code–style shell: menus + file tree live in the primary sidebar. */
   shellLayout?: boolean;
+  /** Absolute project folder for preview `nodex-asset` URLs (first workspace root). */
+  previewAssetProjectRoot?: string | null;
 }
 
 const PluginIDE: React.FC<PluginIDEProps> = ({
   onPluginsChanged,
   shellLayout = false,
+  previewAssetProjectRoot = null,
 }) => {
   const { resolvedDark } = useTheme();
   const monacoTheme = resolvedDark ? "vs-dark" : "vs";
@@ -287,6 +290,58 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     }
   }, [pluginFolder]);
 
+  /** Reload open tabs from disk when unchanged in the editor (external saves / other tools). */
+  const syncCleanOpenTabsFromDisk = useCallback(async () => {
+    const pf = pluginFolderRef.current;
+    if (!pf) {
+      return;
+    }
+    const replacements = new Map<
+      string,
+      { content: string; diskMtimeMs: number }
+    >();
+    for (const t of tabsRef.current) {
+      if (t.content !== t.savedContent) {
+        continue;
+      }
+      try {
+        const meta = await window.Nodex.getPluginSourceFileMeta(
+          pf,
+          t.relativePath,
+        );
+        if (!meta) {
+          continue;
+        }
+        if (t.diskMtimeMs !== null && meta.mtimeMs === t.diskMtimeMs) {
+          continue;
+        }
+        const raw = await window.Nodex.readPluginSourceFile(pf, t.relativePath);
+        replacements.set(t.relativePath, {
+          content: raw,
+          diskMtimeMs: meta.mtimeMs,
+        });
+      } catch {
+        /* deleted or unreadable */
+      }
+    }
+    if (replacements.size === 0) {
+      return;
+    }
+    setTabs((prev) =>
+      prev.map((tab) => {
+        const r = replacements.get(tab.relativePath);
+        return r
+          ? {
+              ...tab,
+              content: r.content,
+              savedContent: r.content,
+              diskMtimeMs: r.diskMtimeMs,
+            }
+          : tab;
+      }),
+    );
+  }, []);
+
   const checkDiskConflicts = useCallback(async () => {
     const pf = pluginFolderRef.current;
     if (!pf || diskConflictPathRef.current) {
@@ -358,11 +413,14 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
 
   useEffect(() => {
     const off = window.Nodex.onIdeWorkspaceFsChanged(() => {
-      void refreshFileList();
-      void checkDiskConflicts();
+      void (async () => {
+        await refreshFileList();
+        await syncCleanOpenTabsFromDisk();
+        await checkDiskConflicts();
+      })();
     });
     return off;
-  }, [refreshFileList, checkDiskConflicts]);
+  }, [refreshFileList, syncCleanOpenTabsFromDisk, checkDiskConflicts]);
 
   useEffect(() => {
     void refreshFileList();
@@ -3424,6 +3482,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                   key={`${pluginFolder}-${previewType}-${previewRev}`}
                   note={previewNote}
                   persistToNotesStore={false}
+                  assetProjectRoot={previewAssetProjectRoot}
                 />
               ) : (
                 <div className="px-4 py-4 text-[11px] leading-relaxed text-muted-foreground">
@@ -3463,6 +3522,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                   key={`fs-${pluginFolder}-${previewType}-${previewRev}`}
                   note={previewNote}
                   persistToNotesStore={false}
+                  assetProjectRoot={previewAssetProjectRoot}
                 />
               </div>
             </div>,

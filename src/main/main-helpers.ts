@@ -1,6 +1,8 @@
 import { BrowserWindow, dialog, nativeTheme, session, shell } from "electron";
 import * as fs from "fs";
+import { watch as chokidarWatch } from "chokidar";
 import * as path from "path";
+import { Readable } from "node:stream";
 import { app } from "electron";
 import {
   activateWorkspace,
@@ -14,6 +16,7 @@ import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { isSafePluginName } from "../shared/validators";
 import { ctx, getPluginLoader } from "./main-context";
 import { parseAssetIpcPayload } from "./parse-asset-ipc-payload";
+import { relativeAssetPathFromNodexAssetUrl } from "../shared/nodex-asset-path";
 
 export { parseAssetIpcPayload };
 
@@ -36,60 +39,206 @@ export function broadcastProjectRootChanged(): void {
   }
 }
 
-export function registerNodexAssetProtocol(): void {
-  session.defaultSession.protocol.registerFileProtocol(
-    "nodex-asset",
-    (request, callback) => {
+const NODEX_ASSET_MIME: Record<string, string> = {
+  ".pdf": "application/pdf",
+  ".html": "text/html",
+  ".htm": "text/html",
+  ".txt": "text/plain",
+  ".md": "text/markdown",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".opus": "audio/opus",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+};
+
+function mimeForAssetPath(filePath: string): string {
+  return NODEX_ASSET_MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+}
+
+/** Parse a single `bytes=…` range for a file of `size` bytes. */
+function parseByteRange(
+  rangeHeader: string,
+  size: number,
+): { start: number; end: number } | null {
+  const m = /^bytes=([^,]+)$/i.exec(rangeHeader.trim());
+  if (!m) {
+    return null;
+  }
+  const spec = m[1]!.trim();
+  const dash = spec.indexOf("-");
+  if (dash < 0) {
+    return null;
+  }
+  const left = spec.slice(0, dash).trim();
+  const right = spec.slice(dash + 1).trim();
+  if (left === "" && right === "") {
+    return null;
+  }
+  if (left === "") {
+    const suffix = parseInt(right, 10);
+    if (Number.isNaN(suffix) || suffix <= 0) {
+      return null;
+    }
+    if (suffix >= size) {
+      return { start: 0, end: size - 1 };
+    }
+    return { start: size - suffix, end: size - 1 };
+  }
+  const start = parseInt(left, 10);
+  if (Number.isNaN(start) || start < 0 || start >= size) {
+    return null;
+  }
+  let end = right === "" ? size - 1 : parseInt(right, 10);
+  if (Number.isNaN(end)) {
+    end = size - 1;
+  }
+  end = Math.min(end, size - 1);
+  if (start > end) {
+    return null;
+  }
+  return { start, end };
+}
+
+function resolveNodexAssetFilePath(requestUrl: string): string | null {
+  try {
+    const u = new URL(requestUrl);
+    const rootParam = u.searchParams.get("root");
+    let baseRoot: string | null = null;
+    if (rootParam) {
       try {
-        const u = new URL(request.url);
-        const rootParam = u.searchParams.get("root");
-        let baseRoot: string | null = null;
-        if (rootParam) {
-          try {
-            const abs = path.resolve(decodeURIComponent(rootParam));
-            for (const r of ctx.workspaceRoots) {
-              if (path.resolve(r) === abs) {
-                baseRoot = abs;
-                break;
-              }
-            }
-          } catch {
-            /* ignore */
+        const abs = path.resolve(decodeURIComponent(rootParam));
+        for (const r of ctx.workspaceRoots) {
+          if (path.resolve(r) === abs) {
+            baseRoot = abs;
+            break;
           }
         }
-        if (!baseRoot) {
-          baseRoot = ctx.projectRootPath;
-        }
-        if (!baseRoot) {
-          callback({ error: -2 });
-          return;
-        }
-        let rel = decodeURIComponent(
-          (u.pathname || "").replace(/^\/+/, ""),
-        ).replace(/\\/g, "/");
-        if (!rel || rel.includes("..")) {
-          callback({ error: -2 });
-          return;
-        }
-        const segments = rel.split("/").filter(Boolean);
-        for (const s of segments) {
-          if (s.startsWith(".") || s === "..") {
-            callback({ error: -2 });
-            return;
-          }
-        }
-        const assetsRoot = path.resolve(path.join(baseRoot, "assets"));
-        const full = path.resolve(path.join(assetsRoot, ...segments));
-        if (!full.startsWith(assetsRoot + path.sep) && full !== assetsRoot) {
-          callback({ error: -2 });
-          return;
-        }
-        callback({ path: full });
       } catch {
-        callback({ error: -2 });
+        /* ignore */
       }
+    }
+    if (!baseRoot) {
+      baseRoot = ctx.projectRootPath;
+    }
+    if (!baseRoot) {
+      return null;
+    }
+    const rel = relativeAssetPathFromNodexAssetUrl(u);
+    if (!rel) {
+      return null;
+    }
+    const segments = rel.split("/").filter(Boolean);
+    const assetsRoot = path.resolve(path.join(baseRoot, "assets"));
+    const full = path.resolve(path.join(assetsRoot, ...segments));
+    if (!full.startsWith(assetsRoot + path.sep) && full !== assetsRoot) {
+      return null;
+    }
+    if (!fs.existsSync(full) || !fs.statSync(full).isFile()) {
+      return null;
+    }
+    return full;
+  } catch {
+    return null;
+  }
+}
+
+function nodexAssetResponseForFile(
+  request: globalThis.Request,
+  full: string,
+): Response {
+  const stat = fs.statSync(full);
+  const size = stat.size;
+  const mimeType = mimeForAssetPath(full);
+  const common: Record<string, string> = {
+    "Content-Type": mimeType,
+    "Accept-Ranges": "bytes",
+    /** Embedded PDF/media in iframes (srcdoc ↔ custom scheme) — avoid client-side blocking. */
+    "Cross-Origin-Resource-Policy": "cross-origin",
+    "Access-Control-Allow-Origin": "*",
+  };
+
+  if (request.method === "HEAD") {
+    return new Response(null, {
+      status: 200,
+      headers: {
+        ...common,
+        "Content-Length": String(size),
+      },
+    });
+  }
+
+  const rangeHeader = request.headers.get("range");
+  if (!rangeHeader) {
+    const nodeStream = fs.createReadStream(full);
+    const body = Readable.toWeb(nodeStream) as unknown as BodyInit;
+    return new Response(body, {
+      status: 200,
+      headers: {
+        ...common,
+        "Content-Length": String(size),
+      },
+    });
+  }
+
+  const parsed = parseByteRange(rangeHeader, size);
+  if (!parsed) {
+    return new Response(null, {
+      status: 416,
+      headers: {
+        "Content-Range": `bytes */${size}`,
+      },
+    });
+  }
+  const { start, end } = parsed;
+  const chunkSize = end - start + 1;
+  const nodeStream = fs.createReadStream(full, { start, end });
+  const body = Readable.toWeb(nodeStream) as unknown as BodyInit;
+  return new Response(body, {
+    status: 206,
+    headers: {
+      ...common,
+      "Content-Length": String(chunkSize),
+      "Content-Range": `bytes ${start}-${end}/${size}`,
     },
-  );
+  });
+}
+
+/**
+ * Custom asset protocol: use `protocol.handle` + explicit byte ranges so PDF / media viewers
+ * (Range requests) work. `registerFileProtocol` alone often yields ERR_BLOCKED_BY_CLIENT for PDF.
+ */
+export function registerNodexAssetProtocol(): void {
+  try {
+    session.defaultSession.protocol.unhandle("nodex-asset");
+  } catch {
+    /* first registration */
+  }
+
+  session.defaultSession.protocol.handle("nodex-asset", (request) => {
+    const full = resolveNodexAssetFilePath(request.url);
+    if (!full) {
+      return Promise.resolve(new Response(null, { status: 404 }));
+    }
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return Promise.resolve(new Response(null, { status: 405 }));
+    }
+    try {
+      return Promise.resolve(nodexAssetResponseForFile(request, full));
+    } catch (e) {
+      console.warn("[nodex-asset] response error:", e);
+      return Promise.resolve(new Response(null, { status: 500 }));
+    }
+  });
 }
 
 export function applyWorkspaceActivateResult(res: {
@@ -166,7 +315,7 @@ function emitIdeWorkspaceFsChanged(): void {
 
 export function setIdeWorkspaceWatch(pluginName: string | null): void {
   if (ctx.ideWorkspaceWatch) {
-    ctx.ideWorkspaceWatch.close();
+    void ctx.ideWorkspaceWatch.close();
     ctx.ideWorkspaceWatch = null;
   }
   if (ctx.ideWorkspaceWatchTimer) {
@@ -184,16 +333,28 @@ export function setIdeWorkspaceWatch(pluginName: string | null): void {
     return;
   }
   try {
-    ctx.ideWorkspaceWatch = fs.watch(
-      root,
-      { recursive: true },
-      () => {
-        if (ctx.ideWorkspaceWatchTimer) {
-          clearTimeout(ctx.ideWorkspaceWatchTimer);
-        }
-        ctx.ideWorkspaceWatchTimer = setTimeout(emitIdeWorkspaceFsChanged, 320);
+    const watcher = chokidarWatch(root, {
+      ignored: [
+        /(^|[\\/])node_modules([\\/]|$)/,
+        /(^|[\\/])\.git([\\/]|$)/,
+        /(^|[\\/])dist([\\/]|$)/,
+      ],
+      ignoreInitial: true,
+      awaitWriteFinish: {
+        stabilityThreshold: 200,
+        pollInterval: 50,
       },
-    );
+    });
+    watcher.on("all", () => {
+      if (ctx.ideWorkspaceWatchTimer) {
+        clearTimeout(ctx.ideWorkspaceWatchTimer);
+      }
+      ctx.ideWorkspaceWatchTimer = setTimeout(emitIdeWorkspaceFsChanged, 120);
+    });
+    watcher.on("error", (err: unknown) => {
+      console.warn("[Main] ide workspace chokidar:", err);
+    });
+    ctx.ideWorkspaceWatch = watcher;
   } catch (e) {
     console.warn("[Main] ide workspace watch:", e);
   }
@@ -221,23 +382,46 @@ export function broadcastNativeThemeToRenderers(): void {
   }
 }
 
-export function resolveBundledCorePluginsDir(): string | null {
+/**
+ * Basenames under `plugins/` (dev) or `Resources/` (packaged) scanned as read-only
+ * bundled roots. Order: system (e.g. code editor), user (sample + media plugins), core (optional legacy).
+ */
+const BUNDLED_READONLY_PLUGIN_ROOT_BASENAMES = ["system", "user", "core"] as const;
+
+function resolveExistingPackagedRoot(base: string): string | null {
+  const candidates = [
+    path.join(process.resourcesPath, base),
+    path.join(process.resourcesPath, "plugins", base),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      return c;
+    }
+  }
+  return null;
+}
+
+/** All existing read-only plugin directories shipped with the app (before userData/plugins). */
+export function resolveBundledReadonlyPluginRoots(): string[] {
   if (app.isPackaged) {
-    const candidates = [
-      path.join(process.resourcesPath, "core"),
-      path.join(process.resourcesPath, "plugins", "core"),
-    ];
-    for (const c of candidates) {
-      if (fs.existsSync(c)) {
-        return c;
+    const out: string[] = [];
+    for (const base of BUNDLED_READONLY_PLUGIN_ROOT_BASENAMES) {
+      const resolved = resolveExistingPackagedRoot(base);
+      if (resolved) {
+        out.push(resolved);
       }
     }
-    return null;
+    return out;
   }
-  // Webpack main output lives under `.webpack/main`; `__dirname`-relative paths can
-  // collapse to non-absolute strings and break `require()` for plugin mains.
-  const devCore = path.join(app.getAppPath(), "plugins", "core");
-  return fs.existsSync(devCore) ? devCore : null;
+  const pluginsParent = path.join(app.getAppPath(), "plugins");
+  const out: string[] = [];
+  for (const base of BUNDLED_READONLY_PLUGIN_ROOT_BASENAMES) {
+    const p = path.join(pluginsParent, base);
+    if (fs.existsSync(p)) {
+      out.push(p);
+    }
+  }
+  return out;
 }
 
 export function broadcastPluginsChanged(): void {

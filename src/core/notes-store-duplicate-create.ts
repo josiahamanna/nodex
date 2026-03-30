@@ -23,7 +23,7 @@ import {
   targetParentWorkspaceSlot,
 } from "./notes-store-tree";
 
-const MAX_NOTE_CONTENT_CHARS = 5_000_000;
+export const MAX_NOTE_CONTENT_CHARS = 5_000_000;
 
 export function duplicateSubtreeAt(
   sourceRootId: string,
@@ -79,16 +79,20 @@ export function createNote(opts: {
   anchorId?: string;
   relation: "child" | "sibling" | "root";
   type: string;
+  content?: string;
+  title?: string;
+  metadata?: Record<string, unknown>;
 }): NoteRecord {
   const id = newNoteIdForAnchor(opts.anchorId, opts.relation);
-  const { content, metadata } = bodyForType(opts.type);
+  const body = bodyForType(opts.type);
   const rec: NoteRecord = {
     id,
     parentId: null,
     type: opts.type,
-    title: titleForType(opts.type),
-    content,
-    metadata,
+    title: opts.title !== undefined ? opts.title : titleForType(opts.type),
+    content: opts.content !== undefined ? opts.content : body.content,
+    metadata:
+      opts.metadata !== undefined ? opts.metadata : body.metadata,
   };
 
   if (opts.relation === "root") {

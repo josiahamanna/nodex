@@ -10,6 +10,8 @@ export interface NotesSidebarPanelContextMenuPickTypeProps {
     anchorId?: string;
     relation: CreateNoteRelation;
     type: string;
+    content?: string;
+    title?: string;
   }) => Promise<void>;
   closeMenu: () => void;
 }

@@ -27,6 +27,18 @@ const defaultSampleContent: Record<
       'function hello() {\n  console.log("Hello from Monaco!");\n}\n\nhello();',
     metadata: { language: "javascript" },
   },
+  pdf: {
+    content: '{"assetRel":""}',
+  },
+  image: {
+    content: '{"assetRel":""}',
+  },
+  video: {
+    content: '{"assetRel":""}',
+  },
+  audio: {
+    content: '{"assetRel":""}',
+  },
 };
 
 const defaultTypeToTitle: Record<string, string> = {
@@ -34,6 +46,10 @@ const defaultTypeToTitle: Record<string, string> = {
   markdown: "Markdown Note",
   text: "Rich Text Note",
   code: "Code Editor",
+  pdf: "PDF",
+  image: "Image",
+  video: "Video",
+  audio: "Audio",
 };
 
 export function titleForType(type: string): string {

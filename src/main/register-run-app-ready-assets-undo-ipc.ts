@@ -1,11 +1,19 @@
-import { ipcMain, shell } from "electron";
+import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import {
+  importExternalFileIntoAssets,
   listProjectAssets,
+  listProjectAssetsByCategory,
   moveProjectAsset,
   resolveAssetFilePath,
+  resolveExistingAssetEntryPath,
 } from "../core/assets-fs";
+import {
+  isAssetMediaCategory,
+  MEDIA_EXTENSIONS,
+  type AssetMediaCategory,
+} from "../shared/asset-media";
 import {
   nodexRedo,
   nodexUndo,
@@ -33,6 +41,130 @@ export function registerRunAppReadyAssetsUndoIpc(): void {
     }
     return listProjectAssets(root, rel);
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.ASSET_REVEAL_IN_FILE_MANAGER,
+    async (_e, payload: unknown) => {
+      if (!payload || typeof payload !== "object") {
+        return { ok: false as const, error: "Invalid payload" };
+      }
+      const o = payload as Record<string, unknown>;
+      const prOpt =
+        typeof o.projectRoot === "string" ? o.projectRoot : undefined;
+      const rel =
+        typeof o.relativePath === "string" ? o.relativePath : undefined;
+      if (prOpt === undefined || rel === undefined) {
+        return { ok: false as const, error: "Invalid payload" };
+      }
+      const root = assetsRootForIpc(prOpt);
+      if (!root) {
+        return {
+          ok: false as const,
+          error: prOpt
+            ? "Unknown project folder for assets"
+            : "No project open",
+        };
+      }
+      const full = resolveExistingAssetEntryPath(root, rel);
+      if (!full) {
+        return { ok: false as const, error: "Path not found" };
+      }
+      try {
+        const st = fs.statSync(full);
+        if (st.isDirectory()) {
+          const err = await shell.openPath(full);
+          if (err) {
+            return { ok: false as const, error: err };
+          }
+        } else {
+          shell.showItemInFolder(full);
+        }
+        return { ok: true as const };
+      } catch (e) {
+        return {
+          ok: false as const,
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.ASSET_LIST_BY_CATEGORY,
+    (_e, payload: unknown) => {
+      if (!payload || typeof payload !== "object") {
+        return { ok: false as const, error: "Invalid payload" };
+      }
+      const o = payload as Record<string, unknown>;
+      const category = o.category;
+      const prOpt =
+        typeof o.projectRoot === "string" ? o.projectRoot : undefined;
+      if (!isAssetMediaCategory(category)) {
+        return { ok: false as const, error: "Invalid category" };
+      }
+      const root = assetsRootForIpc(prOpt);
+      if (!root) {
+        return {
+          ok: false as const,
+          error: prOpt
+            ? "Unknown project folder for assets"
+            : "No project open",
+        };
+      }
+      return listProjectAssetsByCategory(root, category);
+    },
+  );
+
+  function fileFiltersForCategory(cat: AssetMediaCategory) {
+    const exts = MEDIA_EXTENSIONS[cat];
+    const name =
+      cat === "pdf"
+        ? "PDF"
+        : cat === "image"
+          ? "Images"
+          : cat === "video"
+            ? "Video"
+            : "Audio";
+    return [{ name, extensions: [...exts] }];
+  }
+
+  ipcMain.handle(
+    IPC_CHANNELS.ASSET_PICK_IMPORT,
+    async (event, payload: unknown) => {
+      if (!payload || typeof payload !== "object") {
+        return { ok: false as const, error: "Invalid payload" };
+      }
+      const o = payload as Record<string, unknown>;
+      const category = o.category;
+      const prOpt =
+        typeof o.projectRoot === "string" ? o.projectRoot : undefined;
+      if (!isAssetMediaCategory(category)) {
+        return { ok: false as const, error: "Invalid category" };
+      }
+      const root = assetsRootForIpc(prOpt);
+      if (!root) {
+        return {
+          ok: false as const,
+          error: prOpt
+            ? "Unknown project folder for assets"
+            : "No project open",
+        };
+      }
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const dlgOpts = {
+        properties: ["openFile" as const],
+        filters: fileFiltersForCategory(category),
+      };
+      const res = win
+        ? await dialog.showOpenDialog(win, dlgOpts)
+        : await dialog.showOpenDialog(dlgOpts);
+      if (res.canceled || !res.filePaths[0]) {
+        return { ok: false as const, error: "cancelled" };
+      }
+      const roots = ctx.workspaceRoots.map((w) => path.resolve(w));
+      return importExternalFileIntoAssets(roots, root, res.filePaths[0]!);
+    },
+  );
 
   ipcMain.handle(IPC_CHANNELS.ASSET_GET_INFO, (_e, payload: unknown) => {
     const { rel, projectRoot: prOpt } = parseAssetIpcPayload(payload);

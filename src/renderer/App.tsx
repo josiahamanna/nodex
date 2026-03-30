@@ -358,10 +358,19 @@ const App: React.FC = () => {
     void window.Nodex.getSelectableNoteTypes().then(setRegisteredTypes);
   };
 
+  const noteAssetProjectRoot = useMemo(() => {
+    if (!currentNote?.id) {
+      return null;
+    }
+    return workspaceFolderPathForNote(currentNote.id, rootsList);
+  }, [currentNote?.id, rootsList]);
+
   const handleCreateNote = async (payload: {
     anchorId?: string;
     relation: CreateNoteRelation;
     type: string;
+    content?: string;
+    title?: string;
   }) => {
     const { id } = await dispatch(createNote(payload)).unwrap();
     await dispatch(fetchAllNotes()).unwrap();
@@ -514,6 +523,8 @@ const App: React.FC = () => {
                   notesMainPane={notesMainPane}
                   detailLoading={detailLoading}
                   currentNote={currentNote}
+                  assetProjectRootForNote={noteAssetProjectRoot}
+                  idePreviewAssetProjectRoot={rootsList[0] ?? null}
                   settingsCategory={settingsCategory}
                   pluginsShell={pluginsShell}
                   onOpenProjectFolder={() => void handleOpenProjectFolder()}
