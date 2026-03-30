@@ -14,6 +14,8 @@ export function createMainWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      /** Never disable DevTools; production debugging uses F12 / Ctrl+Shift+I / (macOS) Cmd+Opt+I. */
+      devTools: true,
     },
   });
   if (process.platform !== "darwin") {
@@ -31,7 +33,36 @@ export function createMainWindow(): void {
     if (input.type !== "keyDown" || input.isAutoRepeat) {
       return;
     }
+    const win = ctx.mainWindow;
+    if (!win || win.isDestroyed()) {
+      return;
+    }
+
+    if (input.key === "F12") {
+      event.preventDefault();
+      win.webContents.toggleDevTools();
+      return;
+    }
+
     const primary = input.control || input.meta;
+
+    if (primary && input.shift && input.key.toLowerCase() === "i") {
+      event.preventDefault();
+      win.webContents.toggleDevTools();
+      return;
+    }
+
+    if (
+      process.platform === "darwin" &&
+      input.meta &&
+      input.alt &&
+      input.key.toLowerCase() === "i"
+    ) {
+      event.preventDefault();
+      win.webContents.toggleDevTools();
+      return;
+    }
+
     if (!primary || input.alt || input.shift) {
       return;
     }
@@ -39,10 +70,7 @@ export function createMainWindow(): void {
       return;
     }
     event.preventDefault();
-    if (!ctx.mainWindow || ctx.mainWindow.isDestroyed()) {
-      return;
-    }
-    ctx.mainWindow.webContents.reload();
+    win.webContents.reload();
   });
 
   ctx.mainWindow.on("closed", () => {

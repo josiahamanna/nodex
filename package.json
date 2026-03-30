@@ -1,6 +1,6 @@
 {
   "name": "poc-electron-plugin-arch",
-  "version": "1.0.0",
+  "version": "0.0.0-experimental.1",
   "description": "Nodex - Programmable Knowledge System POC",
   "main": ".webpack/main",
   "scripts": {
@@ -12,8 +12,9 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "make:linux": "electron-forge make --platform=linux",
-    "make:linux:deb": "npm run clean:forge && electron-forge make --platform=linux --targets=@electron-forge/maker-deb",
-    "make:linux:appimage": "npm run clean:forge && electron-forge make --platform=linux --targets=@forkprince/electron-forge-maker-appimage",
+    "make:linux:deb": "npm run clean:forge && npx electron-forge make --platform=linux --targets=@electron-forge/maker-deb",
+    "make:linux:appimage": "npm run clean:forge && npx electron-forge make --platform=linux --targets=@forkprince/electron-forge-maker-appimage",
+    "make:linux:deb-appimage": "npm run clean:forge && npx electron-forge make --platform=linux --targets=@electron-forge/maker-deb,@forkprince/electron-forge-maker-appimage",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "node --experimental-strip-types --test src/main/parse-asset-ipc-payload.test.ts src/renderer/notes-sidebar/notes-sidebar-utils.test.ts"
@@ -73,6 +74,7 @@
     "dompurify": "^3.3.3",
     "esbuild": "^0.27.4",
     "monaco-editor": "^0.55.1",
+    "pdfjs-dist": "^4.10.38",
     "prettier": "^3.5.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

@@ -56,6 +56,7 @@ module.exports = {
     },
     {
       name: "@electron-forge/maker-deb",
+      platforms: ["linux"],
       config: {
         options: {
           name: "nodex",

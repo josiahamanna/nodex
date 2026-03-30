@@ -3,6 +3,7 @@ import {
   extMatchesCategory,
   type AssetMediaCategory,
 } from "../../shared/asset-media";
+import PdfAssetPreview from "./PdfAssetPreview";
 
 type Props = {
   relativePath: string;
@@ -138,11 +139,9 @@ export default function AssetPreview({ relativePath, projectRoot }: Props) {
             />
           </div>
         ) : mediaCategory === "pdf" ? (
-          <iframe
-            title={info.name}
-            src={assetSrc}
-            className="h-full min-h-[420px] w-full rounded-md border border-border"
-          />
+          <div className="h-full min-h-[420px] w-full overflow-auto">
+            <PdfAssetPreview assetSrc={assetSrc} />
+          </div>
         ) : mediaCategory === "video" ? (
           <div className="flex justify-center">
             <video

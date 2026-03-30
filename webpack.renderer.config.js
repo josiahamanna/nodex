@@ -1,4 +1,5 @@
 const MonacoWebpackPlugin = require("monaco-editor-webpack-plugin");
+const CopyPlugin = require("copy-webpack-plugin");
 const path = require("path");
 const baseRules = require("./webpack.rules");
 
@@ -33,9 +34,30 @@ rules.push({
 
 module.exports = {
   module: {
-    rules,
+    rules: [
+      {
+        test: /\.mjs$/,
+        include: /node_modules[/\\]pdfjs-dist[/\\]/,
+        type: "javascript/auto",
+        resolve: { fullySpecified: false },
+      },
+      ...rules,
+    ],
   },
   plugins: [
+    new CopyPlugin({
+      patterns: [
+        {
+          from: path.join(
+            path.dirname(require.resolve("pdfjs-dist/package.json")),
+            "build",
+            "pdf.worker.min.mjs",
+          ),
+          /** Same folder as `main_window/index.html` (Forge `[name]/index.html`). */
+          to: "main_window/pdf.worker.min.mjs",
+        },
+      ],
+    }),
     new MonacoWebpackPlugin({
       languages: [
         "javascript",
