@@ -1,0 +1,127 @@
+# Builds Nodex (Electron Forge) for Linux, Windows, and macOS, builds plugins from
+# test-inputs/plugins, and publishes a GitHub Release when you push a version tag (v*).
+#
+# Trigger a tag push:
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# Manual dry-run (artifacts only, no Release): Actions → Release → Run workflow
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux-plugins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Make Linux (.deb + AppImage)
+        run: npm run make:linux:deb-appimage
+
+      - name: Build plugin packages (test-inputs/plugins)
+        run: npm run build:plugins-release
+
+      - name: Upload Linux + plugin artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-and-plugins
+          path: out/make/**
+          if-no-files-found: error
+          retention-days: 14
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Make Windows (Squirrel)
+        run: npx electron-forge make --platform=win32
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-dist
+          path: out/make/**
+          if-no-files-found: error
+          retention-days: 14
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Make macOS (.zip)
+        run: npm run clean:forge && npx electron-forge make --platform=darwin --targets=@electron-forge/maker-zip
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-dist
+          path: out/make/**
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    needs:
+      - build-linux-plugins
+      - build-windows
+      - build-mac
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*"
+          merge-multiple: true
+          path: release-assets
+
+      - name: Create GitHub Release and upload files
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Nodex ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release-assets/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

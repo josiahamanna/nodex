@@ -16,6 +16,7 @@
     "make:linux:appimage": "npm run clean:forge && npx electron-forge make --platform=linux --targets=@forkprince/electron-forge-maker-appimage",
     "make:linux:deb-appimage": "npm run clean:forge && npx electron-forge make --platform=linux --targets=@electron-forge/maker-deb,@forkprince/electron-forge-maker-appimage",
     "publish": "electron-forge publish",
+    "build:plugins-release": "tsx scripts/build-plugins-release.ts",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "node --experimental-strip-types --test src/main/parse-asset-ipc-payload.test.ts src/renderer/notes-sidebar/notes-sidebar-utils.test.ts"
   },
@@ -54,6 +55,7 @@
     "style-loader": "^4.0.0",
     "tailwindcss": "^4.2.2",
     "ts-loader": "^9.5.4",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
