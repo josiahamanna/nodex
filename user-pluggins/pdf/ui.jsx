@@ -3,6 +3,99 @@ import { createRoot } from "react-dom/client";
 
 const CATEGORY = "pdf";
 
+function PdfBlobViewer({ assetHref }) {
+  const [blobSrc, setBlobSrc] = React.useState(null);
+  const [err, setErr] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    let objectUrl = null;
+    setLoading(true);
+    setErr(null);
+    setBlobSrc(null);
+
+    void (async () => {
+      try {
+        const res = await fetch(assetHref);
+        if (!res.ok) {
+          throw new Error(`Could not load PDF (${res.status})`);
+        }
+        const buf = await res.arrayBuffer();
+        const blob = new Blob([buf], { type: "application/pdf" });
+        objectUrl = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        setBlobSrc(objectUrl);
+      } catch (e) {
+        if (!cancelled) {
+          setErr(e instanceof Error ? e.message : "Failed to load PDF");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [assetHref]);
+
+  const frameStyle = {
+    flex: 1,
+    minHeight: 0,
+    border: "1px solid hsl(var(--border, 214.3 31.8% 91.4%))",
+    borderRadius: 6,
+    width: "100%",
+  };
+
+  if (err) {
+    return (
+      <div
+        style={{
+          ...frameStyle,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 16,
+          color: "crimson",
+          fontSize: 12,
+        }}
+      >
+        {err}
+      </div>
+    );
+  }
+
+  if (loading || !blobSrc) {
+    return (
+      <div
+        style={{
+          ...frameStyle,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 12,
+          opacity: 0.75,
+        }}
+      >
+        Loading PDF…
+      </div>
+    );
+  }
+
+  return (
+    <iframe title="PDF" src={blobSrc} style={frameStyle} />
+  );
+}
+
 function parseRel(content) {
   try {
     const o = JSON.parse(content || "{}");
@@ -89,7 +182,7 @@ function MediaApp() {
   };
 
   if (rel) {
-    const url = Nodex.assetUrl(rel, root || undefined);
+    const assetHref = Nodex.assetUrl(rel, root || undefined);
     return (
       <div
         style={{
@@ -105,16 +198,13 @@ function MediaApp() {
             Choose another file…
           </button>
         </div>
-        <iframe
-          title="PDF"
-          src={url}
-          style={{
-            flex: 1,
-            minHeight: 0,
-            border: "1px solid hsl(var(--border, 214.3 31.8% 91.4%))",
-            borderRadius: 6,
-          }}
-        />
+        {/**
+         * Chromium’s PDF extension often shows a blank grey frame when the iframe
+         * `src` is a custom protocol (`nodex-asset:`), especially in Linux production
+         * builds. Fetch bytes and use a blob: URL so the built-in viewer gets a
+         * normal origin (same approach as host PdfAssetPreview vs raw iframe).
+         */}
+        <PdfBlobViewer assetHref={assetHref} />
       </div>
     );
   }

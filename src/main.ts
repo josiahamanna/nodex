@@ -18,6 +18,24 @@ function applyLinuxSandboxMitigations(): void {
 applyLinuxSandboxMitigations();
 
 /**
+ * Linux: DevTools and extra renderers use POSIX shared memory under `/dev/shm`. If that
+ * tmpfs is missing, too small, or has bad permissions, Chromium can fatal when opening
+ * DevTools. `disable-dev-shm-usage` uses disk-backed temp instead (same idea as Docker).
+ * Opt out with `NODEX_ALLOW_DEV_SHM=1` if `/dev/shm` is healthy and you prefer defaults.
+ */
+function applyLinuxDevShmMitigation(): void {
+  if (process.platform !== "linux") {
+    return;
+  }
+  if (process.env.NODEX_ALLOW_DEV_SHM === "1") {
+    return;
+  }
+  app.commandLine.appendSwitch("disable-dev-shm-usage");
+}
+
+applyLinuxDevShmMitigation();
+
+/**
  * Linux: MP4 in <video> can crash or loop-restart the GPU process (gbm_bo_import,
  * CreateSharedImage) on some Mesa/Wayland/NVIDIA stacks. Mitigate before app ready.
  * Opt out: NODEX_HW_VIDEO=1 to keep HW decode. Nuclear: NODEX_DISABLE_HARDWARE_ACCELERATION=1.

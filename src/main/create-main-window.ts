@@ -50,6 +50,9 @@ export function createMainWindow(): void {
 
   if (process.env.NODE_ENV === "development") {
     ctx.mainWindow.webContents.openDevTools();
+  } else if (process.env.NODEX_OPEN_DEVTOOLS === "1") {
+    /** Production debugging on Linux/packaged builds: `NODEX_OPEN_DEVTOOLS=1 ./nodex` */
+    ctx.mainWindow.webContents.openDevTools();
   }
 
   ctx.mainWindow.webContents.on("before-input-event", (event, input) => {
