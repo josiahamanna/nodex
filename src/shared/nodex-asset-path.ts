@@ -67,7 +67,8 @@ export function normalizeNoteAssetRelativePath(input: unknown): string {
   if (!raw) {
     return "";
   }
-  if (raw.toLowerCase().startsWith("nodex-asset:")) {
+  const lower = raw.toLowerCase();
+  if (lower.startsWith("nodex-asset:") || lower.startsWith("node-asset:")) {
     try {
       return relativeAssetPathFromNodexAssetUrl(new URL(raw)) ?? "";
     } catch {

@@ -166,15 +166,15 @@ export class PackageManager {
     // Determine package mode from extension
     const ext = path.extname(packagePath);
     const mode =
-      ext === ".Nodexplugin-dev"
+      ext === ".nodexplugin-dev" || ext === ".Nodexplugin-dev"
         ? "development"
-        : ext === ".Nodexplugin"
+        : ext === ".nodexplugin" || ext === ".Nodexplugin"
           ? "production"
           : null;
 
     if (!mode) {
       throw new Error(
-        "Invalid package extension. Must be .Nodexplugin or .Nodexplugin-dev",
+        "Invalid package extension. Must be .nodexplugin or .nodexplugin-dev",
       );
     }
 
@@ -329,12 +329,14 @@ export class PackageManager {
       // Check extension
       const ext = path.extname(packagePath);
       const extOk =
+        ext === ".nodexplugin" ||
+        ext === ".nodexplugin-dev" ||
         ext === ".Nodexplugin" ||
         ext === ".Nodexplugin-dev" ||
         ext === ".zip";
       if (!extOk) {
         errors.push(
-          "Invalid package extension. Use .Nodexplugin, .Nodexplugin-dev, or .zip",
+          "Invalid package extension. Use .nodexplugin, .nodexplugin-dev, or .zip",
         );
       }
 
@@ -367,7 +369,9 @@ export class PackageManager {
 
       // Check mode matches extension (.zip treated like dev archive)
       const expectedMode =
-        ext === ".Nodexplugin-dev" || ext === ".zip"
+        ext === ".nodexplugin-dev" ||
+        ext === ".Nodexplugin-dev" ||
+        ext === ".zip"
           ? "development"
           : "production";
       if (extOk && manifest.mode !== expectedMode) {

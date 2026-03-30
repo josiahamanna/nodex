@@ -136,6 +136,9 @@ export type NodexRendererApi = {
   exportPluginProduction: (
     pluginName: string,
   ) => Promise<{ success: boolean; path?: string; error?: string }>;
+  publishPluginAsFile: (
+    pluginName: string,
+  ) => Promise<{ success: boolean; path?: string; error?: string }>;
   bundlePluginLocal: (
     pluginName: string,
   ) => Promise<{

@@ -57,6 +57,7 @@ export type IdeShellAction =
   | "reloadRegistry"
   | "typecheck"
   | "installDeps"
+  | "publishAsFile"
   | "loadParent"
   | "removeExternal"
   | "toggleTscOnSave"

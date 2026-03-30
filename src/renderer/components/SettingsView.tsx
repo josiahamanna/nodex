@@ -170,8 +170,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ category }) => {
               Skip sample notes when opening or adding an{" "}
               <span className="font-mono text-[11px]">empty</span> project folder
               <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
-                When off (default), new empty folders get Home plus Markdown and
-                Rich Text starter notes, same as Open project and Add folder.
+                When on, new empty folders get Home plus Markdown and Rich Text
+                starter notes, same as Open project and Add folder.
               </span>
             </span>
           </label>

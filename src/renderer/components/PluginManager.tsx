@@ -64,7 +64,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
           >
             {pm.importing
               ? "Importing..."
-              : "Import plugin (.Nodexplugin / .zip)"}
+              : "Import plugin (.nodexplugin / .zip)"}
           </button>
         </div>
 

@@ -1,12 +1,15 @@
 import { app, ipcMain } from "electron";
+import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import { appendPluginAudit } from "../core/plugin-audit";
 import { packageManager } from "../core/package-manager";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { isSafePluginName } from "../shared/validators";
 import { ctx, getPluginLoader } from "./main-context";
-import { showOpenDialogWithParent } from "./main-helpers";
+import { getDialogParent, showOpenDialogWithParent } from "./main-helpers";
 import { registry } from "../core/registry";
+import { emitPluginProgress } from "../core/plugin-progress";
 
 export function registerStaticIpcPluginPackagingHandlers(): void {
 ipcMain.handle(IPC_CHANNELS.SELECT_ZIP_FILE, async () => {
@@ -16,7 +19,13 @@ ipcMain.handle(IPC_CHANNELS.SELECT_ZIP_FILE, async () => {
     filters: [
       {
         name: "Nodex plugin",
-        extensions: ["Nodexplugin", "Nodexplugin-dev", "zip"],
+        extensions: [
+          "nodexplugin",
+          "nodexplugin-dev",
+          "Nodexplugin",
+          "Nodexplugin-dev",
+          "zip",
+        ],
       },
     ],
   });
@@ -27,6 +36,115 @@ ipcMain.handle(IPC_CHANNELS.SELECT_ZIP_FILE, async () => {
 
   return result.filePaths[0];
 });
+
+ipcMain.handle(
+  IPC_CHANNELS.PUBLISH_PLUGIN_AS_FILE,
+  async (_event, pluginName: string) => {
+    if (!isSafePluginName(pluginName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    const { dialog } = require("electron");
+    const userDataPath = app.getPath("userData");
+    try {
+      const defaultFile = `${pluginName}.nodexplugin`;
+
+      const parent = getDialogParent();
+      const save = parent
+        ? await dialog.showSaveDialog(parent, {
+            title: "Publish plugin as file (.nodexplugin)",
+            defaultPath: defaultFile,
+            filters: [{ name: "Nodex plugin", extensions: ["nodexplugin"] }],
+            properties: ["createDirectory", "showOverwriteConfirmation"],
+          })
+        : await dialog.showSaveDialog({
+        title: "Publish plugin as file (.nodexplugin)",
+        defaultPath: defaultFile,
+        filters: [{ name: "Nodex plugin", extensions: ["nodexplugin"] }],
+        properties: ["createDirectory", "showOverwriteConfirmation"],
+      });
+      if (save.canceled || !save.filePath) {
+        return { success: false, error: "Cancelled" };
+      }
+      const outFile = save.filePath.toLowerCase().endsWith(".nodexplugin")
+        ? save.filePath
+        : `${save.filePath}.nodexplugin`;
+
+      emitPluginProgress({
+        op: "npm",
+        phase: "start",
+        pluginName,
+        message: "Install dependencies…",
+      });
+      const install = await getPluginLoader().installPluginDependencies(pluginName);
+      if (!install.success) {
+        emitPluginProgress({
+          op: "npm",
+          phase: "error",
+          pluginName,
+          message: install.error ?? "npm install failed",
+        });
+        appendPluginAudit(userDataPath, {
+          action: "publish",
+          pluginName,
+          ok: false,
+          detail: install.error,
+        });
+        return { success: false, error: install.error ?? "npm install failed" };
+      }
+      emitPluginProgress({
+        op: "npm",
+        phase: "done",
+        pluginName,
+        message: "Dependencies installed.",
+      });
+
+      const stagingParent = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-publish-"));
+      try {
+        const produced = await getPluginLoader().exportProductionPackage(
+          pluginName,
+          stagingParent,
+        );
+
+        // Ensure lowercase extension on final output.
+        fs.mkdirSync(path.dirname(outFile), { recursive: true });
+        fs.copyFileSync(produced, outFile);
+      } finally {
+        fs.rmSync(stagingParent, { recursive: true, force: true });
+      }
+
+      appendPluginAudit(userDataPath, {
+        action: "publish",
+        pluginName,
+        ok: true,
+        detail: path.basename(outFile),
+      });
+
+      emitPluginProgress({
+        op: "export",
+        phase: "done",
+        pluginName,
+        message: `Published: ${path.basename(outFile)}`,
+      });
+
+      return { success: true, path: outFile };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      emitPluginProgress({
+        op: "export",
+        phase: "error",
+        pluginName,
+        message: msg,
+      });
+      appendPluginAudit(userDataPath, {
+        action: "publish",
+        pluginName,
+        ok: false,
+        detail: msg,
+      });
+      return { success: false, error: msg };
+    }
+  },
+);
 
 ipcMain.handle(
   IPC_CHANNELS.EXPORT_PLUGIN_DEV,

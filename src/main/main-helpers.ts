@@ -20,11 +20,23 @@ import { relativeAssetPathFromNodexAssetUrl } from "../shared/nodex-asset-path";
 
 export { parseAssetIpcPayload };
 
+function normalizeForCompare(p: string): string {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+function pathsEqual(a: string, b: string): boolean {
+  return normalizeForCompare(a) === normalizeForCompare(b);
+}
+
 export function assetsRootForIpc(projectRootOpt: string | undefined): string | null {
   if (projectRootOpt != null && projectRootOpt.length > 0) {
     const abs = path.resolve(projectRootOpt);
     for (const r of ctx.workspaceRoots) {
-      if (path.resolve(r) === abs) {
+      if (pathsEqual(r, abs)) {
         return abs;
       }
     }
@@ -112,13 +124,19 @@ function parseByteRange(
 function resolveNodexAssetFilePath(requestUrl: string): string | null {
   try {
     const u = new URL(requestUrl);
+    const rel = relativeAssetPathFromNodexAssetUrl(u);
+    if (!rel) {
+      return null;
+    }
+    const segments = rel.split("/").filter(Boolean);
     const rootParam = u.searchParams.get("root");
     let baseRoot: string | null = null;
     if (rootParam) {
       try {
-        const abs = path.resolve(decodeURIComponent(rootParam));
+        // URLSearchParams already decodes; keep this tolerant and realpath-safe.
+        const abs = path.resolve(String(rootParam));
         for (const r of ctx.workspaceRoots) {
-          if (path.resolve(r) === abs) {
+          if (pathsEqual(r, abs)) {
             baseRoot = abs;
             break;
           }
@@ -127,26 +145,39 @@ function resolveNodexAssetFilePath(requestUrl: string): string | null {
         /* ignore */
       }
     }
-    if (!baseRoot) {
-      baseRoot = ctx.projectRootPath;
+    const candidates: string[] = [];
+    if (baseRoot) {
+      candidates.push(baseRoot);
     }
-    if (!baseRoot) {
-      return null;
+    if (ctx.projectRootPath) {
+      candidates.push(ctx.projectRootPath);
     }
-    const rel = relativeAssetPathFromNodexAssetUrl(u);
-    if (!rel) {
-      return null;
+    for (const r of ctx.workspaceRoots) {
+      candidates.push(r);
     }
-    const segments = rel.split("/").filter(Boolean);
-    const assetsRoot = path.resolve(path.join(baseRoot, "assets"));
-    const full = path.resolve(path.join(assetsRoot, ...segments));
-    if (!full.startsWith(assetsRoot + path.sep) && full !== assetsRoot) {
-      return null;
+
+    const unique: string[] = [];
+    for (const c of candidates) {
+      if (!unique.some((u) => pathsEqual(u, c))) {
+        unique.push(c);
+      }
     }
-    if (!fs.existsSync(full) || !fs.statSync(full).isFile()) {
-      return null;
+
+    for (const root of unique) {
+      const assetsRoot = path.resolve(path.join(root, "assets"));
+      const full = path.resolve(path.join(assetsRoot, ...segments));
+      if (!full.startsWith(assetsRoot + path.sep) && full !== assetsRoot) {
+        continue;
+      }
+      try {
+        if (fs.existsSync(full) && fs.statSync(full).isFile()) {
+          return full;
+        }
+      } catch {
+        /* ignore */
+      }
     }
-    return full;
+    return null;
   } catch {
     return null;
   }
@@ -223,8 +254,13 @@ export function registerNodexAssetProtocol(): void {
   } catch {
     /* first registration */
   }
+  try {
+    session.defaultSession.protocol.unhandle("node-asset");
+  } catch {
+    /* first registration */
+  }
 
-  session.defaultSession.protocol.handle("nodex-asset", (request) => {
+  const handler = (request: globalThis.Request) => {
     const full = resolveNodexAssetFilePath(request.url);
     if (!full) {
       return Promise.resolve(new Response(null, { status: 404 }));
@@ -238,7 +274,10 @@ export function registerNodexAssetProtocol(): void {
       console.warn("[nodex-asset] response error:", e);
       return Promise.resolve(new Response(null, { status: 500 }));
     }
-  });
+  };
+
+  session.defaultSession.protocol.handle("nodex-asset", handler);
+  session.defaultSession.protocol.handle("node-asset", handler);
 }
 
 export function applyWorkspaceActivateResult(res: {

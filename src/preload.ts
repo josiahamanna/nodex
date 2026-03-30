@@ -84,6 +84,8 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.EXPORT_PLUGIN_DEV, pluginName),
   exportPluginProduction: (pluginName) =>
     ipcRenderer.invoke(IPC_CHANNELS.EXPORT_PLUGIN_PRODUCTION, pluginName),
+  publishPluginAsFile: (pluginName) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PUBLISH_PLUGIN_AS_FILE, pluginName),
   bundlePluginLocal: (pluginName) =>
     ipcRenderer.invoke(IPC_CHANNELS.BUNDLE_PLUGIN_LOCAL, pluginName),
   installPluginDependencies: (pluginName) =>

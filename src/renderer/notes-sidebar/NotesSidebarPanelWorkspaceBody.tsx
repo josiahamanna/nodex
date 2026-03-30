@@ -152,6 +152,9 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
   const validNoteIds = useMemo(() => new Set(notes.map((n) => n.id)), [notes]);
   const [editingLabelRoot, setEditingLabelRoot] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
+  const [assetRefreshTickByProject, setAssetRefreshTickByProject] = useState<
+    Record<string, number>
+  >({});
   const labelSubmitLock = useRef(false);
 
   const beginEditLabel = useCallback(
@@ -410,6 +413,36 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                     )}
                   </div>
                 )}
+                <div
+                  className="flex shrink-0 items-center gap-1 px-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    className="shrink-0 rounded px-1 py-0.5 text-[10px] text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                    title="Open assets folder in file manager"
+                    onClick={() => {
+                      void window.Nodex.revealAssetInFileManager(
+                        "",
+                        sec.projectRoot,
+                      );
+                    }}
+                  >
+                    Open folder
+                  </button>
+                  <button
+                    type="button"
+                    className="shrink-0 rounded px-1 py-0.5 text-[10px] text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                    onClick={() => {
+                      setAssetRefreshTickByProject((m) => ({
+                        ...m,
+                        [sec.projectRoot]: (m[sec.projectRoot] ?? 0) + 1,
+                      }));
+                    }}
+                  >
+                    Refresh
+                  </button>
+                </div>
               </div>
               {sectionOpen ? (
                 <ul
@@ -422,10 +455,11 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                     if (row.kind === "assets") {
                       return (
                         <ProjectAssetsInline
-                          key={`${row.key}-${assetFsTick}`}
+                          key={row.key}
                           projectRoot={row.projectRoot}
                           depth={assetsDepthInSection(row, sec.depthTrim)}
                           storageKey={row.key}
+                          refreshTick={assetRefreshTickByProject[row.projectRoot]}
                           onOpenFile={(rel) =>
                             onOpenProjectAsset(row.projectRoot, rel)
                           }

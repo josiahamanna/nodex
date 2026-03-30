@@ -9,7 +9,7 @@ export type NodexAppPrefs = {
 };
 
 const defaultPrefs: NodexAppPrefs = {
-  seedSampleNotes: true,
+  seedSampleNotes: false,
 };
 
 export function readAppPrefs(userDataPath: string): NodexAppPrefs {

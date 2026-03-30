@@ -8,8 +8,12 @@
     "core:npm-install": "node scripts/core-npm-install.js",
     "prestart": "npm run core:npm-install",
     "start": "ELECTRON_DISABLE_SANDBOX=1 electron-forge start",
+    "clean:forge": "node -e \"require('fs').rmSync('.webpack',{recursive:true,force:true});require('fs').rmSync('out',{recursive:true,force:true});\"",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "make:linux": "electron-forge make --platform=linux",
+    "make:linux:deb": "npm run clean:forge && electron-forge make --platform=linux --targets=@electron-forge/maker-deb",
+    "make:linux:appimage": "npm run clean:forge && electron-forge make --platform=linux --targets=@forkprince/electron-forge-maker-appimage",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "node --experimental-strip-types --test src/main/parse-asset-ipc-payload.test.ts src/renderer/notes-sidebar/notes-sidebar-utils.test.ts"
@@ -19,7 +23,7 @@
     "plugin",
     "Nodex"
   ],
-  "author": "",
+  "author": "Nodex <nodex@nodex.local>",
   "license": "ISC",
   "devDependencies": {
     "@electron-forge/cli": "^7.11.1",
@@ -29,6 +33,7 @@
     "@electron-forge/maker-zip": "^7.11.1",
     "@electron-forge/plugin-webpack": "^7.11.1",
     "@electron/rebuild": "^4.0.2",
+    "@forkprince/electron-forge-maker-appimage": "^1.0.2",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/react": "^19.2.14",

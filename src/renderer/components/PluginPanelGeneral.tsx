@@ -12,9 +12,10 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
   const [path, setPath] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [message, setMessage] = useState<{
-    type: "success" | "error";
+    type: "success" | "error" | "info";
     text: string;
   } | null>(null);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     void window.Nodex.getUserPluginsDirectory().then((r) => {
@@ -23,6 +24,59 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
       }
     });
   }, []);
+
+  const handleImportPlugin = async () => {
+    try {
+      setImporting(true);
+      setMessage(null);
+      const pkgPath = await window.Nodex.selectZipFile();
+      if (!pkgPath) {
+        return;
+      }
+      const pre = await window.Nodex.validatePluginZip(pkgPath);
+      if (!pre.valid) {
+        setMessage({
+          type: "error",
+          text: `Validation failed:\n${pre.errors.join("\n")}`,
+        });
+        return;
+      }
+      if (pre.warnings.length > 0) {
+        setMessage({
+          type: "info",
+          text: `Warnings:\n${pre.warnings.join("\n")}`,
+        });
+      }
+      const result = await window.Nodex.importPlugin(pkgPath);
+      if (!result.success) {
+        setMessage({
+          type: "error",
+          text: result.error || "Failed to import plugin",
+        });
+        return;
+      }
+      const w =
+        result.warnings?.length && result.warnings.length > 0
+          ? `\nWarnings:\n${result.warnings.join("\n")}`
+          : "";
+      setMessage({
+        type: "success",
+        text: `Plugin imported successfully!${w}`,
+      });
+      onPluginsChanged?.();
+      const again = await window.Nodex.getUserPluginsDirectory();
+      if (again.path) {
+        setPath(again.path);
+      }
+    } catch (e) {
+      setMessage({
+        type: "error",
+        text: e instanceof Error ? e.message : "Failed to import plugin",
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const run = async (
     key: string,
@@ -148,6 +202,26 @@ Sample markdown/tiptap sources will be re-seeded. Plugin disable flags are reset
           {message.text}
         </div>
       )}
+
+      <section className="mb-8 space-y-3">
+        <h3 className="text-[12px] font-semibold text-foreground">
+          Import plugin
+        </h3>
+        <p className="text-[11px] text-muted-foreground">
+          Import a packaged plugin file (
+          <code className="rounded bg-muted px-1">.nodexplugin</code> or{" "}
+          <code className="rounded bg-muted px-1">.zip</code>) into your plugins
+          directory.
+        </p>
+        <button
+          type="button"
+          disabled={working !== null || importing}
+          className="nodex-btn-neutral rounded-md px-3 py-1.5 text-[12px] font-semibold"
+          onClick={() => void handleImportPlugin()}
+        >
+          {importing ? "Importing…" : "Import plugin…"}
+        </button>
+      </section>
 
       <section className="mb-8 space-y-3">
         <h3 className="text-[12px] font-semibold text-foreground">

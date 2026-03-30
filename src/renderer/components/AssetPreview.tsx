@@ -141,7 +141,7 @@ export default function AssetPreview({ relativePath, projectRoot }: Props) {
           <iframe
             title={info.name}
             src={assetSrc}
-            className="h-[min(100%,calc(100vh-12rem))] min-h-[420px] w-full rounded-md border border-border"
+            className="h-full min-h-[420px] w-full rounded-md border border-border"
           />
         ) : mediaCategory === "video" ? (
           <div className="flex justify-center">

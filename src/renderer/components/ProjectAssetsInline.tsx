@@ -49,6 +49,8 @@ type Props = {
   projectRoot: string;
   depth: number;
   storageKey: string;
+  /** Project-level refresh tick to keep current folder but re-list entries. */
+  refreshTick?: number;
   onOpenFile: (relativePath: string) => void;
   onAssetMoved?: () => void;
 };
@@ -57,6 +59,7 @@ export default function ProjectAssetsInline({
   projectRoot,
   depth,
   storageKey,
+  refreshTick,
   onOpenFile,
   onAssetMoved,
 }: Props) {
@@ -121,7 +124,7 @@ export default function ProjectAssetsInline({
     return () => {
       cancelled = true;
     };
-  }, [relDir, projectRoot, tick]);
+  }, [relDir, projectRoot, tick, refreshTick]);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
@@ -207,23 +210,6 @@ export default function ProjectAssetsInline({
             <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               Assets
             </span>
-          </button>
-          <button
-            type="button"
-            className="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-sidebar-accent/50"
-            title="Open assets folder in file manager"
-            onClick={() => {
-              void window.Nodex.revealAssetInFileManager("", projectRoot);
-            }}
-          >
-            Open folder
-          </button>
-          <button
-            type="button"
-            className="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-sidebar-accent/50"
-            onClick={() => refresh()}
-          >
-            Refresh
           </button>
         </div>
         {expanded ? (

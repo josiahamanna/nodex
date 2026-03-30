@@ -18,9 +18,17 @@ const PluginsSidebarList: React.FC<PluginsSidebarListProps> = ({
   const [rows, setRows] = useState<
     Awaited<ReturnType<typeof window.Nodex.getPluginInventory>>
   >([]);
+  const [err, setErr] = useState<string | null>(null);
 
   const refresh = () => {
-    void window.Nodex.getPluginInventory().then(setRows);
+    setErr(null);
+    void window.Nodex
+      .getPluginInventory()
+      .then(setRows)
+      .catch((e) => {
+        setRows([]);
+        setErr(e instanceof Error ? e.message : "Failed to load plugins");
+      });
   };
 
   useEffect(() => {
@@ -51,6 +59,15 @@ const PluginsSidebarList: React.FC<PluginsSidebarListProps> = ({
           Plugins
         </span>
       </div>
+      {err ? (
+        <div className="border-sidebar-border border-b px-3 py-3 text-[11px] text-muted-foreground">
+          {err}
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="border-sidebar-border border-b px-3 py-3 text-[11px] text-muted-foreground">
+          No plugins found.
+        </div>
+      ) : null}
       {rows.map((r) => {
         const active =
           selection.kind === "plugin" && selection.id === r.id;

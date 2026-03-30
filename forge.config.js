@@ -1,4 +1,5 @@
 const path = require("path");
+const fs = require("fs");
 
 /**
  * Dev-server CSP header (Electron Forge webpack plugin default omits media-src / nodex-asset).
@@ -22,11 +23,15 @@ const DEV_CSP = [
 module.exports = {
   packagerConfig: {
     asar: true,
+    /** Shown in menus / .desktop; package id for installers. */
+    name: "nodex",
+    executableName: "nodex",
+    productName: "Nodex",
     /** Basenames become `Resources/<folderName>` — see `resolveBundledReadonlyPluginRoots` in main-helpers. */
     extraResource: [
       path.resolve(__dirname, "plugins/system"),
       path.resolve(__dirname, "plugins/user"),
-    ],
+    ].filter((p) => fs.existsSync(p)),
   },
   rebuildConfig: {},
   makers: [
@@ -40,13 +45,38 @@ module.exports = {
     },
     {
       name: "@electron-forge/maker-deb",
-      config: {},
+      config: {
+        options: {
+          name: "nodex",
+          productName: "Nodex",
+          /** Path to the Electron binary inside the packaged app (defaults to package.json name). */
+          bin: "nodex",
+          maintainer: "Nodex <nodex@nodex.local>",
+          genericName: "Knowledge workspace",
+        },
+      },
     },
     {
-      name: "@electron-forge/maker-rpm",
-      config: {},
+      name: "@forkprince/electron-forge-maker-appimage",
+      platforms: ["linux"],
+      config: {
+        productName: "Nodex",
+      },
     },
   ],
+  hooks: {
+    preMake: async () => {
+      // Avoid Forge webpack maker failures ("dest already exists") on repeated makes.
+      try {
+        fs.rmSync(path.resolve(__dirname, ".webpack"), {
+          recursive: true,
+          force: true,
+        });
+      } catch {
+        /* ignore */
+      }
+    },
+  },
   plugins: [
     {
       name: "@electron-forge/plugin-webpack",

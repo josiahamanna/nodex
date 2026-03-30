@@ -1139,6 +1139,34 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     }
   };
 
+  const publishAsFile = async () => {
+    if (!pluginFolder) {
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      if (activeTab && activeTab.content !== activeTab.savedContent) {
+        const ok = await saveActive();
+        if (!ok) {
+          return;
+        }
+      }
+      const res = await window.Nodex.publishPluginAsFile(pluginFolder);
+      if (!res.success) {
+        setStatus(res.error ?? "Publish failed");
+        return;
+      }
+      setStatus(
+        res.path ? `Published: ${res.path}` : "Published plugin package.",
+      );
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Publish failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const reloadOnly = async () => {
     setBusy(true);
     setStatus(null);
@@ -2204,6 +2232,7 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     runTypecheck,
     bundleLocalOnly,
     bundleAndReload,
+    publishAsFile,
     reloadOnly,
     onImportFiles,
     onImportFolder,
@@ -2483,6 +2512,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           return;
         case "installDeps":
           void a.runInstallDependencies();
+          return;
+        case "publishAsFile":
+          void a.publishAsFile();
           return;
         case "loadParent":
           void a.loadNodexFromParent();
@@ -3090,6 +3122,18 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
                     }}
                   >
                     Bundle &amp; reload
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!pluginFolder || busy}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void publishAsFile();
+                    }}
+                  >
+                    Publish as file…
                   </button>
                   <button
                     type="button"

@@ -341,6 +341,18 @@ export function EditorTabMenuPortal({
           >
             Install dependencies
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!pf || busy}
+            className={menuItem}
+            onClick={() => {
+              setMenu(null);
+              fireIdeShellAction("publishAsFile");
+            }}
+          >
+            Publish as file…
+          </button>
         </>
       ) : null}
     </div>,

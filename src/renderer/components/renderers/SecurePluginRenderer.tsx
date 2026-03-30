@@ -493,12 +493,17 @@ function createSandboxedHTML(
   ${themeStyle}
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
       padding: 1rem;
       background: hsl(var(--background, 0 0% 100%));
       color: hsl(var(--foreground, 222.2 47% 11%));
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
     }
+    #plugin-root { flex: 1; min-height: 0; }
   </style>
 </head>
 <body>
