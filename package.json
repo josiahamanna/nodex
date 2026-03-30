@@ -1,6 +1,6 @@
 {
   "name": "nodex",
-  "version": "0.0.0-experimental.1",
+  "version": "0.0.0-experimental.2",
   "description": "Nodex - Programmable Knowledge System POC",
   "main": ".webpack/main",
   "scripts": {
