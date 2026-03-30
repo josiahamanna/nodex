@@ -311,7 +311,7 @@ export type NodexRendererApi = {
   readPluginSourceFile: (
     installedFolderName: string,
     relativePath: string,
-  ) => Promise<string>;
+  ) => Promise<string | null>;
   writePluginSourceFile: (
     installedFolderName: string,
     relativePath: string,

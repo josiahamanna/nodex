@@ -1,5 +1,5 @@
 {
-  "name": "poc-electron-plugin-arch",
+  "name": "nodex",
   "version": "0.0.0-experimental.1",
   "description": "Nodex - Programmable Knowledge System POC",
   "main": ".webpack/main",

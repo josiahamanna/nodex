@@ -342,10 +342,18 @@ ipcMain.handle(
     if (!isSafePluginName(installedFolderName)) {
       throw new Error("Invalid plugin name");
     }
-    return getPluginLoader().readPluginSourceFile(
-      installedFolderName,
-      relativePath,
-    );
+    try {
+      return getPluginLoader().readPluginSourceFile(
+        installedFolderName,
+        relativePath,
+      );
+    } catch (e) {
+      /** Missing optional files (e.g. .prettierrc) must not log as IPC handler errors. */
+      if (e instanceof Error && e.message === "File not found") {
+        return null;
+      }
+      throw e;
+    }
   },
 );
 

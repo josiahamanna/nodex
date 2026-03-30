@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { BrowserWindow, Menu, app } from "electron";
 import { ctx } from "./main-context";
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
@@ -18,10 +18,33 @@ export function createMainWindow(): void {
       devTools: true,
     },
   });
-  if (process.platform !== "darwin") {
-    ctx.mainWindow.removeMenu();
+  /**
+   * Linux/Windows: `removeMenu()` drops all accelerators — DevTools shortcuts never fire.
+   * Keep a minimal menu (hidden until Alt) so `toggleDevTools` and reload work in production.
+   */
+  if (process.platform === "darwin") {
+    ctx.mainWindow.setMenuBarVisibility(false);
+  } else {
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([
+        {
+          label: app.name,
+          submenu: [{ role: "quit" }],
+        },
+        {
+          label: "View",
+          submenu: [
+            { role: "reload", accelerator: "CmdOrCtrl+R" },
+            { type: "separator" },
+            /** Default accelerator is Ctrl+Shift+I (Linux/Win); F12 is handled in before-input-event. */
+            { role: "toggleDevTools" },
+          ],
+        },
+      ]),
+    );
+    ctx.mainWindow.setMenuBarVisibility(false);
+    ctx.mainWindow.autoHideMenuBar = true;
   }
-  ctx.mainWindow.setMenuBarVisibility(false);
 
   ctx.mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 

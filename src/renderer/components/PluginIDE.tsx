@@ -316,6 +316,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           continue;
         }
         const raw = await window.Nodex.readPluginSourceFile(pf, t.relativePath);
+        if (raw === null) {
+          continue;
+        }
         replacements.set(t.relativePath, {
           content: raw,
           diskMtimeMs: meta.mtimeMs,
@@ -625,6 +628,12 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
           pluginFolder,
           "package.json",
         );
+        if (raw === null) {
+          if (!cancelled) {
+            setInstalledPkgs([]);
+          }
+          return;
+        }
         const j = JSON.parse(raw) as {
           dependencies?: Record<string, string>;
           devDependencies?: Record<string, string>;
@@ -743,6 +752,10 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
         pluginFolder,
         relativePath,
       );
+      if (content === null) {
+        setStatus("File not found.");
+        return;
+      }
       const meta = await window.Nodex.getPluginSourceFileMeta(
         pluginFolder,
         relativePath,
@@ -829,6 +842,9 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
               pluginFolder,
               cfg,
             );
+            if (raw === null) {
+              continue;
+            }
             Object.assign(rc, JSON.parse(raw) as Record<string, unknown>);
             break;
           } catch {
@@ -1026,6 +1042,10 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     setBusy(true);
     try {
       const content = await window.Nodex.readPluginSourceFile(pf, rel);
+      if (content === null) {
+        setStatus("File not found on disk.");
+        return;
+      }
       const meta = await window.Nodex.getPluginSourceFileMeta(pf, rel);
       setTabs((prev) =>
         prev.map((t) =>
@@ -1812,10 +1832,14 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
     try {
       let raw: string;
       try {
-        raw = await window.Nodex.readPluginSourceFile(
+        const read = await window.Nodex.readPluginSourceFile(
           pluginFolder,
           "package.json",
         );
+        if (read === null) {
+          throw new Error("missing");
+        }
+        raw = read;
       } catch {
         raw = JSON.stringify(
           {
