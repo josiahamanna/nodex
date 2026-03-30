@@ -123,9 +123,30 @@ function npmInstallIfNeeded(pluginDir: string): void {
   const hasLock =
     fs.existsSync(path.join(pluginDir, "package-lock.json")) ||
     fs.existsSync(path.join(pluginDir, "npm-shrinkwrap.json"));
-  const cmd = hasLock ? "npm ci" : "npm install";
-  console.log(`[build-plugins-release] ${cmd} in ${pluginDir}`);
-  execSync(cmd, { cwd: pluginDir, stdio: "inherit", env: process.env });
+  const preferCi =
+    hasLock &&
+    (process.env.FORCE_NPM_CI === "1" ||
+      process.env.CI === "true" ||
+      process.env.GITHUB_ACTIONS === "true");
+
+  const run = (cmd: string) => {
+    console.log(`[build-plugins-release] ${cmd} in ${pluginDir}`);
+    execSync(cmd, { cwd: pluginDir, stdio: "inherit", env: process.env });
+  };
+
+  if (!preferCi) {
+    run("npm install");
+    return;
+  }
+
+  try {
+    run("npm ci");
+  } catch (e) {
+    console.warn(
+      `[build-plugins-release] npm ci failed (lockfile out of sync?). Falling back to npm install for ${pluginDir}.`,
+    );
+    run("npm install");
+  }
 }
 
 async function main(): Promise<void> {
