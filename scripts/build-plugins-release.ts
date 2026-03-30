@@ -6,8 +6,9 @@
  *   npx tsx scripts/build-plugins-release.ts
  *
  * Env:
- *   PLUGIN_RELEASE_ROOT — default test-inputs/plugins
+ *   PLUGIN_RELEASE_ROOT — default user-pluggins
  *   PLUGIN_RELEASE_OUT  — default out/make/plugins
+ *   PLUGIN_RELEASE_ONLY — optional plugin folder name (under root) OR absolute path
  */
 import { execSync } from "child_process";
 import * as fs from "fs";
@@ -119,17 +120,22 @@ function npmInstallIfNeeded(pluginDir: string): void {
   if (!fs.existsSync(pkg)) {
     return;
   }
-  console.log(`[build-plugins-release] npm install in ${pluginDir}`);
-  execSync("npm install", { cwd: pluginDir, stdio: "inherit", env: process.env });
+  const hasLock =
+    fs.existsSync(path.join(pluginDir, "package-lock.json")) ||
+    fs.existsSync(path.join(pluginDir, "npm-shrinkwrap.json"));
+  const cmd = hasLock ? "npm ci" : "npm install";
+  console.log(`[build-plugins-release] ${cmd} in ${pluginDir}`);
+  execSync(cmd, { cwd: pluginDir, stdio: "inherit", env: process.env });
 }
 
 async function main(): Promise<void> {
   const root = path.resolve(
-    process.env.PLUGIN_RELEASE_ROOT ?? "test-inputs/plugins",
+    process.env.PLUGIN_RELEASE_ROOT ?? "user-pluggins",
   );
   const outDir = path.resolve(
     process.env.PLUGIN_RELEASE_OUT ?? "out/make/plugins",
   );
+  const only = (process.env.PLUGIN_RELEASE_ONLY ?? "").trim();
 
   if (!fs.existsSync(root)) {
     console.warn(`[build-plugins-release] Missing ${root}, skipping plugins.`);
@@ -138,11 +144,24 @@ async function main(): Promise<void> {
 
   fs.mkdirSync(outDir, { recursive: true });
 
-  const entries = fs.readdirSync(root, { withFileTypes: true });
-  const dirs = entries
-    .filter((e) => e.isDirectory() && !e.name.startsWith("."))
-    .map((e) => path.join(root, e.name))
-    .filter((d) => fs.existsSync(path.join(d, "manifest.json")));
+  const dirs: string[] = [];
+  if (only.length > 0) {
+    const candidate = path.isAbsolute(only) ? only : path.join(root, only);
+    if (!fs.existsSync(path.join(candidate, "manifest.json"))) {
+      throw new Error(
+        `[build-plugins-release] PLUGIN_RELEASE_ONLY not found or missing manifest.json: ${candidate}`,
+      );
+    }
+    dirs.push(candidate);
+  } else {
+    const entries = fs.readdirSync(root, { withFileTypes: true });
+    dirs.push(
+      ...entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+        .map((e) => path.join(root, e.name))
+        .filter((d) => fs.existsSync(path.join(d, "manifest.json"))),
+    );
+  }
 
   if (dirs.length === 0) {
     console.warn(

@@ -1,5 +1,5 @@
-# Builds Nodex (Electron Forge) for Linux, Windows, and macOS, builds plugins from
-# test-inputs/plugins, and publishes a GitHub Release when you push a version tag (v*).
+# Builds Nodex (Electron Forge) for Linux, Windows, and macOS, and publishes a GitHub Release
+# when you push a version tag (v*). Plugins are released by a separate workflow.
 #
 # Trigger a tag push:
 #   git tag v0.1.0
@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 jobs:
-  build-linux-plugins:
+  build-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,13 +39,10 @@ jobs:
       - name: Make Linux (.deb + AppImage)
         run: npm run make:linux:deb-appimage
 
-      - name: Build plugin packages (test-inputs/plugins)
-        run: npm run build:plugins-release
-
-      - name: Upload Linux + plugin artifacts
+      - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: linux-and-plugins
+          name: linux-dist
           path: out/make/**
           if-no-files-found: error
           retention-days: 14
@@ -87,8 +84,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Make macOS (.zip)
-        run: npm run clean:forge && npx electron-forge make --platform=darwin --targets=@electron-forge/maker-zip
+      - name: Make macOS (.dmg)
+        run: npm run clean:forge && npx electron-forge make --platform=darwin --targets=@electron-forge/maker-dmg
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -100,7 +97,7 @@ jobs:
 
   publish-release:
     needs:
-      - build-linux-plugins
+      - build-linux
       - build-windows
       - build-mac
     if: startsWith(github.ref, 'refs/tags/')

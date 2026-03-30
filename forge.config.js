@@ -51,8 +51,11 @@ module.exports = {
       config: {},
     },
     {
-      name: "@electron-forge/maker-zip",
+      name: "@electron-forge/maker-dmg",
       platforms: ["darwin"],
+      config: {
+        name: "Nodex",
+      },
     },
     {
       name: "@electron-forge/maker-deb",

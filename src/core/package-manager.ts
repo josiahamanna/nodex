@@ -21,7 +21,7 @@ export interface PackageInfo {
 
 export class PackageManager {
   /**
-   * Create a development mode package (.Nodexplugin-dev)
+   * Create a development mode package (.nodexplugin-dev)
    * Includes source files and package.json, excludes node_modules
    */
   async createDevPackage(options: PackageOptions): Promise<string> {
@@ -68,7 +68,7 @@ export class PackageManager {
     const zip = new AdmZip();
     const outputFile = path.join(
       outputPath,
-      `${manifest.name}-${manifest.version}.Nodexplugin-dev`,
+      `${manifest.name}-${manifest.version}.nodexplugin-dev`,
     );
 
     // Add files to zip
@@ -99,7 +99,7 @@ export class PackageManager {
   }
 
   /**
-   * Create a production mode package (.Nodexplugin)
+   * Create a production mode package (.nodexplugin)
    * Includes compiled bundles, excludes source files
    */
   async createProductionPackage(options: PackageOptions): Promise<string> {
@@ -126,7 +126,7 @@ export class PackageManager {
     const zip = new AdmZip();
     const outputFile = path.join(
       outputPath,
-      `${manifest.name}-${manifest.version}.Nodexplugin`,
+      `${manifest.name}-${manifest.version}.nodexplugin`,
     );
 
     // Add files to zip
@@ -164,11 +164,11 @@ export class PackageManager {
     }
 
     // Determine package mode from extension
-    const ext = path.extname(packagePath);
+    const ext = path.extname(packagePath).toLowerCase();
     const mode =
-      ext === ".nodexplugin-dev" || ext === ".Nodexplugin-dev"
+      ext === ".nodexplugin-dev"
         ? "development"
-        : ext === ".nodexplugin" || ext === ".Nodexplugin"
+        : ext === ".nodexplugin"
           ? "production"
           : null;
 
@@ -327,12 +327,10 @@ export class PackageManager {
       }
 
       // Check extension
-      const ext = path.extname(packagePath);
+      const ext = path.extname(packagePath).toLowerCase();
       const extOk =
         ext === ".nodexplugin" ||
         ext === ".nodexplugin-dev" ||
-        ext === ".Nodexplugin" ||
-        ext === ".Nodexplugin-dev" ||
         ext === ".zip";
       if (!extOk) {
         errors.push(
@@ -370,7 +368,6 @@ export class PackageManager {
       // Check mode matches extension (.zip treated like dev archive)
       const expectedMode =
         ext === ".nodexplugin-dev" ||
-        ext === ".Nodexplugin-dev" ||
         ext === ".zip"
           ? "development"
           : "production";
