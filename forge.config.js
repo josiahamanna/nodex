@@ -20,9 +20,20 @@ const DEV_CSP = [
   "object-src 'self' nodex-asset: blob: data:",
 ].join("; ");
 
+const { copyPackagerMainExternals } = require("./scripts/copy-packager-main-externals");
+
 module.exports = {
   packagerConfig: {
     asar: true,
+    /**
+     * Webpack marks `esbuild` external; its binary must not run from inside asar.
+     * Rollup optional native addons live under `@rollup/*`.
+     */
+    asarUnpack: [
+      "**/node_modules/esbuild/**",
+      "**/node_modules/@esbuild/**",
+      "**/node_modules/@rollup/**",
+    ],
     /** Shown in menus / .desktop; package id for installers. */
     name: "nodex",
     executableName: "nodex",
@@ -75,6 +86,10 @@ module.exports = {
       } catch {
         /* ignore */
       }
+    },
+    /** After webpack plugin copies `.webpack`; populate `node_modules` for main externals. */
+    packageAfterCopy: async (_forgeConfig, buildPath) => {
+      copyPackagerMainExternals(buildPath);
     },
   },
   plugins: [
