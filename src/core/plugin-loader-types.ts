@@ -1,6 +1,9 @@
 export type PluginMode = "development" | "production";
 export type PluginType = "ui" | "backend" | "hybrid";
 
+/** Host visibility tier (orthogonal to manifest `type` ui/backend/hybrid). */
+export type PluginHostTier = "system" | "core" | "user";
+
 export type Permission =
   | "storage.read"
   | "storage.write"
@@ -48,6 +51,13 @@ export interface PluginManifest {
   theme?: "inherit" | "isolated";
   designSystemVersion?: string;
   deferDisplayUntilContentReady?: boolean;
+  /**
+   * Only honored for plugins under bundled core roots; user-installed plugins are always `user`.
+   * `system` — hidden from Plugins UI and from “new note” type pickers (e.g. code editor).
+   * `core` — hidden from Plugins UI; note types still appear in pickers.
+   * Default for bundled plugins without this field: `core`.
+   */
+  hostTier?: PluginHostTier;
 }
 
 export interface NodexAPI {

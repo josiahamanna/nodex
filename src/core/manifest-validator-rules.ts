@@ -1,4 +1,9 @@
-import type { PluginMode, PluginType, Permission } from "./plugin-loader";
+import type {
+  PluginHostTier,
+  PluginMode,
+  PluginType,
+  Permission,
+} from "./plugin-loader";
 import type { ValidationError } from "./manifest-validator-types";
 
 export function manifestValidateRequired(
@@ -162,6 +167,18 @@ export function manifestValidateValues(
     errors.push({
       field: "version",
       message: "Version must follow semantic versioning (e.g., 1.0.0)",
+      severity: "error",
+    });
+  }
+
+  const validHostTiers: PluginHostTier[] = ["system", "core", "user"];
+  if (
+    manifest.hostTier !== undefined &&
+    !validHostTiers.includes(manifest.hostTier)
+  ) {
+    errors.push({
+      field: "hostTier",
+      message: `hostTier must be one of: ${validHostTiers.join(", ")}`,
       severity: "error",
     });
   }

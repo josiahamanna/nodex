@@ -18,7 +18,12 @@ export type ContextMenuState = {
 
 export type ClipboardState = { mode: "cut" | "copy"; sourceId: string } | null;
 
-export type DropHint = { targetId: string; placement: NoteMovePlacement };
+/** `sectionKey` scopes the indicator to one project panel (resolved workspace root path). */
+export type DropHint = {
+  targetId: string;
+  placement: NoteMovePlacement;
+  sectionKey: string;
+};
 
 export const ctxBtn =
   "block w-full rounded-sm px-2.5 py-1.5 text-left text-[12px] text-popover-foreground outline-none hover:bg-accent hover:text-accent-foreground transition-colors duration-150";
@@ -27,6 +32,28 @@ export function folderDisplayName(absPath: string): string {
   const norm = absPath.replace(/\\/g, "/").replace(/\/+$/, "");
   const parts = norm.split("/").filter(Boolean);
   return parts.length > 0 ? parts[parts.length - 1]! : absPath;
+}
+
+/** Custom label from prefs (if any), else folder basename. */
+export function workspaceFolderLabel(
+  absPath: string,
+  labels: Record<string, string> | undefined,
+): string {
+  if (!labels || Object.keys(labels).length === 0) {
+    return folderDisplayName(absPath);
+  }
+  const direct = labels[absPath];
+  if (typeof direct === "string" && direct.trim().length > 0) {
+    return direct.trim();
+  }
+  const norm = absPath.replace(/\\/g, "/").replace(/\/+$/, "");
+  for (const [k, v] of Object.entries(labels)) {
+    const kn = k.replace(/\\/g, "/").replace(/\/+$/, "");
+    if (kn === norm && v.trim().length > 0) {
+      return v.trim();
+    }
+  }
+  return folderDisplayName(absPath);
 }
 
 export function parentMapFromNotes(notes: NoteListItem[]): Map<string, string | null> {

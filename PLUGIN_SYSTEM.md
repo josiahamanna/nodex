@@ -4,6 +4,8 @@
 
 Nodex is now a fully plugin-driven note-taking application. All note types are handled by plugins, and the note list is dynamically generated based on installed plugins.
 
+**Architecture:** How bundled vs user plugins are shown in the UI (system / core / user tiers, manifest `hostTier`, and `getSelectableNoteTypes`) is documented in [claude-docs/architecture/plugin-types.md](claude-docs/architecture/plugin-types.md).
+
 ## How It Works
 
 ### Dynamic Note List
@@ -85,22 +87,15 @@ zip -r your-plugin-name.zip manifest.json index.js
 
 ## Built-in Plugins
 
-Three plugins are included by default:
+Sample and bundled behavior:
 
-### 1. markdown-note
-- Type: `markdown`
-- Renders markdown with custom styling
-- Supports headings, bold, italic, lists
+### Markdown and rich text (user-facing samples)
 
-### 2. tiptap-editor
-- Type: `text`
-- Rich text editor with toolbar
-- Full WYSIWYG editing capabilities
+- **Markdown** (`markdown`) and **Tiptap** (`text`) are typically installed as user plugins (seeded under your user plugins directory). They appear in Plugin Manager and in the new-note type list.
 
-### 3. monaco-editor
-- Type: `code`
-- Code editor with syntax highlighting
-- Supports multiple languages
+### Code editor (system tier)
+
+- The **code** note type is provided by the bundled Monaco plugin (`plugins/core/code`). It uses manifest `hostTier: "system"`: it does **not** appear under the Plugins tab or in the “new note” type picker, but existing code notes still open and render normally. See [plugin-types.md](claude-docs/architecture/plugin-types.md).
 
 ## Plugin Development Tips
 

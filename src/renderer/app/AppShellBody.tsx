@@ -19,6 +19,7 @@ export type AppShellBodyProps = {
   registeredTypes: string[];
   currentNoteId: string | undefined;
   rootsList: string[];
+  workspaceLabels: Record<string, string>;
   assetFsTick: number;
   settingsCategory: SettingsCategory;
   setSettingsCategory: (c: SettingsCategory) => void;
@@ -46,6 +47,16 @@ export type AppShellBodyProps = {
   onAddWorkspaceFolder: () => void;
   onRevealProjectFolder: (id: string) => void;
   onRefreshWorkspace: () => void;
+  /** Reload notes list + current note from main (e.g. after DnD detects stale ids). */
+  onResyncNotes: () => void;
+  onSwapWorkspaceBlock: (payload: {
+    blockIndex: number;
+    direction: "up" | "down";
+  }) => Promise<void>;
+  onCommitWorkspaceFolderLabel: (
+    rootPath: string,
+    label: string | null,
+  ) => Promise<void>;
   onOpenProjectFolder: () => void;
   onOpenProjectAsset: (
     projectRoot: string,
@@ -84,6 +95,7 @@ export function AppShellBody(props: AppShellBodyProps): React.ReactNode {
     registeredTypes,
     currentNoteId,
     rootsList,
+    workspaceLabels,
     assetFsTick,
     settingsCategory,
     setSettingsCategory,
@@ -99,6 +111,9 @@ export function AppShellBody(props: AppShellBodyProps): React.ReactNode {
     onAddWorkspaceFolder,
     onRevealProjectFolder,
     onRefreshWorkspace,
+    onResyncNotes,
+    onSwapWorkspaceBlock,
+    onCommitWorkspaceFolderLabel,
     onOpenProjectFolder,
     onOpenProjectAsset,
   } = props;
@@ -147,7 +162,11 @@ export function AppShellBody(props: AppShellBodyProps): React.ReactNode {
             onAddWorkspaceFolder={onAddWorkspaceFolder}
             onRevealProjectFolder={onRevealProjectFolder}
             onRefreshWorkspace={onRefreshWorkspace}
+            onResyncNotes={onResyncNotes}
             workspaceRoots={rootsList}
+            workspaceLabels={workspaceLabels}
+            onSwapWorkspaceBlock={onSwapWorkspaceBlock}
+            onCommitWorkspaceFolderLabel={onCommitWorkspaceFolderLabel}
             onOpenProjectAsset={onOpenProjectAsset}
             assetFsTick={assetFsTick}
           />

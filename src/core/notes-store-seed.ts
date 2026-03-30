@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { registry } from "./registry";
 import {
   getChildren,
   notes,
@@ -87,11 +88,15 @@ export function overviewTitleAndBody(overviewType: string): {
   };
 }
 
-export function childTypesBelowOverview(
-  registeredTypes: string[],
+/**
+ * Types to create as sample children under seeded Home — same set as “new note” pickers
+ * (no system plugins, no workspace `root` pseudo-type).
+ */
+export function sampleChildNoteTypes(
   overviewType: string,
+  selectableNoteTypes: string[],
 ): string[] {
-  return registeredTypes.filter(
+  return selectableNoteTypes.filter(
     (t) => t !== "root" && t !== overviewType,
   );
 }
@@ -128,7 +133,10 @@ export function ensureNotesSeeded(registeredTypes: string[]): void {
     content,
     metadata,
   });
-  const childTypes = childTypesBelowOverview(registeredTypes, overviewType);
+  const childTypes = sampleChildNoteTypes(
+    overviewType,
+    registry.getSelectableNoteTypes(),
+  );
   const childIds: string[] = [];
   for (const type of childTypes) {
     const id = randomUUID();

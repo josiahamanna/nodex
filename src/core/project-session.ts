@@ -10,7 +10,28 @@ export type ProjectPrefs = {
   lastProjectRoot: string | null;
   /** All open project folders (first = primary: notes DB anchor + assets). */
   workspaceRoots?: string[];
+  /** Optional display names in the sidebar (keys = resolved absolute paths). */
+  workspaceLabels?: Record<string, string>;
 };
+
+/** Drop labels for paths no longer in the workspace; normalize keys. */
+export function pruneWorkspaceLabels(
+  labels: Record<string, string> | undefined,
+  roots: string[],
+): Record<string, string> | undefined {
+  if (!labels || Object.keys(labels).length === 0) {
+    return undefined;
+  }
+  const rootSet = new Set(roots.map((r) => path.resolve(String(r).trim())));
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(labels)) {
+    const rk = path.resolve(String(k).trim());
+    if (rootSet.has(rk) && typeof v === "string" && v.trim().length > 0) {
+      out[rk] = v.trim();
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
 
 /** Keep workspace order; drop paths that are missing or not directories. */
 export function filterExistingWorkspaceRoots(roots: string[]): string[] {
@@ -75,10 +96,34 @@ export function readProjectPrefs(userDataPath: string): ProjectPrefs {
         workspaceRoots = undefined;
       }
     }
+    let workspaceLabels: Record<string, string> | undefined;
+    if (
+      j.workspaceLabels &&
+      typeof j.workspaceLabels === "object" &&
+      !Array.isArray(j.workspaceLabels)
+    ) {
+      const wl: Record<string, string> = {};
+      for (const [k, v] of Object.entries(
+        j.workspaceLabels as Record<string, unknown>,
+      )) {
+        if (
+          typeof k === "string" &&
+          k.trim().length > 0 &&
+          typeof v === "string" &&
+          v.trim().length > 0
+        ) {
+          wl[path.resolve(k.trim())] = v.trim();
+        }
+      }
+      if (Object.keys(wl).length > 0) {
+        workspaceLabels = wl;
+      }
+    }
     return {
       lastProjectRoot:
         typeof j.lastProjectRoot === "string" ? j.lastProjectRoot : null,
       workspaceRoots,
+      workspaceLabels,
     };
   } catch {
     return { lastProjectRoot: null };
@@ -198,9 +243,14 @@ export function activateWorkspace(
   const dbPath = getProjectNotesDbPath(rootsResolved[0]!);
   const legacyJson = getProjectLegacyNotesJsonPath(rootsResolved[0]!);
   bootstrapWorkspaceNotes(rootsResolved, legacyJson, registeredTypes);
+  const prevPrefs = readProjectPrefs(userDataPath);
   writeProjectPrefs(userDataPath, {
     lastProjectRoot: rootsResolved[0]!,
     workspaceRoots: rootsResolved,
+    workspaceLabels: pruneWorkspaceLabels(
+      prevPrefs.workspaceLabels,
+      rootsResolved,
+    ),
   });
   return {
     ok: true,
@@ -208,6 +258,36 @@ export function activateWorkspace(
     dbPath,
     workspaceRoots: rootsResolved,
   };
+}
+
+export function setWorkspaceFolderLabel(
+  userDataPath: string,
+  rootPath: string,
+  label: string | null,
+):
+  | { ok: true; workspaceLabels: Record<string, string> }
+  | { ok: false; error: string } {
+  const prefs = readProjectPrefs(userDataPath);
+  const roots = getNormalizedWorkspaceRoots(prefs);
+  const norm = path.resolve(String(rootPath).trim());
+  if (!roots.some((r) => path.resolve(r) === norm)) {
+    return { ok: false, error: "Path is not in the workspace" };
+  }
+  const nextLabels: Record<string, string> = {
+    ...(prefs.workspaceLabels ?? {}),
+  };
+  if (label == null || label.trim() === "") {
+    delete nextLabels[norm];
+  } else {
+    nextLabels[norm] = label.trim();
+  }
+  const pruned = pruneWorkspaceLabels(nextLabels, roots) ?? {};
+  writeProjectPrefs(userDataPath, {
+    lastProjectRoot: prefs.lastProjectRoot,
+    workspaceRoots: prefs.workspaceRoots,
+    workspaceLabels: Object.keys(pruned).length > 0 ? pruned : undefined,
+  });
+  return { ok: true, workspaceLabels: pruned };
 }
 
 /** Replace workspace with a single folder. */

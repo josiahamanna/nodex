@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   Panel,
@@ -65,6 +65,9 @@ const App: React.FC = () => {
     undefined,
   );
   const [workspaceRoots, setWorkspaceRoots] = useState<string[]>([]);
+  const [workspaceLabels, setWorkspaceLabels] = useState<Record<string, string>>(
+    {},
+  );
   const [assetFsTick, setAssetFsTick] = useState(0);
   const [notesMainPane, setNotesMainPane] = useState<NotesMainPane>({
     kind: "note",
@@ -126,6 +129,7 @@ const App: React.FC = () => {
     void window.Nodex.getProjectState().then((s) => {
       setProjectRoot(s.rootPath);
       setWorkspaceRoots(s.workspaceRoots ?? []);
+      setWorkspaceLabels(s.workspaceLabels ?? {});
     });
   }, []);
 
@@ -157,6 +161,7 @@ const App: React.FC = () => {
       void window.Nodex.getProjectState().then((s) => {
         setProjectRoot(s.rootPath);
         setWorkspaceRoots(s.workspaceRoots ?? []);
+        setWorkspaceLabels(s.workspaceLabels ?? {});
         setNotesMainPane({ kind: "note" });
       });
       void (async () => {
@@ -228,9 +233,9 @@ const App: React.FC = () => {
 
   const [registeredTypes, setRegisteredTypes] = useState<string[]>([]);
   useEffect(() => {
-    void window.Nodex.getRegisteredTypes().then(setRegisteredTypes);
+    void window.Nodex.getSelectableNoteTypes().then(setRegisteredTypes);
     const u = window.Nodex.onPluginsChanged(() => {
-      void window.Nodex.getRegisteredTypes().then(setRegisteredTypes);
+      void window.Nodex.getSelectableNoteTypes().then(setRegisteredTypes);
     });
     return u;
   }, []);
@@ -240,6 +245,8 @@ const App: React.FC = () => {
     if (r.ok) {
       setProjectRoot(r.rootPath ?? null);
       setWorkspaceRoots(r.workspaceRoots ?? []);
+      const st = await window.Nodex.getProjectState();
+      setWorkspaceLabels(st.workspaceLabels ?? {});
       try {
         await dispatch(fetchAllNotes()).unwrap();
         await dispatch(fetchNote()).unwrap();
@@ -254,6 +261,8 @@ const App: React.FC = () => {
     if (r.ok) {
       setProjectRoot(r.rootPath ?? null);
       setWorkspaceRoots(r.workspaceRoots ?? []);
+      const st = await window.Nodex.getProjectState();
+      setWorkspaceLabels(st.workspaceLabels ?? {});
       setNotesMainPane({ kind: "note" });
       try {
         await dispatch(fetchAllNotes()).unwrap();
@@ -264,19 +273,58 @@ const App: React.FC = () => {
     }
   };
 
+  /** Reload note tree + current note from main (after moves, stale DnD, etc.). */
+  const resyncNotesFromMain = useCallback(async () => {
+    try {
+      await dispatch(fetchAllNotes()).unwrap();
+      const s = store.getState().notes;
+      if (
+        s.currentNote?.id &&
+        s.notesList.some((n) => n.id === s.currentNote!.id)
+      ) {
+        await dispatch(fetchNote(s.currentNote.id)).unwrap();
+      } else if (s.notesList[0]) {
+        await dispatch(fetchNote(s.notesList[0].id)).unwrap();
+      } else {
+        await dispatch(fetchNote()).unwrap();
+      }
+    } catch {
+      /* errors surface via notes.error */
+    }
+  }, [dispatch]);
+
   const handleRefreshWorkspace = async () => {
     const r = await window.Nodex.refreshWorkspace();
     if (r.ok) {
       setProjectRoot(r.rootPath ?? null);
       setWorkspaceRoots(r.workspaceRoots ?? []);
-      try {
-        await dispatch(fetchAllNotes()).unwrap();
-        await dispatch(fetchNote()).unwrap();
-      } catch {
-        /* errors land in notes.error */
-      }
+      const st = await window.Nodex.getProjectState();
+      setWorkspaceLabels(st.workspaceLabels ?? {});
+      await resyncNotesFromMain();
     }
   };
+
+  const handleSwapWorkspaceBlock = useCallback(
+    async (payload: { blockIndex: number; direction: "up" | "down" }) => {
+      const r = await window.Nodex.swapWorkspaceBlock(payload);
+      if (!r.ok) {
+        return;
+      }
+      setAssetFsTick((t) => t + 1);
+      await resyncNotesFromMain();
+    },
+    [resyncNotesFromMain],
+  );
+
+  const handleCommitWorkspaceFolderLabel = useCallback(
+    async (rootPath: string, label: string | null) => {
+      const r = await window.Nodex.setWorkspaceFolderLabel(rootPath, label);
+      if (r.ok) {
+        setWorkspaceLabels(r.workspaceLabels);
+      }
+    },
+    [],
+  );
 
   const handleRevealProjectFolder = async (noteId: string) => {
     const folder = workspaceFolderPathForNote(noteId, rootsList);
@@ -307,7 +355,7 @@ const App: React.FC = () => {
         /* errors land in notes.error */
       }
     })();
-    void window.Nodex.getRegisteredTypes().then(setRegisteredTypes);
+    void window.Nodex.getSelectableNoteTypes().then(setRegisteredTypes);
   };
 
   const handleCreateNote = async (payload: {
@@ -333,21 +381,13 @@ const App: React.FC = () => {
     targetId: string;
     placement: NoteMovePlacement;
   }) => {
-    const prevId = currentNote?.id;
-    await dispatch(moveNoteInTree(payload)).unwrap();
-    await dispatch(fetchAllNotes()).unwrap();
-    const list = store.getState().notes.notesList;
-    if (prevId && !list.some((n) => n.id === prevId)) {
-      try {
-        if (list[0]) {
-          await dispatch(fetchNote(list[0].id)).unwrap();
-        } else {
-          await dispatch(fetchNote()).unwrap();
-        }
-      } catch {
-        /* errors land in notes.error */
-      }
+    try {
+      await dispatch(moveNoteInTree(payload)).unwrap();
+    } catch (e) {
+      await resyncNotesFromMain();
+      throw e;
     }
+    await resyncNotesFromMain();
   };
 
   const handleMoveNotesBulk = async (payload: {
@@ -355,21 +395,13 @@ const App: React.FC = () => {
     targetId: string;
     placement: NoteMovePlacement;
   }) => {
-    const prevId = currentNote?.id;
-    await dispatch(moveNotesBulkInTree(payload)).unwrap();
-    await dispatch(fetchAllNotes()).unwrap();
-    const list = store.getState().notes.notesList;
-    if (prevId && !list.some((n) => n.id === prevId)) {
-      try {
-        if (list[0]) {
-          await dispatch(fetchNote(list[0].id)).unwrap();
-        } else {
-          await dispatch(fetchNote()).unwrap();
-        }
-      } catch {
-        /* errors land in notes.error */
-      }
+    try {
+      await dispatch(moveNotesBulkInTree(payload)).unwrap();
+    } catch (e) {
+      await resyncNotesFromMain();
+      throw e;
     }
+    await resyncNotesFromMain();
   };
 
   const handleDeleteNotes = async (ids: string[]) => {
@@ -440,6 +472,7 @@ const App: React.FC = () => {
                 registeredTypes={registeredTypes}
                 currentNoteId={currentNote?.id}
                 rootsList={rootsList}
+                workspaceLabels={workspaceLabels}
                 assetFsTick={assetFsTick}
                 settingsCategory={settingsCategory}
                 setSettingsCategory={setSettingsCategory}
@@ -457,6 +490,9 @@ const App: React.FC = () => {
                   void handleRevealProjectFolder(id)
                 }
                 onRefreshWorkspace={() => void handleRefreshWorkspace()}
+                onResyncNotes={() => void resyncNotesFromMain()}
+                onSwapWorkspaceBlock={handleSwapWorkspaceBlock}
+                onCommitWorkspaceFolderLabel={handleCommitWorkspaceFolderLabel}
                 onOpenProjectFolder={() => void handleOpenProjectFolder()}
                 onOpenProjectAsset={(pr, relativePath) =>
                   setNotesMainPane({

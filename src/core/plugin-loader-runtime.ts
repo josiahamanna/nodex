@@ -31,10 +31,76 @@ import { syncHostNodexScopedPackagesIntoWorkspace } from "./nodex-host-packages"
 import { seedSamplePluginsToUserDir } from "./seed-user-plugins";
 import type { NoteRenderer } from "../shared/plugin-api";
 import { writeHybridPluginScaffoldFiles } from "./plugin-loader-scaffold-writer";
-import type { PluginManifest } from "./plugin-loader-types";
+import type {
+  PluginHostTier,
+  PluginManifest,
+} from "./plugin-loader-types";
 import { PluginLoaderBase } from "./plugin-loader-base";
 
 export class PluginLoaderRuntime extends PluginLoaderBase {
+  protected isPathUnderBundledCore(pluginAbsPath: string): boolean {
+    const norm = path.resolve(pluginAbsPath);
+    for (const root of this.bundledCoreRoots) {
+      const r = path.resolve(root);
+      if (norm === r || norm.startsWith(`${r}${path.sep}`)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * User-installed trees are always `user`. Bundled defaults to `core` unless manifest sets `hostTier`.
+   */
+  protected effectiveHostTier(
+    manifest: PluginManifest,
+    pluginPath: string,
+  ): PluginHostTier {
+    if (!this.isPathUnderBundledCore(path.resolve(pluginPath))) {
+      return "user";
+    }
+    const h = manifest.hostTier;
+    if (h === "system" || h === "core" || h === "user") {
+      return h;
+    }
+    return "core";
+  }
+
+  protected getManifestPathForPluginId(pluginId: string): string | null {
+    if (!isSafePluginName(pluginId)) {
+      return null;
+    }
+    for (const root of this.bundledCoreRoots) {
+      const p = path.join(root, pluginId, "manifest.json");
+      if (fs.existsSync(p)) {
+        return p;
+      }
+    }
+    const runtime = this.resolvePluginRuntimePath(pluginId);
+    if (runtime) {
+      const p = path.join(runtime, "manifest.json");
+      if (fs.existsSync(p)) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  readHostTierForPluginId(pluginId: string): PluginHostTier {
+    const mp = this.getManifestPathForPluginId(pluginId);
+    if (!mp) {
+      return "user";
+    }
+    try {
+      const manifest = JSON.parse(
+        fs.readFileSync(mp, "utf8"),
+      ) as PluginManifest;
+      return this.effectiveHostTier(manifest, path.dirname(mp));
+    } catch {
+      return "user";
+    }
+  }
+
   protected resolvePluginRuntimePath(installedFolderName: string): string | null {
     if (!isSafePluginName(installedFolderName)) {
       return null;

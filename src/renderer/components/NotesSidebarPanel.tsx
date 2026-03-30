@@ -37,7 +37,17 @@ export interface NotesSidebarPanelProps {
   onAddWorkspaceFolder?: () => void;
   onRevealProjectFolder?: (noteId: string) => void;
   onRefreshWorkspace?: () => void;
+  onResyncNotes: () => void;
   workspaceRoots: string[];
+  workspaceLabels: Record<string, string>;
+  onSwapWorkspaceBlock: (payload: {
+    blockIndex: number;
+    direction: "up" | "down";
+  }) => Promise<void>;
+  onCommitWorkspaceFolderLabel: (
+    rootPath: string,
+    label: string | null,
+  ) => Promise<void>;
   onOpenProjectAsset: (projectRoot: string, relativePath: string) => void;
   assetFsTick?: number;
 }
@@ -56,7 +66,11 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   onAddWorkspaceFolder,
   onRevealProjectFolder,
   onRefreshWorkspace,
+  onResyncNotes,
   workspaceRoots,
+  workspaceLabels,
+  onSwapWorkspaceBlock,
+  onCommitWorkspaceFolderLabel,
   onOpenProjectAsset,
   assetFsTick = 0,
 }) => {
@@ -95,6 +109,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
         onCreateNote={onCreateNote}
         onRevealProjectFolder={onRevealProjectFolder}
         openRename={core.openRename}
+        workspaceLabels={workspaceLabels}
       />
       <NotesSidebarPanelRenameModal
         renameTarget={core.renameTarget}
@@ -106,6 +121,10 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
       <NotesSidebarPanelWorkspaceBody
         notes={core.notes}
         onRefreshWorkspace={onRefreshWorkspace}
+        onResyncNotes={onResyncNotes}
+        workspaceLabels={workspaceLabels}
+        onSwapWorkspaceBlock={onSwapWorkspaceBlock}
+        onCommitWorkspaceFolderLabel={onCommitWorkspaceFolderLabel}
         onAddWorkspaceFolder={onAddWorkspaceFolder}
         selectedNoteIds={core.selectedNoteIds}
         setSelectedNoteIds={core.setSelectedNoteIds}

@@ -35,6 +35,17 @@ import type { PluginManifest } from "./plugin-loader-types";
 import { PluginLoaderRuntime } from "./plugin-loader-runtime";
 
 export class PluginLoaderRegistry extends PluginLoaderRuntime {
+  getPluginInventory(): {
+    id: string;
+    isBundled: boolean;
+    canToggle: boolean;
+    enabled: boolean;
+    loaded: boolean;
+  }[] {
+    return super
+      .getPluginInventory()
+      .filter((row) => this.readHostTierForPluginId(row.id) === "user");
+  }
 
   loadAll(registry: Registry): void {
     this.loadIssues = [];
@@ -161,6 +172,7 @@ export class PluginLoaderRegistry extends PluginLoaderRuntime {
             designSystemVersion: manifest.designSystemVersion,
             deferDisplayUntilContentReady:
               manifest.deferDisplayUntilContentReady === true,
+            hostTier: this.effectiveHostTier(manifest, pluginPath),
           });
           this.loadedPlugins.add(manifest.name);
           console.log(

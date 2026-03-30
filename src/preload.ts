@@ -47,6 +47,8 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_HTML, type, note),
   getRegisteredTypes: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_REGISTERED_TYPES),
+  getSelectableNoteTypes: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SELECTABLE_NOTE_TYPES),
   selectZipFile: () => ipcRenderer.invoke(IPC_CHANNELS.SELECT_ZIP_FILE),
   importPlugin: (zipPath) =>
     ipcRenderer.invoke(IPC_CHANNELS.IMPORT_PLUGIN, zipPath),
@@ -113,6 +115,13 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_REMOVE_WORKSPACE_ROOT, {
       projectRootAbs,
       moveToTrash,
+    }),
+  swapWorkspaceBlock: (payload) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_SWAP_WORKSPACE_BLOCK, payload),
+  setWorkspaceFolderLabel: (rootPath, label) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_SET_WORKSPACE_LABEL, {
+      rootPath,
+      label,
     }),
   onProjectRootChanged: (callback) => {
     const ch = IPC_CHANNELS.PROJECT_ROOT_CHANGED;

@@ -240,7 +240,8 @@ const PluginIDE: React.FC<PluginIDEProps> = ({
   }, []);
 
   const refreshTypes = useCallback(async () => {
-    const t = await window.Nodex.getRegisteredTypes();
+    const raw = await window.Nodex.getSelectableNoteTypes();
+    const t = raw.filter((x) => x !== "root");
     setTypes(t);
     setPreviewType((cur) => (t.includes(cur) ? cur : t[0] ?? ""));
   }, []);

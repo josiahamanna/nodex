@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import type { NoteListItem, NoteMovePlacement } from "../../preload";
 import type { SidebarAssetsRow, SidebarWorkspaceSection } from "../../shared/sidebar-assets-rows";
 import { noteTypeInitials } from "../utils/note-type-initials";
@@ -8,9 +8,9 @@ import NotesSidebarPanelWorkspaceToolbar from "./NotesSidebarPanelWorkspaceToolb
 import {
   DND_NOTE_IDS_MIME,
   DND_NOTE_MIME,
-  folderDisplayName,
   parseDragIds,
   WORKSPACE_MOUNT_ROW_RE,
+  workspaceFolderLabel,
   type ClipboardState,
   type ContextMenuState,
   type DropHint,
@@ -19,6 +19,7 @@ import {
 export interface NotesSidebarPanelWorkspaceBodyProps {
   notes: NoteListItem[];
   onRefreshWorkspace?: () => void;
+  onResyncNotes: () => void;
   onAddWorkspaceFolder?: () => void;
   selectedNoteIds: Set<string>;
   setSelectedNoteIds: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -70,11 +71,21 @@ export interface NotesSidebarPanelWorkspaceBodyProps {
   toggleCollapsed: (id: string) => void;
   padForSectionNote: (note: NoteListItem, depthTrim: number) => number;
   clipboard: ClipboardState;
+  workspaceLabels: Record<string, string>;
+  onSwapWorkspaceBlock: (payload: {
+    blockIndex: number;
+    direction: "up" | "down";
+  }) => Promise<void>;
+  onCommitWorkspaceFolderLabel: (
+    rootPath: string,
+    label: string | null,
+  ) => Promise<void>;
 }
 
 const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyProps> = ({
   notes,
   onRefreshWorkspace,
+  onResyncNotes,
   onAddWorkspaceFolder,
   selectedNoteIds,
   setSelectedNoteIds,
@@ -107,7 +118,57 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
   toggleCollapsed,
   padForSectionNote,
   clipboard,
+  workspaceLabels,
+  onSwapWorkspaceBlock,
+  onCommitWorkspaceFolderLabel,
 }) => {
+  const validNoteIds = useMemo(() => new Set(notes.map((n) => n.id)), [notes]);
+  const [editingLabelRoot, setEditingLabelRoot] = useState<string | null>(null);
+  const [labelDraft, setLabelDraft] = useState("");
+  const labelSubmitLock = useRef(false);
+
+  const beginEditLabel = useCallback(
+    (root: string) => {
+      setEditingLabelRoot(root);
+      setLabelDraft(workspaceFolderLabel(root, workspaceLabels));
+    },
+    [workspaceLabels],
+  );
+
+  const cancelEditLabel = useCallback(() => {
+    labelSubmitLock.current = true;
+    setEditingLabelRoot(null);
+    setLabelDraft("");
+    queueMicrotask(() => {
+      labelSubmitLock.current = false;
+    });
+  }, []);
+
+  const submitLabelEdit = useCallback(async () => {
+    if (labelSubmitLock.current) {
+      return;
+    }
+    const root = editingLabelRoot;
+    if (!root) {
+      return;
+    }
+    labelSubmitLock.current = true;
+    const trimmed = labelDraft.trim();
+    setEditingLabelRoot(null);
+    setLabelDraft("");
+    try {
+      await onCommitWorkspaceFolderLabel(
+        root,
+        trimmed.length === 0 ? null : trimmed,
+      );
+    } finally {
+      labelSubmitLock.current = false;
+    }
+  }, [editingLabelRoot, labelDraft, onCommitWorkspaceFolderLabel]);
+
+  const reorderBtn =
+    "flex h-3.5 w-5 shrink-0 items-center justify-center rounded-sm text-[10px] leading-none text-sidebar-foreground/70 outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-25";
+
   const assetsDepthInSection = (row: SidebarAssetsRow, depthTrim: number) =>
     Math.max(0, row.depth - depthTrim);
 
@@ -177,10 +238,85 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                     {sectionOpen ? "▾" : "▸"}
                   </span>
                 </button>
+                {sec.workspaceBlockCount > 1 ? (
+                  <div
+                    className="flex shrink-0 flex-col justify-center gap-px border-r border-sidebar-border/40 py-0.5 pr-0.5 pl-0.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      className={reorderBtn}
+                      aria-label="Move project up"
+                      disabled={sec.workspaceBlockIndex <= 0}
+                      onClick={() =>
+                        void onSwapWorkspaceBlock({
+                          blockIndex: sec.workspaceBlockIndex,
+                          direction: "up",
+                        })
+                      }
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className={reorderBtn}
+                      aria-label="Move project down"
+                      disabled={
+                        sec.workspaceBlockIndex >= sec.workspaceBlockCount - 1
+                      }
+                      onClick={() =>
+                        void onSwapWorkspaceBlock({
+                          blockIndex: sec.workspaceBlockIndex,
+                          direction: "down",
+                        })
+                      }
+                    >
+                      ↓
+                    </button>
+                  </div>
+                ) : null}
                 {headerMount ? (
                   <WorkspaceMountHeaderSurface
+                    sectionKey={sec.sectionKey}
                     plainHeader
-                    folderLabel={folderDisplayName(sec.projectRoot)}
+                    folderLabel={
+                      editingLabelRoot === sec.projectRoot ? (
+                        <input
+                          autoFocus
+                          className="min-w-0 flex-1 rounded border border-sidebar-border bg-background px-1.5 py-0.5 font-mono text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+                          value={labelDraft}
+                          onChange={(e) => setLabelDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void submitLabelEdit();
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelEditLabel();
+                            }
+                          }}
+                          onBlur={() => void submitLabelEdit()}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span
+                          role="presentation"
+                          className="block min-w-0 flex-1 cursor-default truncate"
+                          title={sec.projectRoot}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            beginEditLabel(sec.projectRoot);
+                          }}
+                        >
+                          {workspaceFolderLabel(
+                            sec.projectRoot,
+                            workspaceLabels,
+                          )}
+                        </span>
+                      )
+                    }
                     mount={headerMount}
                     draggingId={draggingId}
                     currentNoteId={currentNoteId}
@@ -201,13 +337,49 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                     onNoteSelect={onNoteSelect}
                     setMenu={setMenu}
                     getTypeBadgeClass={getTypeBadgeClass}
+                    validNoteIds={validNoteIds}
+                    onResyncNotes={onResyncNotes}
                   />
                 ) : (
                   <div
                     className="flex min-w-0 flex-1 items-center truncate px-2 py-1 font-mono text-[11px] text-sidebar-foreground/90"
                     title={sec.projectRoot}
                   >
-                    {folderDisplayName(sec.projectRoot)}
+                    {editingLabelRoot === sec.projectRoot ? (
+                      <input
+                        autoFocus
+                        className="min-w-0 flex-1 rounded border border-sidebar-border bg-background px-1.5 py-0.5 font-mono text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+                        value={labelDraft}
+                        onChange={(e) => setLabelDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void submitLabelEdit();
+                          }
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            cancelEditLabel();
+                          }
+                        }}
+                        onBlur={() => void submitLabelEdit()}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <span
+                        role="presentation"
+                        className="block min-w-0 flex-1 cursor-default truncate"
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          beginEditLabel(sec.projectRoot);
+                        }}
+                      >
+                        {workspaceFolderLabel(
+                          sec.projectRoot,
+                          workspaceLabels,
+                        )}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -238,7 +410,10 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                     const selected = primarySelected || inMulti;
                     const pad = padForSectionNote(note, sec.depthTrim);
                     const hint =
-                      dropHint?.targetId === note.id ? dropHint.placement : null;
+                      dropHint?.targetId === note.id &&
+                      dropHint?.sectionKey === sec.sectionKey
+                        ? dropHint.placement
+                        : null;
                     const showChevron = hasChildrenMap.has(note.id);
                     const collapsed = collapsedIds.has(note.id);
                     const isDraggingRow = draggingId === note.id;
@@ -246,7 +421,7 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
 
                     return (
                       <li
-                        key={note.id}
+                        key={`${sec.sectionKey}:${note.id}`}
                         draggable={!WORKSPACE_MOUNT_ROW_RE.test(note.id)}
                         onDragStart={(e) => {
                           const dragIds = idsToDragForRow(note.id);
@@ -303,12 +478,23 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                               : dropAllowedMany(raw, note.id, placement);
                           if (ok) {
                             setDropHint((h) =>
-                              h?.targetId === note.id && h?.placement === placement
+                              h?.targetId === note.id &&
+                              h?.placement === placement &&
+                              h?.sectionKey === sec.sectionKey
                                 ? h
-                                : { targetId: note.id, placement },
+                                : {
+                                    targetId: note.id,
+                                    placement,
+                                    sectionKey: sec.sectionKey,
+                                  },
                             );
                           } else {
-                            setDropHint(null);
+                            setDropHint((h) =>
+                              h?.targetId === note.id &&
+                              h?.sectionKey === sec.sectionKey
+                                ? null
+                                : h,
+                            );
                           }
                         }}
                         onDragLeave={(e) => {
@@ -318,7 +504,10 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                             return;
                           }
                           setDropHint((h) =>
-                            h?.targetId === note.id ? null : h,
+                            h?.targetId === note.id &&
+                            h?.sectionKey === sec.sectionKey
+                              ? null
+                              : h,
                           );
                         }}
                         onDrop={(e) => {
@@ -341,6 +530,11 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                               ? dropAllowedOne(raw[0]!, note.id, placement)
                               : dropAllowedMany(raw, note.id, placement);
                           if (!ok) {
+                            return;
+                          }
+                          const draggedOk = raw.every((id) => validNoteIds.has(id));
+                          if (!draggedOk || !validNoteIds.has(note.id)) {
+                            onResyncNotes();
                             return;
                           }
                           if (raw.length === 1) {

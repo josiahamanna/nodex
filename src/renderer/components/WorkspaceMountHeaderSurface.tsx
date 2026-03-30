@@ -1,22 +1,23 @@
-import React from "react";
+import React, { type ReactNode } from "react";
 import type {
   CreateNoteRelation,
   NoteListItem,
   NoteMovePlacement,
 } from "../../preload";
+import type { DropHint } from "../notes-sidebar/notes-sidebar-utils";
 import { noteTypeInitials } from "../utils/note-type-initials";
 
 const DND_NOTE_MIME = "application/x-nodex-note-id";
 const DND_NOTE_IDS_MIME = "application/x-nodex-note-ids";
 
-type DropHint = { targetId: string; placement: NoteMovePlacement };
-
 type Props = {
+  /** Same as parent workspace section (which project this mount belongs to). */
+  sectionKey: string;
   mount: NoteListItem;
   /** Match primary project header: folder label only, no type badge or tree indent. */
   plainHeader?: boolean;
   /** Shown when `plainHeader` (e.g. basename from disk path). */
-  folderLabel?: string;
+  folderLabel?: ReactNode;
   draggingId: string | null;
   currentNoteId: string | undefined;
   selectedNoteIds: Set<string>;
@@ -60,9 +61,12 @@ type Props = {
     } | null>
   >;
   getTypeBadgeClass: (type: string) => string;
+  validNoteIds: Set<string>;
+  onResyncNotes: () => void;
 };
 
 export default function WorkspaceMountHeaderSurface({
+  sectionKey,
   mount,
   plainHeader = false,
   folderLabel,
@@ -85,14 +89,25 @@ export default function WorkspaceMountHeaderSurface({
   onNoteSelect,
   setMenu,
   getTypeBadgeClass,
+  validNoteIds,
+  onResyncNotes,
 }: Props) {
   const hint =
-    dropHint?.targetId === mount.id ? dropHint.placement : null;
+    dropHint?.targetId === mount.id &&
+    dropHint?.sectionKey === sectionKey
+      ? dropHint.placement
+      : null;
   const primarySelected = currentNoteId === mount.id;
   const inMulti = selectedNoteIds.has(mount.id);
   const selected = primarySelected || inMulti;
   const pad = 6 + mount.depth * 12;
   const label = folderLabel ?? mount.title;
+  const plainTitle =
+    typeof folderLabel === "string"
+      ? folderLabel
+      : typeof mount.title === "string"
+        ? mount.title
+        : undefined;
 
   return (
     <div
@@ -128,12 +143,16 @@ export default function WorkspaceMountHeaderSurface({
             : dropAllowedMany(raw, mount.id, placement);
         if (ok) {
           setDropHint((h) =>
-            h?.targetId === mount.id && h?.placement === placement
+            h?.targetId === mount.id &&
+            h?.placement === placement &&
+            h?.sectionKey === sectionKey
               ? h
-              : { targetId: mount.id, placement },
+              : { targetId: mount.id, placement, sectionKey },
           );
         } else {
-          setDropHint(null);
+          setDropHint((h) =>
+            h?.sectionKey === sectionKey ? null : h,
+          );
         }
       }}
       onDragLeave={(e) => {
@@ -142,7 +161,11 @@ export default function WorkspaceMountHeaderSurface({
         if (rel && cur.contains(rel)) {
           return;
         }
-        setDropHint((h) => (h?.targetId === mount.id ? null : h));
+        setDropHint((h) =>
+          h?.targetId === mount.id && h?.sectionKey === sectionKey
+            ? null
+            : h,
+        );
       }}
       onDrop={(e) => {
         e.preventDefault();
@@ -164,6 +187,11 @@ export default function WorkspaceMountHeaderSurface({
             ? dropAllowedOne(raw[0]!, mount.id, placement)
             : dropAllowedMany(raw, mount.id, placement);
         if (!ok) {
+          return;
+        }
+        const draggedOk = raw.every((id) => validNoteIds.has(id));
+        if (!draggedOk || !validNoteIds.has(mount.id)) {
+          onResyncNotes();
           return;
         }
         if (raw.length === 1) {
@@ -218,7 +246,7 @@ export default function WorkspaceMountHeaderSurface({
       {plainHeader ? (
         <div
           className="flex min-h-8 min-w-0 flex-1 items-center truncate px-2 py-1 font-mono text-[11px] text-sidebar-foreground/90"
-          title={label}
+          title={plainTitle}
         >
           {label}
         </div>

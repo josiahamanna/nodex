@@ -21,13 +21,16 @@ export type SidebarRow = SidebarNoteRow | SidebarAssetsRow;
 
 export type SidebarWorkspaceSection = {
   projectRoot: string;
-  /** Stable id for localStorage (resolved path) */
+  /** Stable id for localStorage (path, or path + first note id for a primary block). */
   sectionKey: string;
   /** Added-folder mount row; rendered as section header + DnD target. Null for primary. */
   mountNote: NoteListItem | null;
   /** Subtract from row depth for padding inside this section (hides mount level). */
   depthTrim: number;
   innerRows: SidebarRow[];
+  /** Index in root-level block order (primary run + each mount); used for ↑↓ reorder. */
+  workspaceBlockIndex: number;
+  workspaceBlockCount: number;
 };
 
 function isMountId(id: string): boolean {
@@ -56,8 +59,8 @@ export function mergeNotesWithProjectAssetsRows(
 }
 
 /**
- * Split merged visible notes into one section per disk root (notes + assets for that root).
- * Mount header rows are excluded from innerRows; pass as mountNote for section chrome.
+ * Split merged visible notes into one section per root-level tree block (depth-first segment at depth 0).
+ * Supports any order of primary vs attached folders under `parentId === null`.
  */
 export function buildWorkspaceSidebarSections(
   visibleNotes: NoteListItem[],
@@ -67,76 +70,73 @@ export function buildWorkspaceSidebarSections(
     return [];
   }
 
-  const sections: SidebarWorkspaceSection[] = [];
-  const firstMount = visibleNotes.findIndex((n) => isMountId(n.id));
-  const primaryEnd = firstMount === -1 ? visibleNotes.length : firstMount;
   const root0 = workspaceRoots[0]!;
-
-  const primaryInner: SidebarRow[] = [];
-  for (let j = 0; j < primaryEnd; j++) {
-    primaryInner.push({ kind: "note", note: visibleNotes[j]! });
+  const segments: NoteListItem[][] = [];
+  for (const n of visibleNotes) {
+    if (n.depth === 0) {
+      segments.push([n]);
+    } else if (segments.length > 0) {
+      segments[segments.length - 1]!.push(n);
+    }
   }
-  const primaryNoteDepth =
-    primaryEnd > 0 ? Math.min(...visibleNotes.slice(0, primaryEnd).map((n) => n.depth)) : 0;
-  primaryInner.push({
-    kind: "assets",
-    projectRoot: root0,
-    depth: primaryEnd > 0 ? primaryNoteDepth + 1 : 0,
-    key: `assets:${root0}`,
-  });
 
-  sections.push({
-    projectRoot: root0,
-    sectionKey: root0,
-    mountNote: null,
-    depthTrim: primaryNoteDepth,
-    innerRows: primaryInner,
-  });
+  const sections: SidebarWorkspaceSection[] = [];
+  const blockCount = segments.length;
 
-  let i = primaryEnd;
-  while (i < visibleNotes.length) {
-    const row = visibleNotes[i]!;
-    if (!isMountId(row.id)) {
-      const primary = sections[0]!;
-      const inner = primary.innerRows;
-      const ins =
-        inner.length > 0 && inner[inner.length - 1]!.kind === "assets"
-          ? inner.length - 1
-          : inner.length;
-      inner.splice(ins, 0, { kind: "note", note: row });
-      i++;
-      continue;
+  for (let bi = 0; bi < segments.length; bi++) {
+    const seg = segments[bi]!;
+    const head = seg[0]!;
+    if (isMountId(head.id)) {
+      const slot = mountSlot(head.id);
+      const pr = workspaceRoots[slot];
+      if (!pr) {
+        continue;
+      }
+      const mountNote = head;
+      const d0 = mountNote.depth;
+      const childNotes = seg.slice(1);
+      const innerRows: SidebarRow[] = [];
+      for (const n of childNotes) {
+        innerRows.push({ kind: "note", note: n });
+      }
+      innerRows.push({
+        kind: "assets",
+        projectRoot: pr,
+        depth: d0 + 1,
+        key: `assets:${pr}:${slot}`,
+      });
+      sections.push({
+        projectRoot: pr,
+        sectionKey: pr,
+        mountNote,
+        depthTrim: d0 + 1,
+        innerRows,
+        workspaceBlockIndex: bi,
+        workspaceBlockCount: blockCount,
+      });
+    } else {
+      const primaryInner: SidebarRow[] = [];
+      for (const n of seg) {
+        primaryInner.push({ kind: "note", note: n });
+      }
+      const primaryNoteDepth =
+        seg.length > 0 ? Math.min(...seg.map((n) => n.depth)) : 0;
+      primaryInner.push({
+        kind: "assets",
+        projectRoot: root0,
+        depth: seg.length > 0 ? primaryNoteDepth + 1 : 0,
+        key: `assets:${root0}:${head.id}`,
+      });
+      sections.push({
+        projectRoot: root0,
+        sectionKey: `${root0}#${head.id}`,
+        mountNote: null,
+        depthTrim: primaryNoteDepth,
+        innerRows: primaryInner,
+        workspaceBlockIndex: bi,
+        workspaceBlockCount: blockCount,
+      });
     }
-    const mountNote = row;
-    const d0 = mountNote.depth;
-    i++;
-    const childNotes: NoteListItem[] = [];
-    while (i < visibleNotes.length && visibleNotes[i]!.depth > d0) {
-      childNotes.push(visibleNotes[i]!);
-      i++;
-    }
-    const slot = mountSlot(mountNote.id);
-    const pr = workspaceRoots[slot];
-    if (!pr) {
-      continue;
-    }
-    const innerRows: SidebarRow[] = [];
-    for (const n of childNotes) {
-      innerRows.push({ kind: "note", note: n });
-    }
-    innerRows.push({
-      kind: "assets",
-      projectRoot: pr,
-      depth: d0 + 1,
-      key: `assets:${pr}:${slot}`,
-    });
-    sections.push({
-      projectRoot: pr,
-      sectionKey: pr,
-      mountNote,
-      depthTrim: d0 + 1,
-      innerRows,
-    });
   }
 
   return sections;

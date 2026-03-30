@@ -5,6 +5,8 @@
   "main": ".webpack/main",
   "scripts": {
     "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "core:npm-install": "node scripts/core-npm-install.js",
+    "prestart": "npm run core:npm-install",
     "start": "ELECTRON_DISABLE_SANDBOX=1 electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",

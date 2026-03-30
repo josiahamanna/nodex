@@ -2,27 +2,47 @@ import { ipcMain, shell } from "electron";
 import * as path from "path";
 import { readAppPrefs, writeAppPrefs } from "../core/app-prefs";
 import {
+  clearNodexUndoRedo,
+  pushNotesUndoSnapshot,
+} from "../core/nodex-undo";
+import {
+  setSeedSampleNotesPreference,
+  swapWorkspaceRootBlock,
+} from "../core/notes-store";
+import {
   activateProject,
   activateWorkspace,
   closeWorkspace,
+  readProjectPrefs,
+  setWorkspaceFolderLabel,
+  pruneWorkspaceLabels,
 } from "../core/project-session";
-import { clearNodexUndoRedo } from "../core/nodex-undo";
-import { setSeedSampleNotesPreference } from "../core/notes-store";
 import { registry } from "../core/registry";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { ctx } from "./main-context";
 import {
   applyWorkspaceActivateResult,
+  assertProjectOpenForNotes,
   broadcastProjectRootChanged,
+  persistNotes,
   showOpenDialogWithParent,
 } from "./main-helpers";
 
 export function registerRunAppReadyProjectIpc(userDataPath: string): void {
-  ipcMain.handle(IPC_CHANNELS.PROJECT_GET_STATE, () => ({
-    rootPath: ctx.projectRootPath,
-    notesDbPath: ctx.notesPersistencePath,
-    workspaceRoots: [...ctx.workspaceRoots],
-  }));
+  ipcMain.handle(IPC_CHANNELS.PROJECT_GET_STATE, () => {
+    const prefs = readProjectPrefs(userDataPath);
+    const roots = ctx.workspaceRoots;
+    const labels =
+      roots.length > 0
+        ? pruneWorkspaceLabels(prefs.workspaceLabels, roots) ?? {}
+        : {};
+    return {
+      rootPath: ctx.projectRootPath,
+      notesDbPath: ctx.notesPersistencePath,
+      workspaceRoots: [...roots],
+      workspaceLabels: labels,
+    };
+  });
 
   ipcMain.handle(IPC_CHANNELS.APP_GET_PREFS, () => readAppPrefs(userDataPath));
 
@@ -140,6 +160,60 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
     }
     return { ok: true as const };
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_SWAP_WORKSPACE_BLOCK,
+    (_e, payload: unknown) => {
+      assertProjectOpenForNotes();
+      if (!payload || typeof payload !== "object") {
+        return { ok: false as const, error: "Invalid payload" };
+      }
+      const raw = payload as { blockIndex?: unknown; direction?: unknown };
+      const blockIndex = raw.blockIndex;
+      const direction = raw.direction;
+      if (
+        typeof blockIndex !== "number" ||
+        !Number.isInteger(blockIndex) ||
+        blockIndex < 0
+      ) {
+        return { ok: false as const, error: "Invalid block index" };
+      }
+      if (direction !== "up" && direction !== "down") {
+        return { ok: false as const, error: "Invalid direction" };
+      }
+      pushNotesUndoSnapshot();
+      const r = swapWorkspaceRootBlock(blockIndex, direction);
+      if (!r.ok) {
+        return r;
+      }
+      persistNotes();
+      return { ok: true as const };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_SET_WORKSPACE_LABEL,
+    (_e, payload: unknown) => {
+      if (!payload || typeof payload !== "object") {
+        return { ok: false as const, error: "Invalid payload" };
+      }
+      const raw = payload as { rootPath?: unknown; label?: unknown };
+      if (typeof raw.rootPath !== "string" || raw.rootPath.trim().length === 0) {
+        return { ok: false as const, error: "Invalid path" };
+      }
+      const label =
+        raw.label == null
+          ? null
+          : typeof raw.label === "string"
+            ? raw.label
+            : null;
+      const r = setWorkspaceFolderLabel(userDataPath, raw.rootPath, label);
+      if (!r.ok) {
+        return r;
+      }
+      return { ok: true as const, workspaceLabels: r.workspaceLabels };
+    },
+  );
 
   ipcMain.handle(IPC_CHANNELS.PROJECT_REFRESH_WORKSPACE, () => {
     if (ctx.workspaceRoots.length === 0) {

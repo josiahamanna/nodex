@@ -8,12 +8,13 @@ import {
   setChildren,
   type NoteRecord,
 } from "./notes-store-core";
+import { registry } from "./registry";
 import {
   bodyForType,
-  childTypesBelowOverview,
   getSeedSampleNotesPreference,
   overviewTitleAndBody,
   pickWorkspaceOverviewType,
+  sampleChildNoteTypes,
   titleForType,
 } from "./notes-store-seed";
 
@@ -111,7 +112,10 @@ export function seedAttachedWorkspaceIfEmpty(
     content,
     metadata,
   });
-  const childTypes = childTypesBelowOverview(registeredTypes, overviewType);
+  const childTypes = sampleChildNoteTypes(
+    overviewType,
+    registry.getSelectableNoteTypes(),
+  );
   const childIds: string[] = [];
   for (const type of childTypes) {
     const id = `${pref}${randomUUID()}`;

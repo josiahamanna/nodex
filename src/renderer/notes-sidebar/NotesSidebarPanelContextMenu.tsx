@@ -12,7 +12,7 @@ import type {
 import {
   clipboardTouchesDeleted,
   ctxBtn,
-  folderDisplayName,
+  workspaceFolderLabel,
   type ClipboardState,
   type ContextMenuState,
 } from "./notes-sidebar-utils";
@@ -43,6 +43,7 @@ export interface NotesSidebarPanelContextMenuProps {
   }) => Promise<void>;
   onRevealProjectFolder?: (noteId: string) => void;
   openRename: (id: string, title: string) => void;
+  workspaceLabels: Record<string, string>;
 }
 
 const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> = ({
@@ -66,6 +67,7 @@ const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> 
   onCreateNote,
   onRevealProjectFolder,
   openRename,
+  workspaceLabels,
 }) => {
   if (!menu) {
     return null;
@@ -103,7 +105,7 @@ const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> 
                   if (!p) {
                     return;
                   }
-                  const name = folderDisplayName(p);
+                  const name = workspaceFolderLabel(p, workspaceLabels);
                   closeMenu();
                   void (async () => {
                     const ok = await confirm({
@@ -138,7 +140,7 @@ const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> 
                   if (!p) {
                     return;
                   }
-                  const name = folderDisplayName(p);
+                  const name = workspaceFolderLabel(p, workspaceLabels);
                   closeMenu();
                   void (async () => {
                     const ok = await confirm({

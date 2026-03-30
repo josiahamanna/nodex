@@ -43,15 +43,39 @@ export function setChildren(parentId: string | null, ids: string[]): void {
 }
 
 export function syncNullChildOrderFromRecords(): void {
-  const roots: string[] = [];
+  const rootIds = new Set<string>();
   for (const n of notes.values()) {
     if (n.parentId === null) {
-      roots.push(n.id);
+      rootIds.add(n.id);
     }
   }
-  if (roots.length > 0) {
-    setChildren(null, roots);
+  if (rootIds.size === 0) {
+    return;
   }
+  const prev = getChildren(null);
+  const ordered: string[] = [];
+  for (const id of prev) {
+    if (rootIds.delete(id)) {
+      ordered.push(id);
+    }
+  }
+  const remaining = [...rootIds];
+  remaining.sort((a, b) => {
+    const ma = /^__nodex_mount_(\d+)$/.exec(a);
+    const mb = /^__nodex_mount_(\d+)$/.exec(b);
+    if (ma && mb) {
+      return Number(ma[1]) - Number(mb[1]);
+    }
+    if (ma) {
+      return 1;
+    }
+    if (mb) {
+      return -1;
+    }
+    return a.localeCompare(b);
+  });
+  ordered.push(...remaining);
+  setChildren(null, ordered);
 }
 
 export function resetNotesStore(): void {

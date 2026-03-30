@@ -74,7 +74,8 @@ ipcMain.handle(
       throw new Error("Invalid payload");
     }
     const { type } = payload;
-    if (!isValidNoteType(type) || !registeredTypes.includes(type)) {
+    const selectable = registry.getSelectableNoteTypes();
+    if (!isValidNoteType(type) || !selectable.includes(type)) {
       throw new Error("Invalid note type");
     }
     const rel = payload.relation;
@@ -188,5 +189,9 @@ ipcMain.handle(
 
 ipcMain.handle(IPC_CHANNELS.GET_REGISTERED_TYPES, async () => {
   return registry.getRegisteredTypes();
+});
+
+ipcMain.handle(IPC_CHANNELS.GET_SELECTABLE_NOTE_TYPES, async () => {
+  return registry.getSelectableNoteTypes();
 });
 }

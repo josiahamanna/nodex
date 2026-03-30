@@ -1,4 +1,5 @@
 import type { Note, NoteRenderer } from "../shared/plugin-api";
+import type { PluginHostTier } from "./plugin-loader-types";
 
 export type PluginThemeMode = "inherit" | "isolated";
 
@@ -16,6 +17,8 @@ export interface PluginRenderer {
 export class Registry {
   private components: Map<string, string> = new Map();
   private renderers: Map<string, PluginRenderer> = new Map();
+  /** Note type string → host tier from the plugin that registered the renderer. */
+  private typeHostTier: Map<string, PluginHostTier> = new Map();
 
   // Legacy method for old plugin system
   register(type: string, componentCode: string): void {
@@ -32,6 +35,7 @@ export class Registry {
       theme?: PluginThemeMode;
       designSystemVersion?: string;
       deferDisplayUntilContentReady?: boolean;
+      hostTier?: PluginHostTier;
     },
   ): void {
     this.renderers.set(type, {
@@ -42,6 +46,7 @@ export class Registry {
       designSystemVersion: uiMeta?.designSystemVersion,
       deferDisplayUntilContentReady: uiMeta?.deferDisplayUntilContentReady,
     });
+    this.typeHostTier.set(type, uiMeta?.hostTier ?? "user");
     console.log(
       `[Registry] Registered renderer: ${type} (plugin: ${pluginName})`,
     );
@@ -51,6 +56,7 @@ export class Registry {
     const renderer = this.renderers.get(type);
     if (renderer && renderer.pluginName === pluginName) {
       this.renderers.delete(type);
+      this.typeHostTier.delete(type);
       console.log(`[Registry] Unregistered renderer: ${type}`);
     }
   }
@@ -83,9 +89,19 @@ export class Registry {
     return [...types].sort();
   }
 
+  /**
+   * Types the user may pick when creating a note (excludes `system` plugins, e.g. code editor).
+   */
+  getSelectableNoteTypes(): string[] {
+    return this.getRegisteredTypes().filter(
+      (t) => this.typeHostTier.get(t) !== "system",
+    );
+  }
+
   clear(): void {
     this.components.clear();
     this.renderers.clear();
+    this.typeHostTier.clear();
   }
 }
 

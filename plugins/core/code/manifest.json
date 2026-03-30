@@ -1,6 +1,7 @@
 {
   "name": "code",
   "version": "1.0.0",
+  "hostTier": "system",
   "type": "hybrid",
   "main": "index.js",
   "ui": "ui.jsx",

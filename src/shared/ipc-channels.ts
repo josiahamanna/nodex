@@ -19,6 +19,7 @@ export const IPC_CHANNELS = {
   GET_COMPONENT: "plugin:get-component",
   GET_PLUGIN_HTML: "plugin:get-html",
   GET_REGISTERED_TYPES: "plugin:get-registered-types",
+  GET_SELECTABLE_NOTE_TYPES: "plugin:get-selectable-note-types",
   IMPORT_PLUGIN: "plugin:import",
   GET_INSTALLED_PLUGINS: "plugin:get-installed",
   UNINSTALL_PLUGIN: "plugin:uninstall",
@@ -91,6 +92,10 @@ export const IPC_CHANNELS = {
   PROJECT_REFRESH_WORKSPACE: "project:refresh-workspace",
   /** Remove one folder from the merged workspace; optional move to OS trash. */
   PROJECT_REMOVE_WORKSPACE_ROOT: "project:remove-workspace-root",
+  /** Reorder merged sidebar projects (swap adjacent root-level blocks). */
+  PROJECT_SWAP_WORKSPACE_BLOCK: "project:swap-workspace-block",
+  /** Set optional display label for a workspace root (saved in project prefs). */
+  PROJECT_SET_WORKSPACE_LABEL: "project:set-workspace-label",
   PROJECT_ROOT_CHANGED: "project:root-changed",
   ASSET_LIST: "asset:list",
   ASSET_GET_INFO: "asset:get-info",

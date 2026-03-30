@@ -1,4 +1,5 @@
 import {
+  isWorkspaceMountNoteId,
   noteDataWorkspaceSlot,
   WORKSPACE_MOUNT_SENTINEL,
 } from "../shared/note-workspace";
@@ -29,7 +30,11 @@ export function targetParentWorkspaceSlot(
   }
   const p = target.parentId;
   if (p == null) {
-    return 0;
+    if (isWorkspaceMountNoteId(targetId)) {
+      const mountM = /^__nodex_mount_(\d+)$/.exec(targetId);
+      return mountM ? Number(mountM[1]) : 0;
+    }
+    return noteDataWorkspaceSlot(targetId);
   }
   const ps = noteDataWorkspaceSlot(p);
   if (ps === WORKSPACE_MOUNT_SENTINEL) {

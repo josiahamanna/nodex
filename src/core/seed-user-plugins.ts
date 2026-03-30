@@ -13,11 +13,12 @@ function resolveSamplePluginSourceDir(name: string): string | null {
     }
     return null;
   }
-  const fromRepo = path.join(__dirname, "../../plugins", name);
+  const appRoot = app.getAppPath();
+  const fromRepo = path.join(appRoot, "plugins", name);
   if (fs.existsSync(path.join(fromRepo, "manifest.json"))) {
     return fromRepo;
   }
-  const fromSources = path.join(__dirname, "../../plugin-sources", name);
+  const fromSources = path.join(appRoot, "plugin-sources", name);
   if (fs.existsSync(path.join(fromSources, "manifest.json"))) {
     return fromSources;
   }

@@ -117,6 +117,13 @@ export class PluginLoaderZipExport extends PluginLoaderRegistry {
     return Array.from(this.loadedPlugins);
   }
 
+  /** Loaded plugin ids shown in Plugin Manager (excludes system/core bundled). */
+  getUserFacingLoadedPlugins(): string[] {
+    return this.getLoadedPlugins().filter(
+      (id) => this.readHostTierForPluginId(id) === "user",
+    );
+  }
+
   /**
    * UI fields from manifest for a loaded plugin (matched by `manifest.name`).
    */

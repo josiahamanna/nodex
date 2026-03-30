@@ -234,7 +234,9 @@ export function resolveBundledCorePluginsDir(): string | null {
     }
     return null;
   }
-  const devCore = path.join(__dirname, "../../plugins/core");
+  // Webpack main output lives under `.webpack/main`; `__dirname`-relative paths can
+  // collapse to non-absolute strings and break `require()` for plugin mains.
+  const devCore = path.join(app.getAppPath(), "plugins", "core");
   return fs.existsSync(devCore) ? devCore : null;
 }
 

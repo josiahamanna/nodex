@@ -3,6 +3,7 @@ export type {
   NodexAPI,
   Permission,
   Plugin,
+  PluginHostTier,
   PluginManifest,
   PluginMode,
   PluginType,

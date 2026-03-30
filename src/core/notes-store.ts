@@ -33,6 +33,8 @@ export {
   moveNote,
 } from "./notes-store-move-delete";
 
+export { swapWorkspaceRootBlock } from "./notes-store-workspace-order";
+
 export {
   duplicateSubtreeAt,
   createNote,

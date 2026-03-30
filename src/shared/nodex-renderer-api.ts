@@ -86,6 +86,8 @@ export type NodexRendererApi = {
   getComponent: (type: string) => Promise<string | null>;
   getPluginHTML: (type: string, note: Note) => Promise<string | null>;
   getRegisteredTypes: () => Promise<string[]>;
+  /** Note types the user may pick when creating a note (excludes system plugins). */
+  getSelectableNoteTypes: () => Promise<string[]>;
   selectZipFile: () => Promise<string | null>;
   importPlugin: (
     zipPath: string,
@@ -155,6 +157,7 @@ export type NodexRendererApi = {
     rootPath: string | null;
     notesDbPath: string | null;
     workspaceRoots: string[];
+    workspaceLabels: Record<string, string>;
   }>;
   getAppPrefs: () => Promise<{ seedSampleNotes: boolean }>;
   setSeedSampleNotes: (
@@ -188,6 +191,17 @@ export type NodexRendererApi = {
         workspaceRoots: string[];
         trashError?: string;
       }
+    | { ok: false; error: string }
+  >;
+  swapWorkspaceBlock: (payload: {
+    blockIndex: number;
+    direction: "up" | "down";
+  }) => Promise<{ ok: true } | { ok: false; error: string }>;
+  setWorkspaceFolderLabel: (
+    rootPath: string,
+    label: string | null,
+  ) => Promise<
+    | { ok: true; workspaceLabels: Record<string, string> }
     | { ok: false; error: string }
   >;
   onProjectRootChanged: (callback: () => void) => () => void;
