@@ -27,7 +27,8 @@ jobs:
         name: Discover plugins under user-pluggins/
         shell: bash
         run: |
-          node -e "const fs=require('fs'); const path=require('path'); const root=path.resolve('user-pluggins'); let names=[]; if (fs.existsSync(root)) { for (const ent of fs.readdirSync(root,{withFileTypes:true})) { if (!ent.isDirectory() || ent.name.startsWith('.')) continue; const mp=path.join(root,ent.name,'manifest.json'); if (fs.existsSync(mp)) names.push(ent.name); } } names.sort(); const matrix=JSON.stringify({include:names.map(n=>({plugin:n}))}); console.log('matrix='+matrix); fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${matrix}\n`);"
+          matrix="$(node -e "const fs=require('fs'); const path=require('path'); const root=path.resolve('user-pluggins'); let names=[]; if (fs.existsSync(root)) { for (const ent of fs.readdirSync(root,{withFileTypes:true})) { if (!ent.isDirectory() || ent.name.startsWith('.')) continue; const mp=path.join(root,ent.name,'manifest.json'); if (fs.existsSync(mp)) names.push(ent.name); } } names.sort(); process.stdout.write(JSON.stringify({include:names.map(n=>({plugin:n}))}));")"
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
 
   build:
     needs: discover
