@@ -38,12 +38,40 @@ function enqueueNestedModules(srcDir, queue) {
       const scopePath = path.join(nested, entry.name);
       for (const sub of fs.readdirSync(scopePath, { withFileTypes: true })) {
         if (sub.isDirectory() && !sub.name.startsWith(".")) {
-          queue.push(`${entry.name}/${sub.name}`);
+          const fullName = `${entry.name}/${sub.name}`;
+          queue.push(fullName);
+          enqueueDepsFromPackageJson(
+            path.join(scopePath, sub.name, "package.json"),
+            queue,
+          );
         }
       }
     } else {
       queue.push(entry.name);
+      enqueueDepsFromPackageJson(
+        path.join(nested, entry.name, "package.json"),
+        queue,
+      );
     }
+  }
+}
+
+function enqueueDepsFromPackageJson(pkgJsonPath, queue) {
+  if (!fs.existsSync(pkgJsonPath)) {
+    return;
+  }
+  let pkg;
+  try {
+    pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+  } catch {
+    return;
+  }
+  const all = {
+    ...pkg.dependencies,
+    ...pkg.optionalDependencies,
+  };
+  for (const dep of Object.keys(all || {})) {
+    queue.push(dep);
   }
 }
 
