@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Uninstalls any existing `nodex` Debian package, then installs a .deb from dist/deb.
+ * Uninstalls any existing `nodex` Debian package, then installs a .deb with `dpkg -i`
+ * (and `apt-get install -f` if dependencies need resolving).
  * Multiple .deb files → interactive list (arrow keys + Enter). Linux only.
  */
 "use strict";
@@ -62,11 +63,34 @@ async function main() {
 
   const debPath = path.resolve(DEB_DIR, choice);
 
+  /**
+   * Stage in /tmp so paths under $HOME don’t hit permission quirks with some tools.
+   */
+  const stagedDeb = path.join(
+    "/tmp",
+    `nodex-install-${process.pid}-${Date.now()}.deb`,
+  );
+  fs.copyFileSync(debPath, stagedDeb);
+  fs.chmodSync(stagedDeb, 0o644);
+
   console.log("\nRemoving existing Nodex package (if installed)…");
   run("sudo", ["apt-get", "remove", "-y", DEB_PKG]);
   /* apt-get remove exits 100 if package not installed — ignore */
   console.log("\nInstalling…");
-  const code = run("sudo", ["apt-get", "install", "-y", debPath]);
+  let code;
+  try {
+    code = run("sudo", ["dpkg", "-i", stagedDeb]);
+    if (code !== 0) {
+      console.log("\nResolving dependencies (if needed)…");
+      code = run("sudo", ["apt-get", "install", "-f", "-y"]);
+    }
+  } finally {
+    try {
+      fs.unlinkSync(stagedDeb);
+    } catch {
+      /* ignore */
+    }
+  }
   process.exit(code);
 }
 

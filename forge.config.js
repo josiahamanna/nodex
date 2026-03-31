@@ -14,7 +14,7 @@ const DEV_CSP = [
   "img-src 'self' data: blob: nodex-asset:",
   "media-src 'self' data: blob: nodex-asset:",
   "font-src 'self' data:",
-  "connect-src 'self' ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:* blob:",
+  "connect-src 'self' nodex-pdf-worker: ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:* blob:",
   "worker-src 'self' blob:",
   "frame-src 'self' nodex-asset: blob: data: about:",
   "object-src 'self' nodex-asset: blob: data:",

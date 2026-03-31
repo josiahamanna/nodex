@@ -62,6 +62,8 @@ module.exports = {
           ),
           /** Same folder as `main_window/index.html` (Forge `[name]/index.html`). */
           to: "main_window/pdf.worker.min.mjs",
+          /** Rebuilds can reuse `.webpack/`; overwrite instead of failing with "dest already exists". */
+          force: true,
         },
       ],
     }),

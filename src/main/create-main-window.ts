@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, app } from "electron";
+import { BrowserWindow, Menu, app, type MenuItemConstructorOptions } from "electron";
 import { ctx } from "./main-context";
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
@@ -8,7 +8,7 @@ export function createMainWindow(): void {
   ctx.mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    autoHideMenuBar: true,
+    autoHideMenuBar: false,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
@@ -19,32 +19,45 @@ export function createMainWindow(): void {
     },
   });
   /**
-   * Linux/Windows: `removeMenu()` drops all accelerators — DevTools shortcuts never fire.
-   * Keep a minimal menu (hidden until Alt) so `toggleDevTools` and reload work in production.
+   * `runAppReady` clears the app menu (`Menu.setApplicationMenu(null)`). Without a replacement,
+   * Linux/Windows lose menu accelerators; macOS keeps no menu at all — restore a minimal menu with
+   * View → Toggle Developer Tools (menu bar visible; F12 / Ctrl+Shift+I still work).
    */
-  if (process.platform === "darwin") {
-    ctx.mainWindow.setMenuBarVisibility(false);
-  } else {
-    Menu.setApplicationMenu(
-      Menu.buildFromTemplate([
-        {
+  const appMenu: MenuItemConstructorOptions =
+    process.platform === "darwin"
+      ? {
+          label: app.name,
+          submenu: [
+            { role: "about" },
+            { type: "separator" },
+            { role: "services" },
+            { type: "separator" },
+            { role: "hide" },
+            { role: "hideOthers" },
+            { role: "unhide" },
+            { type: "separator" },
+            { role: "quit" },
+          ],
+        }
+      : {
           label: app.name,
           submenu: [{ role: "quit" }],
-        },
-        {
-          label: "View",
-          submenu: [
-            { role: "reload", accelerator: "CmdOrCtrl+R" },
-            { type: "separator" },
-            /** Default accelerator is Ctrl+Shift+I (Linux/Win); F12 is handled in before-input-event. */
-            { role: "toggleDevTools" },
-          ],
-        },
-      ]),
-    );
-    ctx.mainWindow.setMenuBarVisibility(false);
-    ctx.mainWindow.autoHideMenuBar = true;
-  }
+        };
+
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      appMenu,
+      {
+        label: "View",
+        submenu: [
+          { role: "reload", accelerator: "CmdOrCtrl+R" },
+          { type: "separator" },
+          /** Default accelerator is Ctrl+Shift+I (Linux/Win); F12 / Cmd+Opt+I in before-input-event. */
+          { role: "toggleDevTools" },
+        ],
+      },
+    ]),
+  );
 
   ctx.mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 

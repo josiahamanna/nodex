@@ -63,6 +63,7 @@ Plugins have access to these libraries via `window`:
 - **window.TiptapStarterKit** - Tiptap StarterKit extension
 - **window.MonacoReact** - Monaco Editor React component
 - **window.Monaco** - Monaco Editor API
+- **window.Nodex.VideoJS** (and **window.videojs**) - [Video.js](https://videojs.com/) player factory for note UIs that need a skinned player. The default Video.js stylesheet is **inlined into every plugin iframe** (the parent window’s CSS does not apply there). Use workspace video via `nodex-asset:` URLs from the asset helpers. Remote HTTPS/HLS/Cloudinary requires relaxing the plugin iframe CSP in the host.
 
 ## Creating a Plugin ZIP
 
@@ -92,6 +93,10 @@ Sample and bundled behavior:
 ### Markdown and rich text (user-facing samples)
 
 - **Markdown** (`markdown`) and **Tiptap** (`text`) are typically installed as user plugins (seeded under your user plugins directory). They appear in Plugin Manager and in the new-note type list.
+
+### Media (user plugins)
+
+- **Video** (`video`) — sample under `user-pluggins/video`: pick or import files into `assets/` and play them with **Video.js** via `window.Nodex.VideoJS` (host-injected; see Available Libraries). Plain `nodex-asset:` playback matches the default plugin iframe CSP; remote URLs need CSP updates in the host.
 
 ### Code editor (system tier)
 

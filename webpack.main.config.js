@@ -41,7 +41,14 @@ module.exports = {
   },
   plugins: [
     new CopyPlugin({
-      patterns: [{ from: "src/core/zip-handler.js", to: "zip-handler.js" }],
+      patterns: [
+        {
+          from: "src/core/zip-handler.js",
+          to: "zip-handler.js",
+          /** Rebuilds can reuse `.webpack/`; overwrite instead of failing with "dest already exists". */
+          force: true,
+        },
+      ],
     }),
   ],
   node: {

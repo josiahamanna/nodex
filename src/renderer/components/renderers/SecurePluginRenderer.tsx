@@ -8,6 +8,8 @@ import {
   PLUGIN_UI_PROTOCOL_VERSION,
 } from "../../../shared/plugin-state-protocol";
 import { attachReactToPluginWindow } from "../../../shared/react-bridge";
+import { VIDEO_JS_IFRAME_CSS } from "../../../shared/video-js-iframe-css";
+import { attachVideoJsToPluginWindow } from "../../../shared/videojs-bridge";
 import { useTheme } from "../../theme/ThemeContext";
 import type { AppDispatch } from "../../store";
 import {
@@ -24,7 +26,17 @@ import {
   PLUGIN_IFRAME_ASSET_LIST,
   PLUGIN_IFRAME_ASSET_PICK,
   PLUGIN_IFRAME_ASSET_RESPONSE,
+  PLUGIN_IFRAME_PDF_BOOKMARKS_GET,
+  PLUGIN_IFRAME_PDF_BOOKMARKS_RESPONSE,
+  PLUGIN_IFRAME_PDF_BOOKMARKS_SET,
 } from "../../../shared/plugin-iframe-asset-bridge";
+import {
+  isSafePdfAssetRel,
+  normalizePdfBookmarksPayload,
+  pdfBookmarksStorageKey,
+  serializePdfBookmarks,
+  validatePdfBookmarksJsonSize,
+} from "../../../shared/pdf-bookmarks-storage";
 import { NODEX_PDF_WORKER_PROTOCOL_URL } from "../../../shared/nodex-pdf-worker-url";
 
 interface SecurePluginRendererProps {
@@ -161,6 +173,7 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
 
       if (event.data?.type === BRIDGE_REQUEST) {
         attachReactToPluginWindow(iframeWin);
+        attachVideoJsToPluginWindow(iframeWin);
         iframeWin.postMessage({ type: BRIDGE_READY }, "*");
         return;
       }
@@ -250,6 +263,117 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
             );
           },
         );
+        return;
+      }
+
+      const pdfBm = event.data as {
+        type?: string;
+        requestId?: string;
+        assetRel?: unknown;
+        bookmarks?: unknown;
+      };
+      if (
+        pdfBm?.type === PLUGIN_IFRAME_PDF_BOOKMARKS_GET &&
+        typeof pdfBm.requestId === "string"
+      ) {
+        const reqId = pdfBm.requestId;
+        const rel = pdfBm.assetRel;
+        if (!isSafePdfAssetRel(rel)) {
+          iframeWin.postMessage(
+            {
+              type: PLUGIN_IFRAME_PDF_BOOKMARKS_RESPONSE,
+              requestId: reqId,
+              ok: false,
+              error: "Invalid asset path",
+            },
+            "*",
+          );
+          return;
+        }
+        const root = assetProjectRootRef.current ?? "";
+        const key = pdfBookmarksStorageKey(root, rel);
+        try {
+          const raw = window.localStorage.getItem(key);
+          const parsed = raw ? JSON.parse(raw) : [];
+          const bookmarks = normalizePdfBookmarksPayload(parsed);
+          iframeWin.postMessage(
+            {
+              type: PLUGIN_IFRAME_PDF_BOOKMARKS_RESPONSE,
+              requestId: reqId,
+              ok: true,
+              bookmarks,
+            },
+            "*",
+          );
+        } catch (e) {
+          iframeWin.postMessage(
+            {
+              type: PLUGIN_IFRAME_PDF_BOOKMARKS_RESPONSE,
+              requestId: reqId,
+              ok: false,
+              error: e instanceof Error ? e.message : "Failed to load bookmarks",
+            },
+            "*",
+          );
+        }
+        return;
+      }
+      if (
+        pdfBm?.type === PLUGIN_IFRAME_PDF_BOOKMARKS_SET &&
+        typeof pdfBm.requestId === "string"
+      ) {
+        const reqId = pdfBm.requestId;
+        const rel = pdfBm.assetRel;
+        if (!isSafePdfAssetRel(rel)) {
+          iframeWin.postMessage(
+            {
+              type: PLUGIN_IFRAME_PDF_BOOKMARKS_RESPONSE,
+              requestId: reqId,
+              ok: false,
+              error: "Invalid asset path",
+            },
+            "*",
+          );
+          return;
+        }
+        const bookmarks = normalizePdfBookmarksPayload(pdfBm.bookmarks);
+        const json = serializePdfBookmarks(bookmarks);
+        const sizeErr = validatePdfBookmarksJsonSize(json);
+        if (sizeErr) {
+          iframeWin.postMessage(
+            {
+              type: PLUGIN_IFRAME_PDF_BOOKMARKS_RESPONSE,
+              requestId: reqId,
+              ok: false,
+              error: sizeErr,
+            },
+            "*",
+          );
+          return;
+        }
+        const root = assetProjectRootRef.current ?? "";
+        const key = pdfBookmarksStorageKey(root, rel);
+        try {
+          window.localStorage.setItem(key, json);
+          iframeWin.postMessage(
+            {
+              type: PLUGIN_IFRAME_PDF_BOOKMARKS_RESPONSE,
+              requestId: reqId,
+              ok: true,
+            },
+            "*",
+          );
+        } catch (e) {
+          iframeWin.postMessage(
+            {
+              type: PLUGIN_IFRAME_PDF_BOOKMARKS_RESPONSE,
+              requestId: reqId,
+              ok: false,
+              error: e instanceof Error ? e.message : "Failed to save bookmarks",
+            },
+            "*",
+          );
+        }
         return;
       }
 
@@ -372,6 +496,9 @@ const SecurePluginRenderer: React.FC<SecurePluginRendererProps> = ({
         iframeAssetListType: PLUGIN_IFRAME_ASSET_LIST,
         iframeAssetPickType: PLUGIN_IFRAME_ASSET_PICK,
         iframeAssetResponseType: PLUGIN_IFRAME_ASSET_RESPONSE,
+        iframePdfBookmarksGetType: PLUGIN_IFRAME_PDF_BOOKMARKS_GET,
+        iframePdfBookmarksSetType: PLUGIN_IFRAME_PDF_BOOKMARKS_SET,
+        iframePdfBookmarksResponseType: PLUGIN_IFRAME_PDF_BOOKMARKS_RESPONSE,
       });
 
       if (iframeRef.current) {
@@ -450,6 +577,9 @@ function createSandboxedHTML(
     iframeAssetListType: string;
     iframeAssetPickType: string;
     iframeAssetResponseType: string;
+    iframePdfBookmarksGetType: string;
+    iframePdfBookmarksSetType: string;
+    iframePdfBookmarksResponseType: string;
   },
 ): string {
   const {
@@ -463,12 +593,16 @@ function createSandboxedHTML(
     iframeAssetListType,
     iframeAssetPickType,
     iframeAssetResponseType,
+    iframePdfBookmarksGetType,
+    iframePdfBookmarksSetType,
+    iframePdfBookmarksResponseType,
   } = opts;
   const rootJson = JSON.stringify(assetProjectRoot ?? "");
   const themeStyle =
     inheritTheme && themeCss.length > 0
       ? `<style id="nodex-theme">${escapeForInlineStyle(themeCss)}</style>`
       : "";
+  const videoJsStyle = `<style id="nodex-video-js">${escapeForInlineStyle(VIDEO_JS_IFRAME_CSS)}</style>`;
   const themeListener = inheritTheme
     ? `
       window.addEventListener('message', function (e) {
@@ -489,11 +623,14 @@ function createSandboxedHTML(
 <html class="${dark ? "dark" : ""}">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob: nodex-pdf-worker:; worker-src blob: nodex-pdf-worker:; style-src 'unsafe-inline' blob:; img-src 'self' nodex-asset: data: blob:; media-src 'self' nodex-asset: data: blob:; frame-src 'self' nodex-asset: blob: data: about:${PLUGIN_IFRAME_CSP_PDF_FRAME}; object-src 'self' nodex-asset: blob: data:; font-src data: blob:;${PLUGIN_IFRAME_CSP_CONNECT_DEV}">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob: nodex-pdf-worker:; worker-src blob: nodex-pdf-worker:; style-src 'unsafe-inline' blob:; img-src 'self' nodex-asset: data: blob:; media-src 'self' nodex-asset: data: blob:; frame-src 'self' nodex-asset: blob: data: about:${PLUGIN_IFRAME_CSP_PDF_FRAME}; object-src 'self' nodex-asset: blob: data:; font-src data: blob:; connect-src nodex-pdf-worker:;${PLUGIN_IFRAME_CSP_CONNECT_DEV}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   ${themeStyle}
+  ${videoJsStyle}
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    /* Video.js fluid uses height:0 + padding-top%; border-box makes the box collapse. */
+    .video-js { box-sizing: content-box !important; }
     html, body { height: 100%; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -592,6 +729,45 @@ function createSandboxedHTML(
       };
       window.Nodex.pickImportMediaFile = function (category) {
         return nodexAssetBridgeRequest('${iframeAssetPickType}', category);
+      };
+      window.Nodex.getPdfBookmarks = function (assetRel) {
+        return new Promise(function (resolve, reject) {
+          var id = 'pb' + Math.random().toString(36).slice(2) + Date.now();
+          function handler(ev) {
+            var d = ev.data;
+            if (!d || d.type !== '${iframePdfBookmarksResponseType}' || d.requestId !== id) return;
+            window.removeEventListener('message', handler);
+            if (d.ok) resolve(d.bookmarks || []);
+            else reject(new Error(d.error || 'Failed to load bookmarks'));
+          }
+          window.addEventListener('message', handler);
+          window.parent.postMessage(
+            { type: '${iframePdfBookmarksGetType}', requestId: id, assetRel: String(assetRel || '') },
+            '*',
+          );
+        });
+      };
+      window.Nodex.savePdfBookmarks = function (assetRel, bookmarks) {
+        return new Promise(function (resolve, reject) {
+          var id = 'pb' + Math.random().toString(36).slice(2) + Date.now();
+          function handler(ev) {
+            var d = ev.data;
+            if (!d || d.type !== '${iframePdfBookmarksResponseType}' || d.requestId !== id) return;
+            window.removeEventListener('message', handler);
+            if (d.ok) resolve(undefined);
+            else reject(new Error(d.error || 'Failed to save bookmarks'));
+          }
+          window.addEventListener('message', handler);
+          window.parent.postMessage(
+            {
+              type: '${iframePdfBookmarksSetType}',
+              requestId: id,
+              assetRel: String(assetRel || ''),
+              bookmarks: bookmarks,
+            },
+            '*',
+          );
+        });
       };
       window.Nodex.onMessage = null;
       window.addEventListener('message', function (event) {

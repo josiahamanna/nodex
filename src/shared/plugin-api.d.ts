@@ -42,6 +42,17 @@ declare global {
       ) => Promise<
         { ok: true; assetRel: string } | { ok: false; error: string }
       >;
+      /** Load per-PDF saved places from host storage (same file across notes in this workspace). */
+      getPdfBookmarks?: (
+        assetRel: string,
+      ) => Promise<
+        { id: string; page: number; label: string; createdAt: number }[]
+      >;
+      /** Replace saved places for this PDF in host storage. */
+      savePdfBookmarks?: (
+        assetRel: string,
+        bookmarks: { id: string; page: number; label: string; createdAt: number }[],
+      ) => Promise<void>;
       onMessage: ((message: unknown) => void) | null;
     };
   }

@@ -47,18 +47,20 @@ function applyLinuxSandboxMitigations(): void {
 applyLinuxSandboxMitigations();
 
 /**
- * Linux: `disable-dev-shm-usage` forces Chromium’s POSIX shmem fallback onto **system**
- * `/tmp` (not necessarily `TMPDIR`), which can loop-spam errors when `/tmp` is bad.
- * Default: off — use `/dev/shm` for browser shmem (normal Chrome behavior).
- * Opt in (e.g. tiny Docker `/dev/shm`): `NODEX_DISABLE_DEV_SHM_USAGE=1`
+ * Chromium POSIX shm in `/dev/shm` can FATAL (`platform_shared_memory_region_posix`) on
+ * some Linux stacks even when `/dev/shm` looks fine (e.g. ESRCH with certain GPU/Wayland
+ * setups); `chmod 1777` does not always help. Default to `--disable-dev-shm-usage` on Linux.
+ *
+ * Some paths still use system `/tmp`, not always `TMPDIR`. Opt out: `NODEX_USE_DEV_SHM=1`.
  */
 function applyLinuxDevShmMitigation(): void {
   if (process.platform !== "linux") {
     return;
   }
-  if (process.env.NODEX_DISABLE_DEV_SHM_USAGE === "1") {
-    app.commandLine.appendSwitch("disable-dev-shm-usage");
+  if (process.env.NODEX_USE_DEV_SHM === "1") {
+    return;
   }
+  app.commandLine.appendSwitch("disable-dev-shm-usage");
 }
 
 applyLinuxDevShmMitigation();

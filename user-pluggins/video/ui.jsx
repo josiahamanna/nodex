@@ -3,6 +3,65 @@ import { createRoot } from "react-dom/client";
 
 const CATEGORY = "video";
 
+/** Uses Nodex.VideoJS from the host when available; else a native video element. */
+function VideoPlayer({ url }) {
+  const videoRef = React.useRef(null);
+  const playerRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const el = videoRef.current;
+    const VideoJS = window.Nodex && window.Nodex.VideoJS;
+    if (!el || !url || !VideoJS) {
+      return;
+    }
+    const player = VideoJS(el, {
+      controls: true,
+      fluid: true,
+      aspectRatio: "16:9",
+      sources: [{ src: url }],
+    });
+    playerRef.current = player;
+    return () => {
+      if (playerRef.current) {
+        playerRef.current.dispose();
+        playerRef.current = null;
+      }
+    };
+  }, [url]);
+
+  if (window.Nodex && window.Nodex.VideoJS) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "100%",
+          borderRadius: 6,
+          overflow: "hidden",
+          flex: 1,
+          minHeight: 180,
+        }}
+      >
+        <div data-vjs-player style={{ width: "100%" }}>
+          <video
+            ref={videoRef}
+            className="video-js vjs-big-play-centered"
+            playsInline
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <video
+      src={url}
+      controls
+      playsInline
+      style={{ maxWidth: "100%", maxHeight: "70vh", borderRadius: 6 }}
+    />
+  );
+}
+
 function parseRel(content) {
   try {
     const o = JSON.parse(content || "{}");
@@ -100,16 +159,22 @@ function MediaApp() {
           gap: 8,
         }}
       >
-        <div>
+        <div style={{ flexShrink: 0 }}>
           <button type="button" onClick={clearSource}>
             Choose another file…
           </button>
         </div>
-        <video
-          src={url}
-          controls
-          style={{ maxWidth: "100%", maxHeight: "70vh", borderRadius: 6 }}
-        />
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <VideoPlayer url={url} />
+        </div>
       </div>
     );
   }

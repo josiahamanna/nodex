@@ -310,9 +310,105 @@ export function resolveBundledPdfWorkerPath(): string | null {
   return null;
 }
 
+function resolvePdfJsDistPackageRoot(): string | null {
+  try {
+    return path.dirname(require.resolve("pdfjs-dist/package.json"));
+  } catch {
+    return null;
+  }
+}
+
+function pathIsUnderParent(filePath: string, parentDir: string): boolean {
+  const f = path.resolve(filePath);
+  const p = path.resolve(parentDir);
+  return f === p || f.startsWith(p + path.sep);
+}
+
+function mimeForPdfJsBundledAsset(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".bcmap") {
+    return "application/octet-stream";
+  }
+  if (ext === ".pfb" || ext === ".otf" || ext === ".ttf" || ext === ".woff") {
+    return "application/octet-stream";
+  }
+  return "application/octet-stream";
+}
+
+/**
+ * Resolve `nodex-pdf-worker` URL to a file: worker, or `pdfjs-dist` cmaps / standard_fonts.
+ */
+function resolveNodexPdfWorkerFile(
+  requestUrl: string,
+): { full: string; contentType: string } | null {
+  let pathname: string;
+  try {
+    pathname = new URL(requestUrl).pathname;
+  } catch {
+    return null;
+  }
+  try {
+    pathname = decodeURIComponent(pathname);
+  } catch {
+    /* use raw */
+  }
+  // Some Chromium fetch paths can include a trailing slash for module imports.
+  // Normalize so `/pdf.worker.min.mjs/` maps to the same asset as `/pdf.worker.min.mjs`.
+  if (pathname.length > 1) {
+    pathname = pathname.replace(/\/+$/, "");
+  }
+  if (pathname.includes("\0")) {
+    return null;
+  }
+
+  const baseName = "pdf.worker.min.mjs";
+  if (pathname === `/${baseName}` || pathname.endsWith(`/${baseName}`)) {
+    const full = resolveBundledPdfWorkerPath();
+    if (!full) {
+      return null;
+    }
+    return { full, contentType: "text/javascript; charset=utf-8" };
+  }
+
+  const pkgRoot = resolvePdfJsDistPackageRoot();
+  if (!pkgRoot) {
+    return null;
+  }
+
+  const cmapsRoot = path.join(pkgRoot, "cmaps");
+  const fontsRoot = path.join(pkgRoot, "standard_fonts");
+
+  if (pathname.startsWith("/cmaps/")) {
+    const rest = pathname.slice("/cmaps/".length);
+    if (!rest || rest.includes("..")) {
+      return null;
+    }
+    const full = path.join(cmapsRoot, rest);
+    if (!pathIsUnderParent(full, cmapsRoot)) {
+      return null;
+    }
+    return { full, contentType: mimeForPdfJsBundledAsset(full) };
+  }
+
+  if (pathname.startsWith("/standard_fonts/")) {
+    const rest = pathname.slice("/standard_fonts/".length);
+    if (!rest || rest.includes("..")) {
+      return null;
+    }
+    const full = path.join(fontsRoot, rest);
+    if (!pathIsUnderParent(full, fontsRoot)) {
+      return null;
+    }
+    return { full, contentType: mimeForPdfJsBundledAsset(full) };
+  }
+
+  return null;
+}
+
 /**
  * Serves bundled pdf.js worker for plugin `about:srcdoc` — dynamic `import()` of a real URL
  * (not `blob:`) so packaged Electron does not fail the fake-worker path.
+ * Also serves `cmaps/` and `standard_fonts/` from the `pdfjs-dist` package for `getDocument`.
  */
 export function registerNodexPdfWorkerProtocol(): void {
   try {
@@ -325,14 +421,23 @@ export function registerNodexPdfWorkerProtocol(): void {
     if (request.method !== "GET" && request.method !== "HEAD") {
       return Promise.resolve(new Response(null, { status: 405 }));
     }
-    const full = resolveBundledPdfWorkerPath();
-    if (!full) {
+    const resolved = resolveNodexPdfWorkerFile(request.url);
+    if (!resolved) {
       return Promise.resolve(new Response(null, { status: 404 }));
     }
-    const stat = fs.statSync(full);
+    const { full, contentType } = resolved;
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(full);
+    } catch {
+      return Promise.resolve(new Response(null, { status: 404 }));
+    }
+    if (!stat.isFile()) {
+      return Promise.resolve(new Response(null, { status: 404 }));
+    }
     const size = stat.size;
     const common: Record<string, string> = {
-      "Content-Type": "text/javascript; charset=utf-8",
+      "Content-Type": contentType,
       "Accept-Ranges": "bytes",
       "Cross-Origin-Resource-Policy": "cross-origin",
       "Access-Control-Allow-Origin": "*",
@@ -348,11 +453,17 @@ export function registerNodexPdfWorkerProtocol(): void {
         }),
       );
     }
+    /**
+     * Packaged builds typically keep renderer assets inside `app.asar`.
+     * Electron's asar virtual filesystem is reliable for `readFileSync`, but streaming
+     * APIs can be flaky depending on platform/packager (notably AppImage mounts).
+     * For the pdf.js worker + bundled cmaps/fonts, small full-file reads are fine and
+     * avoid "Failed to fetch dynamically imported module" failures.
+     */
     try {
-      const nodeStream = fs.createReadStream(full);
-      const body = Readable.toWeb(nodeStream) as unknown as BodyInit;
+      const buf = fs.readFileSync(full);
       return Promise.resolve(
-        new Response(body, {
+        new Response(new Uint8Array(buf), {
           status: 200,
           headers: {
             ...common,
