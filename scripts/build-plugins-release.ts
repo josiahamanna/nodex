@@ -7,7 +7,7 @@
  *
  * Env:
  *   PLUGIN_RELEASE_ROOT — default user-pluggins
- *   PLUGIN_RELEASE_OUT  — default out/make/plugins
+ *   PLUGIN_RELEASE_OUT  — default dist/plugins (.nodexplugin zips)
  *   PLUGIN_RELEASE_ONLY — optional plugin folder name (under root) OR absolute path
  */
 import { execSync } from "child_process";
@@ -154,7 +154,7 @@ async function main(): Promise<void> {
     process.env.PLUGIN_RELEASE_ROOT ?? "user-pluggins",
   );
   const outDir = path.resolve(
-    process.env.PLUGIN_RELEASE_OUT ?? "out/make/plugins",
+    process.env.PLUGIN_RELEASE_OUT ?? "dist/plugins",
   );
   const only = (process.env.PLUGIN_RELEASE_ONLY ?? "").trim();
 

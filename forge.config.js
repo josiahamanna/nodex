@@ -23,6 +23,8 @@ const DEV_CSP = [
 const { copyPackagerMainExternals } = require("./scripts/copy-packager-main-externals");
 
 module.exports = {
+  /** Forge staging: packaged apps + `make/` maker outputs. Final installers are copied to `dist/` via `npm run collect:dist`. */
+  outDir: "out",
   packagerConfig: {
     asar: true,
     /**

@@ -43,7 +43,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-dist
-          path: out/make/**
+          path: |
+            dist/deb
+            dist/appimage
           if-no-files-found: error
           retention-days: 14
 
@@ -61,13 +63,13 @@ jobs:
         run: npm ci
 
       - name: Make Windows (Squirrel)
-        run: npx electron-forge make --platform=win32
+        run: npm run build:windows
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-dist
-          path: out/make/**
+          path: dist/exe
           if-no-files-found: error
           retention-days: 14
 
@@ -85,13 +87,13 @@ jobs:
         run: npm ci
 
       - name: Make macOS (.dmg)
-        run: npm run clean:forge && npx electron-forge make --platform=darwin --targets=@electron-forge/maker-dmg
+        run: npm run build:mac
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: mac-dist
-          path: out/make/**
+          path: dist/dmg
           if-no-files-found: error
           retention-days: 14
 

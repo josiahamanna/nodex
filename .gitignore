@@ -4,6 +4,7 @@ plugin-sources/**/node_modules/
 .webpack/
 out/
 dist/
+build/tsc/
 
 # Plugin zips (generated)
 plugin-sources/**/*.zip

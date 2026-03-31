@@ -52,14 +52,13 @@ jobs:
         env:
           PLUGIN_RELEASE_ROOT: user-pluggins
           PLUGIN_RELEASE_ONLY: ${{ matrix.plugin }}
-          PLUGIN_RELEASE_OUT: out/make/plugins
-        run: npm run build:plugins-release
+        run: npm run build:plugins
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v4
         with:
           name: plugin-${{ matrix.plugin }}
-          path: out/make/plugins/*.nodexplugin
+          path: dist/plugins/*.nodexplugin
           if-no-files-found: error
           retention-days: 14
 
