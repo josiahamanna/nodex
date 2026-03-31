@@ -3,6 +3,8 @@ const CopyPlugin = require("copy-webpack-plugin");
 const path = require("path");
 const baseRules = require("./webpack.rules");
 
+const cacheDir = path.join(__dirname, ".webpack-cache");
+
 // Filter out asset-relocator-loader for renderer process
 // It injects __dirname which doesn't exist in browser context
 const rules = baseRules.filter((rule) => {
@@ -33,6 +35,11 @@ rules.push({
 });
 
 module.exports = {
+  cache: {
+    type: "filesystem",
+    cacheDirectory: cacheDir,
+    name: "renderer",
+  },
   module: {
     rules: [
       {

@@ -1,6 +1,5 @@
 import React from "react";
 import { PluginManagerAlerts } from "./plugin-manager/PluginManagerAlerts";
-import { PluginManagerInstallModal } from "./plugin-manager/PluginManagerInstallModal";
 import { PluginManagerMaintenanceSection } from "./plugin-manager/PluginManagerMaintenanceSection";
 import { PluginManagerPluginRows } from "./plugin-manager/PluginManagerPluginRows";
 import { usePluginManager } from "./plugin-manager/usePluginManager";
@@ -38,15 +37,6 @@ const PluginManager: React.FC<PluginManagerProps> = ({
       ) : null}
 
       <div className="flex-1 overflow-auto px-4 py-4">
-        {pm.installModal && (
-          <PluginManagerInstallModal
-            installModal={pm.installModal}
-            skipConfirmRef={pm.skipConfirmRef}
-            onClose={() => pm.setInstallModal(null)}
-            onConfirmInstall={() => void pm.confirmInstall()}
-          />
-        )}
-
         <PluginManagerAlerts
           message={pm.message}
           loadIssues={pm.loadIssues}
@@ -55,7 +45,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({
           onToggleProgress={() => pm.setShowProgress((s) => !s)}
         />
 
-        <div className="mb-6">
+        <div className="mb-6 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => void pm.handleImport()}
@@ -66,6 +56,14 @@ const PluginManager: React.FC<PluginManagerProps> = ({
               ? "Importing..."
               : "Import plugin (.nodexplugin / .zip)"}
           </button>
+          <button
+            type="button"
+            onClick={() => void pm.handleReloadRegistry()}
+            disabled={pm.working !== null}
+            className="rounded-lg border border-border bg-muted/50 px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+          >
+            Refresh plugins
+          </button>
         </div>
 
         <PluginManagerPluginRows
@@ -75,20 +73,10 @@ const PluginManager: React.FC<PluginManagerProps> = ({
           invFor={pm.invFor}
           pluginUiMeta={pm.pluginUiMeta}
           working={pm.working}
-          depPanelPlugin={pm.depPanelPlugin}
-          depInfo={pm.depInfo}
-          npmAddSpec={pm.npmAddSpec}
-          setNpmAddSpec={pm.setNpmAddSpec}
           loadPlugins={() => pm.loadPlugins()}
           onPluginsChanged={pm.onPluginsChanged}
           setMessage={pm.setMessage}
-          onReloadRegistry={pm.handleReloadRegistry}
-          onInstallDeps={pm.handleInstallDeps}
-          onToggleDepPanel={(id) => void pm.openDepPanel(id)}
-          onBundleLocal={pm.handleBundleLocal}
           onUninstall={pm.handleUninstall}
-          onNpmAdd={() => void pm.runNpmAdd()}
-          onNpmRemove={(pkg) => void pm.runNpmRemove(pkg)}
         />
 
         {!pm.embedded ? (

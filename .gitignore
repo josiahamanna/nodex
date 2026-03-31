@@ -2,6 +2,7 @@ node_modules/
 plugins/**/node_modules/
 plugin-sources/**/node_modules/
 .webpack/
+.webpack-cache/
 out/
 dist/
 build/tsc/

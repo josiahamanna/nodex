@@ -82,17 +82,6 @@ module.exports = {
     },
   ],
   hooks: {
-    preMake: async () => {
-      // Avoid Forge webpack maker failures ("dest already exists") on repeated makes.
-      try {
-        fs.rmSync(path.resolve(__dirname, ".webpack"), {
-          recursive: true,
-          force: true,
-        });
-      } catch {
-        /* ignore */
-      }
-    },
     /** After webpack plugin copies `.webpack`; populate `node_modules` for main externals. */
     packageAfterCopy: async (_forgeConfig, buildPath) => {
       copyPackagerMainExternals(buildPath);

@@ -1,4 +1,3 @@
-export const SKIP_INSTALL_CONFIRM_KEY = "nodex-skip-install-confirm";
 export const MAX_PROGRESS_LINES = 400;
 
 export function formatBytes(n: number): string {

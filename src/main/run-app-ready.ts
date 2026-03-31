@@ -21,6 +21,7 @@ import { ctx, getPluginLoader } from "./main-context";
 import { createMainWindow } from "./create-main-window";
 import {
   registerNodexAssetProtocol,
+  registerNodexPdfWorkerProtocol,
   resolveBundledReadonlyPluginRoots,
   tryLoadSavedProject,
 } from "./main-helpers";
@@ -64,6 +65,7 @@ export function runAppReady(): void {
   setSeedSampleNotesPreference(readAppPrefs(userDataPath).seedSampleNotes);
 
   registerNodexAssetProtocol();
+  registerNodexPdfWorkerProtocol();
   tryLoadSavedProject(userDataPath, registry.getRegisteredTypes());
   if (ctx.projectRootPath) {
     console.log("[Main] Notes database:", ctx.notesPersistencePath);

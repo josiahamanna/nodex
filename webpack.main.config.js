@@ -2,9 +2,15 @@ const path = require("path");
 const CopyPlugin = require("copy-webpack-plugin");
 
 module.exports = {
+  cache: {
+    type: "filesystem",
+    cacheDirectory: path.join(__dirname, ".webpack-cache"),
+    name: "main",
+  },
   target: "electron-main",
   /** Linux: `linux-chromium-tmp-env` must evaluate before `electron` loads (TMPDIR for children). */
   entry: [
+    path.resolve(__dirname, "src/main/ensure-safe-cwd.ts"),
     path.resolve(__dirname, "src/main/linux-chromium-tmp-env.ts"),
     path.resolve(__dirname, "src/main.ts"),
   ],

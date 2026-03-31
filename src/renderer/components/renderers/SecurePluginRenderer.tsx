@@ -25,6 +25,7 @@ import {
   PLUGIN_IFRAME_ASSET_PICK,
   PLUGIN_IFRAME_ASSET_RESPONSE,
 } from "../../../shared/plugin-iframe-asset-bridge";
+import { NODEX_PDF_WORKER_PROTOCOL_URL } from "../../../shared/nodex-pdf-worker-url";
 
 interface SecurePluginRendererProps {
   note: Note;
@@ -488,7 +489,7 @@ function createSandboxedHTML(
 <html class="${dark ? "dark" : ""}">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline' blob:; img-src 'self' nodex-asset: data: blob:; media-src 'self' nodex-asset: data: blob:; frame-src 'self' nodex-asset: blob: data: about:${PLUGIN_IFRAME_CSP_PDF_FRAME}; object-src 'self' nodex-asset: blob: data:; font-src data: blob:;${PLUGIN_IFRAME_CSP_CONNECT_DEV}">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob: nodex-pdf-worker:; worker-src blob: nodex-pdf-worker:; style-src 'unsafe-inline' blob:; img-src 'self' nodex-asset: data: blob:; media-src 'self' nodex-asset: data: blob:; frame-src 'self' nodex-asset: blob: data: about:${PLUGIN_IFRAME_CSP_PDF_FRAME}; object-src 'self' nodex-asset: blob: data:; font-src data: blob:;${PLUGIN_IFRAME_CSP_CONNECT_DEV}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   ${themeStyle}
   <style>
@@ -511,6 +512,7 @@ function createSandboxedHTML(
   <script>
     (function () {
       ${themeListener}
+      window.__NODEX_PDFJS_WORKER_SRC__ = ${JSON.stringify(NODEX_PDF_WORKER_PROTOCOL_URL)};
       window.Nodex = window.Nodex || {};
       window.Nodex.postMessage = function (data) {
         window.parent.postMessage({ type: 'action', payload: data }, '*');

@@ -5,11 +5,9 @@ import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 const CATEGORY = "pdf";
 
 /**
- * `about:srcdoc` has no resolvable origin for pdf.worker.mjs. A real Worker also
- * hits /dev/shm|/tmp shared-memory issues with Chromium’s PDF path on some Linux
- * builds. Force PDF.js fake worker: a module worker that throws immediately so
- * PDFWorker falls back to main-thread parsing (same strategy as avoiding the
- * built-in PDF iframe, which spams shared-memory errors when opening a note).
+ * pdf.js 4.x `import()`s `GlobalWorkerOptions.workerSrc` for the fake-worker path.
+ * Nodex sets `window.__NODEX_PDFJS_WORKER_SRC__` to `nodex-pdf-worker:///…` (main process
+ * serves bundled pdf.worker.min.mjs) so packaged Electron avoids `import(blob:)`.
  */
 let pdfjsFakeWorkerConfigured = false;
 function ensurePdfJsFakeWorker() {
@@ -17,10 +15,17 @@ function ensurePdfJsFakeWorker() {
     return;
   }
   pdfjsFakeWorkerConfigured = true;
-  const blob = new Blob([`throw new Error("nodex-pdf-fake-worker");`], {
-    type: "text/javascript",
-  });
-  GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+  const src =
+    typeof window !== "undefined" && window.__NODEX_PDFJS_WORKER_SRC__
+      ? String(window.__NODEX_PDFJS_WORKER_SRC__)
+      : "";
+  if (!src) {
+    console.error(
+      "[pdf plugin] __NODEX_PDFJS_WORKER_SRC__ missing; open this note in Nodex.",
+    );
+    return;
+  }
+  GlobalWorkerOptions.workerSrc = src;
 }
 
 function PdfJsCanvasViewer({ assetHref }) {

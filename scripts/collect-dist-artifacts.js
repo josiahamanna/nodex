@@ -5,6 +5,9 @@
  * Filenames include the root package.json version (filesystem-safe).
  * Does not delete or modify `dist/plugins/`.
  *
+ * After copying, removes Forge leftovers under `dist/` (`make/`, packaged app dirs like
+ * `nodex-linux-x64`) — final installers live in `deb/`, `appimage/`, etc.; use `out/` for full staging.
+ *
  * Staging dir: `out/make` (forge outDir is `out`).
  */
 "use strict";
@@ -18,6 +21,9 @@ const SAFE_VER = String(PKG.version).replace(/[^a-zA-Z0-9._-]+/g, "-");
 
 const STAGING_MAKE = path.join(ROOT, "out", "make");
 const DIST = path.join(ROOT, "dist");
+
+/** Keep these `dist/` subdirs (final artifacts + plugins). */
+const DIST_KEEP = new Set(["deb", "appimage", "dmg", "exe", "plugins"]);
 
 function walkFiles(dir, acc = []) {
   if (!fs.existsSync(dir)) return acc;
@@ -39,6 +45,28 @@ function copyInto(src, destDir, destBase) {
   const dest = path.join(destDir, destBase);
   fs.copyFileSync(src, dest);
   console.log(`[collect-dist] ${path.relative(ROOT, src)} → ${path.relative(ROOT, dest)}`);
+}
+
+/**
+ * Remove intermediate Forge output accidentally left under `dist/` (e.g. if outDir was `dist`).
+ */
+function cleanupDistStaging() {
+  if (!fs.existsSync(DIST)) return;
+  const makePath = path.join(DIST, "make");
+  if (fs.existsSync(makePath)) {
+    fs.rmSync(makePath, { recursive: true, force: true });
+    console.log(`[collect-dist] removed ${path.relative(ROOT, makePath)}`);
+  }
+  for (const ent of fs.readdirSync(DIST, { withFileTypes: true })) {
+    if (!ent.isDirectory()) continue;
+    const name = ent.name;
+    if (DIST_KEEP.has(name)) continue;
+    if (/^nodex-/i.test(name)) {
+      const p = path.join(DIST, name);
+      fs.rmSync(p, { recursive: true, force: true });
+      console.log(`[collect-dist] removed ${path.relative(ROOT, p)}`);
+    }
+  }
 }
 
 function debArchFromPath(file) {
@@ -136,6 +164,8 @@ function main() {
       `[collect-dist] No installers under ${path.relative(ROOT, STAGING_MAKE)} (run electron-forge make first).`,
     );
   }
+
+  cleanupDistStaging();
 }
 
 main();

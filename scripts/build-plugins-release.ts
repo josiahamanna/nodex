@@ -9,6 +9,7 @@
  *   PLUGIN_RELEASE_ROOT — default user-pluggins
  *   PLUGIN_RELEASE_OUT  — default dist/plugins (.nodexplugin zips)
  *   PLUGIN_RELEASE_ONLY — optional plugin folder name (under root) OR absolute path
+ *   PLUGIN_RELEASE_CONCURRENCY — max parallel plugin builds (default: min(CPU, 8), min 1)
  */
 import { execSync } from "child_process";
 import * as fs from "fs";
@@ -18,6 +19,38 @@ import { pluginBundler } from "../src/core/plugin-bundler";
 import { packageManager } from "../src/core/package-manager";
 import type { PluginManifest } from "../src/core/plugin-loader-types";
 import { isSafePluginName } from "../src/shared/validators";
+
+function pluginReleaseConcurrency(): number {
+  const raw = process.env.PLUGIN_RELEASE_CONCURRENCY?.trim();
+  if (raw) {
+    const n = parseInt(raw, 10);
+    if (!Number.isNaN(n) && n >= 1) return Math.min(n, 32);
+  }
+  return Math.min(Math.max(2, os.cpus().length), 8);
+}
+
+/** Run async tasks over `items` with at most `concurrency` in flight (order of completion may differ). */
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const limit = Math.min(Math.max(1, concurrency), items.length);
+  const results: R[] = new Array(items.length);
+  let index = 0;
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const i = index++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: limit }, () => worker()));
+  return results;
+}
 
 function copyPluginProductionAssets(
   pluginPath: string,
@@ -191,11 +224,18 @@ async function main(): Promise<void> {
     return;
   }
 
-  for (const pluginDir of dirs) {
+  const conc = pluginReleaseConcurrency();
+  if (dirs.length > 1) {
+    console.log(
+      `[build-plugins-release] ${dirs.length} plugins, concurrency ${Math.min(conc, dirs.length)}`,
+    );
+  }
+  await mapPool(dirs, conc, async (pluginDir) => {
     npmInstallIfNeeded(pluginDir);
     const out = await exportOneDevPlugin(pluginDir, outDir);
     console.log(`[build-plugins-release] OK ${out}`);
-  }
+    return out;
+  });
 }
 
 main().catch((e) => {

@@ -1,3 +1,4 @@
+import "./main/ensure-safe-cwd";
 import * as fs from "fs";
 import * as path from "path";
 import { app, BrowserWindow, protocol } from "electron";
@@ -102,6 +103,18 @@ protocol.registerSchemesAsPrivileged([
    */
   {
     scheme: "node-asset",
+    privileges: {
+      standard: true,
+      secure: true,
+      bypassCSP: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+  /** Bundled pdf.js worker (`main_window/pdf.worker.min.mjs`) for plugin iframes — avoids `import(blob:)`. */
+  {
+    scheme: "nodex-pdf-worker",
     privileges: {
       standard: true,
       secure: true,

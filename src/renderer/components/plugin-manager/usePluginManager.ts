@@ -1,16 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNodexDialog } from "../../dialog/NodexDialogProvider";
-import {
-  MAX_PROGRESS_LINES,
-  SKIP_INSTALL_CONFIRM_KEY,
-} from "./plugin-manager-constants";
+import { MAX_PROGRESS_LINES } from "./plugin-manager-constants";
 import { createPluginManagerMaintenanceHandlers } from "./plugin-manager-maintenance-handlers";
-import type {
-  PluginInstallPlanState,
-  PluginInventoryRow,
-  PluginUiMeta,
-  UserMessage,
-} from "./plugin-manager-types";
+import type { PluginInventoryRow, PluginUiMeta, UserMessage } from "./plugin-manager-types";
 
 export type UsePluginManagerOptions = {
   onPluginsChanged?: () => void;
@@ -38,21 +30,10 @@ export function usePluginManager({
   const [loadIssues, setLoadIssues] = useState<
     { folder: string; error: string }[]
   >([]);
-  const [installModal, setInstallModal] =
-    useState<PluginInstallPlanState | null>(null);
-  const [depPanelPlugin, setDepPanelPlugin] = useState<string | null>(null);
-  const [depInfo, setDepInfo] = useState<
-    Awaited<ReturnType<typeof window.Nodex.getPluginResolvedDeps>> | null
-  >(null);
-  const [npmAddSpec, setNpmAddSpec] = useState("");
   const [pluginUiMeta, setPluginUiMeta] = useState<
     Record<string, PluginUiMeta | null>
   >({});
   const [userPluginsPath, setUserPluginsPath] = useState<string | null>(null);
-  const skipConfirmRef = useRef(
-    typeof localStorage !== "undefined" &&
-      localStorage.getItem(SKIP_INSTALL_CONFIRM_KEY) === "1",
-  );
 
   const pushProgress = useCallback((line: string) => {
     setProgressLines((prev) => {
@@ -173,67 +154,12 @@ export function usePluginManager({
     }
   };
 
-  const runInstallDeps = async (pluginName: string) => {
-    setMessage(null);
-    setWorking(`install:${pluginName}`);
-    try {
-      const result = await window.Nodex.installPluginDependencies(pluginName);
-      if (result.success) {
-        setMessage({
-          type: "success",
-          text: `Dependencies installed for ${pluginName}.`,
-        });
-        await refreshCacheStats();
-        if (depPanelPlugin === pluginName) {
-          setDepInfo(await window.Nodex.getPluginResolvedDeps(pluginName));
-        }
-      } else {
-        setMessage({
-          type: "error",
-          text: result.error || "npm install failed",
-        });
-      }
-    } catch (error) {
-      setMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "npm install failed",
-      });
-    } finally {
-      setWorking(null);
-    }
-  };
-
-  const handleInstallDeps = async (pluginName: string) => {
-    if (skipConfirmRef.current) {
-      await runInstallDeps(pluginName);
-      return;
-    }
-    try {
-      const plan = await window.Nodex.getPluginInstallPlan(pluginName);
-      setInstallModal({ folderName: pluginName, plan });
-    } catch (e) {
-      setMessage({
-        type: "error",
-        text: e instanceof Error ? e.message : "Could not read install plan",
-      });
-    }
-  };
-
-  const confirmInstall = async () => {
-    if (!installModal) {
-      return;
-    }
-    const name = installModal.folderName;
-    setInstallModal(null);
-    await runInstallDeps(name);
-  };
-
   const handleReloadRegistry = async () => {
     setMessage(null);
     try {
       const r = await window.Nodex.reloadPluginRegistry();
       if (r.success) {
-        setMessage({ type: "success", text: "Registry reloaded." });
+        setMessage({ type: "success", text: "Plugins refreshed." });
         onPluginsChanged?.();
         await loadPlugins();
       } else {
@@ -246,33 +172,6 @@ export function usePluginManager({
       setMessage({
         type: "error",
         text: error instanceof Error ? error.message : "Reload failed",
-      });
-    }
-  };
-
-  const handleBundleLocal = async (pluginName: string) => {
-    setMessage(null);
-    try {
-      const result = await window.Nodex.bundlePluginLocal(pluginName);
-      if (result.success) {
-        const w =
-          result.warnings?.length && result.warnings.length > 0
-            ? ` (${result.warnings.length} Rollup warnings — see main log)`
-            : "";
-        setMessage({
-          type: "success",
-          text: `Wrote dist/*.bundle.js under plugin folder.${w}`,
-        });
-      } else {
-        setMessage({
-          type: "error",
-          text: result.error || "Bundle failed",
-        });
-      }
-    } catch (error) {
-      setMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Bundle failed",
       });
     }
   };
@@ -298,10 +197,6 @@ export function usePluginManager({
         });
         await loadPlugins();
         await refreshLoadIssues();
-        if (depPanelPlugin === pluginName) {
-          setDepPanelPlugin(null);
-          setDepInfo(null);
-        }
         if (onPluginsChanged) {
           onPluginsChanged();
         }
@@ -316,67 +211,6 @@ export function usePluginManager({
         type: "error",
         text: error instanceof Error ? error.message : "Unknown error",
       });
-    }
-  };
-
-  const openDepPanel = async (pluginName: string) => {
-    if (depPanelPlugin === pluginName) {
-      setDepPanelPlugin(null);
-      setDepInfo(null);
-      return;
-    }
-    setDepPanelPlugin(pluginName);
-    setNpmAddSpec("");
-    setDepInfo(await window.Nodex.getPluginResolvedDeps(pluginName));
-  };
-
-  const runNpmAdd = async () => {
-    if (!depPanelPlugin || !npmAddSpec.trim()) {
-      return;
-    }
-    setWorking(`npm:${depPanelPlugin}`);
-    try {
-      const result = await window.Nodex.runPluginCacheNpm(depPanelPlugin, [
-        "install",
-        "--save",
-        npmAddSpec.trim(),
-      ]);
-      if (result.success) {
-        setNpmAddSpec("");
-        setDepInfo(await window.Nodex.getPluginResolvedDeps(depPanelPlugin));
-        setMessage({ type: "success", text: "npm install completed." });
-      } else {
-        setMessage({
-          type: "error",
-          text: result.error || "npm failed",
-        });
-      }
-    } finally {
-      setWorking(null);
-    }
-  };
-
-  const runNpmRemove = async (pkg: string) => {
-    if (!depPanelPlugin) {
-      return;
-    }
-    setWorking(`npm:${depPanelPlugin}`);
-    try {
-      const result = await window.Nodex.runPluginCacheNpm(depPanelPlugin, [
-        "uninstall",
-        pkg,
-      ]);
-      if (result.success) {
-        setDepInfo(await window.Nodex.getPluginResolvedDeps(depPanelPlugin));
-        setMessage({ type: "success", text: `Removed ${pkg}.` });
-      } else {
-        setMessage({
-          type: "error",
-          text: result.error || "npm failed",
-        });
-      }
-    } finally {
-      setWorking(null);
     }
   };
 
@@ -414,29 +248,16 @@ export function usePluginManager({
     showProgress,
     setShowProgress,
     loadIssues,
-    installModal,
-    setInstallModal,
-    depPanelPlugin,
-    depInfo,
-    npmAddSpec,
-    setNpmAddSpec,
     pluginUiMeta,
     userPluginsPath,
-    skipConfirmRef,
     idsForCards,
     invFor,
     setMessage,
     handleImport,
-    confirmInstall,
     handleClearAllCaches,
     handleResetUserPluginsDirectory,
     handleReloadRegistry,
-    handleInstallDeps,
-    handleBundleLocal,
     handleUninstall,
-    openDepPanel,
-    runNpmAdd,
-    runNpmRemove,
     loadPlugins,
     onPluginsChanged,
   };

@@ -17,6 +17,7 @@ import { isSafePluginName } from "../shared/validators";
 import { ctx, getPluginLoader } from "./main-context";
 import { parseAssetIpcPayload } from "./parse-asset-ipc-payload";
 import { relativeAssetPathFromNodexAssetUrl } from "../shared/nodex-asset-path";
+import { NODEX_PDF_WORKER_PROTOCOL_URL } from "../shared/nodex-pdf-worker-url";
 
 export { parseAssetIpcPayload };
 
@@ -278,6 +279,94 @@ export function registerNodexAssetProtocol(): void {
 
   session.defaultSession.protocol.handle("nodex-asset", handler);
   session.defaultSession.protocol.handle("node-asset", handler);
+}
+
+export { NODEX_PDF_WORKER_PROTOCOL_URL };
+
+/**
+ * Resolve webpack-copied `pdf.worker.min.mjs` next to `main_window` (see webpack.renderer.config.js).
+ */
+export function resolveBundledPdfWorkerPath(): string | null {
+  const fileName = "pdf.worker.min.mjs";
+  const rel = path.join(".webpack", "renderer", "main_window", fileName);
+  const candidates = [
+    path.join(app.getAppPath(), rel),
+    path.join(__dirname, "..", "renderer", "main_window", fileName),
+    path.join(process.cwd(), rel),
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        return p;
+      }
+    } catch {
+      /* next */
+    }
+  }
+  console.warn(
+    "[nodex-pdf-worker] pdf.worker.min.mjs not found; tried:",
+    candidates,
+  );
+  return null;
+}
+
+/**
+ * Serves bundled pdf.js worker for plugin `about:srcdoc` — dynamic `import()` of a real URL
+ * (not `blob:`) so packaged Electron does not fail the fake-worker path.
+ */
+export function registerNodexPdfWorkerProtocol(): void {
+  try {
+    session.defaultSession.protocol.unhandle("nodex-pdf-worker");
+  } catch {
+    /* first registration */
+  }
+
+  const handler = (request: globalThis.Request) => {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return Promise.resolve(new Response(null, { status: 405 }));
+    }
+    const full = resolveBundledPdfWorkerPath();
+    if (!full) {
+      return Promise.resolve(new Response(null, { status: 404 }));
+    }
+    const stat = fs.statSync(full);
+    const size = stat.size;
+    const common: Record<string, string> = {
+      "Content-Type": "text/javascript; charset=utf-8",
+      "Accept-Ranges": "bytes",
+      "Cross-Origin-Resource-Policy": "cross-origin",
+      "Access-Control-Allow-Origin": "*",
+    };
+    if (request.method === "HEAD") {
+      return Promise.resolve(
+        new Response(null, {
+          status: 200,
+          headers: {
+            ...common,
+            "Content-Length": String(size),
+          },
+        }),
+      );
+    }
+    try {
+      const nodeStream = fs.createReadStream(full);
+      const body = Readable.toWeb(nodeStream) as unknown as BodyInit;
+      return Promise.resolve(
+        new Response(body, {
+          status: 200,
+          headers: {
+            ...common,
+            "Content-Length": String(size),
+          },
+        }),
+      );
+    } catch (e) {
+      console.warn("[nodex-pdf-worker] response error:", e);
+      return Promise.resolve(new Response(null, { status: 500 }));
+    }
+  };
+
+  session.defaultSession.protocol.handle("nodex-pdf-worker", handler);
 }
 
 export function applyWorkspaceActivateResult(res: {
