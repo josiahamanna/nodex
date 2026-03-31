@@ -1,7 +1,35 @@
+import * as fs from "fs";
+import * as path from "path";
 import { app, BrowserWindow, protocol } from "electron";
 import { runAppReady } from "./main/run-app-ready";
 import { registerStaticIpcHandlers } from "./main/register-static-ipc";
 import { createMainWindow } from "./main/create-main-window";
+
+/**
+ * Linux: Align Electron’s temp with `linux-chromium-tmp-env.ts` (TMPDIR before electron
+ * loads). Portable / custom `userData` may differ from `~/.config/nodex`; this wins.
+ * Opt out: `NODEX_SKIP_CHROMIUM_TEMP_REDIRECT=1`.
+ */
+function applyLinuxUserDataTemp(): void {
+  if (process.platform !== "linux") {
+    return;
+  }
+  if (process.env.NODEX_SKIP_CHROMIUM_TEMP_REDIRECT === "1") {
+    return;
+  }
+  try {
+    const dir = path.join(app.getPath("userData"), "chromium-tmp");
+    fs.mkdirSync(dir, { recursive: true });
+    app.setPath("temp", dir);
+    process.env.TMPDIR = dir;
+    process.env.TMP = dir;
+    process.env.TEMP = dir;
+  } catch {
+    /* ignore */
+  }
+}
+
+applyLinuxUserDataTemp();
 
 /**
  * Linux (especially AppImage): Chromium may abort if `chrome-sandbox` is present but
@@ -18,19 +46,18 @@ function applyLinuxSandboxMitigations(): void {
 applyLinuxSandboxMitigations();
 
 /**
- * Linux: DevTools and extra renderers use POSIX shared memory under `/dev/shm`. If that
- * tmpfs is missing, too small, or has bad permissions, Chromium can fatal when opening
- * DevTools. `disable-dev-shm-usage` uses disk-backed temp instead (same idea as Docker).
- * Opt out with `NODEX_ALLOW_DEV_SHM=1` if `/dev/shm` is healthy and you prefer defaults.
+ * Linux: `disable-dev-shm-usage` forces Chromium’s POSIX shmem fallback onto **system**
+ * `/tmp` (not necessarily `TMPDIR`), which can loop-spam errors when `/tmp` is bad.
+ * Default: off — use `/dev/shm` for browser shmem (normal Chrome behavior).
+ * Opt in (e.g. tiny Docker `/dev/shm`): `NODEX_DISABLE_DEV_SHM_USAGE=1`
  */
 function applyLinuxDevShmMitigation(): void {
   if (process.platform !== "linux") {
     return;
   }
-  if (process.env.NODEX_ALLOW_DEV_SHM === "1") {
-    return;
+  if (process.env.NODEX_DISABLE_DEV_SHM_USAGE === "1") {
+    app.commandLine.appendSwitch("disable-dev-shm-usage");
   }
-  app.commandLine.appendSwitch("disable-dev-shm-usage");
 }
 
 applyLinuxDevShmMitigation();

@@ -12,6 +12,7 @@
   "deferDisplayUntilContentReady": true,
   "permissions": ["storage.read", "storage.write"],
   "dependencies": {
+    "pdfjs-dist": "^4.10.38",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   }

@@ -1,19 +1,40 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 
 const CATEGORY = "pdf";
 
-function PdfBlobViewer({ assetHref }) {
-  const [blobSrc, setBlobSrc] = React.useState(null);
+/**
+ * `about:srcdoc` has no resolvable origin for pdf.worker.mjs. A real Worker also
+ * hits /dev/shm|/tmp shared-memory issues with Chromium’s PDF path on some Linux
+ * builds. Force PDF.js fake worker: a module worker that throws immediately so
+ * PDFWorker falls back to main-thread parsing (same strategy as avoiding the
+ * built-in PDF iframe, which spams shared-memory errors when opening a note).
+ */
+let pdfjsFakeWorkerConfigured = false;
+function ensurePdfJsFakeWorker() {
+  if (pdfjsFakeWorkerConfigured || typeof document === "undefined") {
+    return;
+  }
+  pdfjsFakeWorkerConfigured = true;
+  const blob = new Blob([`throw new Error("nodex-pdf-fake-worker");`], {
+    type: "text/javascript",
+  });
+  GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+}
+
+function PdfJsCanvasViewer({ assetHref }) {
+  const [pdf, setPdf] = React.useState(null);
   const [err, setErr] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
+  const docRef = React.useRef(null);
 
   React.useEffect(() => {
+    ensurePdfJsFakeWorker();
     let cancelled = false;
-    let objectUrl = null;
     setLoading(true);
     setErr(null);
-    setBlobSrc(null);
+    setPdf(null);
 
     void (async () => {
       try {
@@ -22,13 +43,14 @@ function PdfBlobViewer({ assetHref }) {
           throw new Error(`Could not load PDF (${res.status})`);
         }
         const buf = await res.arrayBuffer();
-        const blob = new Blob([buf], { type: "application/pdf" });
-        objectUrl = URL.createObjectURL(blob);
+        const task = getDocument({ data: new Uint8Array(buf) });
+        const loaded = await task.promise;
         if (cancelled) {
-          URL.revokeObjectURL(objectUrl);
+          await loaded.destroy().catch(() => {});
           return;
         }
-        setBlobSrc(objectUrl);
+        docRef.current = loaded;
+        setPdf(loaded);
       } catch (e) {
         if (!cancelled) {
           setErr(e instanceof Error ? e.message : "Failed to load PDF");
@@ -42,9 +64,9 @@ function PdfBlobViewer({ assetHref }) {
 
     return () => {
       cancelled = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
+      const d = docRef.current;
+      docRef.current = null;
+      void d?.destroy().catch(() => {});
     };
   }, [assetHref]);
 
@@ -54,6 +76,7 @@ function PdfBlobViewer({ assetHref }) {
     border: "1px solid hsl(var(--border, 214.3 31.8% 91.4%))",
     borderRadius: 6,
     width: "100%",
+    overflow: "auto",
   };
 
   if (err) {
@@ -74,7 +97,7 @@ function PdfBlobViewer({ assetHref }) {
     );
   }
 
-  if (loading || !blobSrc) {
+  if (loading || !pdf) {
     return (
       <div
         style={{
@@ -92,7 +115,57 @@ function PdfBlobViewer({ assetHref }) {
   }
 
   return (
-    <iframe title="PDF" src={blobSrc} style={frameStyle} />
+    <div style={frameStyle}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: 8 }}>
+        {Array.from({ length: pdf.numPages }, (_, i) => (
+          <PdfPage key={i + 1} pdf={pdf} pageNumber={i + 1} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PdfPage({ pdf, pageNumber }) {
+  const canvasRef = React.useRef(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      const page = await pdf.getPage(pageNumber);
+      const canvas = canvasRef.current;
+      if (!canvas || cancelled) {
+        return;
+      }
+      const viewport = page.getViewport({ scale: 1.35 });
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return;
+      }
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      await page.render({ canvasContext: ctx, viewport }).promise;
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pdf, pageNumber]);
+
+  return (
+    <div style={{ display: "flex", justifyContent: "center", overflow: "auto" }}>
+      <canvas
+        ref={canvasRef}
+        style={{
+          maxWidth: "100%",
+          borderRadius: 6,
+          border: "1px solid hsl(var(--border, 214.3 31.8% 91.4%))",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+        }}
+      />
+    </div>
   );
 }
 
@@ -198,13 +271,7 @@ function MediaApp() {
             Choose another file…
           </button>
         </div>
-        {/**
-         * Chromium’s PDF extension often shows a blank grey frame when the iframe
-         * `src` is a custom protocol (`nodex-asset:`), especially in Linux production
-         * builds. Fetch bytes and use a blob: URL so the built-in viewer gets a
-         * normal origin (same approach as host PdfAssetPreview vs raw iframe).
-         */}
-        <PdfBlobViewer assetHref={assetHref} />
+        <PdfJsCanvasViewer assetHref={assetHref} />
       </div>
     );
   }

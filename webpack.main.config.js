@@ -3,7 +3,11 @@ const CopyPlugin = require("copy-webpack-plugin");
 
 module.exports = {
   target: "electron-main",
-  entry: "./src/main.ts",
+  /** Linux: `linux-chromium-tmp-env` must evaluate before `electron` loads (TMPDIR for children). */
+  entry: [
+    path.resolve(__dirname, "src/main/linux-chromium-tmp-env.ts"),
+    path.resolve(__dirname, "src/main.ts"),
+  ],
   module: {
     rules: [
       /** Monaco ESM pulls .css; main bundle does not need styles—avoid parse errors. */
