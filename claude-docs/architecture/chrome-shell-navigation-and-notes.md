@@ -17,8 +17,9 @@ This document describes the **Chrome-only workbench** (`ChromeOnlyWorkbench`) in
 ## Tab reuse and rail metadata
 
 - **`ShellTabInstance.reuseKey`:** When `openOrReuseTab(tabTypeId, { reuseKey })` finds an existing instance with the same type and key, it **activates** it and optionally updates `title` / `state`.
-- **Menu rail:** [`ShellMenuRailRegistry`](../../src/renderer/shell/registries/ShellMenuRailRegistry.ts) items may set **`tabReuseKey`** so repeated rail clicks do not spawn duplicate tabs. Optional **`expandChrome`** toggles regions when a tab has no companion sidebar view (used for **Observable**).
-- **Commands** for Documentation, Observable, and Notes Explorer call the same tab + layout behavior as the rail (see their `useRegister*Plugin` hooks under `src/renderer/shell/first-party/plugins/`).
+- **Menu rail:** [`ShellMenuRailRegistry`](../../src/renderer/shell/registries/ShellMenuRailRegistry.ts) items may set **`tabReuseKey`** so repeated rail clicks do not spawn duplicate tabs.
+- **Tab-scoped companions:** [`ShellTabType`](../../src/renderer/shell/registries/ShellTabsRegistry.ts) may declare optional **`primarySidebarViewId`** and **`secondaryViewId`**. When the active main tab changes, [`ChromeOnlyWorkbench`](../../src/renderer/shell/ChromeOnlyWorkbench.tsx) syncs those regions: defined ids open the corresponding shell view and expand layout flags; omitted fields **close** the region and collapse **sidebar** / **companion** chrome (so e.g. Observable no longer leaves the Notes tree visible).
+- **Commands** for Documentation, Observable, and Notes Explorer open tabs; sidebar/companion visibility follows tab type companions (see `useRegister*Plugin` under `src/renderer/shell/first-party/plugins/`).
 
 ## URL hash semantics
 
@@ -30,6 +31,8 @@ This document describes the **Chrome-only workbench** (`ChromeOnlyWorkbench`) in
 ## Notes in the shell
 
 - **Tab / view ids:** [`src/renderer/shell/first-party/shellWorkspaceIds.ts`](../../src/renderer/shell/first-party/shellWorkspaceIds.ts)
+- **System markdown note plugin:** [`useRegisterMarkdownNotePlugin`](../../src/renderer/shell/first-party/plugins/markdown/useRegisterMarkdownNotePlugin.tsx) registers React editors for **`markdown`** and **`root`** on [`NodexContributionRegistry`](../../src/renderer/shell/nodex-contribution-registry.ts) (`registerNoteTypeReactEditor`). [`NoteTypeReactRenderer`](../../src/renderer/components/renderers/NoteTypeReactRenderer.tsx) resolves the registry first, then built-in editors for other types.
+- **Bundled documentation:** Repo markdown under [`docs/bundled-plugin-authoring/`](../../docs/bundled-plugin-authoring/) is seeded into the notes DB on startup ([`seedBundledDocumentationNotesFromDir`](../../src/core/bundled-docs-seed.ts)); the Documentation shell lists those notes in the sidebar **Guides** tab and renders them read-only in the main column ([`DocumentationHubView`](../../src/renderer/shell/first-party/plugins/documentation/DocumentationHubView.tsx)).
 - **Note editor view:** [`NoteEditorShellView`](../../src/renderer/shell/first-party/NoteEditorShellView.tsx) — reads `useShellActiveMainTab()`, dispatches `fetchNote`, renders [`NoteViewer`](../../src/renderer/components/NoteViewer.tsx).
 - **Registration:** [`useRegisterNotesShellPlugin`](../../src/renderer/shell/first-party/useRegisterNotesShellPlugin.ts) — tab type `shell.tab.note`, command **`nodex.notes.open`** with `{ noteId }`.
 - **Notes Explorer:** [`useRegisterNotesExplorerPlugin`](../../src/renderer/shell/first-party/plugins/notes-explorer/useRegisterNotesExplorerPlugin.ts) — sidebar [`NotesExplorerPanelView`](../../src/renderer/shell/first-party/plugins/notes-explorer/NotesExplorerPanelView.tsx) wraps [`NotesSidebarPanel`](../../src/renderer/components/NotesSidebarPanel.tsx) with **`prefixNoteTitleWithType`** (`[type] title`). Handlers live in [`useNotesExplorerShellHandlers`](../../src/renderer/shell/first-party/plugins/notes-explorer/useNotesExplorerShellHandlers.ts) (Redux + `window.Nodex`).

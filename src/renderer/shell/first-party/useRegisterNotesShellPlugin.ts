@@ -5,7 +5,11 @@ import { openNoteInShell } from "../openNoteInShell";
 import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../views/ShellViewContext";
 import { NoteEditorShellView } from "./NoteEditorShellView";
-import { SHELL_TAB_NOTE, SHELL_VIEW_NOTE_EDITOR } from "./shellWorkspaceIds";
+import {
+  NOTES_EXPLORER_VIEW_SIDEBAR,
+  SHELL_TAB_NOTE,
+  SHELL_VIEW_NOTE_EDITOR,
+} from "./shellWorkspaceIds";
 
 const NOTES_SHELL_PLUGIN_ID = "shell.notes";
 
@@ -34,6 +38,7 @@ export function useRegisterNotesShellPlugin(): void {
         title: "Note",
         order: 12,
         viewId: SHELL_VIEW_NOTE_EDITOR,
+        primarySidebarViewId: NOTES_EXPLORER_VIEW_SIDEBAR,
       }),
     );
 

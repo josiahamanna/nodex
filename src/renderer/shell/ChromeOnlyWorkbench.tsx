@@ -197,6 +197,40 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     views.openView(viewId, "mainArea");
   }, [activeTab?.instanceId, tabs, views]);
 
+  /** Sync primary sidebar + secondary to active tab type; omit companion ids → close region + collapse chrome. */
+  useEffect(() => {
+    const tabTypeId = activeTab?.tabTypeId ?? null;
+    if (!tabTypeId) {
+      views.closeRegion("primarySidebar");
+      views.closeRegion("secondaryArea");
+      store.setVisible("sidebarPanel", false);
+      store.setVisible("secondaryArea", false);
+      return;
+    }
+    const t = tabs.getTabType(tabTypeId);
+    if (!t) {
+      views.closeRegion("primarySidebar");
+      views.closeRegion("secondaryArea");
+      store.setVisible("sidebarPanel", false);
+      store.setVisible("secondaryArea", false);
+      return;
+    }
+    if (t.primarySidebarViewId) {
+      views.openView(t.primarySidebarViewId, "primarySidebar");
+      store.setVisible("sidebarPanel", true);
+    } else {
+      views.closeRegion("primarySidebar");
+      store.setVisible("sidebarPanel", false);
+    }
+    if (t.secondaryViewId) {
+      views.openView(t.secondaryViewId, "secondaryArea");
+      store.setVisible("secondaryArea", true);
+    } else {
+      views.closeRegion("secondaryArea");
+      store.setVisible("secondaryArea", false);
+    }
+  }, [activeTab?.tabTypeId, activeTab?.instanceId, tabs, views, store]);
+
   useEffect(() => {
     const id = window.setTimeout(() => {
       if (initialHashApplied.current) return;
@@ -335,25 +369,25 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               type="button"
               className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
               onClick={() => store.toggle("menuRail")}
-              title="Toggle menu rail"
+              title="Toggle activity bar"
             >
-              Rail
+              Activity bar
             </button>
             <button
               type="button"
               className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
               onClick={() => store.toggle("sidebarPanel")}
-              title="Toggle sidebar panel"
+              title="Toggle sidebar"
             >
-              Panel
+              Sidebar
             </button>
             <button
               type="button"
               className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
               onClick={() => store.toggle("secondaryArea")}
-              title="Toggle secondary area"
+              title="Toggle companion"
             >
-              Secondary
+              Companion
             </button>
             <button
               type="button"
@@ -484,7 +518,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                                 type="button"
                                 className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
                                 onClick={() => setPanelMenuOpen((v) => !v)}
-                                title="Panel menu"
+                                title="Sidebar menu"
                               >
                                 ⋯
                               </button>

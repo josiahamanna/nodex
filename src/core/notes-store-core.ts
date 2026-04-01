@@ -15,6 +15,7 @@ export type NoteListRow = {
   title: string;
   parentId: string | null;
   depth: number;
+  metadata?: Record<string, unknown>;
 };
 
 export type NoteMovePlacement = "before" | "after" | "into";

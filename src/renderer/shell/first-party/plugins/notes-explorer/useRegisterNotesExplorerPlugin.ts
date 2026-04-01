@@ -13,11 +13,6 @@ import { NotesExplorerPanelView } from "./NotesExplorerPanelView";
 
 export const NOTES_EXPLORER_PLUGIN_ID = "plugin.notes-explorer";
 
-function openNotesExplorerLayout(views: ReturnType<typeof useShellViewRegistry>): void {
-  views.openView(NOTES_EXPLORER_VIEW_SIDEBAR, "primarySidebar");
-  views.openView(NOTES_EXPLORER_VIEW_MAIN, "mainArea");
-}
-
 export function useRegisterNotesExplorerPlugin(): void {
   const regs = useShellRegistries();
   const views = useShellViewRegistry();
@@ -50,6 +45,7 @@ export function useRegisterNotesExplorerPlugin(): void {
         title: "Notes",
         order: 15,
         viewId: NOTES_EXPLORER_VIEW_MAIN,
+        primarySidebarViewId: NOTES_EXPLORER_VIEW_SIDEBAR,
       }),
     );
 
@@ -83,29 +79,12 @@ export function useRegisterNotesExplorerPlugin(): void {
             title: "Notes",
             reuseKey: "plugin.notes-explorer",
           });
-          openNotesExplorerLayout(views);
           layout.setVisible("menuRail", true);
-          layout.setVisible("sidebarPanel", true);
         },
       }),
     );
 
-    const WELCOME_TAB = "shell.tab.welcome";
-
-    const syncSidebarForActiveTab = () => {
-      const a = regs.tabs.getActiveTab();
-      if (a?.tabTypeId === NOTES_EXPLORER_TAB) {
-        openNotesExplorerLayout(views);
-      } else if (a?.tabTypeId === WELCOME_TAB) {
-        views.openView(NOTES_EXPLORER_VIEW_SIDEBAR, "primarySidebar");
-      }
-    };
-
-    const unsub = regs.tabs.subscribe(syncSidebarForActiveTab);
-    syncSidebarForActiveTab();
-
     return () => {
-      unsub();
       for (const d of disposers) d();
     };
   }, [contrib, layout, regs, views]);

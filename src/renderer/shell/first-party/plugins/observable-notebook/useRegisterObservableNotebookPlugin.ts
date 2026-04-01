@@ -39,18 +39,6 @@ export function useRegisterObservableNotebookPlugin(): void {
     );
 
     disposers.push(
-      regs.menuRail.registerItem({
-        id: "plugin.observable-notebook.rail",
-        title: "Observable",
-        icon: "O",
-        order: 9,
-        tabTypeId: TAB_NOTEBOOK,
-        tabReuseKey: "plugin.observable-notebook",
-        expandChrome: { menuRail: true, sidebarPanel: true },
-      }),
-    );
-
-    disposers.push(
       contrib.registerCommand({
         id: "nodex.observableNotebook.open",
         title: "Observable: Open notebook",
@@ -68,7 +56,6 @@ export function useRegisterObservableNotebookPlugin(): void {
         },
         handler: () => {
           layout.setVisible("menuRail", true);
-          layout.setVisible("sidebarPanel", true);
           const inst = regs.tabs.openOrReuseTab(TAB_NOTEBOOK, {
             title: "Observable",
             reuseKey: "plugin.observable-notebook",
@@ -79,17 +66,7 @@ export function useRegisterObservableNotebookPlugin(): void {
       }),
     );
 
-    const syncObservableMain = () => {
-      const a = regs.tabs.getActiveTab();
-      if (a?.tabTypeId === TAB_NOTEBOOK) {
-        views.openView(VIEW_PRIMARY, "mainArea");
-      }
-    };
-    const unsubTabs = regs.tabs.subscribe(syncObservableMain);
-    syncObservableMain();
-
     return () => {
-      unsubTabs();
       for (const d of disposers) d();
     };
   }, [contrib, layout, regs, views]);

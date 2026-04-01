@@ -13,12 +13,6 @@ const VIEW_DOCS_SETTINGS = "plugin.documentation.settings";
 const VIEW_DOCS_HUB = "plugin.documentation.hub";
 const TAB_DOCS = "plugin.documentation.tab";
 
-function openDocsLayout(views: ReturnType<typeof useShellViewRegistry>): void {
-  views.openView(VIEW_DOCS_SEARCH, "primarySidebar");
-  views.openView(VIEW_DOCS_SETTINGS, "secondaryArea");
-  views.openView(VIEW_DOCS_HUB, "mainArea");
-}
-
 export function useRegisterDocumentationPlugin(): void {
   const regs = useShellRegistries();
   const views = useShellViewRegistry();
@@ -71,6 +65,8 @@ export function useRegisterDocumentationPlugin(): void {
         title: "Docs",
         order: 20,
         viewId: VIEW_DOCS_HUB,
+        primarySidebarViewId: VIEW_DOCS_SEARCH,
+        secondaryViewId: VIEW_DOCS_SETTINGS,
       }),
     );
 
@@ -89,10 +85,7 @@ export function useRegisterDocumentationPlugin(): void {
         },
         handler: () => {
           regs.tabs.openOrReuseTab(TAB_DOCS, { title: "Docs", reuseKey: "plugin.documentation" });
-          openDocsLayout(views);
           layout.setVisible("menuRail", true);
-          layout.setVisible("sidebarPanel", true);
-          layout.setVisible("secondaryArea", true);
         },
       }),
     );
@@ -112,23 +105,12 @@ export function useRegisterDocumentationPlugin(): void {
         },
         handler: () => {
           regs.tabs.openOrReuseTab(TAB_DOCS, { title: "Docs", reuseKey: "plugin.documentation" });
-          openDocsLayout(views);
           layout.setVisible("menuRail", true);
-          layout.setVisible("sidebarPanel", true);
-          layout.setVisible("secondaryArea", true);
         },
       }),
     );
 
-    const unsub = regs.tabs.subscribe(() => {
-      const a = regs.tabs.getActiveTab();
-      if (a?.tabTypeId === TAB_DOCS) {
-        openDocsLayout(views);
-      }
-    });
-
     return () => {
-      unsub();
       for (const d of disposers) d();
     };
   }, [contrib, layout, regs, views]);

@@ -287,9 +287,9 @@ export function registerNodexCoreContributions(
     });
 
   disposers.push(
-    toggle("nodex.shell.toggle.menuRail", "Shell: Toggle menu rail", "menuRail"),
-    toggle("nodex.shell.toggle.sidebarPanel", "Shell: Toggle sidebar panel", "sidebarPanel"),
-    toggle("nodex.shell.toggle.secondaryArea", "Shell: Toggle secondary area", "secondaryArea"),
+    toggle("nodex.shell.toggle.menuRail", "Shell: Toggle activity bar", "menuRail"),
+    toggle("nodex.shell.toggle.sidebarPanel", "Shell: Toggle sidebar", "sidebarPanel"),
+    toggle("nodex.shell.toggle.secondaryArea", "Shell: Toggle companion", "secondaryArea"),
     toggle("nodex.shell.toggle.bottomDock", "Shell: Toggle bottom dock", "bottomArea"),
     toggle("nodex.shell.toggle.miniBar", "Shell: Toggle mini bar", "miniBar"),
     toggle("nodex.shell.toggle.modeLine", "Shell: Toggle mode line", "modeLine"),

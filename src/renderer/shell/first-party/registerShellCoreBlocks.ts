@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../views/ShellViewContext";
 import { WelcomeShellView } from "./WelcomeShellView";
+import { NOTES_EXPLORER_VIEW_SIDEBAR } from "./shellWorkspaceIds";
 
 /**
  * Minimal first-party shell blocks (React views, no iframes).
@@ -40,6 +41,7 @@ export function useRegisterShellCoreBlocks(): void {
         title: "Welcome",
         order: 0,
         viewId: "shell.welcome",
+        primarySidebarViewId: NOTES_EXPLORER_VIEW_SIDEBAR,
       }),
     );
     regs.tabs.openOrReuseTab("shell.tab.welcome", {
@@ -56,8 +58,9 @@ export function useRegisterShellCoreBlocks(): void {
           children: [
             { id: "shell.menu.shell.palette", title: "Command palette", commandId: "nodex.shell.openPalette" },
             { id: "shell.menu.shell.minibuffer", title: "Mini buffer (M-x)", commandId: "nodex.shell.openMiniBar" },
+            { id: "shell.menu.shell.toggleActivityBar", title: "Toggle activity bar", commandId: "nodex.shell.toggle.menuRail" },
             { id: "shell.menu.shell.toggleSidebar", title: "Toggle sidebar", commandId: "nodex.shell.toggle.sidebarPanel" },
-            { id: "shell.menu.shell.toggleSecondary", title: "Toggle secondary", commandId: "nodex.shell.toggle.secondaryArea" },
+            { id: "shell.menu.shell.toggleSecondary", title: "Toggle companion", commandId: "nodex.shell.toggle.secondaryArea" },
             { id: "shell.menu.shell.toggleBottom", title: "Toggle bottom dock", commandId: "nodex.shell.toggle.bottomDock" },
           ],
         },

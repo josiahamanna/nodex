@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "folder": {
+    "id": "nodex-bundled-docs",
+    "title": "Nodex — Plugin authoring (bundled)"
+  },
+  "pages": [
+    {
+      "id": "nodex-bundled-plugin-overview",
+      "file": "01-overview.md",
+      "title": "Overview"
+    },
+    {
+      "id": "nodex-bundled-plugin-shell",
+      "file": "02-shell-and-commands.md",
+      "title": "Shell registration and commands"
+    },
+    {
+      "id": "nodex-bundled-plugin-example",
+      "file": "03-minimal-example.md",
+      "title": "Minimal code example"
+    }
+  ]
+}

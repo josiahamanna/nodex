@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useDispatch } from "react-redux";
 import Editor from "@monaco-editor/react";
 import { loader } from "@monaco-editor/react";
@@ -7,6 +7,7 @@ import type { Note } from "@nodex/ui-types";
 import type { AppDispatch } from "../../store";
 import { saveNoteContent } from "../../store/notesSlice";
 import { useTheme } from "../../theme/ThemeContext";
+import { useNodexContributionRegistry } from "../../shell/NodexContributionContext";
 
 loader.config({ monaco });
 
@@ -37,7 +38,7 @@ function useDebouncedNoteSave(
   );
 }
 
-function MarkdownLikeEditor({
+function TextNoteEditor({
   note,
   persist,
 }: {
@@ -63,16 +64,6 @@ function MarkdownLikeEditor({
       }}
     />
   );
-}
-
-function TextNoteEditor({
-  note,
-  persist,
-}: {
-  note: Note;
-  persist: boolean;
-}): React.ReactElement {
-  return <MarkdownLikeEditor note={note} persist={persist} />;
 }
 
 function CodeNoteEditor({
@@ -121,9 +112,28 @@ function CodeNoteEditor({
 const NoteTypeReactRenderer: React.FC<NoteTypeReactRendererProps> = ({
   note,
   persistToNotesStore = true,
+  assetProjectRoot = null,
 }) => {
   const persist = persistToNotesStore;
   const t = note.type;
+  const contrib = useNodexContributionRegistry();
+  const registryRev = useSyncExternalStore(
+    (onStore) => contrib.subscribe(onStore),
+    () => contrib.getSnapshotVersion(),
+    () => 0,
+  );
+
+  const Registered = contrib.getNoteTypeReactEditor(t);
+  if (Registered) {
+    void registryRev;
+    return (
+      <Registered
+        note={note}
+        persistToNotesStore={persist}
+        assetProjectRoot={assetProjectRoot}
+      />
+    );
+  }
 
   if (t === "code") {
     return <CodeNoteEditor note={note} persist={persist} />;
@@ -132,7 +142,15 @@ const NoteTypeReactRenderer: React.FC<NoteTypeReactRendererProps> = ({
     return <TextNoteEditor note={note} persist={persist} />;
   }
   if (t === "markdown" || t === "root") {
-    return <MarkdownLikeEditor note={note} persist={persist} />;
+    return (
+      <div className="rounded-sm border border-border bg-muted/50 p-4">
+        <p className="font-medium text-foreground">Markdown editor not registered</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The system markdown plugin should register on startup. Reload the app or check{" "}
+          <code className="text-xs">useRegisterMarkdownNotePlugin</code>.
+        </p>
+      </div>
+    );
   }
 
   return (

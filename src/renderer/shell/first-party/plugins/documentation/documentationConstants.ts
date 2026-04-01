@@ -5,4 +5,5 @@ export const DOCS_BC = "nodex.documentation.sync";
 export type DocsBcMessage =
   | { type: "docs.setMiniOnly"; miniOnly: boolean }
   | { type: "docs.refreshCommands" }
-  | { type: "docs.showCommand"; commandId: string };
+  | { type: "docs.showCommand"; commandId: string }
+  | { type: "docs.showBundledDoc"; noteId: string };

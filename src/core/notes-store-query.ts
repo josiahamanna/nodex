@@ -32,13 +32,17 @@ export function getNotesFlat(): NoteListRow[] {
       if (!n) {
         continue;
       }
-      out.push({
+      const row: NoteListRow = {
         id: n.id,
         type: n.type,
         title: n.title,
         parentId: n.parentId,
         depth,
-      });
+      };
+      if (n.metadata && Object.keys(n.metadata).length > 0) {
+        row.metadata = { ...n.metadata };
+      }
+      out.push(row);
       walk(id, depth + 1);
     }
   }

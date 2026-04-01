@@ -17,11 +17,36 @@ export function DocumentationPluginAuthoringSection(): React.ReactElement {
       <section>
         <h3 className="mb-1.5 text-[13px] font-bold">How to create plugins</h3>
         <p className="text-muted-foreground">
-          Plugins extend the shell (rail, side panel, primary tabs, secondary column) and can register
-          commands for the palette and minibuffer. <strong>System plugins</strong> ship inside the app as
-          normal TypeScript modules; <strong>user plugins</strong> use the same conceptual API and will load
+          Plugins extend the shell (activity bar, sidebar column, primary tabs, companion column) and can
+          register commands for the palette and minibuffer. <strong>System plugins</strong> ship inside the app
+          as normal TypeScript modules; <strong>user plugins</strong> use the same conceptual API and will load
           from compiled bundles under a SES sandbox (see repo docs).
         </p>
+      </section>
+
+      <section>
+        <h4 className="mb-1 text-[12px] font-semibold">Tab companions and in-app docs</h4>
+        <ul className="list-inside list-disc space-y-1 text-muted-foreground">
+          <li>
+            <strong className="text-foreground">Tab types</strong> can set optional{" "}
+            <code className="rounded bg-muted px-1 font-mono text-[10px]">primarySidebarViewId</code> and{" "}
+            <code className="rounded bg-muted px-1 font-mono text-[10px]">secondaryViewId</code> so the
+            workbench opens or closes the sidebar and companion columns when you switch main tabs—no stale
+            explorer next to unrelated tabs.
+          </li>
+          <li>
+            <strong className="text-foreground">Markdown editing</strong> for <code className="font-mono text-[10px]">markdown</code> /{" "}
+            <code className="font-mono text-[10px]">root</code> is provided by the bundled{" "}
+            <code className="font-mono text-[10px]">useRegisterMarkdownNotePlugin</code> hook, which registers
+            editors on the contribution registry (minimal shell chrome—no rail or extra tabs).
+          </li>
+          <li>
+            <strong className="text-foreground">Long-form guides</strong> ship as markdown files under{" "}
+            <code className="font-mono text-[10px]">docs/bundled-plugin-authoring/</code>, seeded into the notes
+            DB on startup. Open the Documentation tab → sidebar <strong>Guides</strong> for read-only rendered
+            copies; this panel stays a short index.
+          </li>
+        </ul>
       </section>
 
       <section>

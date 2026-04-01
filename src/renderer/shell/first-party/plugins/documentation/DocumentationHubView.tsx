@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import type { Note } from "@nodex/ui-types";
+import MarkdownRenderer from "../../../../components/renderers/MarkdownRenderer";
 import { resolveCommandApiDoc } from "../../../command-api-metadata";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import { DOCS_BC, type DocsBcMessage } from "./documentationConstants";
@@ -38,6 +40,10 @@ function SectionTitle({ children }: { children: React.ReactNode }): React.ReactE
 export function DocumentationHubView(_props: { viewId: string; title: string }): React.ReactElement {
   const registry = useNodexContributionRegistry();
   const [commandId, setCommandId] = useState<string | null>(null);
+  const [bundledNoteId, setBundledNoteId] = useState<string | null>(null);
+  const [bundledNote, setBundledNote] = useState<Note | null>(null);
+  const [bundledLoading, setBundledLoading] = useState(false);
+  const [bundledError, setBundledError] = useState<string | null>(null);
 
   const registryRev = useSyncExternalStore(
     (onChange) => registry.subscribe(onChange),
@@ -79,7 +85,12 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     const onMsg = (ev: MessageEvent<DocsBcMessage>) => {
       const d = ev.data;
       if (d?.type === "docs.showCommand" && typeof d.commandId === "string") {
+        setBundledNoteId(null);
         setCommandId(d.commandId);
+      }
+      if (d?.type === "docs.showBundledDoc" && typeof d.noteId === "string") {
+        setCommandId(null);
+        setBundledNoteId(d.noteId);
       }
     };
     bc.addEventListener("message", onMsg);
@@ -89,15 +100,82 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     };
   }, []);
 
+  useEffect(() => {
+    if (!bundledNoteId) {
+      setBundledNote(null);
+      setBundledError(null);
+      setBundledLoading(false);
+      return;
+    }
+    setBundledLoading(true);
+    setBundledError(null);
+    void window.Nodex.getNote(bundledNoteId)
+      .then((n) => {
+        setBundledNote(n);
+        setBundledLoading(false);
+      })
+      .catch((e: unknown) => {
+        setBundledError(e instanceof Error ? e.message : String(e));
+        setBundledLoading(false);
+      });
+  }, [bundledNoteId]);
+
+  if (bundledNoteId) {
+    if (bundledLoading) {
+      return (
+        <div className="flex h-full min-h-0 items-center justify-center p-5 text-[13px] text-muted-foreground">
+          Loading guide…
+        </div>
+      );
+    }
+    if (bundledError) {
+      return (
+        <div className="flex h-full min-h-0 flex-col gap-2 p-5 text-[13px] text-destructive">
+          <p className="font-medium">Could not load this guide</p>
+          <p className="text-muted-foreground">{esc(bundledError)}</p>
+        </div>
+      );
+    }
+    if (!bundledNote) {
+      return (
+        <div className="flex h-full min-h-0 flex-col gap-2 p-5 text-[13px] text-muted-foreground">
+          <p className="font-medium text-foreground">Guide not available</p>
+          <p>
+            This note id is not in the current workspace, or notes have not finished loading. Open a project and
+            ensure bundled docs have seeded.
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-auto">
+        <div className="shrink-0 border-b border-border px-5 py-3">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Bundled guide (read-only)
+          </div>
+          <h1 className="mt-1 text-lg font-semibold text-foreground">{esc(bundledNote.title)}</h1>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto">
+          <MarkdownRenderer note={bundledNote} />
+        </div>
+      </div>
+    );
+  }
+
   if (!doc) {
     return (
       <div className="flex h-full min-h-0 flex-col gap-3 p-5 text-[13px] text-muted-foreground">
         <p className="text-foreground">
-          <strong>Documentation</strong> — pick a command in the <strong>left panel</strong> to see the full
-          API contract: namespace, fields, types, JSON Schema for invoke args, examples, and return shape.
+          <strong>Documentation</strong> — use the <strong>Guides</strong> tab in the sidebar for bundled
+          plugin-authoring markdown (read-only), or <strong>Commands</strong> to browse the command API.
         </p>
         <p>
-          To learn how to build and wire plugins, open the secondary column’s{" "}
+          Long-form shell and plugin topics also live in the repository under{" "}
+          <code className="font-mono text-[11px] text-foreground">docs/bundled-plugin-authoring/</code> and are
+          seeded into your workspace notes on startup.
+        </p>
+        <p>
+          For a short in-app index, open the companion column’s{" "}
           <strong className="text-foreground">Plugin authoring</strong> tab (next to Keyboard / API / About).
         </p>
       </div>

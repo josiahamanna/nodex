@@ -28,6 +28,8 @@ export interface NoteListItem {
   title: string;
   parentId: string | null;
   depth: number;
+  /** Present when the note row includes metadata (e.g. bundled documentation flags). */
+  metadata?: Record<string, unknown>;
 }
 
 export type CreateNoteRelation = "child" | "sibling" | "root";

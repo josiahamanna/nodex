@@ -13,12 +13,14 @@ import { useRegisterDocumentationPlugin } from "./shell/first-party/plugins/docu
 import { useRegisterNotesExplorerPlugin } from "./shell/first-party/plugins/notes-explorer/useRegisterNotesExplorerPlugin";
 import { useRegisterObservableNotebookPlugin } from "./shell/first-party/plugins/observable-notebook/useRegisterObservableNotebookPlugin";
 import { useRegisterNotesShellPlugin } from "./shell/first-party/useRegisterNotesShellPlugin";
+import { useRegisterMarkdownNotePlugin } from "./shell/first-party/plugins/markdown/useRegisterMarkdownNotePlugin";
 
 ensureSesLockdown();
 
 const App: React.FC = () => {
   const shellVm = useNodexShell();
   const layout = useShellLayoutState();
+  useRegisterMarkdownNotePlugin();
   useRegisterShellCoreBlocks();
   useRegisterShellDefaultKeybindings();
   useRegisterObservableNotebookPlugin();

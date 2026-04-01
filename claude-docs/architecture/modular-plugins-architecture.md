@@ -4,7 +4,7 @@
 
 Nodex loads **plugins** that contribute UI and behavior without embedding third-party markup in **iframes**. Shell regions and note editors mount **React components** supplied by plugins (or first-party shims). Optional **SES** (`lockdown` + `Compartment`) isolates untrusted plugin code in the renderer; **system plugins** shipped in the app bundle may run as trusted modules.
 
-This document complements [detach-ui-from-logic.md](./detach-ui-from-logic.md) (single UI, IPC vs HTTP transport).
+This document complements [detach-ui-from-logic.md](./detach-ui-from-logic.md) (single UI, IPC vs HTTP transport). Bundled Markdown docs for authors are seeded into the notes DB from `docs/bundled-plugin-authoring/` — see [bundled-documentation-seeding.md](./bundled-documentation-seeding.md).
 
 ## Plugin kinds
 
@@ -75,3 +75,4 @@ The **JS Notebook** shell experiment is removed in favor of the above set.
 | Plugin UI SDK (evolving) | `packages/nodex-plugin-ui/src/index.ts` |
 | Host capabilities (types) | `src/shared/plugin-host-capabilities.ts` |
 | SES lockdown | `src/renderer/shell/sandbox/sesLockdown.ts` |
+| Bundled docs seed | `src/core/bundled-docs-seed.ts`, `docs/bundled-plugin-authoring/` |

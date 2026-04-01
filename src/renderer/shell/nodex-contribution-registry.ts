@@ -1,5 +1,15 @@
 /** In-app contribution registry (commands + mode line). Mirrors architecture: palette/mini bar + stacked segments. */
 
+import type { ComponentType } from "react";
+import type { Note } from "@nodex/ui-types";
+
+/** Props for React editors mounted by {@link NoteTypeReactRenderer}. */
+export type NoteTypeReactEditorProps = {
+  note: Note;
+  persistToNotesStore?: boolean;
+  assetProjectRoot?: string | null;
+};
+
 export type CommandHandler = (
   args?: Record<string, unknown>,
 ) => void | Promise<void>;
@@ -78,6 +88,7 @@ type Listener = () => void;
 export class NodexContributionRegistry {
   private readonly commands = new Map<string, CommandContribution>();
   private readonly modeLine = new Map<string, ModeLineContribution>();
+  private readonly noteTypeReactEditors = new Map<string, ComponentType<NoteTypeReactEditorProps>>();
   private readonly listeners = new Set<Listener>();
   private snapshotVersion = 0;
 
@@ -116,6 +127,30 @@ export class NodexContributionRegistry {
         this.emit();
       }
     };
+  }
+
+  /**
+   * Register a React editor for a note `type` (e.g. system `markdown` plugin).
+   * Later registrations replace earlier ones for the same type.
+   */
+  registerNoteTypeReactEditor(
+    noteType: string,
+    component: ComponentType<NoteTypeReactEditorProps>,
+  ): () => void {
+    this.noteTypeReactEditors.set(noteType, component);
+    this.emit();
+    return () => {
+      if (this.noteTypeReactEditors.get(noteType) === component) {
+        this.noteTypeReactEditors.delete(noteType);
+        this.emit();
+      }
+    };
+  }
+
+  getNoteTypeReactEditor(
+    noteType: string,
+  ): ComponentType<NoteTypeReactEditorProps> | undefined {
+    return this.noteTypeReactEditors.get(noteType);
   }
 
   registerModeLineItem(c: ModeLineContribution): () => void {

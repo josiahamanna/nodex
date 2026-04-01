@@ -9,6 +9,7 @@ import {
   resetNotesStore,
   seedAttachedWorkspaceIfEmpty,
 } from "./notes-store";
+import { seedBundledDocumentationNotesFromDir } from "./bundled-docs-seed";
 import {
   closeNotesSqlite,
   countNotesInDb,
@@ -18,6 +19,23 @@ import {
   readSerializedFromAlias,
   saveWorkspaceToDatabases,
 } from "./notes-sqlite";
+
+function trySeedBundledDocsAndSave(db: ReturnType<typeof getNotesDatabase>): void {
+  if (!db) {
+    return;
+  }
+  try {
+    if (seedBundledDocumentationNotesFromDir()) {
+      saveWorkspaceToDatabases(db);
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[Nodex] bundled documentation seed failed:",
+      e instanceof Error ? e.message : String(e),
+    );
+  }
+}
 
 export type NotesLoadResult = "ok" | "missing" | "invalid";
 
@@ -89,16 +107,18 @@ export function bootstrapWorkspaceNotes(
 
   if (mainEmpty && allAttachedEmpty) {
     ensureNotesSeeded(registeredTypes);
-    saveWorkspaceToDatabases(db);
     mergeMultipleRootsIfNeeded();
+    saveWorkspaceToDatabases(db);
+    trySeedBundledDocsAndSave(db);
     return;
   }
 
   if (!loadFromDatabase(db)) {
     resetNotesStore();
     ensureNotesSeeded(registeredTypes);
-    saveWorkspaceToDatabases(db);
     mergeMultipleRootsIfNeeded();
+    saveWorkspaceToDatabases(db);
+    trySeedBundledDocsAndSave(db);
     return;
   }
 
@@ -120,8 +140,14 @@ export function bootstrapWorkspaceNotes(
   if (getNotesFlat().length === 0 && registeredTypes.length > 0) {
     resetNotesStore();
     ensureNotesSeeded(registeredTypes);
+    mergeMultipleRootsIfNeeded();
     saveWorkspaceToDatabases(db);
+    trySeedBundledDocsAndSave(db);
+    return;
   }
+
+  mergeMultipleRootsIfNeeded();
+  trySeedBundledDocsAndSave(db);
 }
 
 /**
