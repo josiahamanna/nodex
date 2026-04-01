@@ -1,9 +1,23 @@
+import * as fs from "fs";
+import * as path from "path";
+import { pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, type MenuItemConstructorOptions } from "electron";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { ctx } from "./main-context";
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+
+function resolveMainWindowLoadUrl(): string {
+  if (process.env.NODE_ENV === "development") {
+    return process.env.NODEX_WEB_DEV_URL ?? "http://127.0.0.1:3000";
+  }
+  const packaged = path.join(process.resourcesPath, "nodex-web", "index.html");
+  if (fs.existsSync(packaged)) {
+    return pathToFileURL(packaged).href;
+  }
+  return MAIN_WINDOW_WEBPACK_ENTRY;
+}
 
 export function createMainWindow(): void {
   ctx.mainWindow = new BrowserWindow({
@@ -81,7 +95,7 @@ export function createMainWindow(): void {
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 
-  ctx.mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+  ctx.mainWindow.loadURL(resolveMainWindowLoadUrl());
 
   if (process.env.NODE_ENV === "development") {
     ctx.mainWindow.webContents.openDevTools();

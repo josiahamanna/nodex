@@ -21,6 +21,8 @@ const DEV_CSP = [
 ].join("; ");
 
 const { copyPackagerMainExternals } = require("./scripts/copy-packager-main-externals");
+const { copyNodexWebUi } = require("./scripts/copy-nodex-web-ui-to-packaged-app");
+const { execSync } = require("child_process");
 
 module.exports = {
   /** Forge staging: packaged apps + `make/` maker outputs. Final installers are copied to `dist/` via `npm run collect:dist`. */
@@ -82,9 +84,18 @@ module.exports = {
     },
   ],
   hooks: {
-    /** After webpack plugin copies `.webpack`; populate `node_modules` for main externals. */
+    /** Build the shared Next.js UI (static export) before the packager copies the app tree. */
+    prePackage: async () => {
+      execSync("npm run build:web:static", {
+        stdio: "inherit",
+        cwd: path.resolve(__dirname),
+        env: { ...process.env },
+      });
+    },
+    /** After webpack plugin copies `.webpack`; populate `node_modules` for main externals + web UI. */
     packageAfterCopy: async (_forgeConfig, buildPath) => {
       copyPackagerMainExternals(buildPath);
+      copyNodexWebUi(buildPath);
     },
   },
   plugins: [
@@ -96,11 +107,11 @@ module.exports = {
         loggerPort: 9001,
         devContentSecurityPolicy: DEV_CSP,
         renderer: {
-          config: "./webpack.renderer.config.js",
+          config: "./webpack.renderer.stub.config.js",
           entryPoints: [
             {
-              html: "./src/renderer/index.html",
-              js: "./src/renderer/index.tsx",
+              html: "./src/electron-renderer-stub/index.html",
+              js: "./src/electron-renderer-stub/index.tsx",
               name: "main_window",
               preload: {
                 js: "./src/preload.ts",

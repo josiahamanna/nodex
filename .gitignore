@@ -6,6 +6,10 @@ plugin-sources/**/node_modules/
 out/
 dist/
 build/tsc/
+apps/nodex-web/.next/
+apps/nodex-web/out/
+src/renderer/styles/tokens-raw.generated.ts
+src/shared/video-js-iframe-css.generated.ts
 
 # Plugin zips (generated)
 plugin-sources/**/*.zip

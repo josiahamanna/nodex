@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch } from "react-redux";
-import { Note } from "../../../preload";
+import { Note } from "@nodex/ui-types";
 import { MessageType, PluginMessage } from "../../../shared/plugin-api";
 import {
   isPluginUiSnapshotMessage,

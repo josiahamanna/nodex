@@ -4,6 +4,10 @@
     "module": "commonjs",
     "lib": ["ES2020", "DOM"],
     "jsx": "react",
+    "baseUrl": ".",
+    "paths": {
+      "@nodex/ui-types": ["./src/shared/nodex-preload-public-types.ts"]
+    },
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

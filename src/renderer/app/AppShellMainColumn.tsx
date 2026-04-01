@@ -1,5 +1,5 @@
 import React from "react";
-import type { Note } from "../../preload";
+import type { Note } from "@nodex/ui-types";
 import NoteViewer from "../components/NoteViewer";
 import AssetPreview from "../components/AssetPreview";
 import PluginManager from "../components/PluginManager";

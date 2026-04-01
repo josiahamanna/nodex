@@ -1,4 +1,4 @@
-import type { NoteListItem, NoteMovePlacement } from "../../preload";
+import type { NoteListItem, NoteMovePlacement } from "@nodex/ui-types";
 import {
   isStrictAncestor,
   minimalSelectedRoots,

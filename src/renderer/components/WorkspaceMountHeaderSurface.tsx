@@ -3,7 +3,7 @@ import type {
   CreateNoteRelation,
   NoteListItem,
   NoteMovePlacement,
-} from "../../preload";
+} from "@nodex/ui-types";
 import type { DropHint } from "../notes-sidebar/notes-sidebar-utils";
 import { noteTypeInitials } from "../utils/note-type-initials";
 

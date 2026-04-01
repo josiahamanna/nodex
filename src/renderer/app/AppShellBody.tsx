@@ -11,7 +11,7 @@ import type {
   NoteListItem,
   NoteMovePlacement,
   PasteSubtreePayload,
-} from "../../preload";
+} from "@nodex/ui-types";
 export type AppShellBodyProps = {
   primaryTab: PrimaryTab;
   projectRoot: string | null | undefined;

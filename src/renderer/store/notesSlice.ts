@@ -5,7 +5,7 @@ import {
   NoteListItem,
   NoteMovePlacement,
   PasteSubtreePayload,
-} from "../../preload";
+} from "@nodex/ui-types";
 import { PLUGIN_UI_METADATA_KEY } from "../../shared/plugin-state-protocol";
 
 interface NotesState {

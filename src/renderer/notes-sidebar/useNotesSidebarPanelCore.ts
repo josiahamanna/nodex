@@ -4,7 +4,7 @@ import type {
   NoteListItem,
   NoteMovePlacement,
   PasteSubtreePayload,
-} from "../../preload";
+} from "@nodex/ui-types";
 import { buildWorkspaceSidebarSections } from "../../shared/sidebar-assets-rows";
 import {
   minimalSelectedRoots,

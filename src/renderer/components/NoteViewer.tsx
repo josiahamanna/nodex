@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Note } from "../../preload";
+import { Note } from "@nodex/ui-types";
 import { useToast } from "../toast/ToastContext";
 import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
 

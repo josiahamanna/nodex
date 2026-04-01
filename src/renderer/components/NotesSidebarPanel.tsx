@@ -4,7 +4,7 @@ import type {
   NoteListItem,
   NoteMovePlacement,
   PasteSubtreePayload,
-} from "../../preload";
+} from "@nodex/ui-types";
 import { useNodexDialog } from "../dialog/NodexDialogProvider";
 import NotesSidebarPanelContextMenu from "../notes-sidebar/NotesSidebarPanelContextMenu";
 import NotesSidebarPanelRenameModal from "../notes-sidebar/NotesSidebarPanelRenameModal";

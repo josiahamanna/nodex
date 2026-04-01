@@ -41,7 +41,7 @@ import type {
   CreateNoteRelation,
   NoteMovePlacement,
   PasteSubtreePayload,
-} from "../preload";
+} from "@nodex/ui-types";
 import { workspaceFolderPathForNote } from "../shared/note-workspace";
 
 const App: React.FC = () => {

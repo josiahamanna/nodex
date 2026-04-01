@@ -132,6 +132,223 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
   });
 }
 
+/**
+ * Offline-safe `window.Nodex` for plain browser (e.g. `next dev` without Electron and without `?web=1&api=`).
+ * Enough for the shell to mount; host actions show as cancelled / empty until you use Electron or the HTTP API.
+ */
+export function createPlainBrowserDevStub(): NodexRendererApi {
+  const impl: Partial<NodexRendererApi> = {
+    getNote: async () => null,
+    getAllNotes: async () => [],
+    getProjectState: async () => ({
+      rootPath: null,
+      notesDbPath: null,
+      workspaceRoots: [],
+      workspaceLabels: {},
+    }),
+    getSelectableNoteTypes: async () => [],
+    getRegisteredTypes: async () => [],
+    getAppPrefs: async () => ({ seedSampleNotes: true }),
+    setSeedSampleNotes: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser — use Electron or ?web=1&api=…",
+    }),
+    getNativeThemeDark: async () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches,
+    onNativeThemeChanged: (callback) => {
+      if (typeof window === "undefined") {
+        return noopUnsub;
+      }
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      const fn = () => callback(mq.matches);
+      mq.addEventListener("change", fn);
+      return () => mq.removeEventListener("change", fn);
+    },
+    getMainDebugLogBuffer: async () => [],
+    onMainDebugLog: () => noopUnsub,
+    clearMainDebugLogBuffer: async () => ({ success: true }),
+    onPluginsChanged: () => noopUnsub,
+    onProjectRootChanged: () => noopUnsub,
+    onPluginProgress: () => noopUnsub,
+    onIdeWorkspaceFsChanged: () => noopUnsub,
+    onRunContributionCommand: () => noopUnsub,
+    sendClientLog: () => {},
+    assetUrl: () => "nodex-asset:browser-dev-unavailable",
+    nodexUndo: async () => ({
+      ok: false as const,
+      error: "No host",
+      touchedNotes: false as const,
+    }),
+    nodexRedo: async () => ({
+      ok: false as const,
+      error: "No host",
+      touchedNotes: false as const,
+    }),
+    addWorkspaceFolder: async () => ({ ok: false as const, cancelled: true }),
+    selectProjectFolder: async () => ({ ok: false as const, cancelled: true }),
+    openProjectPath: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    refreshWorkspace: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    removeWorkspaceRoot: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    swapWorkspaceBlock: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    setWorkspaceFolderLabel: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    revealProjectFolderInExplorer: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    toggleDeveloperTools: async () => ({ success: false }),
+    quitApp: async () => ({ success: false }),
+    reloadWindow: async () => ({ success: false }),
+    listAssets: async () => ({
+      ok: true as const,
+      entries: [],
+    }),
+    listAssetsByCategory: async () => ({
+      ok: true as const,
+      files: [],
+    }),
+    getAssetInfo: async () => null,
+    readAssetText: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    openAssetExternal: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    moveProjectAsset: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    revealAssetInFileManager: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    pickImportMediaFile: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    getInstalledPlugins: async () => [],
+    getPluginInventory: async () => [],
+    getDisabledPluginIds: async () => [],
+    getPluginLoadIssues: async () => [],
+    getPluginCacheStats: async () => ({
+      root: "",
+      totalBytes: 0,
+      plugins: [],
+    }),
+    getUserPluginsDirectory: async () => ({
+      path: "",
+      error: "Not available in plain browser",
+    }),
+    validatePluginZip: async () => ({
+      valid: false,
+      errors: ["Not available in plain browser"],
+      warnings: [],
+    }),
+    importPlugin: async () => ({
+      success: false,
+      error: "Not available in plain browser",
+    }),
+    setPluginEnabled: async () => ({
+      success: false,
+      error: "Not available in plain browser",
+    }),
+    reloadPluginRegistry: async () => ({
+      success: false,
+      error: "Not available in plain browser",
+    }),
+    uninstallPlugin: async () => ({
+      success: false,
+      error: "Not available in plain browser",
+    }),
+    selectZipFile: async () => null,
+    getComponent: async () => null,
+    getPluginHTML: async () => null,
+    getPluginRendererUiMeta: async () => null,
+    getPluginManifestUi: async () => null,
+    createNote: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    renameNote: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    deleteNotes: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    moveNote: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    moveNotesBulk: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    pasteSubtree: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    saveNotePluginUiState: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    saveNoteContent: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+  };
+
+  return new Proxy(impl as NodexRendererApi, {
+    get(target, prop, receiver) {
+      if (prop === "then") {
+        return undefined;
+      }
+      if (
+        prop in target &&
+        target[prop as keyof NodexRendererApi] !== undefined
+      ) {
+        return Reflect.get(target, prop, receiver);
+      }
+      const key = String(prop);
+      if (key.startsWith("on") && key.length > 3) {
+        return () => noopUnsub;
+      }
+      return (..._args: unknown[]) =>
+        Promise.reject(
+          new Error(
+            `[Nodex] ${key} is only available in Electron or with ?web=1&api=… (headless API).`,
+          ),
+        );
+    },
+  });
+}
+
 export function installNodexWebShimIfNeeded(): void {
   if (typeof window === "undefined") {
     return;
@@ -141,8 +358,5 @@ export function installNodexWebShimIfNeeded(): void {
     return;
   }
   const base = window.__NODEX_WEB_API_BASE__?.trim();
-  if (!base) {
-    return;
-  }
-  window.Nodex = createWebNodexApi(base);
+  window.Nodex = base ? createWebNodexApi(base) : createPlainBrowserDevStub();
 }

@@ -17,7 +17,7 @@ if (typeof window !== "undefined") {
     TRUSTED_TYPES_POLICY: identityTrustedTypesPolicy(),
   });
 }
-import { Note } from "../../../preload";
+import { Note } from "@nodex/ui-types";
 
 interface PluginRendererProps {
   note: Note;

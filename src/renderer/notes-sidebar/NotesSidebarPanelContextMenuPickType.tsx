@@ -1,5 +1,5 @@
 import React from "react";
-import type { CreateNoteRelation } from "../../preload";
+import type { CreateNoteRelation } from "@nodex/ui-types";
 import { ctxBtn, type ContextMenuState } from "./notes-sidebar-utils";
 
 export interface NotesSidebarPanelContextMenuPickTypeProps {

@@ -3,10 +3,15 @@
   "version": "0.0.0-experimental.5",
   "description": "Nodex - Programmable Knowledge System POC",
   "main": ".webpack/main",
+  "workspaces": [
+    "apps/nodex-web"
+  ],
   "scripts": {
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "core:npm-install": "node scripts/core-npm-install.js",
     "prestart": "npm run core:npm-install",
+    "dev:web": "node scripts/sync-iframe-tokens-raw.js && node scripts/sync-video-js-iframe-css.js && npm run dev -w @nodex/web",
+    "build:web:static": "node scripts/sync-iframe-tokens-raw.js && node scripts/sync-video-js-iframe-css.js && node scripts/sync-pdf-worker-to-web-public.js && node scripts/build-web-static.js",
     "start": "ELECTRON_DISABLE_SANDBOX=1 electron-forge start",
     "start:api": "tsx src/nodex-api-server/server.ts",
     "docker:api:build": "docker build -t nodex-api:local -f Dockerfile .",

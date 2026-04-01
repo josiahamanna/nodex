@@ -1,4 +1,4 @@
-import type { Note } from "../../preload";
+import type { Note } from "@nodex/ui-types";
 
 export const PLUGIN_IDE_FILES_COLLAPSED_KEY = "plugin-ide-files-collapsed";
 export const PLUGIN_IDE_TSC_ON_SAVE_KEY = "plugin-ide-tsc-on-save";

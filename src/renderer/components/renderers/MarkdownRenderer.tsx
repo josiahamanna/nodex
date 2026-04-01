@@ -18,7 +18,7 @@ function identityTrustedTypesPolicy(): {
     createScriptURL: (url: string) => url,
   };
 }
-import { Note } from "../../../preload";
+import { Note } from "@nodex/ui-types";
 
 interface MarkdownRendererProps {
   note: Note;

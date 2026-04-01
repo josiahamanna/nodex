@@ -1,0 +1,7 @@
+@import "../../../src/renderer/styles/tokens.css";
+@import "tailwindcss";
+
+@source "../../../src/renderer/**/*.{ts,tsx,html}";
+@source "./**/*.{ts,tsx,html}";
+
+@import "../../../src/renderer/styles/tailwind-app.css";

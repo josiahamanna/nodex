@@ -4,7 +4,7 @@ import type {
   CreateNoteRelation,
   NoteListItem,
   PasteSubtreePayload,
-} from "../../preload";
+} from "@nodex/ui-types";
 import type {
   NodexAlertOptions,
   NodexConfirmOptions,

@@ -155,7 +155,9 @@ function PdfPage({
       pageBox.style.height = `${h}px`;
       pageBox.style.setProperty("--scale-factor", String(viewport.scale));
 
-      const transform = outputScale.scaled ? [sx, 0, 0, sy, 0, 0] : null;
+      const transform: number[] | undefined = outputScale.scaled
+        ? [sx, 0, 0, sy, 0, 0]
+        : undefined;
 
       textLayerDiv.innerHTML = "";
       textLayerInstRef.current?.cancel?.();
@@ -165,7 +167,7 @@ function PdfPage({
       const renderTask = page.render({
         canvasContext: ctx,
         viewport,
-        transform,
+        ...(transform !== undefined ? { transform } : {}),
       });
       renderTaskRef.current = renderTask;
 

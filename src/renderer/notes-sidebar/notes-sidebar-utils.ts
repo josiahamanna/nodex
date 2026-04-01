@@ -1,5 +1,5 @@
 import type { DragEvent } from "react";
-import type { CreateNoteRelation, NoteListItem, NoteMovePlacement } from "../../preload";
+import type { CreateNoteRelation, NoteListItem, NoteMovePlacement } from "@nodex/ui-types";
 
 export const DND_NOTE_MIME = "application/x-nodex-note-id";
 export const DND_NOTE_IDS_MIME = "application/x-nodex-note-ids";

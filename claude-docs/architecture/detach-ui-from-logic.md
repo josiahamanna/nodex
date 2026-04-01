@@ -267,13 +267,25 @@ At **runtime**, a given process uses **one** path: Electron **or** browser+Node,
 
 ---
 
+## Shared UI: Next.js (Electron + browser)
+
+The product UI is one **Next.js 15** App Router app under **`apps/nodex-web`**. The previous React bundle in Electron Forge’s webpack renderer is replaced by a **stub**; the real UI is:
+
+- **Development:** `npm run dev:web` (port **3000**). Electron **`npm start`** loads **`http://127.0.0.1:3000`** by default (`NODEX_WEB_DEV_URL` overrides).
+- **Packaged desktop:** `electron-forge package` / `make` runs **`npm run build:web:static`** first, copies **`apps/nodex-web/out`** to **`resources/nodex-web/`**, and the main window loads **`file://…/index.html`** from that folder.
+- **Plain browser:** same Next dev or static `out/` as any static site; use **`?web=1&api=…`** for the HTTP `window.Nodex` shim (see below).
+
+Implementation notes: shared components stay in **`src/renderer/`** (imported into the Next app via `experimental.externalDir`). Type-only imports use **`@nodex/ui-types`** → `src/shared/nodex-preload-public-types.ts` so the tree never pulls Electron’s `preload.ts` into Next.
+
+---
+
 ## Headless E2E (browser + Node API)
 
 Implemented wiring:
 
 - **Server:** `src/nodex-api-server/server.ts` — Express on `PORT` (default **3847**), `HOST` (default **127.0.0.1**). Initializes the workspace with `activateWorkspace` from `NODEX_PROJECT_ROOT` (required) and `NODEX_USER_DATA_DIR` (defaults to `~/.nodex-headless-data`). Note types are fixed to **markdown / text / root** (no Electron plugin loader).
 - **Routes:** `src/nodex-api-server/api-router.ts` — `GET /api/v1/health`, `GET /api/v1/project/state`, notes CRUD/tree actions, `POST /api/v1/undo` / `redo`, and `GET|POST /api/v1/commands/...` (see OpenAPI sketch).
-- **Browser shim:** `src/renderer/nodex-web-shim.ts` — if `window.Nodex` is missing and `window.__NODEX_WEB_API_BASE__` is set, installs an HTTP-backed `Nodex` before React mounts. **`index.html`** sets that base from the query string when `web=1` and `api=…` are present.
+- **Browser shim:** `src/renderer/nodex-web-shim.ts` — if `window.Nodex` is missing and `window.__NODEX_WEB_API_BASE__` is set, installs an HTTP-backed `Nodex` before React mounts. **`apps/nodex-web/app/client-shell.tsx`** sets that base from the query string when `web=1` and `api=…` are present.
 
 **Run locally**
 
@@ -282,12 +294,12 @@ Implemented wiring:
 
    `NODEX_PROJECT_ROOT=/path/to/project npm run start:api`
 
-3. Start the renderer (e.g. `npm start` / Forge webpack dev server, typically port **3001**).
-4. Open the app URL with query params, for example:
+3. Start the Next UI: **`npm run dev:web`** (port **3000**).
+4. Open the app with query params, for example:
 
-   `http://localhost:3001/main_window/index.html?web=1&api=http://127.0.0.1:3847`
+   `http://localhost:3000/?web=1&api=http://127.0.0.1:3847`
 
-   (Path may match your Forge webpack public path; the important part is **`web=1`** and an **`api`** base URL that matches the listening API.)
+   (Use the same **`web=1`** and **`api`** base as the headless API port.)
 
 ---
 
@@ -295,6 +307,6 @@ Implemented wiring:
 
 Refactors that split a large component into smaller hooks or modules (for example under `src/renderer/plugin-ide/`) improve maintainability and align with “thin UI, fat registry” in spirit.
 
-**In-repo registry (client):** `src/renderer/shell/nodex-contribution-registry.ts` implements an in-process **`NodexContributionRegistry`** (commands + mode-line segments). `NodexContributionProvider` in `NodexContributionContext.tsx` wraps the app in `index.tsx`; **`NodexModeLineHost`** renders stacked segments at the bottom of `App.tsx`. Core sample contributions register in `registerNodexCoreContributions.ts`. **`NodexContributionMenuBridge`** listens for **`window.Nodex.onRunContributionCommand`** (IPC from the main process) and calls **`invokeCommand`**. In **development**, the **Developer → Log contribution registry count** menu item (shortcut **Ctrl+Shift+Alt+L** / macOS **⌥⌘⇧L**) runs `nodex.contributions.listCommands` and prints the command count to the DevTools console. New features should **`registerCommand` / `registerModeLineItem`** here (or via future plugin loaders) instead of ad hoc globals where possible.
+**In-repo registry (client):** `src/renderer/shell/nodex-contribution-registry.ts` implements an in-process **`NodexContributionRegistry`** (commands + mode-line segments). `NodexContributionProvider` in `NodexContributionContext.tsx` wraps the app from **`apps/nodex-web/app/client-shell.tsx`**; **`NodexModeLineHost`** renders stacked segments at the bottom of `App.tsx`. Core sample contributions register in `registerNodexCoreContributions.ts`. **`NodexContributionMenuBridge`** listens for **`window.Nodex.onRunContributionCommand`** (IPC from the main process) and calls **`invokeCommand`**. In **development**, the **Developer → Log contribution registry count** menu item (shortcut **Ctrl+Shift+Alt+L** / macOS **⌥⌘⇧L**) runs `nodex.contributions.listCommands` and prints the command count to the DevTools console. New features should **`registerCommand` / `registerModeLineItem`** here (or via future plugin loaders) instead of ad hoc globals where possible.
 
 **Migration path:** Introduce the **Node HTTP server** and a **renderer transport adapter**. In **browser** builds, route product logic through **`fetch`** (resources + command invoke). In **Electron**, keep **IPC** as the primary path while shared services back both so semantics stay aligned. The in-app **`NodexContributionRegistry`** can **mirror** command metadata from `GET /commands/registry` in web mode and stay in-process in Electron until unified.

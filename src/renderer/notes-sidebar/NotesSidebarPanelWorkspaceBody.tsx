@@ -3,7 +3,7 @@ import type {
   CreateNoteRelation,
   NoteListItem,
   NoteMovePlacement,
-} from "../../preload";
+} from "@nodex/ui-types";
 import { noteTypeFromAssetFilename } from "../../shared/asset-media";
 import {
   sameWorkspaceFolderPath,

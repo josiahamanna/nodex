@@ -31,6 +31,10 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
       setMessage(null);
       const pkgPath = await window.Nodex.selectZipFile();
       if (!pkgPath) {
+        setMessage({
+          type: "info",
+          text: "No plugin zip path was returned (dialog cancelled, or file picking is not available in this environment — use the Nodex desktop app to import from disk).",
+        });
         return;
       }
       const pre = await window.Nodex.validatePluginZip(pkgPath);

@@ -1,7 +1,7 @@
 /**
  * Semantic design tokens (HSL components for hsl(var(--name))).
  * Keep in sync with themeing-layout-architecture.md.
- * Imported as ?raw for plugin iframe injection.
+ * Injected into plugin iframes via `tokens-raw.generated.ts` (see sync-iframe-tokens-raw.js).
  */
 
 :root {

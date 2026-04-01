@@ -1,3 +1,4 @@
+/** @deprecated Legacy full renderer bundle — Forge now uses `webpack.renderer.stub.config.js`; UI lives in `apps/nodex-web`. Kept for reference. */
 const MonacoWebpackPlugin = require("monaco-editor-webpack-plugin");
 const CopyPlugin = require("copy-webpack-plugin");
 const path = require("path");

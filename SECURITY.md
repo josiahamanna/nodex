@@ -41,7 +41,7 @@ connect-src 'self' ws://localhost:* http://localhost:*;
 ```
 
 **Files:**
-- `src/renderer/index.html` - CSP meta tag
+- `apps/nodex-web/app/layout.tsx` - CSP meta tag (Next.js shell; Electron loads this UI in dev and packaged builds)
 - `src/renderer/components/renderers/PluginRenderer.tsx` - DOMPurify usage
 - `src/renderer/components/renderers/MarkdownRenderer.tsx` - DOMPurify usage
 
