@@ -45,7 +45,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
-    kind: "ws" | "project" | "note";
+    kind: "ws" | "project" | "note" | "no_project" | "panel_empty";
     id: string;
     workspaceId?: string;
     projectId?: string;
@@ -118,7 +118,13 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const onCreateWorkspace = async () => {
     await window.Nodex.wpnCreateWorkspace("Workspace");
     await loadWorkspaces();
+    setMenu(null);
   };
+
+  const openProjectFolder = useCallback(async () => {
+    setMenu(null);
+    await window.Nodex.selectProjectFolder();
+  }, []);
 
   const onCreateProject = async (workspaceId: string) => {
     await window.Nodex.wpnCreateProject(workspaceId, "Project");
@@ -296,9 +302,46 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
 
   if (!projectOpen) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-[12px] text-muted-foreground">
-        <p>No project open.</p>
-        <p className="text-[11px]">Open a project folder to use the workspace → project → notes explorer.</p>
+      <div
+        className="relative flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground"
+        onClick={() => setMenu(null)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, kind: "no_project", id: "" });
+        }}
+      >
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center text-[12px] text-muted-foreground">
+          <p className="font-medium text-foreground">No project open.</p>
+          <p className="max-w-[14rem] text-[11px] leading-relaxed">
+            Open a project folder to use the workspace → project → notes explorer.
+          </p>
+          <button
+            type="button"
+            className="rounded border border-border bg-muted/20 px-3 py-1.5 text-[11px] text-foreground hover:bg-muted/40"
+            onClick={(e) => {
+              e.stopPropagation();
+              void openProjectFolder();
+            }}
+          >
+            Open project folder…
+          </button>
+          <p className="text-[10px] opacity-70">Or right-click in this panel for the same action.</p>
+        </div>
+        {menu?.kind === "no_project" ? (
+          <div
+            className="fixed z-50 min-w-[10rem] rounded-md border border-border bg-popover p-1 text-[11px] shadow-md"
+            style={{ left: menu.x, top: menu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
+              onClick={() => void openProjectFolder()}
+            >
+              Open project folder…
+            </button>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -332,10 +375,18 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto text-[11px]">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto text-[11px]"
+        onContextMenu={(e) => {
+          const t = e.target as HTMLElement;
+          if (t.closest("button,select,input,option,a,[draggable=true]")) return;
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, kind: "panel_empty", id: "" });
+        }}
+      >
         {workspaces.length === 0 ? (
           <div className="p-4 text-center text-muted-foreground">
-            No workspaces yet. Click <strong>+ Workspace</strong> to start.
+            No workspaces yet. Use <strong>+ Workspace</strong> or right-click in this panel.
           </div>
         ) : (
           workspaces.map((w) => (
@@ -538,6 +589,25 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                 onClick={() => void onDeleteProject(menu.id)}
               >
                 Delete project
+              </button>
+            </>
+          ) : null}
+          {menu.kind === "panel_empty" ? (
+            <>
+              <button
+                type="button"
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
+                onClick={() => void onCreateWorkspace()}
+              >
+                New workspace
+              </button>
+              <button
+                type="button"
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
+                onClick={() => void loadWorkspaces()}
+                disabled={busy}
+              >
+                Refresh
               </button>
             </>
           ) : null}

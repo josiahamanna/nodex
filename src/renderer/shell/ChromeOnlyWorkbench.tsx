@@ -101,6 +101,10 @@ function SortableTabRow({
         type="button"
         className="relative z-10 rounded-r-md border border-transparent px-1.5 text-[12px] leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
         aria-label="Close tab"
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+        }}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={onClose}
       >

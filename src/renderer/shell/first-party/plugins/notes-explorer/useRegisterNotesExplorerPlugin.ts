@@ -90,12 +90,19 @@ export function useRegisterNotesExplorerPlugin(): void {
       }),
     );
 
-    const unsub = regs.tabs.subscribe(() => {
+    const WELCOME_TAB = "shell.tab.welcome";
+
+    const syncSidebarForActiveTab = () => {
       const a = regs.tabs.getActiveTab();
       if (a?.tabTypeId === NOTES_EXPLORER_TAB) {
         openNotesExplorerLayout(views);
+      } else if (a?.tabTypeId === WELCOME_TAB) {
+        views.openView(NOTES_EXPLORER_VIEW_SIDEBAR, "primarySidebar");
       }
-    });
+    };
+
+    const unsub = regs.tabs.subscribe(syncSidebarForActiveTab);
+    syncSidebarForActiveTab();
 
     return () => {
       unsub();

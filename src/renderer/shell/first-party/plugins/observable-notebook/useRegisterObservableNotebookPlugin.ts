@@ -69,16 +69,27 @@ export function useRegisterObservableNotebookPlugin(): void {
         handler: () => {
           layout.setVisible("menuRail", true);
           layout.setVisible("sidebarPanel", true);
-          regs.tabs.openOrReuseTab(TAB_NOTEBOOK, {
+          const inst = regs.tabs.openOrReuseTab(TAB_NOTEBOOK, {
             title: "Observable",
             reuseKey: "plugin.observable-notebook",
           });
-          views.openView(VIEW_PRIMARY, "mainArea");
+          const vid = regs.tabs.resolveViewForInstance(inst.instanceId);
+          if (vid) views.openView(vid, "mainArea");
         },
       }),
     );
 
+    const syncObservableMain = () => {
+      const a = regs.tabs.getActiveTab();
+      if (a?.tabTypeId === TAB_NOTEBOOK) {
+        views.openView(VIEW_PRIMARY, "mainArea");
+      }
+    };
+    const unsubTabs = regs.tabs.subscribe(syncObservableMain);
+    syncObservableMain();
+
     return () => {
+      unsubTabs();
       for (const d of disposers) d();
     };
   }, [contrib, layout, regs, views]);

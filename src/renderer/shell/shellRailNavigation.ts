@@ -22,10 +22,14 @@ export function runShellMenuRailAction(
     return;
   }
   if (item.tabTypeId) {
-    deps.tabs.openOrReuseTab(item.tabTypeId, {
+    const inst = deps.tabs.openOrReuseTab(item.tabTypeId, {
       title: item.title,
       reuseKey: item.tabReuseKey ?? `rail:${item.id}`,
     });
+    const mainViewId = deps.tabs.resolveViewForInstance(inst.instanceId);
+    if (mainViewId) {
+      deps.views.openView(mainViewId, "mainArea");
+    }
     const ex = item.expandChrome;
     if (ex?.menuRail) deps.layout.setVisible("menuRail", true);
     if (ex?.sidebarPanel) deps.layout.setVisible("sidebarPanel", true);

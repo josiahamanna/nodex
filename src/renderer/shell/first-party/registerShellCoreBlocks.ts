@@ -31,7 +31,6 @@ export function useRegisterShellCoreBlocks(): void {
         order: 0,
         tabTypeId: "shell.tab.welcome",
         tabReuseKey: "shell:welcome",
-        sidebarViewId: "shell.welcome",
       }),
     );
 
