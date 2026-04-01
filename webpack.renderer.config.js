@@ -38,7 +38,6 @@ module.exports = {
   cache: {
     type: "filesystem",
     cacheDirectory: cacheDir,
-    name: "renderer",
   },
   module: {
     rules: [
