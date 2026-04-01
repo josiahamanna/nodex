@@ -3,6 +3,16 @@ import { useNodexDialog } from "../../dialog/NodexDialogProvider";
 import { MAX_PROGRESS_LINES } from "./plugin-manager-constants";
 import { createPluginManagerMaintenanceHandlers } from "./plugin-manager-maintenance-handlers";
 import type { PluginInventoryRow, PluginUiMeta, UserMessage } from "./plugin-manager-types";
+import {
+  getPluginCacheStats,
+  getPluginInventory,
+  getPluginLoadIssues,
+  getPluginManifestUi,
+  getUserPluginsDirectory,
+  listInstalledPlugins,
+  reloadPluginRegistry,
+  uninstallPluginFromBin,
+} from "../../domain/pluginsService";
 
 export type UsePluginManagerOptions = {
   onPluginsChanged?: () => void;
@@ -47,8 +57,8 @@ export function usePluginManager({
 
   const loadPlugins = async () => {
     const [installed, inv] = await Promise.all([
-      window.Nodex.getInstalledPlugins(),
-      window.Nodex.getPluginInventory(),
+      listInstalledPlugins(),
+      getPluginInventory(),
     ]);
     setPlugins(installed);
     setInventory(inv);
@@ -56,7 +66,7 @@ export function usePluginManager({
     const ids = new Set([...installed, ...inv.map((r) => r.id)]);
     for (const p of ids) {
       try {
-        meta[p] = await window.Nodex.getPluginManifestUi(p);
+        meta[p] = await getPluginManifestUi(p);
       } catch {
         meta[p] = null;
       }
@@ -65,12 +75,12 @@ export function usePluginManager({
   };
 
   const refreshLoadIssues = useCallback(async () => {
-    const issues = await window.Nodex.getPluginLoadIssues();
+    const issues = await getPluginLoadIssues();
     setLoadIssues(issues);
   }, []);
 
   const refreshCacheStats = useCallback(async () => {
-    const stats = await window.Nodex.getPluginCacheStats();
+    const stats = await getPluginCacheStats();
     setCacheStats(stats);
   }, []);
 
@@ -81,7 +91,7 @@ export function usePluginManager({
   }, [refreshCacheStats, refreshLoadIssues]);
 
   useEffect(() => {
-    void window.Nodex.getUserPluginsDirectory().then((res) => {
+    void getUserPluginsDirectory().then((res) => {
       if (res.path) {
         setUserPluginsPath(res.path);
       }
@@ -157,7 +167,7 @@ export function usePluginManager({
   const handleReloadRegistry = async () => {
     setMessage(null);
     try {
-      const r = await window.Nodex.reloadPluginRegistry();
+      const r = await reloadPluginRegistry();
       if (r.success) {
         setMessage({ type: "success", text: "Plugins refreshed." });
         onPluginsChanged?.();
@@ -188,7 +198,7 @@ export function usePluginManager({
     }
 
     try {
-      const result = await window.Nodex.uninstallPlugin(pluginName);
+      const result = await uninstallPluginFromBin(pluginName);
 
       if (result.success) {
         setMessage({

@@ -12,6 +12,8 @@ export type ProjectPrefs = {
   workspaceRoots?: string[];
   /** Optional display names in the sidebar (keys = resolved absolute paths). */
   workspaceLabels?: Record<string, string>;
+  /** Shell-only workbench layout/visibility (renderer-owned schema). */
+  shellLayout?: unknown;
 };
 
 /** Drop labels for paths no longer in the workspace; normalize keys. */
@@ -124,6 +126,7 @@ export function readProjectPrefs(userDataPath: string): ProjectPrefs {
         typeof j.lastProjectRoot === "string" ? j.lastProjectRoot : null,
       workspaceRoots,
       workspaceLabels,
+      shellLayout: j.shellLayout,
     };
   } catch {
     return { lastProjectRoot: null };

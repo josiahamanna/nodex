@@ -6,6 +6,9 @@ import { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import { Provider } from "react-redux";
 import { NodexContributionProvider } from "../../../src/renderer/shell/NodexContributionContext";
+import { ShellLayoutProvider } from "../../../src/renderer/shell/layout/ShellLayoutContext";
+import { ShellViewProvider } from "../../../src/renderer/shell/views/ShellViewContext";
+import { ShellRegistriesProvider } from "../../../src/renderer/shell/registries/ShellRegistriesContext";
 import { NodexDialogProvider } from "../../../src/renderer/dialog/NodexDialogProvider";
 import { ThemeProvider } from "../../../src/renderer/theme/ThemeContext";
 import { ToastProvider } from "../../../src/renderer/toast/ToastContext";
@@ -56,7 +59,13 @@ export default function ClientShell({
       <ToastProvider>
         <NodexDialogProvider>
           <Provider store={store}>
-            <NodexContributionProvider>{children}</NodexContributionProvider>
+            <ShellLayoutProvider>
+              <ShellViewProvider>
+                <ShellRegistriesProvider>
+                  <NodexContributionProvider>{children}</NodexContributionProvider>
+                </ShellRegistriesProvider>
+              </ShellViewProvider>
+            </ShellLayoutProvider>
           </Provider>
         </NodexDialogProvider>
       </ToastProvider>

@@ -51,12 +51,18 @@ services:
       # Path *inside* the container (see volume mount below)
       NODEX_PROJECT_ROOT: /workspace
       NODEX_USER_DATA_DIR: /nodex-user-data
+      # Serve marketplace artifacts from this mounted directory.
+      NODEX_MARKETPLACE_DIR: /nodex-marketplace
     volumes:
       # Long-form bind so paths are not mistaken for named volumes (short form treats
       # e.g. $HOME/... as a volume name because it does not start with /).
       - type: bind
         source: ${NODEX_HOST_PROJECT:?Set NODEX_HOST_PROJECT to an absolute path to your project folder}
         target: /workspace
+      # Host marketplace artifacts (run `npm run build:plugins` to populate dist/plugins).
+      - type: bind
+        source: ./dist/plugins
+        target: /nodex-marketplace
       - nodex-user-data:/nodex-user-data
 
   nodex-gateway:

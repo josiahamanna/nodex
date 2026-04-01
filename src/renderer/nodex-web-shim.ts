@@ -78,6 +78,23 @@ export function isElectronUserAgent(): boolean {
   );
 }
 
+function pickOneFile(accept: string): Promise<File | null> {
+  return new Promise((resolve) => {
+    if (typeof document === "undefined") {
+      resolve(null);
+      return;
+    }
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.onchange = () => {
+      resolve(input.files && input.files.length > 0 ? input.files[0]! : null);
+    };
+    input.oncancel = () => resolve(null);
+    input.click();
+  });
+}
+
 async function webRequest<T>(
   baseUrl: string,
   method: string,
@@ -171,6 +188,11 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       return r.types;
     },
     getProjectState: () => req("GET", "/project/state"),
+    getShellLayout: async () => {
+      const r = await req<{ layout: unknown }>("GET", "/project/shell-layout");
+      return r?.layout ?? null;
+    },
+    setShellLayout: (layout) => req("POST", "/project/shell-layout", { layout }),
     getAppPrefs: async () => ({ seedSampleNotes: true }),
     nodexUndo: () => req("POST", "/undo"),
     nodexRedo: () => req("POST", "/redo"),
@@ -338,6 +360,8 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       workspaceRoots: [],
       workspaceLabels: {},
     }),
+    getShellLayout: async () => null,
+    setShellLayout: async () => ({ ok: false as const, error: "No host" }),
     getSelectableNoteTypes: async () => [],
     getRegisteredTypes: async () => [],
     getAppPrefs: async () => ({ seedSampleNotes: true }),
@@ -366,7 +390,14 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
     onIdeWorkspaceFsChanged: () => noopUnsub,
     onRunContributionCommand: () => noopUnsub,
     sendClientLog: () => {},
-    assetUrl: () => "nodex-asset:browser-dev-unavailable",
+    assetUrl: (relativePath) => {
+      if (typeof window === "undefined") {
+        return "nodex-asset:browser-dev-unavailable";
+      }
+      const rel = String(relativePath || "").replace(/^\/+/, "");
+      const parts = rel.split("/").map((p) => encodeURIComponent(p));
+      return `${window.location.origin}/api/v1/assets/file/${parts.join("/")}`;
+    },
     nodexUndo: async () => ({
       ok: false as const,
       error: "No host",
@@ -431,10 +462,33 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       ok: false as const,
       error: "Not available in plain browser",
     }),
-    pickImportMediaFile: async () => ({
-      ok: false as const,
-      error: "Not available in plain browser",
-    }),
+    pickImportMediaFile: async (category) => {
+      if (typeof window === "undefined") {
+        return { ok: false as const, error: "No window" };
+      }
+      const file = await pickOneFile("*/*");
+      if (!file) {
+        return { ok: false as const, error: "Cancelled" };
+      }
+      const root = normalizeHeadlessApiBase(window.location.origin);
+      const url = `${root}/api/v1/assets/import-media`;
+      const form = new FormData();
+      form.append("category", String(category));
+      form.append("file", file, file.name);
+      const res = await fetch(url, { method: "POST", body: form });
+      const text = await res.text();
+      if (!res.ok) {
+        return {
+          ok: false as const,
+          error: text || `Import failed (${res.status})`,
+        };
+      }
+      const j = JSON.parse(text) as { ok: boolean; assetRel?: string; error?: string };
+      if (!j.ok || !j.assetRel) {
+        return { ok: false as const, error: j.error || "Import failed" };
+      }
+      return { ok: true as const, assetRel: j.assetRel };
+    },
     getInstalledPlugins: async () => [],
     getPluginInventory: async () => [],
     getDisabledPluginIds: async () => [],

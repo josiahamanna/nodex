@@ -9,7 +9,9 @@ coverage
 .env
 .env.*
 claude-docs
-user-pluggins
+# Include `user-pluggins` so API image can build bundled marketplace artifacts.
+# (If you do not want this baked in, keep it ignored and use the compose bind mount instead.)
+# user-pluggins
 plugins
 .plans
 .cursor

@@ -120,6 +120,9 @@ export const IPC_CHANNELS = {
   /** App-wide preferences (userData JSON, not per-project). */
   APP_GET_PREFS: "app:get-prefs",
   APP_SET_SEED_SAMPLE_NOTES: "app:set-seed-sample-notes",
+  /** Shell layout preferences (saved in project prefs). */
+  SHELL_GET_LAYOUT: "shell:get-layout",
+  SHELL_SET_LAYOUT: "shell:set-layout",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

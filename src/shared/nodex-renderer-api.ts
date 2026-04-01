@@ -198,6 +198,9 @@ export type NodexRendererApi = {
     workspaceRoots: string[];
     workspaceLabels: Record<string, string>;
   }>;
+  /** Renderer-owned shell layout prefs stored in project prefs (host-managed). */
+  getShellLayout: () => Promise<unknown>;
+  setShellLayout: (layout: unknown) => Promise<{ ok: true } | { ok: false; error: string }>;
   getAppPrefs: () => Promise<{ seedSampleNotes: boolean }>;
   setSeedSampleNotes: (
     enabled: boolean,

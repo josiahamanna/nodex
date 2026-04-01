@@ -45,6 +45,26 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
     };
   });
 
+  ipcMain.handle(IPC_CHANNELS.SHELL_GET_LAYOUT, () => {
+    const prefs = readProjectPrefs(userDataPath);
+    return prefs.shellLayout ?? null;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SHELL_SET_LAYOUT, (_e, layout: unknown) => {
+    const prefs = readProjectPrefs(userDataPath);
+    // Keep as renderer-owned blob; only enforce JSON-serializable object shape.
+    if (layout !== null && (typeof layout !== "object" || Array.isArray(layout))) {
+      return { ok: false as const, error: "layout must be an object or null" };
+    }
+    writeProjectPrefs(userDataPath, {
+      lastProjectRoot: prefs.lastProjectRoot,
+      workspaceRoots: prefs.workspaceRoots,
+      workspaceLabels: prefs.workspaceLabels,
+      shellLayout: layout ?? undefined,
+    });
+    return { ok: true as const };
+  });
+
   ipcMain.handle(IPC_CHANNELS.APP_GET_PREFS, () => readAppPrefs(userDataPath));
 
   ipcMain.handle(

@@ -1,5 +1,7 @@
 import * as path from "path";
+import * as fs from "fs";
 import { Router, type Request, type Response, type NextFunction } from "express";
+import multer from "multer";
 import {
   ensureNotesSeeded,
   createNote as createNoteInStore,
@@ -20,6 +22,7 @@ import { nodexRedo, nodexUndo, pushNotesUndoSnapshot } from "../core/nodex-undo"
 import type { Note } from "../shared/nodex-renderer-api";
 import { isWorkspaceMountNoteId } from "../shared/note-workspace";
 import { isValidNoteId, isValidNoteType } from "../shared/validators";
+import { readProjectPrefs, writeProjectPrefs } from "../core/project-session";
 import {
   assertProjectOpen,
   getHeadlessUserDataPath,
@@ -39,6 +42,7 @@ import {
 import { createMarketplaceRouter } from "./marketplace/marketplace-router";
 import { readMarketplaceS3ConfigFromEnv } from "./marketplace/marketplace-s3";
 import { openMarketplaceDb } from "./marketplace/marketplace-db";
+import { isAssetMediaCategory, extMatchesCategory } from "../shared/asset-media";
 
 const MARKETPLACE_FILES_BASE = "/marketplace/files";
 
@@ -51,6 +55,26 @@ function resolveHeadlessMarketplaceDir(): string {
 }
 
 const MAX_NOTE_TITLE_CHARS = 4_000;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024 },
+});
+
+function resolveAssetsRoot(projectRootAbs: string): string {
+  return path.join(projectRootAbs, "assets");
+}
+
+function safeAssetRel(rel: string): string | null {
+  const n = String(rel || "").replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!n || n.includes("..") || n.includes("\0")) return null;
+  return n;
+}
+
+function assertHeadlessProjectRoot(): string {
+  const raw = process.env.NODEX_PROJECT_ROOT?.trim();
+  if (!raw) throw new Error("NODEX_PROJECT_ROOT is required for assets");
+  return path.resolve(raw);
+}
 
 function persistHeadlessNotes(): void {
   try {
@@ -120,6 +144,79 @@ export function createNodexApiRouter(): Router {
 
   router.get("/health", (_req, res) => {
     res.json({ ok: true });
+  });
+
+  // Minimal assets API for browser mode (import media + serve files).
+  router.post(
+    "/assets/import-media",
+    upload.single("file"),
+    (req: Request, res: Response) => {
+      try {
+        const categoryRaw = String((req.body as Record<string, unknown>)?.category ?? "");
+        if (!isAssetMediaCategory(categoryRaw)) {
+          res.status(400).json({ ok: false, error: "Invalid category" });
+          return;
+        }
+        const file = (req as Request & { file?: Express.Multer.File }).file;
+        if (!file || !file.originalname) {
+          res.status(400).json({ ok: false, error: "Missing file" });
+          return;
+        }
+        const i = file.originalname.lastIndexOf(".");
+        const ext = i >= 0 ? file.originalname.slice(i + 1) : "";
+        if (!ext || !extMatchesCategory(ext, categoryRaw)) {
+          res
+            .status(400)
+            .json({ ok: false, error: `File type not allowed for ${categoryRaw}` });
+          return;
+        }
+        const projectRoot = assertHeadlessProjectRoot();
+        const assetsRoot = resolveAssetsRoot(projectRoot);
+        const importsDir = path.join(assetsRoot, "_imports");
+        fs.mkdirSync(importsDir, { recursive: true });
+        const safeBase = path
+          .basename(file.originalname)
+          .replace(/[^\w.\-()+\s]/g, "_")
+          .replace(/\s+/g, "_");
+        const stamp = Date.now();
+        const outName = `${stamp}-${safeBase}`;
+        const outAbs = path.join(importsDir, outName);
+        fs.writeFileSync(outAbs, file.buffer);
+        const assetRel = `_imports/${outName}`;
+        res.json({ ok: true, assetRel });
+      } catch (e) {
+        res
+          .status(500)
+          .json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+      }
+    },
+  );
+
+  // Express 5 / path-to-regexp: use a wildcard segment for "rest of path".
+  router.get("/assets/file/*assetPath", (req, res) => {
+    try {
+      const relRaw = String((req.params as Record<string, unknown>).assetPath ?? "");
+      const rel = safeAssetRel(relRaw);
+      if (!rel) {
+        res.status(400).end();
+        return;
+      }
+      const projectRoot = assertHeadlessProjectRoot();
+      const abs = path.resolve(path.join(resolveAssetsRoot(projectRoot), rel));
+      const root = path.resolve(resolveAssetsRoot(projectRoot));
+      const relToRoot = path.relative(root, abs);
+      if (relToRoot.startsWith("..") || path.isAbsolute(relToRoot)) {
+        res.status(403).end();
+        return;
+      }
+      if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+        res.status(404).end();
+        return;
+      }
+      res.sendFile(abs);
+    } catch (e) {
+      res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+    }
   });
 
   // Marketplace publisher/auth endpoints (cloud marketplace mode).
@@ -285,6 +382,46 @@ export function createNodexApiRouter(): Router {
       res.json(getHeadlessProjectStateView());
     } catch (e) {
       res.status(503).json({
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  });
+
+  router.get("/project/shell-layout", (_req, res) => {
+    try {
+      assertProjectOpen();
+      const prefs = readProjectPrefs(getHeadlessUserDataPath());
+      res.json({ layout: prefs.shellLayout ?? null });
+    } catch (e) {
+      res.status(503).json({
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  });
+
+  router.post("/project/shell-layout", (req, res) => {
+    try {
+      assertProjectOpen();
+      const body = (req.body ?? {}) as { layout?: unknown };
+      const layout = body.layout;
+      if (layout !== null && layout !== undefined) {
+        if (typeof layout !== "object" || Array.isArray(layout)) {
+          res.status(400).json({ ok: false, error: "layout must be an object or null" });
+          return;
+        }
+      }
+      const userData = getHeadlessUserDataPath();
+      const prefs = readProjectPrefs(userData);
+      writeProjectPrefs(userData, {
+        lastProjectRoot: prefs.lastProjectRoot,
+        workspaceRoots: prefs.workspaceRoots,
+        workspaceLabels: prefs.workspaceLabels,
+        shellLayout: layout ?? undefined,
+      });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(400).json({
+        ok: false,
         error: e instanceof Error ? e.message : String(e),
       });
     }

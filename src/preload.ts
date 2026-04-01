@@ -116,6 +116,9 @@ const api: NodexRendererApi = {
       ipcRenderer.removeListener(IPC_CHANNELS.PLUGINS_CHANGED, callback);
   },
   getProjectState: () => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_GET_STATE),
+  getShellLayout: () => ipcRenderer.invoke(IPC_CHANNELS.SHELL_GET_LAYOUT),
+  setShellLayout: (layout) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SHELL_SET_LAYOUT, layout),
   getAppPrefs: () => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_PREFS),
   setSeedSampleNotes: (enabled) =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_SET_SEED_SAMPLE_NOTES, enabled),
