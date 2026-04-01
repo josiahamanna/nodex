@@ -50,6 +50,7 @@ export function chordFromEvent(e: KeyboardEvent): string {
 
 export class ShellKeymapRegistry {
   private readonly bindings = new Map<string, ShellKeyBinding>();
+  private readonly chordToId = new Map<string, string>();
   private readonly listeners = new Set<Listener>();
 
   subscribe(cb: Listener): () => void {
@@ -71,11 +72,32 @@ export class ShellKeymapRegistry {
       ...b,
       chord: normalizeChord(b.chord),
     };
+
+    const prev = this.bindings.get(merged.id);
+    if (prev) {
+      // Unindex previous chord for this id (if it still points to this id).
+      const prevChord = normalizeChord(prev.chord);
+      if (this.chordToId.get(prevChord) === merged.id) {
+        this.chordToId.delete(prevChord);
+      }
+    }
+
+    // Enforce chord uniqueness (last registration wins).
+    const owner = this.chordToId.get(merged.chord);
+    if (owner && owner !== merged.id) {
+      this.bindings.delete(owner);
+      this.chordToId.delete(merged.chord);
+    }
+
     this.bindings.set(merged.id, merged);
+    this.chordToId.set(merged.chord, merged.id);
     this.emit();
     return () => {
       if (this.bindings.get(merged.id) === merged) {
         this.bindings.delete(merged.id);
+        if (this.chordToId.get(merged.chord) === merged.id) {
+          this.chordToId.delete(merged.chord);
+        }
         this.emit();
       }
     };

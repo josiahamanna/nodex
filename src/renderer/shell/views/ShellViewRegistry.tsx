@@ -6,6 +6,67 @@ export type ShellRegionId =
   | "secondaryArea"
   | "bottomArea";
 
+function injectKeyForwardingIntoSrcDoc(srcDoc: string): string {
+  const forwardScript = `
+<script>
+  (function () {
+    // Forward key chords to the host so global shell shortcuts work when focus
+    // is inside this iframe document.
+    const norm = (s) => String(s || "").trim().toLowerCase();
+    const normalizeChord = (chord) => {
+      const raw = norm(chord);
+      if (!raw) return "";
+      const parts = raw.split("+").map((p) => p.trim()).filter(Boolean);
+      const key = parts.pop() || "";
+      const mods = new Set(parts);
+      const ordered = ["ctrl", "meta", "alt", "shift"].filter((m) => mods.has(m));
+      return [...ordered, key].join("+");
+    };
+    const chordFromEvent = (e) => {
+      const mods = [];
+      if (e.ctrlKey) mods.push("ctrl");
+      if (e.metaKey) mods.push("meta");
+      if (e.altKey) mods.push("alt");
+      if (e.shiftKey) mods.push("shift");
+      let keyTok;
+      if (e.altKey && !e.ctrlKey && !e.metaKey && /^Key([A-Z])$/.test(e.code)) {
+        keyTok = e.code.slice(3).toLowerCase();
+      } else {
+        keyTok = (e.key && e.key.length === 1) ? e.key.toLowerCase() : String(e.key || "").toLowerCase();
+      }
+      return normalizeChord([...mods, keyTok].join("+"));
+    };
+
+    window.addEventListener("keydown", (e) => {
+      // If the event is already handled inside the iframe, don't forward.
+      if (e.defaultPrevented) return;
+      // Don't forward pure modifier keys.
+      const k = String(e.key || "").toLowerCase();
+      if (k === "shift" || k === "control" || k === "alt" || k === "meta") return;
+      const chord = chordFromEvent(e);
+      if (!chord) return;
+      try {
+        window.parent.postMessage({ type: "nodex.shell.keys", chord }, "*");
+      } catch {
+        /* ignore */
+      }
+    }, true);
+  })();
+</script>
+`;
+
+  const t = srcDoc ?? "";
+  // If it's a full document, inject before </body> (or </html> fallback).
+  if (t.includes("</body>")) {
+    return t.replace("</body>", `${forwardScript}</body>`);
+  }
+  if (t.includes("</html>")) {
+    return t.replace("</html>", `${forwardScript}</html>`);
+  }
+  // Otherwise wrap fragment in a minimal document.
+  return `<!doctype html><html><head><meta charset="utf-8" />${forwardScript}</head><body>${t}</body></html>`;
+}
+
 export type ShellViewDescriptor = {
   id: string;
   title: string;
@@ -88,7 +149,10 @@ export function ShellIFrameViewHost({
   view: ShellViewDescriptor;
 }): React.ReactElement {
   const sandbox = view.sandboxFlags ?? "allow-scripts";
-  const srcDoc = view.iframeHtml;
+  const srcDoc =
+    view.iframeHtml != null && view.iframeHtml !== ""
+      ? injectKeyForwardingIntoSrcDoc(view.iframeHtml)
+      : view.iframeHtml;
   const src = view.iframeUrl;
   const caps = view.capabilities ?? {};
   const allowedCommands =

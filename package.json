@@ -4,7 +4,8 @@
   "description": "Nodex - Programmable Knowledge System POC",
   "main": ".webpack/main",
   "workspaces": [
-    "apps/nodex-web"
+    "apps/nodex-web",
+    "packages/*"
   ],
   "scripts": {
     "postinstall": "electron-rebuild -f -w better-sqlite3",
@@ -97,6 +98,7 @@
     "@babel/standalone": "^7.29.2",
     "@electron/rebuild": "^4.0.3",
     "@monaco-editor/react": "^4.7.0",
+    "@observablehq/runtime": "^6.0.0",
     "@reduxjs/toolkit": "^2.11.2",
     "@rollup/plugin-babel": "^7.0.0",
     "@rollup/plugin-commonjs": "^29.0.2",

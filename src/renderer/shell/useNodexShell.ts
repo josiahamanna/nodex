@@ -311,6 +311,35 @@ export function useNodexShell(): NodexShellVm {
     surface,
   ]);
 
+  // Key chords forwarded from sandboxed view iframes.
+  useEffect(() => {
+    const onMsg = (ev: MessageEvent) => {
+      const d = ev.data as unknown;
+      if (!d || typeof d !== "object") return;
+      const type = (d as { type?: unknown }).type;
+      if (type !== "nodex.shell.keys") return;
+      const chord = (d as { chord?: unknown }).chord;
+      if (typeof chord !== "string" || !chord.trim()) return;
+      const b = shellRegs.keymap.match(chord);
+      if (!b) return;
+      // Mirror keyboard handler behavior: prevent default only happens inside the iframe.
+      if (b.commandId === "nodex.shell.openMiniBar") {
+        try {
+          window.dispatchEvent(
+            new CustomEvent("nodex-minibar-focus", {
+              detail: { prefill: String(b.commandArgs?.prefill ?? "") },
+            }),
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      void Promise.resolve(registry.invokeCommand(b.commandId, b.commandArgs));
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [registry, shellRegs.keymap]);
+
   // Expose palette/minibar open as commands.
   useEffect(() => {
     const disposePalette = registry.registerCommand({
