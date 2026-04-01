@@ -14,22 +14,22 @@ function commandLabel(c: { title: string; category?: string | null }): string {
 }
 
 export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement | null {
-  const { open, surface, miniBarText, setMiniBarText, close, runFromMiniBarText, commands } = vm;
-  const visible = open && surface === "miniBar";
+  const { miniBarText, setMiniBarText, runFromMiniBarText, commands } = vm;
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const activeItemRef = useRef<HTMLButtonElement | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
+  const [inputFocused, setInputFocused] = useState(false);
 
   const { id: typedId, rest, hasSpace } = useMemo(() => splitMiniBar(miniBarText), [miniBarText]);
   const typedIdNorm = typedId.trim().toLowerCase();
   const suggestions = useMemo(() => {
     if (hasSpace) return [];
     const eligible = commands.filter((c) => c.miniBar !== false);
+    // No suggestions until the user types — avoids a permanent overlay above the bar that steals clicks.
     if (!typedIdNorm) {
-      return eligible
-        .slice()
-        .sort((a, b) => commandLabel(a).localeCompare(commandLabel(b)))
-        .slice(0, 12);
+      return [];
     }
     const starts = eligible.filter((c) => c.id.toLowerCase().startsWith(typedIdNorm));
     const contains = eligible.filter(
@@ -42,19 +42,36 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
   }, [commands, hasSpace, typedIdNorm]);
 
   useEffect(() => {
-    if (!visible) return;
     setErr(null);
     setActiveIdx(0);
-    const id = window.requestAnimationFrame(() => inputRef.current?.focus());
-    return () => window.cancelAnimationFrame(id);
-  }, [visible]);
+  }, []);
 
-  if (!visible) return null;
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeIdx, suggestions.length]);
+
+  const showSuggestionPanel =
+    inputFocused && !hasSpace && typedIdNorm.length > 0 && suggestions.length > 0;
+
+  useEffect(() => {
+    const onPointerDown = (e: MouseEvent | PointerEvent) => {
+      const root = rootRef.current;
+      if (!root) return;
+      const t = e.target as Node | null;
+      if (t && root.contains(t)) return;
+      inputRef.current?.blur();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, []);
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[50010] border-t border-border bg-background/95 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-4xl items-center gap-2 px-3 py-2">
-        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+    <div
+      ref={rootRef}
+      className="nodex-minibar-host shrink-0 border-t border-border bg-background"
+    >
+      <div className="flex w-full items-center gap-2 px-3 py-2">
+        <span className="shrink-0 border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">
           M-x
         </span>
         <div className="relative min-w-0 flex-1">
@@ -62,15 +79,19 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
             ref={inputRef}
             value={miniBarText}
             onChange={(e) => setMiniBarText(e.target.value)}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
             placeholder='Type `commandId {"arg":"value"}` and press Enter'
-            className="w-full min-w-0 rounded-md border border-input bg-background px-2 py-2 text-[12px] font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full min-w-0 rounded-none border border-input bg-background px-2 py-2 text-[12px] font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onKeyDown={(e) => {
               if (e.key === "Escape") {
                 e.preventDefault();
-                close();
+                setErr(null);
+                setMiniBarText("");
+                inputRef.current?.blur();
                 return;
               }
-              if (!hasSpace && suggestions.length > 0) {
+              if (showSuggestionPanel) {
                 if (e.key === "ArrowDown") {
                   e.preventDefault();
                   setActiveIdx((i) => Math.min(suggestions.length - 1, i + 1));
@@ -108,14 +129,18 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
               }
             }}
           />
-          {!hasSpace && suggestions.length > 0 ? (
-            <div className="absolute bottom-full mb-1 w-full overflow-hidden rounded-md border border-border bg-background shadow-lg">
+          {showSuggestionPanel ? (
+            <div
+              className="absolute bottom-full mb-1 w-full overflow-hidden rounded-none border border-border bg-background shadow-lg"
+              onMouseDown={(e) => e.preventDefault()}
+            >
               <ul className="max-h-56 overflow-auto py-1">
                 {suggestions.map((c, idx) => {
                   const active = idx === activeIdx;
                   return (
                     <li key={c.id}>
                       <button
+                        ref={active ? activeItemRef : null}
                         type="button"
                         className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[11px] ${
                           active ? "bg-muted/60" : "hover:bg-muted/40"
@@ -143,22 +168,15 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
             </div>
           ) : null}
         </div>
-        <button
-          type="button"
-          className="nodex-btn-neutral shrink-0 rounded-md px-2.5 py-2 text-[12px] font-semibold"
-          onClick={() => close()}
-        >
-          Close
-        </button>
       </div>
       {err ? (
-        <div className="mx-auto w-full max-w-4xl px-3 pb-2 text-[11px] text-red-600 dark:text-red-400">
+        <div className="w-full px-3 pb-2 text-[11px] text-red-600 dark:text-red-400">
           {err}
         </div>
       ) : null}
-      <div className="mx-auto w-full max-w-4xl px-3 pb-2 text-[10px] text-muted-foreground">
+      <div className="w-full px-3 pb-2 text-[10px] text-muted-foreground">
         Tips: <span className="font-mono">Ctrl+K</span> (or <span className="font-mono">F1</span>) opens the palette.{" "}
-        <span className="font-mono">Alt+X</span> opens this mini bar.
+        <span className="font-mono">Esc</span> clears. <span className="font-mono">Tab</span> completes.
       </div>
     </div>
   );

@@ -61,6 +61,16 @@ export function exposeDevtoolsShellApi(opts: {
             opts.registries!.menuRail.registerItem(item),
         }
       : undefined,
+    panelMenu: opts.registries
+      ? {
+          listFor: (
+            region: Parameters<ShellRegistries["panelMenu"]["listFor"]>[0],
+            viewId?: Parameters<ShellRegistries["panelMenu"]["listFor"]>[1],
+          ) => opts.registries!.panelMenu.listFor(region, viewId),
+          registerItem: (item: Parameters<ShellRegistries["panelMenu"]["registerItem"]>[0]) =>
+            opts.registries!.panelMenu.registerItem(item),
+        }
+      : undefined,
     tabs: opts.registries
       ? {
           listTypes: () => opts.registries!.tabs.listTabTypes(),

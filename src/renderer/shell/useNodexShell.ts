@@ -11,16 +11,75 @@ function commandLabel(c: CommandContribution): string {
   return cat ? `${cat}: ${c.title}` : c.title;
 }
 
-function scoreCommand(c: CommandContribution, q: string): number {
-  if (!q) return 0;
-  const hay = norm(`${c.id} ${commandLabel(c)} ${c.doc ?? ""}`);
-  const parts = q.split(/\s+/).filter(Boolean);
-  let score = 0;
-  for (const p of parts) {
-    if (hay.includes(p)) score += 10;
-    else score -= 2;
+function fuzzyScore(haystack: string, needle: string): number | null {
+  const h = haystack;
+  const n = needle;
+  if (!n) return 0;
+  if (h.includes(n)) {
+    // Substring match: strong signal. Prefer earlier + tighter.
+    const at = h.indexOf(n);
+    return 200 - Math.min(150, at) - Math.min(50, h.length - n.length);
   }
+  // Subsequence fuzzy match: walk haystack, reward consecutive chars.
+  let hi = 0;
+  let score = 0;
+  let run = 0;
+  for (let ni = 0; ni < n.length; ni++) {
+    const ch = n[ni]!;
+    let found = false;
+    while (hi < h.length) {
+      const hh = h[hi]!;
+      hi += 1;
+      if (hh === ch) {
+        found = true;
+        run += 1;
+        score += 5 + Math.min(10, run * 2);
+        break;
+      }
+      run = 0;
+    }
+    if (!found) return null;
+  }
+  // Prefer matches that start earlier.
+  score -= Math.min(80, hi);
   return score;
+}
+
+function scoreCommand(c: CommandContribution, q: string): number | null {
+  if (!q) return 0;
+  const id = norm(c.id);
+  const label = norm(commandLabel(c));
+  const doc = norm(c.doc ?? "");
+  const parts = q.split(/\s+/).filter(Boolean);
+
+  let total = 0;
+  for (const p of parts) {
+    // High boosts for exact/prefix/word-ish matches in id/label.
+    if (id === p) {
+      total += 1000;
+      continue;
+    }
+    if (id.startsWith(p)) {
+      total += 700;
+      continue;
+    }
+    if (label.startsWith(p)) {
+      total += 520;
+      continue;
+    }
+    const wordRe = new RegExp(`\\b${p.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\b`, "i");
+    if (wordRe.test(c.id) || wordRe.test(commandLabel(c))) {
+      total += 380;
+      continue;
+    }
+
+    // Fuzzy match across concatenated fields; require a match.
+    const hay = `${id} ${label} ${doc}`;
+    const s = fuzzyScore(hay, p);
+    if (s == null) return null;
+    total += s;
+  }
+  return total;
 }
 
 export type ShellSurface = "palette" | "miniBar";
@@ -69,7 +128,7 @@ export function useNodexShell(): NodexShellVm {
     }
     return eligible
       .map((c) => ({ c, s: scoreCommand(c, q) }))
-      .filter((x) => x.s > 0)
+      .filter((x): x is { c: CommandContribution; s: number } => typeof x.s === "number")
       .sort((a, b) => b.s - a.s || commandLabel(a.c).localeCompare(commandLabel(b.c)))
       .map((x) => x.c);
   }, [commands, query, surface]);
@@ -144,10 +203,9 @@ export function useNodexShell(): NodexShellVm {
           );
         }
       }
-      close();
       await runCommand(id, args);
     },
-    [close, runCommand],
+    [runCommand],
   );
 
   useEffect(() => {
@@ -190,6 +248,14 @@ export function useNodexShell(): NodexShellVm {
         return;
       }
       if (surface === "palette") {
+        // If the palette input is focused, let the component handle navigation.
+        // Otherwise Arrow/Enter will be handled twice (global + input handler).
+        if (
+          isInput &&
+          (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")
+        ) {
+          return;
+        }
         if (e.key === "ArrowDown") {
           e.preventDefault();
           setSelectedIndex((i) => Math.min(results.length - 1, i + 1));

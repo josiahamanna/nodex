@@ -13,12 +13,17 @@ export function NodexCommandPalette({ vm }: { vm: NodexShellVm }): React.ReactEl
 
   const visible = open && surface === "palette";
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const activeItemRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     const id = window.requestAnimationFrame(() => inputRef.current?.focus());
     return () => window.cancelAnimationFrame(id);
   }, [visible]);
+
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex, results.length, visible]);
 
   const emptyHint = useMemo(() => {
     if (query.trim().length === 0) return "Type to search commands…";
@@ -74,6 +79,7 @@ export function NodexCommandPalette({ vm }: { vm: NodexShellVm }): React.ReactEl
                 <li key={c.id}>
                   <button
                     type="button"
+                    ref={active ? activeItemRef : null}
                     className={`flex w-full items-start gap-3 px-3 py-2 text-left ${
                       active ? "bg-muted/60" : "hover:bg-muted/40"
                     }`}

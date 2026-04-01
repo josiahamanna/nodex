@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Panel,
   PanelGroup,
@@ -24,7 +24,8 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const layout = useShellLayoutState();
   const store = useShellLayoutStore();
   const views = useShellViewRegistry();
-  const { menuRail, appMenu, tabs } = useShellRegistries();
+  const { menuRail, appMenu, panelMenu, tabs } = useShellRegistries();
+  const [panelMenuOpen, setPanelMenuOpen] = useState(false);
 
   const primaryRef = React.useRef<ImperativePanelHandle>(null);
   const secondaryRef = React.useRef<ImperativePanelHandle>(null);
@@ -60,6 +61,15 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const appMenuItems = appMenu.list();
   const openTabs = tabs.listOpenTabs();
   const activeTab = tabs.getActiveTab();
+
+  // Keep main area view in sync with active tab type.
+  useEffect(() => {
+    const instId = activeTab?.instanceId ?? null;
+    if (!instId) return;
+    const viewId = tabs.resolveViewForInstance(instId);
+    if (!viewId) return;
+    views.openView(viewId, "mainArea");
+  }, [activeTab?.instanceId, tabs, views]);
 
   const renderSash = (key: string) => (
     <PanelResizeHandle
@@ -224,7 +234,52 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                     <div className="min-w-0 flex-1">
                       {showSidebarPanel ? (
                         primaryView ? (
-                          <ShellIFrameViewHost view={primaryView} />
+                          <div className="flex h-full min-h-0 flex-col">
+                            <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/10 px-2 py-1">
+                              <div className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
+                                {primaryView.title}
+                              </div>
+                              {panelMenu.listFor("primarySidebar", primaryView.id).length > 0 ? (
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
+                                    onClick={() => setPanelMenuOpen((v) => !v)}
+                                    title="Panel menu"
+                                  >
+                                    ⋯
+                                  </button>
+                                  {panelMenuOpen ? (
+                                    <div className="absolute right-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-md border border-border bg-background shadow-lg">
+                                      {panelMenu
+                                        .listFor("primarySidebar", primaryView.id)
+                                        .map((it) => (
+                                          <button
+                                            key={it.id}
+                                            type="button"
+                                            className="block w-full px-3 py-2 text-left text-[11px] text-foreground hover:bg-muted/40"
+                                            onClick={() => {
+                                              setPanelMenuOpen(false);
+                                              void Promise.resolve(
+                                                (window.nodex as any)?.shell?.commands?.invoke?.(
+                                                  it.commandId,
+                                                  it.commandArgs,
+                                                ),
+                                              );
+                                            }}
+                                          >
+                                            {it.title}
+                                          </button>
+                                        ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="min-h-0 flex-1">
+                              <ShellIFrameViewHost view={primaryView} />
+                            </div>
+                          </div>
                         ) : (
                           <EmptyRegion title="Sidebar panel" />
                         )
