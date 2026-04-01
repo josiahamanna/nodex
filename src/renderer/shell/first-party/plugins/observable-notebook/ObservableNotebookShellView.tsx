@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Runtime, Inspector } from "@observablehq/runtime";
+import { Inspector } from "@observablehq/inspector";
+import { Runtime } from "@observablehq/runtime";
 import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
 
 type Cell = { id: string; name: string; inputs: string[]; body: string };
@@ -78,12 +79,12 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
         block.appendChild(h);
         block.appendChild(slot);
         root.appendChild(block);
-        const observer = Inspector.into(slot);
+        const makeObserver = Inspector.into(slot);
         const fn = new Function(
           ...c.inputs,
           `"use strict"; return (async () => { return (${c.body}); })();`,
         );
-        mod.variable(observer(c.name)).define(c.name, c.inputs, (...args: unknown[]) =>
+        mod.variable(makeObserver()).define(c.name, c.inputs, (...args: unknown[]) =>
           (fn as (...a: unknown[]) => unknown)(...args),
         );
       }

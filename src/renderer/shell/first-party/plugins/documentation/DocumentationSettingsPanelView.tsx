@@ -3,10 +3,11 @@ import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
 import type { ShellKeyBinding } from "../../../registries/ShellKeymapRegistry";
 import { DOCS_BC } from "./documentationConstants";
+import { DocumentationPluginAuthoringSection } from "./DocumentationPluginAuthoringSection";
 
 export function DocumentationSettingsPanelView(_props: ShellViewComponentProps): React.ReactElement {
   const { keymap } = useShellRegistries();
-  const [tab, setTab] = useState<1 | 2 | 3>(1);
+  const [tab, setTab] = useState<1 | 2 | 3 | 4>(1);
   const [keys, setKeys] = useState<ShellKeyBinding[]>([]);
   const [apiText, setApiText] = useState<string>("");
   const [miniOnly, setMiniOnly] = useState(true);
@@ -112,6 +113,13 @@ export function DocumentationSettingsPanelView(_props: ShellViewComponentProps):
         >
           About
         </button>
+        <button
+          type="button"
+          className={`rounded border px-2.5 py-1 text-[11px] ${tab === 4 ? "border-border bg-muted/50" : "border-border/60"}`}
+          onClick={() => setTab(4)}
+        >
+          Plugin authoring
+        </button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {tab === 1 ? (
@@ -150,12 +158,26 @@ export function DocumentationSettingsPanelView(_props: ShellViewComponentProps):
           </div>
         ) : null}
         {tab === 3 ? (
-          <div className="text-[11px] leading-relaxed opacity-80">
-            <code className="font-mono">plugin.documentation</code> scrapes the shell at runtime (commands,
-            keymap, API introspection). Plugins should set <code className="font-mono">sourcePluginId</code> and{" "}
-            <code className="font-mono">doc</code> on registered commands.
+          <div className="space-y-2 text-[11px] leading-relaxed opacity-80">
+            <p>
+              <code className="font-mono">plugin.documentation</code> scrapes the shell at runtime (commands,
+              keymap, API introspection). Plugins should set <code className="font-mono">sourcePluginId</code>{" "}
+              and <code className="font-mono">doc</code> on registered commands.
+            </p>
+            <p>
+              For step-by-step plugin development and wiring, open the{" "}
+              <button
+                type="button"
+                className="text-primary underline underline-offset-2 hover:opacity-90"
+                onClick={() => setTab(4)}
+              >
+                Plugin authoring
+              </button>{" "}
+              tab.
+            </p>
           </div>
         ) : null}
+        {tab === 4 ? <DocumentationPluginAuthoringSection /> : null}
       </div>
     </div>
   );

@@ -217,14 +217,32 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                             className="flex h-9 w-9 items-center justify-center rounded-md border border-transparent text-[12px] text-muted-foreground hover:border-border hover:bg-muted/30"
                             title={it.title}
                             onClick={() => {
-                              if (it.openViewId) {
-                                views.openView(it.openViewId, it.openViewRegion ?? "primarySidebar");
-                                return;
-                              }
                               if (it.commandId) {
                                 void Promise.resolve(
-                                  (window.nodex as any)?.shell?.commands?.invoke?.(it.commandId, it.commandArgs),
+                                  (window.nodex as { shell?: { commands?: { invoke?: (id: string, a?: Record<string, unknown>) => unknown } } })?.shell?.commands?.invoke?.(
+                                    it.commandId,
+                                    it.commandArgs,
+                                  ),
                                 );
+                                return;
+                              }
+                              if (it.tabTypeId) {
+                                tabs.openTab(it.tabTypeId, it.title);
+                                if (it.sidebarViewId) {
+                                  views.openView(it.sidebarViewId, "primarySidebar");
+                                  store.setVisible("menuRail", true);
+                                  store.setVisible("sidebarPanel", true);
+                                }
+                                if (it.secondaryViewId) {
+                                  views.openView(it.secondaryViewId, "secondaryArea");
+                                  store.setVisible("secondaryArea", true);
+                                }
+                                return;
+                              }
+                              if (it.openViewId) {
+                                views.openView(it.openViewId, it.openViewRegion ?? "primarySidebar");
+                                store.setVisible("menuRail", true);
+                                store.setVisible("sidebarPanel", true);
                               }
                             }}
                           >

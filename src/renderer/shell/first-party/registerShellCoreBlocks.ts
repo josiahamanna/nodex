@@ -29,7 +29,8 @@ export function useRegisterShellCoreBlocks(): void {
         title: "Welcome",
         icon: "N",
         order: 0,
-        openViewId: "shell.welcome",
+        tabTypeId: "shell.tab.welcome",
+        sidebarViewId: "shell.welcome",
       }),
     );
 

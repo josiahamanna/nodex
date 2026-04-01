@@ -16,6 +16,7 @@ export type ShellWidgetSlotProps = {
 export type ShellWidgetContribution = {
   id: string;
   pluginId: string;
+  slotId: ShellWidgetSlotId;
   order: number;
   component: ComponentType<ShellWidgetSlotProps>;
 };

@@ -98,6 +98,7 @@
     "@babel/standalone": "^7.29.2",
     "@electron/rebuild": "^4.0.3",
     "@monaco-editor/react": "^4.7.0",
+    "@observablehq/inspector": "^5.0.1",
     "@observablehq/runtime": "^6.0.0",
     "@reduxjs/toolkit": "^2.11.2",
     "@rollup/plugin-babel": "^7.0.0",

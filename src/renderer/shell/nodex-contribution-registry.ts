@@ -4,6 +4,43 @@ export type CommandHandler = (
   args?: Record<string, unknown>,
 ) => void | Promise<void>;
 
+/** Single argument field for docs + JSON Schema generation. */
+export type CommandArgDefinition = {
+  name: string;
+  /** Human-readable type (shown in tables); also mapped to JSON Schema when `schema` is omitted. */
+  type: string;
+  required?: boolean;
+  description?: string;
+  default?: unknown;
+  example?: unknown;
+  /** Optional JSON Schema fragment merged for this property (e.g. `enum`, `pattern`). */
+  schema?: Record<string, unknown>;
+};
+
+export type CommandReturnSpec = {
+  type: string;
+  description?: string;
+};
+
+/**
+ * Structured API contract for Documentation and tooling.
+ * Namespace / shortName default from `id` (`a.b.c` → `a.b` + `c`).
+ */
+export type CommandApiContract = {
+  namespace?: string;
+  shortName?: string;
+  /** One-line contract summary (defaults to `title`). */
+  summary?: string;
+  /** Long-form details (shown with prose `doc`). */
+  details?: string;
+  args?: CommandArgDefinition[];
+  /** Full JSON Schema for the invoke args object (optional; else derived from `args`). */
+  argsJsonSchema?: Record<string, unknown>;
+  returns?: CommandReturnSpec;
+  /** Example `args` object for `invokeCommand(id, args)`. */
+  exampleInvoke?: Record<string, unknown> | null;
+};
+
 export type CommandContribution = {
   id: string;
   title: string;
@@ -15,6 +52,8 @@ export type CommandContribution = {
   /** Expose to mini-bar style completion (default true). */
   miniBar?: boolean;
   doc?: string | null;
+  /** Machine-readable contract for generated docs (namespace, args, JSON Schema, examples). */
+  api?: CommandApiContract;
   handler: CommandHandler;
 };
 

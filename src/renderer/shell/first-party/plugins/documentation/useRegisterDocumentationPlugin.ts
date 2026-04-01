@@ -56,7 +56,9 @@ export function useRegisterDocumentationPlugin(): void {
         title: "Documentation",
         icon: "?",
         order: 20,
-        commandId: "nodex.docs.open",
+        tabTypeId: TAB_DOCS,
+        sidebarViewId: VIEW_DOCS_SEARCH,
+        secondaryViewId: VIEW_DOCS_SETTINGS,
       }),
     );
 
@@ -76,6 +78,12 @@ export function useRegisterDocumentationPlugin(): void {
         category: "Docs",
         sourcePluginId: DOCS_PLUGIN_ID,
         doc: "Opens Documentation: search in sidebar panel, settings in secondary area.",
+        api: {
+          summary: "Open the Documentation workspace (new Docs tab, sidebar search, secondary settings).",
+          args: [],
+          exampleInvoke: {},
+          returns: { type: "void", description: "Updates tabs and ShellViewRegistry regions." },
+        },
         handler: () => {
           regs.tabs.openTab(TAB_DOCS, "Docs");
           openDocsLayout(views);
@@ -90,6 +98,12 @@ export function useRegisterDocumentationPlugin(): void {
         category: "Docs",
         sourcePluginId: DOCS_PLUGIN_ID,
         doc: "Opens the Documentation layout (search + settings).",
+        api: {
+          summary: "Same layout as nodex.docs.open; alias for discoverability.",
+          args: [],
+          exampleInvoke: {},
+          returns: { type: "void", description: "Opens Documentation shell layout." },
+        },
         handler: () => {
           regs.tabs.openTab(TAB_DOCS, "Docs");
           openDocsLayout(views);

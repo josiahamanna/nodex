@@ -11,8 +11,4 @@ declare module "@observablehq/runtime" {
     };
     dispose(): void;
   }
-
-  export const Inspector: {
-    into: (node: Element) => (name?: string) => unknown;
-  };
 }

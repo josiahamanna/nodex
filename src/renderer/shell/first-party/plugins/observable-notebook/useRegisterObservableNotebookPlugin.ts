@@ -42,7 +42,7 @@ export function useRegisterObservableNotebookPlugin(): void {
         title: "Observable",
         icon: "O",
         order: 9,
-        commandId: "nodex.observableNotebook.open",
+        tabTypeId: TAB_NOTEBOOK,
       }),
     );
 
@@ -53,6 +53,15 @@ export function useRegisterObservableNotebookPlugin(): void {
         category: "Notebook",
         sourcePluginId: OBSERVABLE_NOTEBOOK_PLUGIN_ID,
         doc: "Open the Observable notebook tab in the primary area.",
+        api: {
+          summary: "Open a new Observable notebook tab and focus it in the main column.",
+          args: [],
+          exampleInvoke: {},
+          returns: {
+            type: "void",
+            description: "Registers a new ShellTabsRegistry instance for plugin.observable-notebook.tab.",
+          },
+        },
         handler: () => {
           regs.tabs.openTab(TAB_NOTEBOOK, "Observable");
         },

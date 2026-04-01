@@ -6,9 +6,20 @@ export type ShellMenuRailItem = {
   order?: number;
   /** Optional icon (emoji/string); real icons can come later. */
   icon?: string;
-  /** Either runs a command or opens a view. */
+  /**
+   * Runs a custom handler (palette, complex flows). If set, takes precedence over
+   * {@link tabTypeId} / {@link openViewId}.
+   */
   commandId?: string;
   commandArgs?: Record<string, unknown>;
+  /**
+   * Opens a **new tab instance** and syncs the main area to that tab’s `viewId`.
+   * Optional {@link sidebarViewId} / {@link secondaryViewId} open companion panels.
+   */
+  tabTypeId?: string;
+  sidebarViewId?: string;
+  secondaryViewId?: string;
+  /** Legacy: open a single view without opening a tab (prefer {@link tabTypeId}). */
   openViewId?: string;
   /** Where to open the view (default: sidebar panel). */
   openViewRegion?: ShellRegionId;
