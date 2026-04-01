@@ -83,8 +83,14 @@ export function exposeDevtoolsShellApi(opts: {
           listTypes: () => opts.registries!.tabs.listTabTypes(),
           registerType: (t: Parameters<ShellRegistries["tabs"]["registerTabType"]>[0]) =>
             opts.registries!.tabs.registerTabType(t),
-          open: (tabTypeId: string, title?: string, state?: unknown) =>
-            opts.registries!.tabs.openTab(String(tabTypeId), title, state),
+          open: (tabTypeId: string, title?: string, state?: unknown, reuseKey?: string) =>
+            opts.registries!.tabs.openTab(String(tabTypeId), title, state, reuseKey),
+          openOrReuse: (
+            tabTypeId: string,
+            o?: { title?: string; state?: unknown; reuseKey?: string },
+          ) => opts.registries!.tabs.openOrReuseTab(String(tabTypeId), o),
+          reorder: (fromIndex: number, toIndex: number) =>
+            opts.registries!.tabs.reorderTabs(fromIndex, toIndex),
           listOpen: () => opts.registries!.tabs.listOpenTabs(),
           setActive: (instanceId: string) => opts.registries!.tabs.setActiveTab(String(instanceId)),
           close: (instanceId: string) => opts.registries!.tabs.closeTab(String(instanceId)),

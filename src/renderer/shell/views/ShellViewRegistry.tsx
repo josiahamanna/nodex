@@ -29,13 +29,21 @@ export class ShellViewRegistry {
   private readonly views = new Map<string, ShellViewDescriptor>();
   private readonly listeners = new Set<Listener>();
   private openByRegion: Partial<Record<ShellRegionId, string>> = {};
+  /** Bumps on every register/open/close so `useSyncExternalStore` can subscribe reliably. */
+  private snapshotVersion = 0;
 
   subscribe(cb: Listener): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
   }
 
+  /** For React `useSyncExternalStore` — changes when any open view or registration changes. */
+  getSnapshotVersion(): number {
+    return this.snapshotVersion;
+  }
+
   private emit(): void {
+    this.snapshotVersion += 1;
     for (const l of this.listeners) l();
   }
 

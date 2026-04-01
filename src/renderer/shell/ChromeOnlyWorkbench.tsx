@@ -1,4 +1,21 @@
-import React, { useEffect, useMemo, useState } from "react";
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
+import {
+  horizontalListSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Panel,
   PanelGroup,
@@ -6,16 +23,64 @@ import {
   type ImperativePanelHandle,
 } from "react-resizable-panels";
 import { useShellLayoutState, useShellLayoutStore } from "./layout/ShellLayoutContext";
+import {
+  hashForActiveTab,
+  parseShellHash,
+  replaceWindowHash,
+} from "./shellTabUrlSync";
+import { useShellNavigation } from "./useShellNavigation";
 import { ShellViewHost } from "./views/ShellViewHost";
 import { useShellViewRegistry } from "./views/ShellViewContext";
 import { useShellRegistries } from "./registries/ShellRegistriesContext";
+import type { ShellTabInstance } from "./registries/ShellTabsRegistry";
 
-function EmptyRegion({ title }: { title: string }): React.ReactElement {
+function SortableTabRow({
+  tab,
+  active,
+  onSelect,
+  onClose,
+}: {
+  tab: ShellTabInstance;
+  active: boolean;
+  onSelect: () => void;
+  onClose: (e: React.MouseEvent) => void;
+}): React.ReactElement {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: tab.instanceId,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.88 : undefined,
+  };
   return (
-    <div className="flex h-full min-h-0 flex-1 items-center justify-center p-3">
-      <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
-        {title} (empty)
-      </div>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex shrink-0 items-stretch gap-0.5 rounded-md border border-transparent hover:border-border/60"
+    >
+      <button
+        type="button"
+        className={`max-w-[10rem] truncate rounded-l-md border px-2 py-1 text-left text-[11px] ${
+          active
+            ? "border-border bg-muted/50 text-foreground"
+            : "border-transparent bg-transparent text-muted-foreground hover:border-border hover:bg-muted/30"
+        }`}
+        onClick={onSelect}
+        title={tab.instanceId}
+        {...attributes}
+        {...listeners}
+      >
+        {tab.title ?? tab.tabTypeId}
+      </button>
+      <button
+        type="button"
+        className="rounded-r-md px-1.5 text-[12px] leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+        aria-label="Close tab"
+        onClick={onClose}
+      >
+        ×
+      </button>
     </div>
   );
 }
@@ -25,11 +90,19 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const store = useShellLayoutStore();
   const views = useShellViewRegistry();
   const { menuRail, appMenu, panelMenu, tabs, widgetSlots } = useShellRegistries();
+  const { openFromRailItem, openNoteById, invokeCommand } = useShellNavigation();
   const [panelMenuOpen, setPanelMenuOpen] = useState(false);
+  const lastSyncedHash = useRef<string>("");
+  const initialHashApplied = useRef(false);
 
   const primaryRef = React.useRef<ImperativePanelHandle>(null);
   const secondaryRef = React.useRef<ImperativePanelHandle>(null);
   const bottomRef = React.useRef<ImperativePanelHandle>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const hSizes = useMemo(() => {
     const { primaryPct, mainPct, secondaryPct } = layout.sizes;
@@ -62,7 +135,29 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const openTabs = tabs.listOpenTabs();
   const activeTab = tabs.getActiveTab();
 
-  // Keep main area view in sync with active tab type.
+  const closeTabInstance = useCallback(
+    (instanceId: string) => (e: React.MouseEvent) => {
+      e.stopPropagation();
+      tabs.closeTab(instanceId);
+      if (tabs.listOpenTabs().length === 0) {
+        tabs.openOrReuseTab("shell.tab.welcome", { title: "Welcome", reuseKey: "shell:welcome" });
+      }
+    },
+    [tabs],
+  );
+
+  const onDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const oldIndex = openTabs.findIndex((t) => t.instanceId === active.id);
+      const newIndex = openTabs.findIndex((t) => t.instanceId === over.id);
+      if (oldIndex < 0 || newIndex < 0) return;
+      tabs.reorderTabs(oldIndex, newIndex);
+    },
+    [openTabs, tabs],
+  );
+
   useEffect(() => {
     const instId = activeTab?.instanceId ?? null;
     if (!instId) return;
@@ -71,12 +166,68 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     views.openView(viewId, "mainArea");
   }, [activeTab?.instanceId, tabs, views]);
 
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      if (initialHashApplied.current) return;
+      initialHashApplied.current = true;
+      const parsed = parseShellHash();
+      if (parsed?.kind === "note") {
+        openNoteById(parsed.noteId);
+      } else if (parsed?.kind === "tab") {
+        const inst = tabs.listOpenTabs().find((i) => i.instanceId === parsed.instanceId);
+        if (inst) {
+          tabs.setActiveTab(inst.instanceId);
+        }
+      }
+    }, 50);
+    return () => window.clearTimeout(id);
+  }, [openNoteById, tabs]);
+
+  useEffect(() => {
+    return tabs.subscribe(() => {
+      const a = tabs.getActiveTab();
+      const h = hashForActiveTab(a);
+      if (!h) {
+        if (lastSyncedHash.current !== "") {
+          replaceWindowHash("");
+          lastSyncedHash.current = "";
+        }
+        return;
+      }
+      if (typeof window !== "undefined" && window.location.hash === h) {
+        lastSyncedHash.current = h;
+        return;
+      }
+      if (h === lastSyncedHash.current) return;
+      replaceWindowHash(h);
+      lastSyncedHash.current = h;
+    });
+  }, [tabs]);
+
+  useEffect(() => {
+    const onHash = (): void => {
+      const parsed = parseShellHash();
+      if (parsed?.kind === "note") {
+        openNoteById(parsed.noteId);
+      } else if (parsed?.kind === "tab") {
+        const inst = tabs.listOpenTabs().find((i) => i.instanceId === parsed.instanceId);
+        if (inst) {
+          tabs.setActiveTab(inst.instanceId);
+        }
+      }
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [openNoteById, tabs]);
+
   const renderSash = (key: string) => (
     <PanelResizeHandle
       key={key}
       className="nodex-panel-sash relative w-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-y-0 before:left-1/2 before:z-10 before:w-px before:-translate-x-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active"
     />
   );
+
+  const sortableIds = openTabs.map((t) => t.instanceId);
 
   return (
     <div className="nodex-app-pad box-border flex min-h-0 flex-1 flex-col bg-muted/45 text-foreground dark:bg-muted/25">
@@ -85,7 +236,6 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
         data-nodex-main-surface
         tabIndex={-1}
       >
-        {/* Top bar: N menu + primary tabs */}
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background px-2 py-1.5">
           <div className="relative">
             <button
@@ -93,8 +243,6 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-muted/20 text-[12px] font-semibold hover:bg-muted/40"
               title="App menu"
               onClick={() => {
-                // Minimal: if items exist, open first leaf command via palette later.
-                // For now, toggle sidebar visibility as a visible affordance.
                 if (appMenuItems.length === 0) {
                   store.toggle("sidebarPanel");
                 }
@@ -103,31 +251,26 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               N
             </button>
           </div>
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-            {openTabs.length === 0 ? (
-              <div className="px-2 text-[11px] text-muted-foreground">No tabs</div>
-            ) : (
-              openTabs.map((t) => {
-                const active = t.instanceId === activeTab?.instanceId;
-                return (
-                  <button
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToHorizontalAxis]}
+            onDragEnd={onDragEnd}
+          >
+            <SortableContext items={sortableIds} strategy={horizontalListSortingStrategy}>
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                {openTabs.map((t) => (
+                  <SortableTabRow
                     key={t.instanceId}
-                    type="button"
-                    className={`shrink-0 rounded-md border px-2 py-1 text-[11px] ${
-                      active
-                        ? "border-border bg-muted/50 text-foreground"
-                        : "border-transparent bg-transparent text-muted-foreground hover:border-border hover:bg-muted/30"
-                    }`}
-                    onClick={() => tabs.setActiveTab(t.instanceId)}
-                    title={t.instanceId}
-                  >
-                    {t.title ?? t.tabTypeId}
-                  </button>
-                );
-              })
-            )}
-          </div>
-          {/* Collapse/expand indicators */}
+                    tab={t}
+                    active={t.instanceId === activeTab?.instanceId}
+                    onSelect={() => tabs.setActiveTab(t.instanceId)}
+                    onClose={closeTabInstance(t.instanceId)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -173,7 +316,6 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               direction="horizontal"
               className="h-full min-h-0 min-w-0 flex-1 box-border"
               onLayout={(sizes) => {
-                // sizes is [p, m, s] in percentages (0-100)
                 const [p, m, s] = sizes;
                 store.patch((cur) => ({
                   ...cur,
@@ -204,63 +346,38 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               >
                 {showLeft ? (
                   <div className="flex h-full min-h-0">
-                    {/* Menu rail */}
                     {showMenuRail ? (
                       <div className="flex w-10 shrink-0 flex-col items-center gap-1 border-r border-border bg-muted/15 py-2">
-                      {railItems.length === 0 ? (
-                        <span className="text-[10px] text-muted-foreground">—</span>
-                      ) : (
-                        railItems.map((it) => (
-                          <button
-                            key={it.id}
-                            type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-md border border-transparent text-[12px] text-muted-foreground hover:border-border hover:bg-muted/30"
-                            title={it.title}
-                            onClick={() => {
-                              if (it.commandId) {
-                                void Promise.resolve(
-                                  (window.nodex as { shell?: { commands?: { invoke?: (id: string, a?: Record<string, unknown>) => unknown } } })?.shell?.commands?.invoke?.(
-                                    it.commandId,
-                                    it.commandArgs,
-                                  ),
-                                );
-                                return;
-                              }
-                              if (it.tabTypeId) {
-                                tabs.openTab(it.tabTypeId, it.title);
-                                if (it.sidebarViewId) {
-                                  views.openView(it.sidebarViewId, "primarySidebar");
-                                  store.setVisible("menuRail", true);
-                                  store.setVisible("sidebarPanel", true);
-                                }
-                                if (it.secondaryViewId) {
-                                  views.openView(it.secondaryViewId, "secondaryArea");
-                                  store.setVisible("secondaryArea", true);
-                                }
-                                return;
-                              }
-                              if (it.openViewId) {
-                                views.openView(it.openViewId, it.openViewRegion ?? "primarySidebar");
-                                store.setVisible("menuRail", true);
-                                store.setVisible("sidebarPanel", true);
-                              }
-                            }}
-                          >
-                            {it.icon ?? "•"}
-                          </button>
-                        ))
-                      )}
-                      {widgetSlots.list("rail").map((w) => {
-                        const W = w.component;
-                        return (
-                          <div key={w.id} className="w-full border-t border-border/40 pt-1">
-                            <W slotId="rail" />
-                          </div>
-                        );
-                      })}
+                        {railItems.map((it) => {
+                          const railActive = Boolean(
+                            activeTab?.tabTypeId && it.tabTypeId && it.tabTypeId === activeTab.tabTypeId,
+                          );
+                          return (
+                            <button
+                              key={it.id}
+                              type="button"
+                              className={`flex h-9 w-9 items-center justify-center rounded-md border text-[12px] ${
+                                railActive
+                                  ? "border-border bg-muted/50 text-foreground"
+                                  : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/30"
+                              }`}
+                              title={it.title}
+                              onClick={() => openFromRailItem(it)}
+                            >
+                              {it.icon ?? "•"}
+                            </button>
+                          );
+                        })}
+                        {widgetSlots.list("rail").map((w) => {
+                          const W = w.component;
+                          return (
+                            <div key={w.id} className="w-full border-t border-border/40 pt-1">
+                              <W slotId="rail" />
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : null}
-                    {/* Panel body */}
                     <div className="min-w-0 flex-1">
                       {showSidebarPanel ? (
                         primaryView ? (
@@ -283,22 +400,19 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                                     <div className="absolute right-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-md border border-border bg-background shadow-lg">
                                       {panelMenu
                                         .listFor("primarySidebar", primaryView.id)
-                                        .map((it) => (
+                                        .map((item) => (
                                           <button
-                                            key={it.id}
+                                            key={item.id}
                                             type="button"
                                             className="block w-full px-3 py-2 text-left text-[11px] text-foreground hover:bg-muted/40"
                                             onClick={() => {
                                               setPanelMenuOpen(false);
                                               void Promise.resolve(
-                                                (window.nodex as any)?.shell?.commands?.invoke?.(
-                                                  it.commandId,
-                                                  it.commandArgs,
-                                                ),
+                                                invokeCommand(item.commandId, item.commandArgs),
                                               );
                                             }}
                                           >
-                                            {it.title}
+                                            {item.title}
                                           </button>
                                         ))}
                                     </div>
@@ -311,26 +425,22 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                             </div>
                           </div>
                         ) : (
-                          <EmptyRegion title="Sidebar panel" />
+                          <div className="h-full min-h-0 w-full bg-background" />
                         )
                       ) : (
-                        <EmptyRegion title="Sidebar panel (hidden)" />
+                        <div className="h-full min-h-0 w-full bg-background" />
                       )}
                     </div>
                   </div>
                 ) : (
-                  <div className="h-full" />
+                  <div className="h-full min-h-0 w-full bg-background" />
                 )}
               </Panel>
               {renderSash("sash-primary")}
               <Panel defaultSize={hSizes[1]} minSize={30} className="min-w-0">
-                {mainView ? (
-                  <ShellViewHost view={mainView} />
-                ) : activeTab ? (
-                  <EmptyRegion title={`Primary area (${activeTab.tabTypeId})`} />
-                ) : (
-                  <EmptyRegion title="Primary area" />
-                )}
+                <div className="h-full min-h-0 w-full bg-background">
+                  {mainView ? <ShellViewHost view={mainView} activeMainTab={activeTab} /> : null}
+                </div>
               </Panel>
               {renderSash("sash-secondary")}
               <Panel
@@ -344,13 +454,11 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 className="min-w-0"
               >
                 {showSecondary ? (
-                  secondaryView ? (
-                    <ShellViewHost view={secondaryView} />
-                  ) : (
-                    <EmptyRegion title="Secondary area" />
-                  )
+                  <div className="h-full min-h-0 w-full bg-background">
+                    {secondaryView ? <ShellViewHost view={secondaryView} /> : null}
+                  </div>
                 ) : (
-                  <div className="h-full" />
+                  <div className="h-full min-h-0 w-full bg-background" />
                 )}
               </Panel>
             </PanelGroup>
@@ -375,11 +483,9 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                   }));
                 }}
               >
-                {bottomView ? (
-                  <ShellViewHost view={bottomView} />
-                ) : (
-                  <EmptyRegion title="Bottom dock (output/terminal/notebook)" />
-                )}
+                <div className="h-full min-h-0 w-full bg-background">
+                  {bottomView ? <ShellViewHost view={bottomView} /> : null}
+                </div>
               </Panel>
             </>
           ) : null}
@@ -388,4 +494,3 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     </div>
   );
 }
-

@@ -2,8 +2,9 @@ import React, {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
-  useReducer,
+  useSyncExternalStore,
 } from "react";
 import {
   NodexContributionRegistry,
@@ -28,7 +29,6 @@ export function NodexContributionProvider({
   children: React.ReactNode;
 }): React.ReactElement {
   const registry = useMemo(() => new NodexContributionRegistry(), []);
-  const [, bump] = useReducer((x: number) => x + 1, 0);
   const layoutStore = useShellLayoutStore();
   const viewRegistry = useShellViewRegistry();
   const registries = useShellRegistries();
@@ -61,8 +61,6 @@ export function NodexContributionProvider({
     return unsub;
   }, [registries]);
 
-  useEffect(() => registry.subscribe(() => bump()), [registry]);
-
   useEffect(() => {
     const disposers = registerNodexCoreContributions(registry, registries);
     return () => {
@@ -72,7 +70,7 @@ export function NodexContributionProvider({
     };
   }, [registry]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     exposeDevtoolsShellApi({
       registry,
       layout: layoutStore,
@@ -101,8 +99,11 @@ export function useNodexContributionRegistry(): NodexContributionRegistry {
 /** Re-renders when the registry changes. */
 export function useNodexCommands(): CommandContribution[] {
   const registry = useNodexContributionRegistry();
-  const [, tick] = useReducer((x: number) => x + 1, 0);
-  useEffect(() => registry.subscribe(() => tick()), [registry]);
+  useSyncExternalStore(
+    (onChange) => registry.subscribe(onChange),
+    () => registry.getSnapshotVersion(),
+    () => 0,
+  );
   return registry.listCommands();
 }
 
@@ -110,7 +111,10 @@ export function useNodexModeLineSegment(
   segment: ModeLineSegmentId,
 ): ModeLineContribution[] {
   const registry = useNodexContributionRegistry();
-  const [, tick] = useReducer((x: number) => x + 1, 0);
-  useEffect(() => registry.subscribe(() => tick()), [registry]);
+  useSyncExternalStore(
+    (onChange) => registry.subscribe(onChange),
+    () => registry.getSnapshotVersion(),
+    () => 0,
+  );
   return registry.listModeLineForSegment(segment);
 }

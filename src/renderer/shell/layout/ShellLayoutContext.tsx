@@ -1,13 +1,11 @@
-import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
+import { defaultShellLayoutState } from "./ShellLayoutState";
 import { ShellLayoutStore } from "./ShellLayoutStore";
 
 const Ctx = createContext<ShellLayoutStore | null>(null);
 
 export function ShellLayoutProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const store = useMemo(() => new ShellLayoutStore(), []);
-  const [, tick] = useReducer((x: number) => x + 1, 0);
-
-  useEffect(() => store.subscribe(() => tick()), [store]);
 
   useEffect(() => {
     void store.loadFromHost();
@@ -23,9 +21,11 @@ export function useShellLayoutStore(): ShellLayoutStore {
 }
 
 export function useShellLayoutState() {
-  const s = useShellLayoutStore();
-  const [, tick] = useReducer((x: number) => x + 1, 0);
-  useEffect(() => s.subscribe(() => tick()), [s]);
-  return s.get();
+  const store = useShellLayoutStore();
+  return useSyncExternalStore(
+    (onStoreChange) => store.subscribe(onStoreChange),
+    () => store.get(),
+    () => defaultShellLayoutState(),
+  );
 }
 

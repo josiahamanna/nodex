@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
+import React, { createContext, useContext, useMemo, useRef, useSyncExternalStore } from "react";
 import { ShellAppMenuRegistry } from "./ShellAppMenuRegistry";
 import { ShellMenuRailRegistry } from "./ShellMenuRailRegistry";
 import { ShellKeymapRegistry } from "./ShellKeymapRegistry";
@@ -34,14 +34,28 @@ export function ShellRegistriesProvider({
     };
   }, []);
 
-  // Ensure React re-renders when registries change (for shell chrome).
-  const [, tick] = useReducer((x: number) => x + 1, 0);
-  useEffect(() => regs.appMenu.subscribe(() => tick()), [regs]);
-  useEffect(() => regs.menuRail.subscribe(() => tick()), [regs]);
-  useEffect(() => regs.keymap.subscribe(() => tick()), [regs]);
-  useEffect(() => regs.panelMenu.subscribe(() => tick()), [regs]);
-  useEffect(() => regs.tabs.subscribe(() => tick()), [regs]);
-  useEffect(() => regs.widgetSlots.subscribe(() => tick()), [regs]);
+  const registriesEpoch = useRef(0);
+  useSyncExternalStore(
+    (onChange) => {
+      const bump = (): void => {
+        registriesEpoch.current += 1;
+        onChange();
+      };
+      const unsubs = [
+        regs.appMenu.subscribe(bump),
+        regs.menuRail.subscribe(bump),
+        regs.keymap.subscribe(bump),
+        regs.panelMenu.subscribe(bump),
+        regs.tabs.subscribe(bump),
+        regs.widgetSlots.subscribe(bump),
+      ];
+      return () => {
+        for (const u of unsubs) u();
+      };
+    },
+    () => registriesEpoch.current,
+    () => 0,
+  );
 
   return <Ctx.Provider value={regs}>{children}</Ctx.Provider>;
 }

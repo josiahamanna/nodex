@@ -11,6 +11,8 @@ export type ShellTabInstance = {
   tabTypeId: string;
   title?: string;
   state?: unknown;
+  /** When set, `openOrReuseTab` activates an existing instance with the same key and type instead of creating one. */
+  reuseKey?: string;
 };
 
 type Listener = () => void;
@@ -48,15 +50,55 @@ export class ShellTabsRegistry {
     );
   }
 
-  openTab(tabTypeId: string, title?: string, state?: unknown): ShellTabInstance {
+  openTab(
+    tabTypeId: string,
+    title?: string,
+    state?: unknown,
+    reuseKey?: string,
+  ): ShellTabInstance {
     const type = this.types.get(tabTypeId);
     if (!type) throw new Error(`Unknown tab type: ${tabTypeId}`);
     const instanceId = `${tabTypeId}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
-    const inst: ShellTabInstance = { instanceId, tabTypeId, title, state };
+    const inst: ShellTabInstance = { instanceId, tabTypeId, title, state, reuseKey };
     this.instances = [...this.instances, inst];
     this.activeInstanceId = instanceId;
     this.emit();
     return inst;
+  }
+
+  /**
+   * Opens a tab or focuses an existing one when `reuseKey` matches (same tab type).
+   */
+  openOrReuseTab(
+    tabTypeId: string,
+    opts?: { title?: string; state?: unknown; reuseKey?: string },
+  ): ShellTabInstance {
+    const rk = opts?.reuseKey;
+    if (rk) {
+      const existing = this.instances.find(
+        (i) => i.reuseKey === rk && i.tabTypeId === tabTypeId,
+      );
+      if (existing) {
+        if (opts?.title !== undefined) existing.title = opts.title;
+        if (opts?.state !== undefined) existing.state = opts.state;
+        this.activeInstanceId = existing.instanceId;
+        this.emit();
+        return existing;
+      }
+    }
+    return this.openTab(tabTypeId, opts?.title, opts?.state, rk);
+  }
+
+  reorderTabs(fromIndex: number, toIndex: number): void {
+    const n = this.instances.length;
+    if (fromIndex < 0 || fromIndex >= n || toIndex < 0 || toIndex >= n) return;
+    if (fromIndex === toIndex) return;
+    const next = [...this.instances];
+    const [moved] = next.splice(fromIndex, 1);
+    if (!moved) return;
+    next.splice(toIndex, 0, moved);
+    this.instances = next;
+    this.emit();
   }
 
   closeTab(instanceId: string): void {

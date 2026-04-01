@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useNodexContributionRegistry } from "../../../NodexContributionContext";
+import { useNodexCommands } from "../../../NodexContributionContext";
 import type { CommandContribution } from "../../../nodex-contribution-registry";
 import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
 import { DOCS_BC, type DocsBcMessage } from "./documentationConstants";
@@ -11,19 +11,17 @@ function esc(s: string): string {
 }
 
 export function DocumentationSearchPanelView(_props: ShellViewComponentProps): React.ReactElement {
-  const registry = useNodexContributionRegistry();
-  const [commands, setCommands] = useState<CommandContribution[]>([]);
+  const commands = useNodexCommands();
   const [q, setQ] = useState("");
   const [miniOnly, setMiniOnly] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    setCommands(registry.listCommands());
-  }, [registry]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const postBc = useCallback((msg: DocsBcMessage) => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const bc = new BroadcastChannel(DOCS_BC);
+    bc.postMessage(msg);
+    bc.close();
+  }, []);
 
   useEffect(() => {
     const bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(DOCS_BC) : null;
@@ -33,14 +31,13 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
       if (d?.type === "docs.setMiniOnly" && typeof d.miniOnly === "boolean") {
         setMiniOnly(d.miniOnly);
       }
-      if (d?.type === "docs.refreshCommands") load();
     };
     bc.addEventListener("message", onMsg);
     return () => {
       bc.removeEventListener("message", onMsg);
       bc.close();
     };
-  }, [load]);
+  }, []);
 
   const norm = (s: string) => String(s || "").toLowerCase().trim();
   const label = (c: CommandContribution) =>
@@ -65,13 +62,6 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
 
   const selected = selectedId ? commands.find((x) => x.id === selectedId) : null;
 
-  const postBc = (msg: DocsBcMessage) => {
-    if (typeof BroadcastChannel === "undefined") return;
-    const bc = new BroadcastChannel(DOCS_BC);
-    bc.postMessage(msg);
-    bc.close();
-  };
-
   return (
     <div className="flex h-full min-h-0 flex-col text-[12px]">
       <div className="shrink-0 border-b border-border px-2.5 py-2 text-[12px] font-bold opacity-85">
@@ -88,9 +78,9 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
         <button
           type="button"
           className="rounded border border-border bg-muted/20 px-2 py-1 text-[10px]"
-          onClick={() => load()}
+          onClick={() => postBc({ type: "docs.refreshCommands" })}
         >
-          Reload list
+          Refresh other panels
         </button>
       </div>
       <div className="min-h-0 flex-1 space-y-1 overflow-auto px-2 pb-2">

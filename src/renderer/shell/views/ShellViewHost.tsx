@@ -1,13 +1,18 @@
 import React from "react";
-import type { ShellViewComponentProps, ShellViewDescriptor } from "./ShellViewRegistry";
+import type { ShellTabInstance } from "../registries/ShellTabsRegistry";
+import { ShellActiveMainTabProvider } from "../ShellActiveTabContext";
+import type { ShellViewDescriptor } from "./ShellViewRegistry";
 
 /**
  * Mounts a shell view as a React subtree (no iframe).
  */
 export function ShellViewHost({
   view,
+  activeMainTab = undefined,
 }: {
   view: ShellViewDescriptor;
+  /** When provided, exposes the active main-column tab to the view subtree. */
+  activeMainTab?: ShellTabInstance | null;
 }): React.ReactElement {
   const C = view.component;
   const caps = view.capabilities ?? {};
@@ -17,7 +22,7 @@ export function ShellViewHost({
     Array.isArray(caps.allowedCommands)
       ? caps.allowedCommands
       : [];
-  return (
+  const inner = (
     <div
       className="h-full min-h-0 w-full overflow-hidden bg-background"
       data-nodex-view-id={view.id}
@@ -32,4 +37,10 @@ export function ShellViewHost({
       <C viewId={view.id} title={view.title} />
     </div>
   );
+  if (activeMainTab !== undefined) {
+    return (
+      <ShellActiveMainTabProvider tab={activeMainTab}>{inner}</ShellActiveMainTabProvider>
+    );
+  }
+  return inner;
 }

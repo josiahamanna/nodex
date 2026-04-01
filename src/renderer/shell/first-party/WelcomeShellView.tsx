@@ -1,19 +1,21 @@
 import React, { useCallback } from "react";
+import { useShellNavigation } from "../useShellNavigation";
 import type { ShellViewComponentProps } from "../views/ShellViewRegistry";
 
-function invokeShellCommand(commandId: string): void {
-  const shell = (window as unknown as { nodex?: { shell?: { commands?: { invoke?: (id: string) => unknown } } } })
-    .nodex?.shell;
-  void Promise.resolve(shell?.commands?.invoke?.(commandId));
-}
-
 export function WelcomeShellView(_props: ShellViewComponentProps): React.ReactElement {
+  const { invokeCommand } = useShellNavigation();
+
   const openDocs = useCallback(() => {
-    invokeShellCommand("nodex.docs.open");
-  }, []);
+    void invokeCommand("nodex.docs.open");
+  }, [invokeCommand]);
+
   const openObservable = useCallback(() => {
-    invokeShellCommand("nodex.observableNotebook.open");
-  }, []);
+    void invokeCommand("nodex.observableNotebook.open");
+  }, [invokeCommand]);
+
+  const openNotesExplorer = useCallback(() => {
+    void invokeCommand("nodex.notesExplorer.open");
+  }, [invokeCommand]);
 
   return (
     <div className="p-4 font-sans text-[13px]">
@@ -54,6 +56,26 @@ export function WelcomeShellView(_props: ShellViewComponentProps): React.ReactEl
               Observable notebook
             </a>
             <span className="ml-2 text-[11px] text-muted-foreground">— interactive notebook in the primary area</span>
+          </li>
+          <li>
+            <a
+              href="#notes"
+              className="text-primary underline underline-offset-2 hover:opacity-90"
+              onClick={(e) => {
+                e.preventDefault();
+                openNotesExplorer();
+              }}
+            >
+              Notes explorer
+            </a>
+            <span className="ml-2 text-[11px] text-muted-foreground">
+              — project notes tree in the sidebar; open a note to edit in the main area
+            </span>
+          </li>
+          <li className="text-[11px] text-muted-foreground">
+            Tip: append{" "}
+            <code className="rounded bg-muted px-1 font-mono text-[10px]">#note/&lt;noteId&gt;</code> to the URL to
+            open or focus that note (synced with the tab strip).
           </li>
         </ul>
       </nav>

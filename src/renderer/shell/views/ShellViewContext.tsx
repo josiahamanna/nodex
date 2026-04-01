@@ -1,12 +1,15 @@
-import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
+import React, { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 import { ShellViewRegistry } from "./ShellViewRegistry";
 
 const Ctx = createContext<ShellViewRegistry | null>(null);
 
 export function ShellViewProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const reg = useMemo(() => new ShellViewRegistry(), []);
-  const [, tick] = useReducer((x: number) => x + 1, 0);
-  useEffect(() => reg.subscribe(() => tick()), [reg]);
+  useSyncExternalStore(
+    (onStoreChange) => reg.subscribe(onStoreChange),
+    () => reg.getSnapshotVersion(),
+    () => 0,
+  );
   return <Ctx.Provider value={reg}>{children}</Ctx.Provider>;
 }
 

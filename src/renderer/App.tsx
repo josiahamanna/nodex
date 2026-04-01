@@ -10,7 +10,9 @@ import { useShellLayoutState } from "./shell/layout/ShellLayoutContext";
 import { useRegisterShellCoreBlocks } from "./shell/first-party/registerShellCoreBlocks";
 import { useRegisterShellDefaultKeybindings } from "./shell/first-party/registerShellDefaultKeybindings";
 import { useRegisterDocumentationPlugin } from "./shell/first-party/plugins/documentation/useRegisterDocumentationPlugin";
+import { useRegisterNotesExplorerPlugin } from "./shell/first-party/plugins/notes-explorer/useRegisterNotesExplorerPlugin";
 import { useRegisterObservableNotebookPlugin } from "./shell/first-party/plugins/observable-notebook/useRegisterObservableNotebookPlugin";
+import { useRegisterNotesShellPlugin } from "./shell/first-party/useRegisterNotesShellPlugin";
 
 ensureSesLockdown();
 
@@ -21,6 +23,8 @@ const App: React.FC = () => {
   useRegisterShellDefaultKeybindings();
   useRegisterObservableNotebookPlugin();
   useRegisterDocumentationPlugin();
+  useRegisterNotesShellPlugin();
+  useRegisterNotesExplorerPlugin();
 
   return (
     <div className="flex h-screen min-h-0 flex-col">

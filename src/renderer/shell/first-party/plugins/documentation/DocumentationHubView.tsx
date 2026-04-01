@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { resolveCommandApiDoc } from "../../../command-api-metadata";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import { DOCS_BC, type DocsBcMessage } from "./documentationConstants";
@@ -39,12 +39,39 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
   const registry = useNodexContributionRegistry();
   const [commandId, setCommandId] = useState<string | null>(null);
 
+  const registryRev = useSyncExternalStore(
+    (onChange) => registry.subscribe(onChange),
+    () => registry.getSnapshotVersion(),
+    () => 0,
+  );
+
   const cmd = useMemo(() => {
     if (!commandId) return null;
     return registry.getCommand(commandId) ?? null;
-  }, [commandId, registry]);
+  }, [commandId, registry, registryRev]);
 
   const doc = useMemo(() => (cmd ? resolveCommandApiDoc(cmd) : null), [cmd]);
+
+  /** Must run every render — do not place after a conditional return (React #310). */
+  const invokeExample = useMemo(() => {
+    if (!doc) {
+      return { commandId: "", args: {} as Record<string, unknown> | null };
+    }
+    const base = { commandId: doc.commandId };
+    if (doc.exampleInvoke === null) return { ...base, args: null };
+    if (doc.exampleInvoke && typeof doc.exampleInvoke === "object") {
+      return { ...base, args: doc.exampleInvoke };
+    }
+    if (doc.args && doc.args.length > 0) {
+      const o: Record<string, unknown> = {};
+      for (const a of doc.args) {
+        if (a.example !== undefined) o[a.name] = a.example;
+        else if (a.default !== undefined) o[a.name] = a.default;
+      }
+      return Object.keys(o).length > 0 ? { ...base, args: o } : { ...base, args: {} };
+    }
+    return { ...base, args: {} };
+  }, [doc]);
 
   useEffect(() => {
     const bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(DOCS_BC) : null;
@@ -76,23 +103,6 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
       </div>
     );
   }
-
-  const invokeExample = useMemo(() => {
-    const base = { commandId: doc.commandId };
-    if (doc.exampleInvoke === null) return { ...base, args: null };
-    if (doc.exampleInvoke && typeof doc.exampleInvoke === "object") {
-      return { ...base, args: doc.exampleInvoke };
-    }
-    if (doc.args && doc.args.length > 0) {
-      const o: Record<string, unknown> = {};
-      for (const a of doc.args) {
-        if (a.example !== undefined) o[a.name] = a.example;
-        else if (a.default !== undefined) o[a.name] = a.default;
-      }
-      return Object.keys(o).length > 0 ? { ...base, args: o } : { ...base, args: {} };
-    }
-    return { ...base, args: {} };
-  }, [doc]);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto p-5 text-[13px]">

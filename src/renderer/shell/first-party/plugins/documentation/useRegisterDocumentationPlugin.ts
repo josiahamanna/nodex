@@ -1,7 +1,8 @@
 import { useEffect } from "react";
+import { useNodexContributionRegistry } from "../../../NodexContributionContext";
+import { useShellLayoutStore } from "../../../layout/ShellLayoutContext";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../../../views/ShellViewContext";
-import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import { DOCS_PLUGIN_ID } from "./documentationConstants";
 import { DocumentationHubView } from "./DocumentationHubView";
 import { DocumentationSearchPanelView } from "./DocumentationSearchPanelView";
@@ -21,6 +22,7 @@ function openDocsLayout(views: ReturnType<typeof useShellViewRegistry>): void {
 export function useRegisterDocumentationPlugin(): void {
   const regs = useShellRegistries();
   const views = useShellViewRegistry();
+  const layout = useShellLayoutStore();
   const contrib = useNodexContributionRegistry();
 
   useEffect(() => {
@@ -57,6 +59,7 @@ export function useRegisterDocumentationPlugin(): void {
         icon: "?",
         order: 20,
         tabTypeId: TAB_DOCS,
+        tabReuseKey: "plugin.documentation",
         sidebarViewId: VIEW_DOCS_SEARCH,
         secondaryViewId: VIEW_DOCS_SETTINGS,
       }),
@@ -85,8 +88,11 @@ export function useRegisterDocumentationPlugin(): void {
           returns: { type: "void", description: "Updates tabs and ShellViewRegistry regions." },
         },
         handler: () => {
-          regs.tabs.openTab(TAB_DOCS, "Docs");
+          regs.tabs.openOrReuseTab(TAB_DOCS, { title: "Docs", reuseKey: "plugin.documentation" });
           openDocsLayout(views);
+          layout.setVisible("menuRail", true);
+          layout.setVisible("sidebarPanel", true);
+          layout.setVisible("secondaryArea", true);
         },
       }),
     );
@@ -105,8 +111,11 @@ export function useRegisterDocumentationPlugin(): void {
           returns: { type: "void", description: "Opens Documentation shell layout." },
         },
         handler: () => {
-          regs.tabs.openTab(TAB_DOCS, "Docs");
+          regs.tabs.openOrReuseTab(TAB_DOCS, { title: "Docs", reuseKey: "plugin.documentation" });
           openDocsLayout(views);
+          layout.setVisible("menuRail", true);
+          layout.setVisible("sidebarPanel", true);
+          layout.setVisible("secondaryArea", true);
         },
       }),
     );
@@ -122,5 +131,5 @@ export function useRegisterDocumentationPlugin(): void {
       unsub();
       for (const d of disposers) d();
     };
-  }, [contrib, regs, views]);
+  }, [contrib, layout, regs, views]);
 }

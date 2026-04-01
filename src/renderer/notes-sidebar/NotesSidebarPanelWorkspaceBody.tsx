@@ -44,6 +44,8 @@ export interface NotesSidebarPanelWorkspaceBodyProps {
   toggleWorkspaceSection: (sectionKey: string) => void;
   assetFsTick: number;
   onOpenProjectAsset: (projectRoot: string, relativePath: string) => void;
+  /** When true, each row shows `[type] title` for quick scanning (e.g. Notes Explorer shell panel). */
+  prefixNoteTitleWithType?: boolean;
   registeredTypes: string[];
   workspaceRoots: string[];
   onCreateNote: (payload: {
@@ -119,6 +121,7 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
   toggleWorkspaceSection,
   assetFsTick,
   onOpenProjectAsset,
+  prefixNoteTitleWithType = false,
   registeredTypes,
   workspaceRoots,
   onCreateNote,
@@ -792,7 +795,9 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                                 primarySelected ? "font-medium" : "font-normal"
                               }`}
                             >
-                              {note.title}
+                              {prefixNoteTitleWithType
+                                ? `[${note.type}] ${note.title}`
+                                : note.title}
                             </span>
                           </button>
                         </div>

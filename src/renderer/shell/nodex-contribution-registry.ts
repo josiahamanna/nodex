@@ -79,6 +79,7 @@ export class NodexContributionRegistry {
   private readonly commands = new Map<string, CommandContribution>();
   private readonly modeLine = new Map<string, ModeLineContribution>();
   private readonly listeners = new Set<Listener>();
+  private snapshotVersion = 0;
 
   subscribe(cb: Listener): () => void {
     this.listeners.add(cb);
@@ -87,7 +88,12 @@ export class NodexContributionRegistry {
     };
   }
 
+  getSnapshotVersion(): number {
+    return this.snapshotVersion;
+  }
+
   private emit(): void {
+    this.snapshotVersion += 1;
     for (const l of this.listeners) {
       l();
     }

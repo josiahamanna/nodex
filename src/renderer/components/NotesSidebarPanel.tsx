@@ -52,6 +52,7 @@ export interface NotesSidebarPanelProps {
   ) => Promise<void>;
   onOpenProjectAsset: (projectRoot: string, relativePath: string) => void;
   assetFsTick?: number;
+  prefixNoteTitleWithType?: boolean;
 }
 
 const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
@@ -75,6 +76,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   onCommitWorkspaceFolderLabel,
   onOpenProjectAsset,
   assetFsTick = 0,
+  prefixNoteTitleWithType = false,
 }) => {
   const { confirm, alert } = useNodexDialog();
   const core = useNotesSidebarPanelCore({
@@ -136,6 +138,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
         toggleWorkspaceSection={core.toggleWorkspaceSection}
         assetFsTick={assetFsTick}
         onOpenProjectAsset={onOpenProjectAsset}
+        prefixNoteTitleWithType={prefixNoteTitleWithType}
         currentNoteId={core.currentNoteId}
         collapsedIds={core.collapsedIds}
         draggingId={core.draggingId}

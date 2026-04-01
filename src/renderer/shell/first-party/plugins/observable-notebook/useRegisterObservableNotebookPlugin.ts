@@ -1,7 +1,8 @@
 import { useEffect } from "react";
+import { useNodexContributionRegistry } from "../../../NodexContributionContext";
+import { useShellLayoutStore } from "../../../layout/ShellLayoutContext";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../../../views/ShellViewContext";
-import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import { ObservableNotebookShellView } from "./ObservableNotebookShellView";
 
 export const OBSERVABLE_NOTEBOOK_PLUGIN_ID = "plugin.observable-notebook";
@@ -12,6 +13,7 @@ const TAB_NOTEBOOK = "plugin.observable-notebook.tab";
 export function useRegisterObservableNotebookPlugin(): void {
   const regs = useShellRegistries();
   const views = useShellViewRegistry();
+  const layout = useShellLayoutStore();
   const contrib = useNodexContributionRegistry();
 
   useEffect(() => {
@@ -43,6 +45,8 @@ export function useRegisterObservableNotebookPlugin(): void {
         icon: "O",
         order: 9,
         tabTypeId: TAB_NOTEBOOK,
+        tabReuseKey: "plugin.observable-notebook",
+        expandChrome: { menuRail: true, sidebarPanel: true },
       }),
     );
 
@@ -63,7 +67,13 @@ export function useRegisterObservableNotebookPlugin(): void {
           },
         },
         handler: () => {
-          regs.tabs.openTab(TAB_NOTEBOOK, "Observable");
+          layout.setVisible("menuRail", true);
+          layout.setVisible("sidebarPanel", true);
+          regs.tabs.openOrReuseTab(TAB_NOTEBOOK, {
+            title: "Observable",
+            reuseKey: "plugin.observable-notebook",
+          });
+          views.openView(VIEW_PRIMARY, "mainArea");
         },
       }),
     );
@@ -71,5 +81,5 @@ export function useRegisterObservableNotebookPlugin(): void {
     return () => {
       for (const d of disposers) d();
     };
-  }, [contrib, regs, views]);
+  }, [contrib, layout, regs, views]);
 }

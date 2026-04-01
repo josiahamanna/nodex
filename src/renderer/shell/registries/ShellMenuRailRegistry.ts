@@ -17,6 +17,14 @@ export type ShellMenuRailItem = {
    * Optional {@link sidebarViewId} / {@link secondaryViewId} open companion panels.
    */
   tabTypeId?: string;
+  /** Passed to `openOrReuseTab` so repeated rail clicks focus one tab (optional). */
+  tabReuseKey?: string;
+  /** Show chrome regions when opening this tab (e.g. Observable without a sidebar view id). */
+  expandChrome?: {
+    menuRail?: boolean;
+    sidebarPanel?: boolean;
+    secondaryArea?: boolean;
+  };
   sidebarViewId?: string;
   secondaryViewId?: string;
   /** Legacy: open a single view without opening a tab (prefer {@link tabTypeId}). */

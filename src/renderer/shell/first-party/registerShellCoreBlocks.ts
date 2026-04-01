@@ -30,6 +30,7 @@ export function useRegisterShellCoreBlocks(): void {
         icon: "N",
         order: 0,
         tabTypeId: "shell.tab.welcome",
+        tabReuseKey: "shell:welcome",
         sidebarViewId: "shell.welcome",
       }),
     );
@@ -42,7 +43,10 @@ export function useRegisterShellCoreBlocks(): void {
         viewId: "shell.welcome",
       }),
     );
-    regs.tabs.openTab("shell.tab.welcome", "Welcome");
+    regs.tabs.openOrReuseTab("shell.tab.welcome", {
+      title: "Welcome",
+      reuseKey: "shell:welcome",
+    });
 
     disposers.push(
       regs.appMenu.registerItems([
