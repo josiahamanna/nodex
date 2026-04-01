@@ -36,6 +36,9 @@ import {
   filterMarketplaceIndexByExistingFiles,
   loadMarketplaceIndex,
 } from "../shared/marketplace-index";
+import { createMarketplaceRouter } from "./marketplace/marketplace-router";
+import { readMarketplaceS3ConfigFromEnv } from "./marketplace/marketplace-s3";
+import { openMarketplaceDb } from "./marketplace/marketplace-db";
 
 const MARKETPLACE_FILES_BASE = "/marketplace/files";
 
@@ -119,7 +122,52 @@ export function createNodexApiRouter(): Router {
     res.json({ ok: true });
   });
 
+  // Marketplace publisher/auth endpoints (cloud marketplace mode).
+  router.use("/marketplace", createMarketplaceRouter());
+
   router.get("/marketplace/plugins", (_req, res) => {
+    // If S3 marketplace is configured, list published releases from the marketplace DB.
+    const s3 = readMarketplaceS3ConfigFromEnv();
+    if (s3) {
+      const dbPath =
+        process.env.NODEX_MARKET_DB_PATH?.trim() ||
+        path.join(getHeadlessUserDataPath(), "marketplace.sqlite");
+      const db = openMarketplaceDb(path.resolve(dbPath));
+      try {
+        const rows = db
+          .prepare(
+            `SELECT p.name AS name,
+                    r.version AS version,
+                    r.object_key AS object_key,
+                    r.created_at AS created_at
+             FROM marketplace_releases r
+             JOIN marketplace_plugins p ON p.id = r.plugin_id
+             WHERE r.status = 'published'
+             ORDER BY r.created_at DESC`,
+          )
+          .all() as Array<{
+          name: string;
+          version: string;
+          object_key: string;
+          created_at: string;
+        }>;
+        res.json({
+          filesBasePath: MARKETPLACE_FILES_BASE,
+          marketplaceDir: "",
+          generatedAt: "",
+          plugins: rows.map((r) => ({
+            name: r.name,
+            version: r.version,
+            packageFile: path.basename(r.object_key),
+            markdownFile: null,
+          })),
+        });
+        return;
+      } finally {
+        db.close();
+      }
+    }
+
     const marketDir = resolveHeadlessMarketplaceDir();
     const loaded = loadMarketplaceIndex(marketDir);
     if (!loaded.ok) {

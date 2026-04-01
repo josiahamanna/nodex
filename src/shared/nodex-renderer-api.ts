@@ -168,6 +168,10 @@ export type NodexRendererApi = {
   publishPluginAsFile: (
     pluginName: string,
   ) => Promise<{ success: boolean; path?: string; error?: string }>;
+  publishPluginToMarketplace: (
+    pluginName: string,
+    options: { baseUrl: string; token: string },
+  ) => Promise<{ success: boolean; error?: string }>;
   bundlePluginLocal: (
     pluginName: string,
   ) => Promise<{

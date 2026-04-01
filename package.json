@@ -88,6 +88,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1021.0",
+    "@aws-sdk/s3-request-presigner": "^3.1021.0",
     "@babel/standalone": "^7.29.2",
     "@electron/rebuild": "^4.0.3",
     "@monaco-editor/react": "^4.7.0",
@@ -100,12 +102,14 @@
     "@types/dompurify": "^3.0.5",
     "adm-zip": "^0.5.16",
     "ajv": "^8.18.0",
+    "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.8.0",
     "chokidar": "^4.0.3",
     "cors": "^2.8.6",
     "dompurify": "^3.3.3",
     "esbuild": "^0.27.4",
     "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
     "monaco-editor": "^0.55.1",
     "pdfjs-dist": "^4.10.38",
     "prettier": "^3.5.3",

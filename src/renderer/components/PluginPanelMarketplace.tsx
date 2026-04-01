@@ -85,11 +85,7 @@ const PluginPanelMarketplace: React.FC<PluginPanelMarketplaceProps> = ({
           Local packages from{" "}
           <code className="rounded bg-muted px-1">dist/plugins</code> (run{" "}
           <code className="rounded bg-muted px-1">npm run build:plugins</code>
-          ). In the browser, run the headless API{" "}
-          (<code className="rounded bg-muted px-1">npm run start:api</code>) and choose its URL
-          below (e.g. <code className="rounded bg-muted px-1">localhost:3847</code>
-          ). Optional: <code className="rounded bg-muted px-1">?web=1</code> auto-picks the dev
-          proxy when nothing is saved.
+          ). In the browser, the Market tab connects to the same origin as the UI (via nginx/rewrites).
         </p>
       </header>
 

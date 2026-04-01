@@ -10,10 +10,11 @@ COPY apps ./apps
 COPY src ./src
 COPY tsconfig.json ./
 
-ENV NODE_ENV=production
-
 RUN npm ci --ignore-scripts \
-  && npm run build -w @nodex/web
+  && npm run build -w @nodex/web \
+  && npm prune --omit=dev
+
+ENV NODE_ENV=production
 
 EXPOSE 3000
 

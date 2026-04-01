@@ -33,6 +33,7 @@ export const IPC_CHANNELS = {
   EXPORT_PLUGIN_DEV: "plugin:export-dev",
   EXPORT_PLUGIN_PRODUCTION: "plugin:export-production",
   PUBLISH_PLUGIN_AS_FILE: "plugin:publish-as-file",
+  PUBLISH_PLUGIN_TO_MARKETPLACE: "plugin:publish-to-marketplace",
   BUNDLE_PLUGIN_LOCAL: "plugin:bundle-local",
   INSTALL_PLUGIN_DEPENDENCIES: "plugin:install-dependencies",
   CLEAR_PLUGIN_DEPENDENCY_CACHE: "plugin:clear-dependency-cache",

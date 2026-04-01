@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import type { PluginIDEViewModel } from "./usePluginIDE";
 import {
   PLUGIN_IDE_FORMAT_ON_SAVE_KEY,
@@ -6,8 +6,10 @@ import {
   PLUGIN_IDE_TOOLBAR_MENU_PANEL,
   PLUGIN_IDE_TSC_ON_SAVE_KEY,
 } from "./plugin-ide-utils";
+import { PublishToMarketModal } from "./PublishToMarketModal";
 
 export function PluginIDEViewChrome({ vm }: { vm: PluginIDEViewModel }) {
+  const [publishToMarketOpen, setPublishToMarketOpen] = useState(false);
   const {
     shellLayout,
     pluginFolder,
@@ -421,6 +423,18 @@ export function PluginIDEViewChrome({ vm }: { vm: PluginIDEViewModel }) {
                     <button
                       type="button"
                       role="menuitem"
+                      disabled={!pluginFolder || busy}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50"
+                      onClick={() => {
+                        setToolbarMenu(null);
+                        setPublishToMarketOpen(true);
+                      }}
+                    >
+                      Publish to market…
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
                       disabled={busy}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-50"
                       onClick={() => {
@@ -453,6 +467,12 @@ export function PluginIDEViewChrome({ vm }: { vm: PluginIDEViewModel }) {
       <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-border bg-muted/30 px-4 py-3">
         {depsToolbarInner}
       </div>
+
+      <PublishToMarketModal
+        open={publishToMarketOpen}
+        onClose={() => setPublishToMarketOpen(false)}
+        pluginName={pluginFolder || null}
+      />
     </>
   );
 }

@@ -227,6 +227,50 @@ Not every interaction must be synchronous REST. The **Node server** may expose *
 
 Operational rule: you can load-balance **stateless** UI servers freely; you can load-balance the API **only** when the backing store is a multi-user network DB (e.g. Postgres) and file storage is not tied to local disk.
 
+---
+
+## Marketplace: publishing from Electron (production)
+
+Plugin development happens in the **Electron app**, but publishing targets the **web marketplace** (so browsers and headless servers can fetch artifacts).
+
+Recommended workflow:
+
+1. Electron builds a production `.nodexplugin` locally.
+2. Electron authenticates to the marketplace API (email/password) and receives a JWT.
+3. Electron calls `POST /api/v1/marketplace/publish/init` with `{ name, version, sha256, sizeBytes }` and receives `{ uploadUrl, objectKey, finalizeToken }`.
+4. Electron uploads the artifact directly to object storage using the presigned `uploadUrl`.
+5. Electron calls `POST /api/v1/marketplace/publish/finalize` to record the release.
+6. Clients download via `/marketplace/files/...` (proxied by the API to object storage).
+
+```mermaid
+flowchart LR
+  Electron[Electron_app]
+  Api[Marketplace_API]
+  Obj[Object_storage_MinIO_or_R2]
+  Electron -->|"login (JWT)"| Api
+  Electron -->|"publish/init"| Api
+  Api -->|"presigned PUT"| Obj
+  Electron -->|"PUT artifact"| Obj
+  Electron -->|"publish/finalize"| Api
+  Api -->|"serve /marketplace/files"| Obj
+```
+
+### Local dev (MinIO)
+
+- Run MinIO with the compose profile: `docker compose --profile marketplace up --build`
+- Configure the API container (or your host-run API) with:
+  - `NODEX_MARKET_JWT_SECRET`
+  - `NODEX_MARKET_S3_ENDPOINT` (Compose: `http://minio:9000`)
+  - `NODEX_MARKET_S3_BUCKET` (create e.g. `nodex-market`)
+  - `NODEX_MARKET_S3_ACCESS_KEY`, `NODEX_MARKET_S3_SECRET_KEY`
+  - `NODEX_MARKET_S3_REGION` (any value; MinIO ignores)
+
+### Production (Cloudflare R2)
+
+- Set `NODEX_MARKET_S3_ENDPOINT` to your R2 S3 endpoint.
+- Set `NODEX_MARKET_S3_BUCKET`, `NODEX_MARKET_S3_ACCESS_KEY`, `NODEX_MARKET_S3_SECRET_KEY`.
+- Optionally front it with a CDN later; the API can keep proxying `/marketplace/files/...` to avoid client changes.
+
 ### Where plugins run (web)
 
 - **Default (browser client):** Plugins execute **on the Node server** in a **controlled host** (sandbox TBD). The browser does not run arbitrary plugin code with full system access.

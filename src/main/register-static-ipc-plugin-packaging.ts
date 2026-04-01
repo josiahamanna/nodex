@@ -10,6 +10,7 @@ import { ctx, getPluginLoader } from "./main-context";
 import { getDialogParent, showOpenDialogWithParent } from "./main-helpers";
 import { registry } from "../core/registry";
 import { emitPluginProgress } from "../core/plugin-progress";
+import * as crypto from "crypto";
 import {
   filterMarketplaceIndexByExistingFiles,
   loadMarketplaceIndex,
@@ -158,6 +159,162 @@ ipcMain.handle(
         detail: msg,
       });
       return { success: false, error: msg };
+    }
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PUBLISH_PLUGIN_TO_MARKETPLACE,
+  async (
+    _event,
+    payload: { pluginName?: unknown; options?: unknown },
+  ): Promise<{ success: boolean; error?: string }> => {
+    const pluginName =
+      typeof payload?.pluginName === "string" ? payload.pluginName.trim() : "";
+    const options = (payload?.options ?? {}) as { baseUrl?: unknown; token?: unknown };
+    const baseUrl =
+      typeof options.baseUrl === "string" ? options.baseUrl.trim().replace(/\/$/, "") : "";
+    const token = typeof options.token === "string" ? options.token.trim() : "";
+
+    if (!isSafePluginName(pluginName)) {
+      return { success: false, error: "Invalid plugin name" };
+    }
+    if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+      return { success: false, error: "Invalid marketplace baseUrl" };
+    }
+    if (!token) {
+      return { success: false, error: "Missing auth token" };
+    }
+
+    const userDataPath = app.getPath("userData");
+    const stagingParent = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-market-publish-"));
+    try {
+      emitPluginProgress({
+        op: "export",
+        phase: "start",
+        pluginName,
+        message: "Building production package…",
+      });
+      const produced = await getPluginLoader().exportProductionPackage(
+        pluginName,
+        stagingParent,
+      );
+      const buf = fs.readFileSync(produced);
+      const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
+
+      const packageBase = path.basename(produced);
+      // Best-effort derive version from filename: name-version.nodexplugin
+      const m = packageBase.match(/^(.+)-([0-9A-Za-z.+-]+)\.nodexplugin$/);
+      const pluginId = m?.[1] ?? pluginName;
+      const version = m?.[2] ?? "0.0.0";
+
+      emitPluginProgress({
+        op: "export",
+        phase: "done",
+        pluginName,
+        message: `Built ${packageBase}`,
+      });
+
+      emitPluginProgress({
+        op: "npm",
+        phase: "start",
+        pluginName,
+        message: "Requesting upload URL…",
+      });
+
+      const initRes = await fetch(`${baseUrl}/api/v1/marketplace/publish/init`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: pluginId,
+          version,
+          contentType: "application/octet-stream",
+          sizeBytes: buf.byteLength,
+          sha256,
+        }),
+      });
+      const initText = await initRes.text();
+      if (!initRes.ok) {
+        return { success: false, error: initText || `init failed (${initRes.status})` };
+      }
+      const init = JSON.parse(initText) as {
+        uploadUrl: string;
+        objectKey: string;
+        finalizeToken: string;
+      };
+
+      emitPluginProgress({
+        op: "npm",
+        phase: "done",
+        pluginName,
+        message: "Uploading…",
+      });
+
+      const putRes = await fetch(init.uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "x-amz-meta-sha256": sha256,
+        },
+        body: buf,
+      });
+      if (!putRes.ok) {
+        const t = await putRes.text().catch(() => "");
+        return { success: false, error: t || `upload failed (${putRes.status})` };
+      }
+
+      emitPluginProgress({
+        op: "npm",
+        phase: "done",
+        pluginName,
+        message: "Finalizing publish…",
+      });
+
+      const finRes = await fetch(`${baseUrl}/api/v1/marketplace/publish/finalize`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          finalizeToken: init.finalizeToken,
+          objectKey: init.objectKey,
+        }),
+      });
+      const finText = await finRes.text();
+      if (!finRes.ok) {
+        return { success: false, error: finText || `finalize failed (${finRes.status})` };
+      }
+
+      appendPluginAudit(userDataPath, {
+        action: "publish",
+        pluginName,
+        ok: true,
+        detail: `marketplace:${pluginId}@${version}`,
+      });
+
+      emitPluginProgress({
+        op: "export",
+        phase: "done",
+        pluginName,
+        message: `Published ${pluginId} v${version}`,
+      });
+
+      return { success: true };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      appendPluginAudit(userDataPath, {
+        action: "publish",
+        pluginName,
+        ok: false,
+        detail: msg,
+      });
+      return { success: false, error: msg };
+    } finally {
+      fs.rmSync(stagingParent, { recursive: true, force: true });
     }
   },
 );
