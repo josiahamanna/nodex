@@ -15,6 +15,8 @@ Nodex should separate **behavior** (commands, plugin APIs, note-type logic) from
 
 **API contract (machine-readable):** [nodex-openapi.yaml](../api/nodex-openapi.yaml) — resource examples (`/notes`), command discovery (`GET /commands/registry`), and invoke (`POST /commands/{commandId}/invoke`). Extend this file as routes ship; keep it the single catalog for tools and integrators.
 
+**Modular plugins (no iframes, SES, React shell slots):** [modular-plugins-architecture.md](./modular-plugins-architecture.md).
+
 ---
 
 ## Workbench regions

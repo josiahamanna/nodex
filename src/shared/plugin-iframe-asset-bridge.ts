@@ -1,4 +1,4 @@
-/** postMessage types: sandboxed plugin iframe ↔ host (SecurePluginRenderer). */
+/** postMessage types: legacy sandboxed plugin iframe ↔ host (being phased out). */
 
 export const PLUGIN_IFRAME_ASSET_LIST = "nodex_plugin_iframe_asset_list";
 export const PLUGIN_IFRAME_ASSET_PICK = "nodex_plugin_iframe_asset_pick";

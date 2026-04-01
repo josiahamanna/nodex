@@ -7,7 +7,7 @@ import {
   PanelResizeHandle,
 } from "react-resizable-panels";
 import { joinFileUri } from "../../shared/file-uri";
-import SecurePluginRenderer from "../components/renderers/SecurePluginRenderer";
+import NoteTypeReactRenderer from "../components/renderers/NoteTypeReactRenderer";
 import { monacoBeforeMount } from "./plugin-ide-monaco";
 import {
   NODE_MODULES_LIST_MARKER,
@@ -254,7 +254,7 @@ export function PluginIDEViewPanels({ vm }: { vm: PluginIDEViewModel }) {
                   <p className="text-[10px]">Press Escape or Restore to exit.</p>
                 </div>
               ) : previewNote && types.includes(previewType) ? (
-                <SecurePluginRenderer
+                <NoteTypeReactRenderer
                   key={`${pluginFolder}-${previewType}-${previewRev}`}
                   note={previewNote}
                   persistToNotesStore={false}
@@ -294,7 +294,7 @@ export function PluginIDEViewPanels({ vm }: { vm: PluginIDEViewModel }) {
                 </button>
               </div>
               <div className="min-h-0 flex-1 overflow-hidden">
-                <SecurePluginRenderer
+                <NoteTypeReactRenderer
                   key={`fs-${pluginFolder}-${previewType}-${previewRev}`}
                   note={previewNote}
                   persistToNotesStore={false}

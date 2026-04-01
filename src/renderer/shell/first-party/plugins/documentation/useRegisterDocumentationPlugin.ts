@@ -2,12 +2,10 @@ import { useEffect } from "react";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../../../views/ShellViewContext";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
-import {
-  DOCS_PLUGIN_ID,
-  documentationHubHtml,
-  documentationSearchPanelHtml,
-  documentationSettingsPanelHtml,
-} from "./documentationViews";
+import { DOCS_PLUGIN_ID } from "./documentationConstants";
+import { DocumentationHubView } from "./DocumentationHubView";
+import { DocumentationSearchPanelView } from "./DocumentationSearchPanelView";
+import { DocumentationSettingsPanelView } from "./DocumentationSettingsPanelView";
 
 const VIEW_DOCS_SEARCH = "plugin.documentation.search";
 const VIEW_DOCS_SETTINGS = "plugin.documentation.settings";
@@ -33,24 +31,21 @@ export function useRegisterDocumentationPlugin(): void {
         id: VIEW_DOCS_SEARCH,
         title: "Docs — search",
         defaultRegion: "primarySidebar",
-        iframeHtml: documentationSearchPanelHtml(),
-        sandboxFlags: "allow-scripts allow-same-origin",
+        component: DocumentationSearchPanelView,
         capabilities: { allowedCommands: "allShellCommands", readContext: false },
       }),
       views.registerView({
         id: VIEW_DOCS_SETTINGS,
         title: "Docs — settings",
         defaultRegion: "secondaryArea",
-        iframeHtml: documentationSettingsPanelHtml(),
-        sandboxFlags: "allow-scripts allow-same-origin",
+        component: DocumentationSettingsPanelView,
         capabilities: { allowedCommands: "allShellCommands", readContext: false },
       }),
       views.registerView({
         id: VIEW_DOCS_HUB,
         title: "Documentation",
         defaultRegion: "mainArea",
-        iframeHtml: documentationHubHtml(),
-        sandboxFlags: "allow-scripts",
+        component: DocumentationHubView,
         capabilities: { allowedCommands: [], readContext: false },
       }),
     );

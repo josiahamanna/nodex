@@ -3,6 +3,7 @@ import type { CommandContribution } from "./nodex-contribution-registry";
 import { useNodexCommands, useNodexContributionRegistry } from "./NodexContributionContext";
 import { useShellRegistries } from "./registries/ShellRegistriesContext";
 import { chordFromEvent } from "./registries/ShellKeymapRegistry";
+import { registerSystemPaletteCommands } from "./system-plugins/registerSystemPaletteCommands";
 
 function norm(s: string): string {
   return s.trim().toLowerCase();
@@ -340,34 +341,9 @@ export function useNodexShell(): NodexShellVm {
     return () => window.removeEventListener("message", onMsg);
   }, [registry, shellRegs.keymap]);
 
-  // Expose palette/minibar open as commands.
+  // System shell plugin: palette + mini buffer open commands.
   useEffect(() => {
-    const disposePalette = registry.registerCommand({
-      id: "nodex.shell.openPalette",
-      title: "Shell: Open command palette",
-      category: "Shell",
-      doc: "Open the command palette UI.",
-      handler: () => openPalette(),
-    });
-    const disposeMini = registry.registerCommand({
-      id: "nodex.shell.openMiniBar",
-      title: "Shell: Open mini buffer (M-x)",
-      category: "Shell",
-      doc: "Open the mini buffer input UI.",
-      handler: (args) => {
-        const prefill = String(args?.prefill ?? "");
-        try {
-          window.dispatchEvent(new CustomEvent("nodex-minibar-focus", { detail: { prefill } }));
-        } catch {
-          /* ignore */
-        }
-        openMiniBar(prefill);
-      },
-    });
-    return () => {
-      disposePalette();
-      disposeMini();
-    };
+    return registerSystemPaletteCommands(registry, { openPalette, openMiniBar });
   }, [openMiniBar, openPalette, registry]);
 
   return {

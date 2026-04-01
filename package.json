@@ -126,6 +126,7 @@
     "react-resizable-panels": "^2.1.9",
     "rollup": "^4.60.0",
     "rollup-plugin-esbuild": "^6.2.1",
+    "ses": "^1.15.0",
     "video.js": "^8.23.7"
   },
   "optionalDependencies": {

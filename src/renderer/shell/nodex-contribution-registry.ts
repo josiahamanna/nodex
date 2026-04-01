@@ -59,7 +59,7 @@ export class NodexContributionRegistry {
     const merged: CommandContribution = {
       palette: true,
       miniBar: true,
-      sourcePluginId: null,
+      sourcePluginId: "nodex.plugin",
       ...c,
     };
     const { id } = merged;

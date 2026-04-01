@@ -33,7 +33,7 @@ export type ShellRpcResponse = {
 export function postContextUpdateToFrames(ctx: ShellContext): void {
   if (typeof document === "undefined") return;
   const frames = document.querySelectorAll("iframe[data-nodex-view-id]");
-  for (const f of frames) {
+  for (const f of Array.from(frames)) {
     const win = (f as HTMLIFrameElement).contentWindow;
     if (!win) continue;
     try {

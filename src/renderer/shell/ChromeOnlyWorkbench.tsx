@@ -6,7 +6,7 @@ import {
   type ImperativePanelHandle,
 } from "react-resizable-panels";
 import { useShellLayoutState, useShellLayoutStore } from "./layout/ShellLayoutContext";
-import { ShellIFrameViewHost } from "./views/ShellViewRegistry";
+import { ShellViewHost } from "./views/ShellViewHost";
 import { useShellViewRegistry } from "./views/ShellViewContext";
 import { useShellRegistries } from "./registries/ShellRegistriesContext";
 
@@ -24,7 +24,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const layout = useShellLayoutState();
   const store = useShellLayoutStore();
   const views = useShellViewRegistry();
-  const { menuRail, appMenu, panelMenu, tabs } = useShellRegistries();
+  const { menuRail, appMenu, panelMenu, tabs, widgetSlots } = useShellRegistries();
   const [panelMenuOpen, setPanelMenuOpen] = useState(false);
 
   const primaryRef = React.useRef<ImperativePanelHandle>(null);
@@ -232,6 +232,14 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                           </button>
                         ))
                       )}
+                      {widgetSlots.list("rail").map((w) => {
+                        const W = w.component;
+                        return (
+                          <div key={w.id} className="w-full border-t border-border/40 pt-1">
+                            <W slotId="rail" />
+                          </div>
+                        );
+                      })}
                       </div>
                     ) : null}
                     {/* Panel body */}
@@ -281,7 +289,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                               ) : null}
                             </div>
                             <div className="min-h-0 flex-1">
-                              <ShellIFrameViewHost view={primaryView} />
+                              <ShellViewHost view={primaryView} />
                             </div>
                           </div>
                         ) : (
@@ -299,7 +307,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               {renderSash("sash-primary")}
               <Panel defaultSize={hSizes[1]} minSize={30} className="min-w-0">
                 {mainView ? (
-                  <ShellIFrameViewHost view={mainView} />
+                  <ShellViewHost view={mainView} />
                 ) : activeTab ? (
                   <EmptyRegion title={`Primary area (${activeTab.tabTypeId})`} />
                 ) : (
@@ -319,7 +327,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               >
                 {showSecondary ? (
                   secondaryView ? (
-                    <ShellIFrameViewHost view={secondaryView} />
+                    <ShellViewHost view={secondaryView} />
                   ) : (
                     <EmptyRegion title="Secondary area" />
                   )
@@ -350,7 +358,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 }}
               >
                 {bottomView ? (
-                  <ShellIFrameViewHost view={bottomView} />
+                  <ShellViewHost view={bottomView} />
                 ) : (
                   <EmptyRegion title="Bottom dock (output/terminal/notebook)" />
                 )}

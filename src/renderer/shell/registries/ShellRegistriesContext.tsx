@@ -4,6 +4,7 @@ import { ShellMenuRailRegistry } from "./ShellMenuRailRegistry";
 import { ShellKeymapRegistry } from "./ShellKeymapRegistry";
 import { ShellPanelMenuRegistry } from "./ShellPanelMenuRegistry";
 import { ShellTabsRegistry } from "./ShellTabsRegistry";
+import { ShellWidgetSlotRegistry } from "../widget-slots/ShellWidgetSlotRegistry";
 
 export type ShellRegistries = {
   appMenu: ShellAppMenuRegistry;
@@ -11,6 +12,8 @@ export type ShellRegistries = {
   keymap: ShellKeymapRegistry;
   panelMenu: ShellPanelMenuRegistry;
   tabs: ShellTabsRegistry;
+  /** Optional React widgets mounted in rail / chrome slots (see {@link ShellWidgetSlotRegistry}). */
+  widgetSlots: ShellWidgetSlotRegistry;
 };
 
 const Ctx = createContext<ShellRegistries | null>(null);
@@ -27,6 +30,7 @@ export function ShellRegistriesProvider({
       keymap: new ShellKeymapRegistry(),
       panelMenu: new ShellPanelMenuRegistry(),
       tabs: new ShellTabsRegistry(),
+      widgetSlots: new ShellWidgetSlotRegistry(),
     };
   }, []);
 
@@ -37,6 +41,7 @@ export function ShellRegistriesProvider({
   useEffect(() => regs.keymap.subscribe(() => tick()), [regs]);
   useEffect(() => regs.panelMenu.subscribe(() => tick()), [regs]);
   useEffect(() => regs.tabs.subscribe(() => tick()), [regs]);
+  useEffect(() => regs.widgetSlots.subscribe(() => tick()), [regs]);
 
   return <Ctx.Provider value={regs}>{children}</Ctx.Provider>;
 }

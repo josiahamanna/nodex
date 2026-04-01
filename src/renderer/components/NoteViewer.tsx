@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Note } from "@nodex/ui-types";
 import { useToast } from "../toast/ToastContext";
-import SecurePluginRenderer from "./renderers/SecurePluginRenderer";
+import NoteTypeReactRenderer from "./renderers/NoteTypeReactRenderer";
 
 interface NoteViewerProps {
   note: Note;
@@ -78,10 +78,7 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
   const renderNote = () => {
     if (hasPlugin) {
       return (
-        <SecurePluginRenderer
-          note={note}
-          assetProjectRoot={assetProjectRoot}
-        />
+        <NoteTypeReactRenderer note={note} assetProjectRoot={assetProjectRoot} />
       );
     }
 

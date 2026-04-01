@@ -17,6 +17,7 @@ import {
   installNodexWebShimIfNeeded,
 } from "../../../src/renderer/nodex-web-shim";
 import { store } from "../../../src/renderer/store";
+import { ensureSesLockdown } from "../../../src/renderer/shell/sandbox/sesLockdown";
 
 function runClientBootstrap(): void {
   if (typeof window === "undefined") {
@@ -28,6 +29,7 @@ function runClientBootstrap(): void {
     /* ignore */
   }
   installNodexWebShimIfNeeded();
+  ensureSesLockdown();
   loader.config({ monaco });
   (window as unknown as { React?: typeof React }).React = React;
   (window as unknown as { ReactDOM?: typeof ReactDOM }).ReactDOM = ReactDOM;

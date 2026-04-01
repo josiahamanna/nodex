@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../views/ShellViewContext";
+import { WelcomeShellView } from "./WelcomeShellView";
 
 /**
- * Minimal first-party “core blocks” registered through the same registries as plugins.
- * This is a placeholder until plugins can register themselves through a loader.
+ * Minimal first-party shell blocks (React views, no iframes).
  */
 export function useRegisterShellCoreBlocks(): void {
   const regs = useShellRegistries();
@@ -13,23 +13,16 @@ export function useRegisterShellCoreBlocks(): void {
   useEffect(() => {
     const disposers: Array<() => void> = [];
 
-    // Views
     disposers.push(
       views.registerView({
         id: "shell.welcome",
         title: "Welcome",
         defaultRegion: "mainArea",
-        iframeHtml: `<div style="font-family: ui-sans-serif, system-ui; padding: 16px;">
-          <h2>Welcome</h2>
-          <p>This is a sandboxed view. Use DevTools: <code>window.nodex.shell</code></p>
-          <p>Try registering menu items and tabs from DevTools.</p>
-        </div>`,
-        sandboxFlags: "allow-scripts",
+        component: WelcomeShellView,
         capabilities: { allowedCommands: "allShellCommands", readContext: true },
       }),
     );
 
-    // Menu rail defaults
     disposers.push(
       regs.menuRail.registerItem({
         id: "shell.rail.welcome",
@@ -40,7 +33,6 @@ export function useRegisterShellCoreBlocks(): void {
       }),
     );
 
-    // Tabs default
     disposers.push(
       regs.tabs.registerTabType({
         id: "shell.tab.welcome",
@@ -51,7 +43,6 @@ export function useRegisterShellCoreBlocks(): void {
     );
     regs.tabs.openTab("shell.tab.welcome", "Welcome");
 
-    // App menu defaults (hierarchy)
     disposers.push(
       regs.appMenu.registerItems([
         {
@@ -74,4 +65,3 @@ export function useRegisterShellCoreBlocks(): void {
     };
   }, [regs, views]);
 }
-

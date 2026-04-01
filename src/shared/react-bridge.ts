@@ -35,7 +35,7 @@ export function attachReactToPluginWindow(w: Window): void {
   target.ReactDOM = reactDomForPlugins;
 }
 
-/** @deprecated Inline bootstrap in SecurePluginRenderer uses postMessage + attachReactToPluginWindow. */
+/** @deprecated Legacy iframe bootstrap used postMessage + attachReactToPluginWindow; prefer NoteTypeReactRenderer. */
 export function generateReactBridge(): string {
   return "/* deprecated: use attachReactToPluginWindow from parent */";
 }

@@ -1,4 +1,5 @@
 import React from "react";
+import { ensureSesLockdown } from "./shell/sandbox/sesLockdown";
 import { ChromeOnlyWorkbench } from "./shell/ChromeOnlyWorkbench";
 import { NodexCommandPalette } from "./shell/NodexCommandPalette";
 import { NodexMiniBar } from "./shell/NodexMiniBar";
@@ -8,28 +9,18 @@ import { useNodexShell } from "./shell/useNodexShell";
 import { useShellLayoutState } from "./shell/layout/ShellLayoutContext";
 import { useRegisterShellCoreBlocks } from "./shell/first-party/registerShellCoreBlocks";
 import { useRegisterShellDefaultKeybindings } from "./shell/first-party/registerShellDefaultKeybindings";
-import { useRegisterJsNotebookPlugin } from "./shell/first-party/plugins/js-notebook/useRegisterJsNotebookPlugin";
 import { useRegisterDocumentationPlugin } from "./shell/first-party/plugins/documentation/useRegisterDocumentationPlugin";
 import { useRegisterObservableNotebookPlugin } from "./shell/first-party/plugins/observable-notebook/useRegisterObservableNotebookPlugin";
+
+ensureSesLockdown();
 
 const App: React.FC = () => {
   const shellVm = useNodexShell();
   const layout = useShellLayoutState();
   useRegisterShellCoreBlocks();
   useRegisterShellDefaultKeybindings();
-  useRegisterJsNotebookPlugin();
   useRegisterObservableNotebookPlugin();
   useRegisterDocumentationPlugin();
-
-  // Expose system-level libraries for trusted system iframes.
-  // (Used by the Observable notebook view when run inside a srcDoc iframe.)
-  React.useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { Runtime, Inspector } = require("@observablehq/runtime") as any;
-    (window as any).nodex = (window as any).nodex || {};
-    (window as any).nodex.system = (window as any).nodex.system || {};
-    (window as any).nodex.system.observable = { Runtime, Inspector };
-  }, []);
 
   return (
     <div className="flex h-screen min-h-0 flex-col">

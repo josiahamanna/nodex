@@ -16,7 +16,6 @@ import {
   PanelResizeHandle,
 } from "react-resizable-panels";
 import { joinFileUri } from "../../shared/file-uri";
-import SecurePluginRenderer from "../components/renderers/SecurePluginRenderer";
 import { clientLog } from "../logging/clientLog";
 import {
   IDE_SHELL_ACTION_EVENT,

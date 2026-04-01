@@ -1,5 +1,5 @@
 /**
- * Nodex plugin runtime (iframe). Injected by SecurePluginRenderer before plugin code runs.
+ * Legacy plugin runtime (iframe) globals. New note UI uses NoteTypeReactRenderer (no iframe).
  * Epic 1.3 — use host React via bridge globals (not a separate React copy).
  */
 export {};
