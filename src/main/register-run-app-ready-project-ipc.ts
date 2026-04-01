@@ -42,6 +42,7 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
       notesDbPath: ctx.notesPersistencePath,
       workspaceRoots: [...roots],
       workspaceLabels: labels,
+      ...(roots.length > 0 ? { mountKind: "folder" as const } : {}),
     };
   });
 
@@ -82,7 +83,7 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
   ipcMain.handle(IPC_CHANNELS.PROJECT_SELECT_FOLDER, async () => {
     const r = await showOpenDialogWithParent({
       properties: ["openDirectory", "createDirectory"],
-      title: "Open Nodex project folder",
+      title: "Choose or create a folder for your notes",
     });
     if (r.canceled || r.filePaths.length === 0) {
       return { ok: false as const, cancelled: true as const };

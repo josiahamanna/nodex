@@ -50,7 +50,15 @@ function SortableTabRow({
   onPinNoteTab?: (instanceId: string) => void;
   shellTabNoteTypeId?: string;
 }): React.ReactElement {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: tab.instanceId,
   });
   const style = {
@@ -66,6 +74,7 @@ function SortableTabRow({
     >
       <button
         type="button"
+        ref={setActivatorNodeRef}
         className="nodex-tab-drag-handle cursor-grab touch-none rounded-l-md border border-transparent px-1 py-1 text-[10px] text-muted-foreground hover:bg-muted/30 active:cursor-grabbing"
         aria-label="Reorder tab"
         title="Drag to reorder"
@@ -101,12 +110,11 @@ function SortableTabRow({
         type="button"
         className="relative z-10 rounded-r-md border border-transparent px-1.5 text-[12px] leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
         aria-label="Close tab"
-        onMouseDown={(e) => {
+        title="Close tab"
+        onClick={(e) => {
           e.stopPropagation();
-          e.preventDefault();
+          onClose(e);
         }}
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={onClose}
       >
         ×
       </button>

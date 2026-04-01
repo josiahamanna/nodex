@@ -1,23 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import DOMPurify from "dompurify";
-
-function identityTrustedTypesPolicy(): {
-  createHTML: (html: string) => string;
-  createScriptURL: (url: string) => string;
-} {
-  return {
-    createHTML: (html: string) => html,
-    createScriptURL: (url: string) => url,
-  };
-}
-
-if (typeof window !== "undefined") {
-  DOMPurify.setConfig({
-    RETURN_TRUSTED_TYPE: false,
-    TRUSTED_TYPES_POLICY: identityTrustedTypesPolicy(),
-  });
-}
-import { Note } from "@nodex/ui-types";
+import type { Note } from "@nodex/ui-types";
 
 interface PluginRendererProps {
   note: Note;
@@ -67,7 +50,7 @@ const PluginRenderer: React.FC<PluginRendererProps> = ({ note }) => {
           ],
           ALLOWED_ATTR: ["class", "style", "href"],
           ALLOW_DATA_ATTR: false,
-        } as Parameters<typeof DOMPurify.sanitize>[1]);
+        });
 
         setHtml(sanitized);
         setError(null);

@@ -34,6 +34,13 @@ export function useRegisterShellDefaultKeybindings(): void {
         chord: "ctrl+`",
         commandId: "nodex.script.repl.toggle",
       },
+      {
+        id: "shell.keys.closeActiveTab",
+        title: "Close active tab",
+        chord: "ctrl+w",
+        commandId: "nodex.shell.closeActiveTab",
+        ignoreWhenInput: true,
+      },
     ]);
   }, [regs.keymap]);
 }

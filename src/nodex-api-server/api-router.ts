@@ -44,6 +44,7 @@ import { createWpnRouter } from "./wpn-router";
 import { readMarketplaceS3ConfigFromEnv } from "./marketplace/marketplace-s3";
 import { openMarketplaceDb } from "./marketplace/marketplace-db";
 import { isAssetMediaCategory, extMatchesCategory } from "../shared/asset-media";
+import { getLogicalWpnProjectStateIfAvailable } from "./logical-wpn-project-state";
 
 const MARKETPLACE_FILES_BASE = "/marketplace/files";
 
@@ -380,8 +381,14 @@ export function createNodexApiRouter(): Router {
   router.get("/project/state", (_req, res) => {
     try {
       assertProjectOpen();
-      res.json(getHeadlessProjectStateView());
+      const view = getHeadlessProjectStateView();
+      res.json({ ...view, mountKind: "folder" as const });
     } catch (e) {
+      const logical = getLogicalWpnProjectStateIfAvailable();
+      if (logical) {
+        res.json(logical);
+        return;
+      }
       res.status(503).json({
         error: e instanceof Error ? e.message : String(e),
       });

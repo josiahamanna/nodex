@@ -4,29 +4,9 @@ import type { Note } from "@nodex/ui-types";
 import type { AppDispatch } from "../../../../store";
 import { saveNoteContent } from "../../../../store/notesSlice";
 
-function useDebouncedNoteSave(
-  noteId: string,
-  persist: boolean,
-  delayMs: number,
-): (content: string) => void {
-  const dispatch = useDispatch<AppDispatch>();
-  const tRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  return useCallback(
-    (content: string) => {
-      if (!persist) return;
-      if (tRef.current) clearTimeout(tRef.current);
-      tRef.current = setTimeout(() => {
-        tRef.current = null;
-        void dispatch(saveNoteContent({ noteId, content }));
-      }, delayMs);
-    },
-    [dispatch, noteId, persist, delayMs],
-  );
-}
-
 /**
- * System markdown note editor (plain textarea; same UX as the former built-in branch).
+ * System markdown note editor (plain textarea).
+ * Persists via batched writes: one save per animation frame while typing, plus immediate flush on blur and when leaving the note.
  */
 export function MarkdownNoteEditor({
   note,
@@ -35,12 +15,59 @@ export function MarkdownNoteEditor({
   note: Note;
   persist: boolean;
 }): React.ReactElement {
+  const dispatch = useDispatch<AppDispatch>();
   const [value, setValue] = useState(note.content ?? "");
-  const save = useDebouncedNoteSave(note.id, persist, 400);
+  const latestRef = useRef(note.content ?? "");
+  const rafRef = useRef(0);
+  const persistRef = useRef(persist);
+  const noteIdRef = useRef(note.id);
+
+  persistRef.current = persist;
+  noteIdRef.current = note.id;
 
   useEffect(() => {
     setValue(note.content ?? "");
+    latestRef.current = note.content ?? "";
   }, [note.id, note.content]);
+
+  const flushNow = useCallback(() => {
+    if (rafRef.current !== 0) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    }
+    if (!persistRef.current) return;
+    void dispatch(
+      saveNoteContent({ noteId: noteIdRef.current, content: latestRef.current }),
+    );
+  }, [dispatch]);
+
+  const scheduleBatchedFlush = useCallback(() => {
+    if (!persistRef.current) return;
+    if (rafRef.current !== 0) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      if (!persistRef.current) return;
+      void dispatch(
+        saveNoteContent({ noteId: noteIdRef.current, content: latestRef.current }),
+      );
+    });
+  }, [dispatch]);
+
+  /** Flush pending edits for the note this effect was bound to, then allow sync effect to reset state. */
+  useEffect(() => {
+    const idWhenAttached = note.id;
+    return () => {
+      if (rafRef.current !== 0) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
+      if (persistRef.current) {
+        void dispatch(
+          saveNoteContent({ noteId: idWhenAttached, content: latestRef.current }),
+        );
+      }
+    };
+  }, [note.id, dispatch]);
 
   return (
     <textarea
@@ -50,7 +77,11 @@ export function MarkdownNoteEditor({
       onChange={(e) => {
         const v = e.target.value;
         setValue(v);
-        save(v);
+        latestRef.current = v;
+        scheduleBatchedFlush();
+      }}
+      onBlur={() => {
+        flushNow();
       }}
     />
   );

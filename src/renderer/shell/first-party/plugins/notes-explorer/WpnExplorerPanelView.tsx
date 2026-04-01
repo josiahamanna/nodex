@@ -6,6 +6,7 @@ import type {
 } from "@nodex/ui-types";
 import type { WpnNoteListItem, WpnProjectRow, WpnWorkspaceRow } from "../../../../../shared/wpn-v2-types";
 import type { RootState } from "../../../../store";
+import { isElectronUserAgent } from "../../../../nodex-web-shim";
 import { useShellNavigation } from "../../../useShellNavigation";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
@@ -29,8 +30,12 @@ const DND_NOTE_MIME = "application/nodex-wpn-note";
 
 export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.ReactElement {
   const { openNoteById } = useShellNavigation();
-  const { workspaceRoots } = useShellProjectWorkspace();
+  const { workspaceRoots, rootPath, mountKind } = useShellProjectWorkspace();
   const currentNoteId = useSelector((s: RootState) => s.notes.currentNote?.id);
+
+  /** Folder picker opens the legacy notes DB; hide on browser logical WPN (Postgres, no disk project). */
+  const showFolderBasedWorkspaceCreate =
+    mountKind !== "wpn-postgres" && (isElectronUserAgent() || rootPath != null);
 
   const [workspaces, setWorkspaces] = useState<WpnWorkspaceRow[]>([]);
   const [projectsByWs, setProjectsByWs] = useState<Record<string, WpnProjectRow[]>>({});
@@ -121,9 +126,24 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     setMenu(null);
   };
 
-  const openProjectFolder = useCallback(async () => {
+  /** Pick or create an on-disk folder (opens the notes DB), then create the first WPN workspace row. */
+  const createWorkspaceEntry = useCallback(async () => {
     setMenu(null);
-    await window.Nodex.selectProjectFolder();
+    setBusy(true);
+    try {
+      const r = await window.Nodex.selectProjectFolder();
+      if (!r.ok) {
+        if ("error" in r) {
+          window.alert(r.error);
+        }
+        return;
+      }
+      await window.Nodex.wpnCreateWorkspace("Workspace");
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   }, []);
 
   const onCreateProject = async (workspaceId: string) => {
@@ -307,27 +327,42 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         onClick={() => setMenu(null)}
         onContextMenu={(e) => {
           e.preventDefault();
-          setMenu({ x: e.clientX, y: e.clientY, kind: "no_project", id: "" });
+          if (showFolderBasedWorkspaceCreate) {
+            setMenu({ x: e.clientX, y: e.clientY, kind: "no_project", id: "" });
+          }
         }}
       >
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center text-[12px] text-muted-foreground">
-          <p className="font-medium text-foreground">No project open.</p>
-          <p className="max-w-[14rem] text-[11px] leading-relaxed">
-            Open a project folder to use the workspace → project → notes explorer.
-          </p>
-          <button
-            type="button"
-            className="rounded border border-border bg-muted/20 px-3 py-1.5 text-[11px] text-foreground hover:bg-muted/40"
-            onClick={(e) => {
-              e.stopPropagation();
-              void openProjectFolder();
-            }}
-          >
-            Open project folder…
-          </button>
-          <p className="text-[10px] opacity-70">Or right-click in this panel for the same action.</p>
+          <p className="font-medium text-foreground">No workspace yet.</p>
+          {showFolderBasedWorkspaceCreate ? (
+            <>
+              <p className="max-w-[14rem] text-[11px] leading-relaxed">
+                Create a workspace: choose or create a folder on disk for your notes database, then add projects and
+                notes here.
+              </p>
+              <button
+                type="button"
+                disabled={busy}
+                className="rounded border border-border bg-muted/20 px-3 py-1.5 text-[11px] text-foreground hover:bg-muted/40 disabled:opacity-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void createWorkspaceEntry();
+                }}
+              >
+                Create workspace…
+              </button>
+              <p className="text-[10px] opacity-70">Or right-click in this panel for the same action.</p>
+            </>
+          ) : (
+            <p className="max-w-[16rem] text-[11px] leading-relaxed">
+              In the browser, connect this app to a Nodex API with Postgres enabled{" "}
+              <code className="rounded bg-muted px-0.5 font-mono text-[10px] text-foreground">NODEX_PG_DATABASE_URL</code>
+              . Workspaces and projects live in the server database. Use the desktop app if you need a project folder on
+              disk.
+            </p>
+          )}
         </div>
-        {menu?.kind === "no_project" ? (
+        {menu?.kind === "no_project" && showFolderBasedWorkspaceCreate ? (
           <div
             className="fixed z-50 min-w-[10rem] rounded-md border border-border bg-popover p-1 text-[11px] shadow-md"
             style={{ left: menu.x, top: menu.y }}
@@ -335,10 +370,11 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
           >
             <button
               type="button"
-              className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
-              onClick={() => void openProjectFolder()}
+              className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40 disabled:opacity-50"
+              disabled={busy}
+              onClick={() => void createWorkspaceEntry()}
             >
-              Open project folder…
+              Create workspace…
             </button>
           </div>
         ) : null}

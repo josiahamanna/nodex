@@ -299,6 +299,31 @@ export function registerNodexCoreContributions(
   if (registries) {
     disposers.push(
       registry.registerCommand({
+        id: "nodex.shell.closeActiveTab",
+        title: "Shell: Close active tab",
+        category: "Shell",
+        doc: "Closes the selected main-area tab. When none remain, Welcome is opened again.",
+        api: {
+          summary: "Same behavior as the × button on the tab strip.",
+          args: [],
+          exampleInvoke: {},
+          returns: { type: "void", description: "Updates ShellTabsRegistry." },
+        },
+        handler: () => {
+          const active = registries.tabs.getActiveTab();
+          if (!active) return;
+          registries.tabs.closeTab(active.instanceId);
+          if (registries.tabs.listOpenTabs().length === 0) {
+            registries.tabs.openOrReuseTab("shell.tab.welcome", {
+              title: "Welcome",
+              reuseKey: "shell:welcome",
+            });
+          }
+        },
+      }),
+    );
+    disposers.push(
+      registry.registerCommand({
         id: "nodex.shell.keymap.register",
         title: "Shell: Register keyboard shortcut",
         category: "Shell",

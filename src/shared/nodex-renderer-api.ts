@@ -207,6 +207,8 @@ export type NodexRendererApi = {
     notesDbPath: string | null;
     workspaceRoots: string[];
     workspaceLabels: Record<string, string>;
+    /** Headless/web: `"wpn-postgres"` when WPN uses Postgres without a mounted folder. Electron may omit (treat as `"folder"` when `rootPath` is set). */
+    mountKind?: "folder" | "wpn-postgres";
   }>;
   /** Renderer-owned shell layout prefs stored in project prefs (host-managed). */
   getShellLayout: () => Promise<unknown>;
