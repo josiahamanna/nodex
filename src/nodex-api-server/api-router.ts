@@ -40,6 +40,7 @@ import {
   loadMarketplaceIndex,
 } from "../shared/marketplace-index";
 import { createMarketplaceRouter } from "./marketplace/marketplace-router";
+import { createWpnRouter } from "./wpn-router";
 import { readMarketplaceS3ConfigFromEnv } from "./marketplace/marketplace-s3";
 import { openMarketplaceDb } from "./marketplace/marketplace-db";
 import { isAssetMediaCategory, extMatchesCategory } from "../shared/asset-media";
@@ -794,6 +795,8 @@ export function createNodexApiRouter(): Router {
     }
     res.json({ ok: true as const, touchedNotes: r.touchedNotes === true });
   });
+
+  router.use("/wpn", createWpnRouter());
 
   router.post("/redo", withNotes, (_req, res) => {
     const roots = headlessWorkspaceRoots().map((w) => path.resolve(w));

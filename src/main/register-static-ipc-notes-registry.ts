@@ -1,4 +1,9 @@
 import { ipcMain } from "electron";
+import { getNotesDatabase } from "../core/notes-sqlite";
+import {
+  wpnSqliteGetNoteById,
+  wpnSqliteUpdateNote,
+} from "../core/wpn/wpn-sqlite-notes";
 import {
   ensureNotesSeeded,
   createNote as createNoteInStore,
@@ -13,6 +18,10 @@ import { MAX_NOTE_CONTENT_CHARS } from "../core/notes-store-duplicate-create";
 import { registry } from "../core/registry";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import type { Note } from "../shared/nodex-renderer-api";
+import {
+  PLUGIN_UI_METADATA_KEY,
+  validatePluginUiStateSize,
+} from "../shared/plugin-state-protocol";
 import { isValidNoteId, isValidNoteType } from "../shared/validators";
 import { ctx } from "./main-context";
 import {
@@ -35,6 +44,19 @@ ipcMain.handle(IPC_CHANNELS.GET_NOTE, async (_event, noteId?: string) => {
   if (noteId) {
     if (!isValidNoteId(noteId)) {
       throw new Error("Invalid note id");
+    }
+    const db = getNotesDatabase();
+    if (db) {
+      const wpn = wpnSqliteGetNoteById(db, noteId);
+      if (wpn) {
+        return {
+          id: wpn.id,
+          type: wpn.type,
+          title: wpn.title,
+          content: wpn.content,
+          metadata: wpn.metadata,
+        };
+      }
     }
     const note = getNoteById(noteId);
     if (!note) {
@@ -129,15 +151,19 @@ ipcMain.handle(
 
 ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: string) => {
   assertProjectOpenForNotes();
-  const registeredTypes = registry.getRegisteredTypes();
-  ensureNotesSeeded(registeredTypes);
-
   if (!isValidNoteId(id)) {
     throw new Error("Invalid note id");
   }
   if (typeof title !== "string") {
     throw new Error("Invalid title");
   }
+  const db = getNotesDatabase();
+  if (db && wpnSqliteGetNoteById(db, id)) {
+    wpnSqliteUpdateNote(db, id, { title });
+    return;
+  }
+  const registeredTypes = registry.getRegisteredTypes();
+  ensureNotesSeeded(registeredTypes);
   pushNotesUndoSnapshot();
   renameNoteInStore(id, title);
   persistNotes();
@@ -147,12 +173,23 @@ ipcMain.handle(
   IPC_CHANNELS.SAVE_NOTE_PLUGIN_UI_STATE,
   async (_event, noteId: string, state: unknown) => {
     assertProjectOpenForNotes();
-    const registeredTypes = registry.getRegisteredTypes();
-    ensureNotesSeeded(registeredTypes);
-
     if (!isValidNoteId(noteId)) {
       throw new Error("Invalid note id");
     }
+    const db = getNotesDatabase();
+    if (db) {
+      const wpn = wpnSqliteGetNoteById(db, noteId);
+      if (wpn) {
+        const err = validatePluginUiStateSize(state);
+        if (err) throw new Error(err);
+        const meta: Record<string, unknown> = { ...(wpn.metadata ?? {}) };
+        meta[PLUGIN_UI_METADATA_KEY] = state;
+        wpnSqliteUpdateNote(db, noteId, { metadata: meta });
+        return;
+      }
+    }
+    const registeredTypes = registry.getRegisteredTypes();
+    ensureNotesSeeded(registeredTypes);
     setNotePluginUiState(noteId, state);
     persistNotes();
   },
@@ -162,15 +199,19 @@ ipcMain.handle(
   IPC_CHANNELS.SAVE_NOTE_CONTENT,
   async (_event, noteId: string, content: string) => {
     assertProjectOpenForNotes();
-    const registeredTypes = registry.getRegisteredTypes();
-    ensureNotesSeeded(registeredTypes);
-
     if (!isValidNoteId(noteId)) {
       throw new Error("Invalid note id");
     }
     if (typeof content !== "string") {
       throw new Error("Invalid content");
     }
+    const db = getNotesDatabase();
+    if (db && wpnSqliteGetNoteById(db, noteId)) {
+      wpnSqliteUpdateNote(db, noteId, { content });
+      return;
+    }
+    const registeredTypes = registry.getRegisteredTypes();
+    ensureNotesSeeded(registeredTypes);
     setNoteContentInStore(noteId, content);
     persistNotes();
   },

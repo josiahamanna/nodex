@@ -196,6 +196,42 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
     getAppPrefs: async () => ({ seedSampleNotes: true }),
     nodexUndo: () => req("POST", "/undo"),
     nodexRedo: () => req("POST", "/redo"),
+    wpnListWorkspaces: () => req("GET", "/wpn/workspaces"),
+    wpnCreateWorkspace: (name) =>
+      req("POST", "/wpn/workspaces", { name: name ?? "Workspace" }),
+    wpnUpdateWorkspace: (id, patch) =>
+      req("PATCH", `/wpn/workspaces/${encodeURIComponent(id)}`, patch),
+    wpnDeleteWorkspace: (id) =>
+      req("DELETE", `/wpn/workspaces/${encodeURIComponent(id)}`),
+    wpnListProjects: (workspaceId) =>
+      req(
+        "GET",
+        `/wpn/workspaces/${encodeURIComponent(workspaceId)}/projects`,
+      ),
+    wpnCreateProject: (workspaceId, name) =>
+      req(
+        "POST",
+        `/wpn/workspaces/${encodeURIComponent(workspaceId)}/projects`,
+        { name: name ?? "Project" },
+      ),
+    wpnUpdateProject: (id, patch) =>
+      req("PATCH", `/wpn/projects/${encodeURIComponent(id)}`, patch),
+    wpnDeleteProject: (id) =>
+      req("DELETE", `/wpn/projects/${encodeURIComponent(id)}`),
+    wpnListNotes: (projectId) =>
+      req("GET", `/wpn/projects/${encodeURIComponent(projectId)}/notes`),
+    wpnGetExplorerState: (projectId) =>
+      req("GET", `/wpn/projects/${encodeURIComponent(projectId)}/explorer-state`),
+    wpnSetExplorerState: (projectId, expandedIds) =>
+      req("PATCH", `/wpn/projects/${encodeURIComponent(projectId)}/explorer-state`, {
+        expanded_ids: expandedIds,
+      }),
+    wpnCreateNoteInProject: (projectId, payload) =>
+      req("POST", `/wpn/projects/${encodeURIComponent(projectId)}/notes`, payload),
+    wpnPatchNote: (noteId, patch) =>
+      req("PATCH", `/wpn/notes/${encodeURIComponent(noteId)}`, patch),
+    wpnDeleteNotes: (ids) => req("POST", "/wpn/notes/delete", { ids }),
+    wpnMoveNote: (payload) => req("POST", "/wpn/notes/move", payload),
     listMarketplacePlugins: () =>
       req<MarketplaceListResponse>("GET", "/marketplace/plugins"),
     installMarketplacePlugin: async (packageFile) => {
@@ -579,6 +615,65 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
         "Not available in plain browser — use Electron or ?web=1&api=…",
       );
     },
+    wpnListWorkspaces: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnCreateWorkspace: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnUpdateWorkspace: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnDeleteWorkspace: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnListProjects: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnCreateProject: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnUpdateProject: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnDeleteProject: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnListNotes: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnGetExplorerState: async () => ({ expanded_ids: [] as string[] }),
+    wpnSetExplorerState: async () => ({ expanded_ids: [] as string[] }),
+    wpnCreateNoteInProject: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnPatchNote: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnDeleteNotes: async () => ({ ok: true as const }),
+    wpnMoveNote: async () => ({ ok: true as const }),
   };
 
   return new Proxy(impl as NodexRendererApi, {

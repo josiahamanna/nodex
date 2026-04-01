@@ -33,17 +33,22 @@ import { ShellViewHost } from "./views/ShellViewHost";
 import { useShellViewRegistry } from "./views/ShellViewContext";
 import { useShellRegistries } from "./registries/ShellRegistriesContext";
 import type { ShellTabInstance } from "./registries/ShellTabsRegistry";
+import { SHELL_TAB_NOTE } from "./first-party/shellWorkspaceIds";
 
 function SortableTabRow({
   tab,
   active,
   onSelect,
   onClose,
+  onPinNoteTab,
+  shellTabNoteTypeId,
 }: {
   tab: ShellTabInstance;
   active: boolean;
   onSelect: () => void;
   onClose: (e: React.MouseEvent) => void;
+  onPinNoteTab?: (instanceId: string) => void;
+  shellTabNoteTypeId?: string;
 }): React.ReactElement {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tab.instanceId,
@@ -61,22 +66,42 @@ function SortableTabRow({
     >
       <button
         type="button"
-        className={`max-w-[10rem] truncate rounded-l-md border px-2 py-1 text-left text-[11px] ${
+        className="nodex-tab-drag-handle cursor-grab touch-none rounded-l-md border border-transparent px-1 py-1 text-[10px] text-muted-foreground hover:bg-muted/30 active:cursor-grabbing"
+        aria-label="Reorder tab"
+        title="Drag to reorder"
+        {...attributes}
+        {...listeners}
+      >
+        ⣿
+      </button>
+      <button
+        type="button"
+        className={`max-w-[10rem] truncate border px-2 py-1 text-left text-[11px] ${
           active
             ? "border-border bg-muted/50 text-foreground"
             : "border-transparent bg-transparent text-muted-foreground hover:border-border hover:bg-muted/30"
         }`}
         onClick={onSelect}
-        title={tab.instanceId}
-        {...attributes}
-        {...listeners}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          if (tab.tabTypeId === shellTabNoteTypeId && onPinNoteTab) {
+            onPinNoteTab(tab.instanceId);
+          }
+        }}
+        title={
+          tab.tabTypeId === shellTabNoteTypeId
+            ? "Double-click title to pin this note tab"
+            : tab.instanceId
+        }
       >
+        {tab.pinned ? "📌 " : ""}
         {tab.title ?? tab.tabTypeId}
       </button>
       <button
         type="button"
-        className="rounded-r-md px-1.5 text-[12px] leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+        className="relative z-10 rounded-r-md border border-transparent px-1.5 text-[12px] leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
         aria-label="Close tab"
+        onPointerDown={(e) => e.stopPropagation()}
         onClick={onClose}
       >
         ×
@@ -266,6 +291,8 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                     active={t.instanceId === activeTab?.instanceId}
                     onSelect={() => tabs.setActiveTab(t.instanceId)}
                     onClose={closeTabInstance(t.instanceId)}
+                    shellTabNoteTypeId={SHELL_TAB_NOTE}
+                    onPinNoteTab={(instanceId) => tabs.pinNoteTab(instanceId, SHELL_TAB_NOTE)}
                   />
                 ))}
               </div>

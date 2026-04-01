@@ -13,10 +13,16 @@ export function openNoteInShell(noteId: string, deps: ShellNavigationDeps): void
   deps.layout.setVisible("menuRail", true);
   deps.layout.setVisible("sidebarPanel", true);
   deps.views.openView(NOTES_EXPLORER_VIEW_SIDEBAR, "primarySidebar");
-  deps.tabs.openOrReuseTab(SHELL_TAB_NOTE, {
-    title,
-    reuseKey: `note:${noteId}`,
-    state: { noteId },
-  });
+  const existing = deps.tabs.findNoteTabByNoteId(noteId, SHELL_TAB_NOTE);
+  if (existing) {
+    deps.tabs.setActiveTab(existing.instanceId);
+    deps.tabs.updateTabPresentation(existing.instanceId, { title, state: { noteId } });
+  } else {
+    deps.tabs.openOrReuseTab(SHELL_TAB_NOTE, {
+      title,
+      reuseKey: "note:preview",
+      state: { noteId },
+    });
+  }
   void store.dispatch(fetchNote(noteId));
 }

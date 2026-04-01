@@ -434,6 +434,36 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_RENDERER_UI_META, noteType),
   getPluginManifestUi: (pluginName) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_MANIFEST_UI, pluginName),
+  wpnListWorkspaces: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_LIST_WORKSPACES),
+  wpnCreateWorkspace: (name) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_CREATE_WORKSPACE, name),
+  wpnUpdateWorkspace: (id, patch) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_UPDATE_WORKSPACE, id, patch),
+  wpnDeleteWorkspace: (id) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_DELETE_WORKSPACE, id),
+  wpnListProjects: (workspaceId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_LIST_PROJECTS, workspaceId),
+  wpnCreateProject: (workspaceId, name) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_CREATE_PROJECT, workspaceId, name),
+  wpnUpdateProject: (id, patch) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_UPDATE_PROJECT, id, patch),
+  wpnDeleteProject: (id) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_DELETE_PROJECT, id),
+  wpnListNotes: (projectId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_LIST_NOTES, projectId),
+  wpnGetExplorerState: (projectId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_GET_EXPLORER_STATE, projectId),
+  wpnSetExplorerState: (projectId, expandedIds) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_SET_EXPLORER_STATE, projectId, expandedIds),
+  wpnCreateNoteInProject: (projectId, payload) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_CREATE_NOTE_IN_PROJECT, projectId, payload),
+  wpnPatchNote: (noteId, patch) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_PATCH_NOTE, noteId, patch),
+  wpnDeleteNotes: (ids) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_DELETE_NOTES, ids),
+  wpnMoveNote: (payload) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_MOVE_NOTE, payload),
 };
 
 contextBridge.exposeInMainWorld("Nodex", api);

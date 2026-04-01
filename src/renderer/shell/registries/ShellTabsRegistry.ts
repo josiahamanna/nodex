@@ -13,6 +13,8 @@ export type ShellTabInstance = {
   state?: unknown;
   /** When set, `openOrReuseTab` activates an existing instance with the same key and type instead of creating one. */
   reuseKey?: string;
+  /** When true, this note tab is not replaced by the next preview open (double-click tab title to pin). */
+  pinned?: boolean;
 };
 
 type Listener = () => void;
@@ -132,6 +134,41 @@ export class ShellTabsRegistry {
     const inst = this.instances.find((t) => t.instanceId === instanceId);
     if (!inst) return null;
     return this.types.get(inst.tabTypeId)?.viewId ?? null;
+  }
+
+  /**
+   * Promote a note tab from preview (`note:preview`) to a pinned tab with its own `reuseKey`.
+   */
+  pinNoteTab(instanceId: string, shellTabNoteTypeId: string): void {
+    const inst = this.instances.find((t) => t.instanceId === instanceId);
+    if (!inst || inst.tabTypeId !== shellTabNoteTypeId) return;
+    const st = inst.state as { noteId?: string } | undefined;
+    const noteId = st?.noteId;
+    if (typeof noteId !== "string" || !noteId) return;
+    inst.pinned = true;
+    inst.reuseKey = `note:${noteId}`;
+    this.emit();
+  }
+
+  findNoteTabByNoteId(noteId: string, shellTabNoteTypeId: string): ShellTabInstance | null {
+    return (
+      this.instances.find(
+        (t) =>
+          t.tabTypeId === shellTabNoteTypeId &&
+          (t.state as { noteId?: string } | undefined)?.noteId === noteId,
+      ) ?? null
+    );
+  }
+
+  updateTabPresentation(
+    instanceId: string,
+    patch: { title?: string; state?: unknown },
+  ): void {
+    const inst = this.instances.find((t) => t.instanceId === instanceId);
+    if (!inst) return;
+    if (patch.title !== undefined) inst.title = patch.title;
+    if (patch.state !== undefined) inst.state = patch.state;
+    this.emit();
   }
 }
 

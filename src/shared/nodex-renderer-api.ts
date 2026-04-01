@@ -5,6 +5,14 @@
 
 import type { ClientLogPayload } from "./client-log";
 import type { AssetMediaCategory } from "./asset-media";
+import type {
+  WpnNoteDetail,
+  WpnNoteListItem,
+  WpnProjectPatch,
+  WpnProjectRow,
+  WpnWorkspacePatch,
+  WpnWorkspaceRow,
+} from "./wpn-v2-types";
 
 export interface Note {
   id: string;
@@ -514,4 +522,56 @@ export type NodexRendererApi = {
     designSystemVersion?: string;
     designSystemWarning: string | null;
   } | null>;
+  /** Workspace / project (v2). Electron: IPC + SQLite. Web: HTTP `/api/v1/wpn/...`. */
+  wpnListWorkspaces: () => Promise<{ workspaces: WpnWorkspaceRow[] }>;
+  wpnCreateWorkspace: (name?: string) => Promise<{ workspace: WpnWorkspaceRow }>;
+  wpnUpdateWorkspace: (
+    id: string,
+    patch: WpnWorkspacePatch,
+  ) => Promise<{ workspace: WpnWorkspaceRow }>;
+  wpnDeleteWorkspace: (id: string) => Promise<{ ok: true }>;
+  wpnListProjects: (
+    workspaceId: string,
+  ) => Promise<{ projects: WpnProjectRow[] }>;
+  wpnCreateProject: (
+    workspaceId: string,
+    name?: string,
+  ) => Promise<{ project: WpnProjectRow }>;
+  wpnUpdateProject: (
+    id: string,
+    patch: WpnProjectPatch,
+  ) => Promise<{ project: WpnProjectRow }>;
+  wpnDeleteProject: (id: string) => Promise<{ ok: true }>;
+  wpnListNotes: (projectId: string) => Promise<{ notes: WpnNoteListItem[] }>;
+  wpnGetExplorerState: (projectId: string) => Promise<{ expanded_ids: string[] }>;
+  wpnSetExplorerState: (
+    projectId: string,
+    expandedIds: string[],
+  ) => Promise<{ expanded_ids: string[] }>;
+  wpnCreateNoteInProject: (
+    projectId: string,
+    payload: {
+      anchorId?: string;
+      relation: CreateNoteRelation;
+      type: string;
+      content?: string;
+      title?: string;
+    },
+  ) => Promise<{ id: string }>;
+  wpnPatchNote: (
+    noteId: string,
+    patch: {
+      title?: string;
+      content?: string;
+      type?: string;
+      metadata?: Record<string, unknown> | null;
+    },
+  ) => Promise<{ note: WpnNoteDetail }>;
+  wpnDeleteNotes: (ids: string[]) => Promise<{ ok: true }>;
+  wpnMoveNote: (payload: {
+    projectId: string;
+    draggedId: string;
+    targetId: string;
+    placement: NoteMovePlacement;
+  }) => Promise<{ ok: true }>;
 };

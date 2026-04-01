@@ -9,6 +9,14 @@ export function parseShellHash(): ParsedShellHash | null {
   if (typeof window === "undefined") return null;
   const raw = window.location.hash.replace(/^#/, "").trim();
   if (!raw) return null;
+  if (raw.startsWith("/n/")) {
+    const noteId = raw.slice("/n/".length).split("/")[0]?.trim();
+    if (noteId) return { kind: "note", noteId };
+  }
+  if (raw.startsWith("n/")) {
+    const noteId = raw.slice("n/".length).split("/")[0]?.trim();
+    if (noteId) return { kind: "note", noteId };
+  }
   if (raw.startsWith("note/")) {
     const noteId = raw.slice("note/".length).split("/")[0]?.trim();
     if (noteId) return { kind: "note", noteId };
@@ -25,7 +33,7 @@ export function hashForActiveTab(tab: ShellTabInstance | null): string {
   if (!tab) return "";
   const st = tab.state as { noteId?: string } | undefined;
   if (tab.tabTypeId === SHELL_TAB_NOTE && st?.noteId) {
-    return `#note/${st.noteId}`;
+    return `#/n/${st.noteId}`;
   }
   return `#/t/${tab.instanceId}`;
 }

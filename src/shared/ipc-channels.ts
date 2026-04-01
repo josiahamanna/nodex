@@ -123,6 +123,21 @@ export const IPC_CHANNELS = {
   /** Shell layout preferences (saved in project prefs). */
   SHELL_GET_LAYOUT: "shell:get-layout",
   SHELL_SET_LAYOUT: "shell:set-layout",
+  WPN_LIST_WORKSPACES: "wpn:list-workspaces",
+  WPN_CREATE_WORKSPACE: "wpn:create-workspace",
+  WPN_UPDATE_WORKSPACE: "wpn:update-workspace",
+  WPN_DELETE_WORKSPACE: "wpn:delete-workspace",
+  WPN_LIST_PROJECTS: "wpn:list-projects",
+  WPN_CREATE_PROJECT: "wpn:create-project",
+  WPN_UPDATE_PROJECT: "wpn:update-project",
+  WPN_DELETE_PROJECT: "wpn:delete-project",
+  WPN_LIST_NOTES: "wpn:list-notes",
+  WPN_GET_EXPLORER_STATE: "wpn:get-explorer-state",
+  WPN_SET_EXPLORER_STATE: "wpn:set-explorer-state",
+  WPN_CREATE_NOTE_IN_PROJECT: "wpn:create-note-in-project",
+  WPN_PATCH_NOTE: "wpn:patch-note",
+  WPN_DELETE_NOTES: "wpn:delete-notes",
+  WPN_MOVE_NOTE: "wpn:move-note",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

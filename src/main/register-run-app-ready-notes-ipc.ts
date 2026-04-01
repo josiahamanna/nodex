@@ -1,4 +1,5 @@
 import { ipcMain } from "electron";
+import { getNotesDatabase } from "../core/notes-sqlite";
 import {
   deleteNoteSubtrees,
   duplicateSubtreeAt,
@@ -6,6 +7,11 @@ import {
   moveNote as moveNoteInStore,
   moveNotesBulk as moveNotesBulkInStore,
 } from "../core/notes-store";
+import {
+  wpnSqliteDeleteNotes,
+  wpnSqliteGetNoteById,
+  wpnSqliteMoveNote,
+} from "../core/wpn/wpn-sqlite-notes";
 import { pushNotesUndoSnapshot } from "../core/nodex-undo";
 import { registry } from "../core/registry";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
@@ -41,9 +47,24 @@ export function registerRunAppReadyNotesTreeIpc(): void {
       if (deletable.length === 0) {
         return;
       }
-      pushNotesUndoSnapshot();
-      deleteNoteSubtrees(deletable);
-      persistNotes();
+      const db = getNotesDatabase();
+      const wpnIds: string[] = [];
+      const legacyIds: string[] = [];
+      for (const id of deletable) {
+        if (db && wpnSqliteGetNoteById(db, id)) {
+          wpnIds.push(id);
+        } else {
+          legacyIds.push(id);
+        }
+      }
+      if (wpnIds.length > 0 && db) {
+        wpnSqliteDeleteNotes(db, wpnIds);
+      }
+      if (legacyIds.length > 0) {
+        pushNotesUndoSnapshot();
+        deleteNoteSubtrees(legacyIds);
+        persistNotes();
+      }
     },
   );
   ipcMain.handle(
@@ -86,9 +107,6 @@ export function registerRunAppReadyNotesTreeIpc(): void {
       payload: { draggedId: string; targetId: string; placement: string },
     ) => {
       assertProjectOpenForNotes();
-      const registeredTypes = registry.getRegisteredTypes();
-      ensureNotesSeeded(registeredTypes);
-
       if (!payload || typeof payload !== "object") {
         throw new Error("Invalid payload");
       }
@@ -100,6 +118,17 @@ export function registerRunAppReadyNotesTreeIpc(): void {
       if (p !== "before" && p !== "after" && p !== "into") {
         throw new Error("Invalid placement");
       }
+      const db = getNotesDatabase();
+      if (db) {
+        const a = wpnSqliteGetNoteById(db, draggedId);
+        const b = wpnSqliteGetNoteById(db, targetId);
+        if (a && b && a.project_id === b.project_id) {
+          wpnSqliteMoveNote(db, a.project_id, draggedId, targetId, p);
+          return;
+        }
+      }
+      const registeredTypes = registry.getRegisteredTypes();
+      ensureNotesSeeded(registeredTypes);
       pushNotesUndoSnapshot();
       moveNoteInStore(draggedId, targetId, p);
       persistNotes();

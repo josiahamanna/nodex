@@ -7,6 +7,7 @@ import {
   ROOT_KEY,
   type SerializedNotesState,
 } from "./notes-store";
+import { ensureWpnV2Schema } from "./wpn/wpn-schema-sqlite";
 
 const SchemaVersion = 1;
 
@@ -55,6 +56,7 @@ function ensureSchema(db: Database): void {
       String(SchemaVersion),
     );
   }
+  ensureWpnV2Schema(db);
 }
 
 export function countNotesInDb(db: Database): number {
