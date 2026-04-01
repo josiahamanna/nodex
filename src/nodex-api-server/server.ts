@@ -59,9 +59,32 @@ app.use("/api/v1", createNodexApiRouter());
 
 const PORT = Number(process.env.PORT ?? "3847");
 const host = process.env.HOST ?? "127.0.0.1";
-app.listen(PORT, host, () => {
+
+const server = app.listen(PORT, host, () => {
   // eslint-disable-next-line no-console
   console.info(
     `[Nodex API] listening on http://${host}:${PORT} (project ${process.env.NODEX_PROJECT_ROOT})`,
   );
 });
+
+function shutdown(signal: string) {
+  // eslint-disable-next-line no-console
+  console.info(`[Nodex API] ${signal} received, closing HTTP server...`);
+  server.close((err) => {
+    if (err) {
+      // eslint-disable-next-line no-console
+      console.error("[Nodex API] error during server.close:", err);
+      process.exit(1);
+    }
+    process.exit(0);
+  });
+  // Docker / orchestrators will SIGKILL after stop_grace_period; exit hard if close stalls.
+  setTimeout(() => {
+    // eslint-disable-next-line no-console
+    console.error("[Nodex API] shutdown timeout, exiting.");
+    process.exit(1);
+  }, 9_000).unref();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

@@ -65,6 +65,25 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, []);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Let modal surfaces handle Escape themselves.
+      const target = e.target as HTMLElement | null;
+      const inModal =
+        !!target?.closest?.('[role="dialog"][aria-modal="true"]') ||
+        document.querySelector('[role="dialog"][aria-modal="true"]') != null;
+      if (inModal) return;
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setErr(null);
+      setMiniBarText("");
+      setActiveIdx(0);
+      inputRef.current?.blur();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [setMiniBarText]);
+
   return (
     <div
       ref={rootRef}
