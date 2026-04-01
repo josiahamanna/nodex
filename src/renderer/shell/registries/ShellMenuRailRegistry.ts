@@ -1,3 +1,5 @@
+import type { ShellRegionId } from "../views/ShellViewRegistry";
+
 export type ShellMenuRailItem = {
   id: string;
   title: string;
@@ -8,6 +10,8 @@ export type ShellMenuRailItem = {
   commandId?: string;
   commandArgs?: Record<string, unknown>;
   openViewId?: string;
+  /** Where to open the view (default: sidebar panel). */
+  openViewRegion?: ShellRegionId;
 };
 
 type Listener = () => void;

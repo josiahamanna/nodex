@@ -3,6 +3,7 @@ import type { ShellLayoutStore } from "./layout/ShellLayoutStore";
 import type { ShellRegionId } from "./layout/ShellLayoutState";
 import type { ShellViewRegistry } from "./views/ShellViewRegistry";
 import type { ShellRegistries } from "./registries/ShellRegistriesContext";
+import type { ShellKeyBinding } from "./registries/ShellKeymapRegistry";
 
 declare global {
   interface Window {
@@ -59,6 +60,12 @@ export function exposeDevtoolsShellApi(opts: {
           list: () => opts.registries!.menuRail.list(),
           registerItem: (item: Parameters<ShellRegistries["menuRail"]["registerItem"]>[0]) =>
             opts.registries!.menuRail.registerItem(item),
+        }
+      : undefined,
+    keymap: opts.registries
+      ? {
+          list: () => opts.registries!.keymap.list(),
+          register: (b: ShellKeyBinding) => opts.registries!.keymap.register(b),
         }
       : undefined,
     panelMenu: opts.registries

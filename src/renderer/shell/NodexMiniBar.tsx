@@ -21,6 +21,7 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
   const [err, setErr] = useState<string | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const [inputFocused, setInputFocused] = useState(false);
+  const escSeqRef = useRef(0);
 
   const { id: typedId, rest, hasSpace } = useMemo(() => splitMiniBar(miniBarText), [miniBarText]);
   const typedIdNorm = typedId.trim().toLowerCase();
@@ -66,22 +67,18 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
   }, []);
 
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      // Let modal surfaces handle Escape themselves.
-      const target = e.target as HTMLElement | null;
-      const inModal =
-        !!target?.closest?.('[role="dialog"][aria-modal="true"]') ||
-        document.querySelector('[role="dialog"][aria-modal="true"]') != null;
-      if (inModal) return;
-      if (e.key !== "Escape") return;
-      e.preventDefault();
+    const onFocusRequest = (e: Event) => {
+      const detail = (e as CustomEvent<{ prefill?: string } | undefined>).detail;
+      if (detail?.prefill != null) {
+        setMiniBarText(String(detail.prefill));
+      }
       setErr(null);
-      setMiniBarText("");
       setActiveIdx(0);
-      inputRef.current?.blur();
+      window.requestAnimationFrame(() => inputRef.current?.focus());
     };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
+    window.addEventListener("nodex-minibar-focus", onFocusRequest as EventListener);
+    return () =>
+      window.removeEventListener("nodex-minibar-focus", onFocusRequest as EventListener);
   }, [setMiniBarText]);
 
   return (
@@ -99,15 +96,29 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
             value={miniBarText}
             onChange={(e) => setMiniBarText(e.target.value)}
             onFocus={() => setInputFocused(true)}
-            onBlur={() => setInputFocused(false)}
-            placeholder='Type `commandId {"arg":"value"}` and press Enter'
+            onBlur={() => {
+              setInputFocused(false);
+              escSeqRef.current = 0;
+            }}
+            placeholder='commandId {args} — JSON {"x":1} or JS object { id: "me", chord: "ctrl+shift+x", commandId: "nodex.shell.openMiniBar" }'
             className="w-full min-w-0 rounded-none border border-input bg-background px-2 py-2 text-[12px] font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onKeyDown={(e) => {
+              if (e.key !== "Escape") {
+                escSeqRef.current = 0;
+              }
               if (e.key === "Escape") {
                 e.preventDefault();
+                e.stopPropagation();
                 setErr(null);
+                escSeqRef.current += 1;
                 setMiniBarText("");
-                inputRef.current?.blur();
+                setActiveIdx(0);
+                if (escSeqRef.current >= 3) {
+                  escSeqRef.current = 0;
+                  inputRef.current?.blur();
+                  const main = document.querySelector("[data-nodex-main-surface]") as HTMLElement | null;
+                  main?.focus();
+                }
                 return;
               }
               if (showSuggestionPanel) {
@@ -193,10 +204,6 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
           {err}
         </div>
       ) : null}
-      <div className="w-full px-3 pb-2 text-[10px] text-muted-foreground">
-        Tips: <span className="font-mono">Ctrl+K</span> (or <span className="font-mono">F1</span>) opens the palette.{" "}
-        <span className="font-mono">Esc</span> clears. <span className="font-mono">Tab</span> completes.
-      </div>
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CommandContribution } from "./nodex-contribution-registry";
 import { useNodexCommands, useNodexContributionRegistry } from "./NodexContributionContext";
+import { useShellRegistries } from "./registries/ShellRegistriesContext";
+import { chordFromEvent } from "./registries/ShellKeymapRegistry";
 
 function norm(s: string): string {
   return s.trim().toLowerCase();
@@ -43,6 +45,42 @@ function fuzzyScore(haystack: string, needle: string): number | null {
   // Prefer matches that start earlier.
   score -= Math.min(80, hi);
   return score;
+}
+
+/**
+ * Minibuffer args: strict JSON first, then a single JS object literal `{ a: 1, b: 'x' }`
+ * (same as pasting into DevTools) for convenience.
+ */
+function parseMinibarArgs(rest: string): Record<string, unknown> {
+  const t = rest.trim();
+  if (!t) {
+    throw new Error("Missing args object after command id.");
+  }
+  try {
+    const parsed = JSON.parse(t) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Args must be a plain object.");
+    }
+    return parsed as Record<string, unknown>;
+  } catch (jsonErr) {
+    if (t.startsWith("{") && t.endsWith("}")) {
+      try {
+        const fn = new Function(`"use strict"; return (${t});`);
+        const v = fn() as unknown;
+        if (v && typeof v === "object" && !Array.isArray(v)) {
+          return v as Record<string, unknown>;
+        }
+        throw new Error("Args must be a plain object.");
+      } catch {
+        /* fall through */
+      }
+    }
+    throw new Error(
+      jsonErr instanceof Error
+        ? `Invalid args. Use JSON with double quotes, e.g. {"id":"x"}, or a JS object { id: 'x' }. ${jsonErr.message}`
+        : "Invalid args.",
+    );
+  }
 }
 
 function scoreCommand(c: CommandContribution, q: string): number | null {
@@ -109,6 +147,7 @@ export type NodexShellVm = {
  */
 export function useNodexShell(): NodexShellVm {
   const registry = useNodexContributionRegistry();
+  const shellRegs = useShellRegistries();
   const commands = useNodexCommands().filter((c) => c.palette !== false || c.miniBar !== false);
   const [open, setOpen] = useState(false);
   const [surface, setSurface] = useState<ShellSurface>("palette");
@@ -142,7 +181,6 @@ export function useNodexShell(): NodexShellVm {
   const close = useCallback(() => {
     setOpen(false);
     setQuery("");
-    setMiniBarText("");
     setSelectedIndex(0);
   }, []);
 
@@ -155,10 +193,7 @@ export function useNodexShell(): NodexShellVm {
   }, []);
 
   const openMiniBar = useCallback((prefill?: string) => {
-    setSurface("miniBar");
-    setOpen(true);
-    setQuery("");
-    setSelectedIndex(0);
+    // Minibuffer is always visible; do not set open=true or shortcuts stop working.
     setMiniBarText(prefill ?? "");
     lastOpenAtRef.current = Date.now();
   }, []);
@@ -191,17 +226,7 @@ export function useNodexShell(): NodexShellVm {
       const rest = space >= 0 ? raw.slice(space + 1).trim() : "";
       let args: Record<string, unknown> | undefined;
       if (rest) {
-        try {
-          const parsed = JSON.parse(rest) as unknown;
-          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-            throw new Error("Args must be a JSON object.");
-          }
-          args = parsed as Record<string, unknown>;
-        } catch (e) {
-          throw new Error(
-            e instanceof Error ? `Bad args JSON: ${e.message}` : "Bad args JSON",
-          );
-        }
+        args = parseMinibarArgs(rest);
       }
       await runCommand(id, args);
     },
@@ -213,29 +238,29 @@ export function useNodexShell(): NodexShellVm {
       const isInput = (e.target as HTMLElement | null)?.closest(
         "input, textarea, [contenteditable=true]",
       );
-      if (!open) {
-        // Ctrl+K or F1 => palette, Alt+X => mini bar (Emacs M-x).
-        // (Ctrl+Shift+P can conflict with browser Print on some setups.)
-        const k = e.key.toLowerCase();
-        const paletteHotkey =
-          // Ctrl+K / Cmd+K
-          ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && k === "k") ||
-          // Ctrl+Alt+P / Cmd+Alt+P (fallback)
-          ((e.ctrlKey || e.metaKey) && e.altKey && !e.shiftKey && k === "p") ||
-          // F1
-          (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === "F1");
-
-        if (paletteHotkey) {
-          if (isInput) return;
+      const chord = chordFromEvent(e);
+      const b = shellRegs.keymap.match(chord);
+      if (b) {
+        const block = b.ignoreWhenInput === true && Boolean(isInput);
+        if (!block) {
           e.preventDefault();
-          openPalette();
-        } else if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "x") {
-          if (isInput) return;
-          e.preventDefault();
-          openMiniBar("");
+          if (b.commandId === "nodex.shell.openMiniBar") {
+            try {
+              window.dispatchEvent(
+                new CustomEvent("nodex-minibar-focus", {
+                  detail: { prefill: String(b.commandArgs?.prefill ?? "") },
+                }),
+              );
+            } catch {
+              /* ignore */
+            }
+          }
+          void Promise.resolve(registry.invokeCommand(b.commandId, b.commandArgs));
+          return;
         }
-        return;
       }
+
+      if (!open) return;
 
       // avoid eating the open keystroke (sometimes keyup arrives late)
       if (Date.now() - lastOpenAtRef.current < 50) {
@@ -270,26 +295,19 @@ export function useNodexShell(): NodexShellVm {
           e.preventDefault();
           void runSelected();
         }
-      } else {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          void (async () => {
-            await runFromMiniBarText(miniBarText);
-          })();
-        }
       }
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [
     close,
-    miniBarText,
     open,
     openMiniBar,
     openPalette,
+    registry,
     results.length,
-    runFromMiniBarText,
     runSelected,
+    shellRegs.keymap,
     surface,
   ]);
 
@@ -307,7 +325,15 @@ export function useNodexShell(): NodexShellVm {
       title: "Shell: Open mini buffer (M-x)",
       category: "Shell",
       doc: "Open the mini buffer input UI.",
-      handler: (args) => openMiniBar(String(args?.prefill ?? "")),
+      handler: (args) => {
+        const prefill = String(args?.prefill ?? "");
+        try {
+          window.dispatchEvent(new CustomEvent("nodex-minibar-focus", { detail: { prefill } }));
+        } catch {
+          /* ignore */
+        }
+        openMiniBar(prefill);
+      },
     });
     return () => {
       disposePalette();

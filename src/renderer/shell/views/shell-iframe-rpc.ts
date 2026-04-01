@@ -13,7 +13,12 @@ export type ShellRpcRequest =
   | {
       type: "nodex.shell.rpc";
       id: string;
-      method: "commands.invoke" | "context.get";
+      method:
+        | "commands.invoke"
+        | "commands.list"
+        | "keymap.list"
+        | "context.get"
+        | "devtools.describe";
       params: unknown;
     };
 

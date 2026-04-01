@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
 import { ShellAppMenuRegistry } from "./ShellAppMenuRegistry";
 import { ShellMenuRailRegistry } from "./ShellMenuRailRegistry";
+import { ShellKeymapRegistry } from "./ShellKeymapRegistry";
 import { ShellPanelMenuRegistry } from "./ShellPanelMenuRegistry";
 import { ShellTabsRegistry } from "./ShellTabsRegistry";
 
 export type ShellRegistries = {
   appMenu: ShellAppMenuRegistry;
   menuRail: ShellMenuRailRegistry;
+  keymap: ShellKeymapRegistry;
   panelMenu: ShellPanelMenuRegistry;
   tabs: ShellTabsRegistry;
 };
@@ -22,6 +24,7 @@ export function ShellRegistriesProvider({
     return {
       appMenu: new ShellAppMenuRegistry(),
       menuRail: new ShellMenuRailRegistry(),
+      keymap: new ShellKeymapRegistry(),
       panelMenu: new ShellPanelMenuRegistry(),
       tabs: new ShellTabsRegistry(),
     };
@@ -31,6 +34,7 @@ export function ShellRegistriesProvider({
   const [, tick] = useReducer((x: number) => x + 1, 0);
   useEffect(() => regs.appMenu.subscribe(() => tick()), [regs]);
   useEffect(() => regs.menuRail.subscribe(() => tick()), [regs]);
+  useEffect(() => regs.keymap.subscribe(() => tick()), [regs]);
   useEffect(() => regs.panelMenu.subscribe(() => tick()), [regs]);
   useEffect(() => regs.tabs.subscribe(() => tick()), [regs]);
 

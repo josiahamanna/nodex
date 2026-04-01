@@ -1,9 +1,12 @@
 import type { NodexContributionRegistry } from "./nodex-contribution-registry";
+import type { ShellRegistries } from "./registries/ShellRegistriesContext";
+import type { ShellKeyBinding } from "./registries/ShellKeymapRegistry";
 import { NODEX_REPL_TOGGLE_EVENT } from "./NodexReplOverlay";
 
 /** Core `nodex.*` commands and host mode-line segments. Expand as features migrate to the registry. */
 export function registerNodexCoreContributions(
   registry: NodexContributionRegistry,
+  registries?: ShellRegistries,
 ): Array<() => void> {
   const disposers: Array<() => void> = [];
 
@@ -207,6 +210,37 @@ export function registerNodexCoreContributions(
     toggle("nodex.shell.toggle.miniBar", "Shell: Toggle mini bar", "miniBar"),
     toggle("nodex.shell.toggle.modeLine", "Shell: Toggle mode line", "modeLine"),
   );
+
+  // Minibuffer invokes registry commands only; mirror DevTools keymap API as commands.
+  if (registries) {
+    disposers.push(
+      registry.registerCommand({
+        id: "nodex.shell.keymap.register",
+        title: "Shell: Register keyboard shortcut",
+        category: "Shell",
+        doc: "Same as window.nodex.shell.keymap.register. Args: { id, title, chord, commandId, commandArgs?, sourcePluginId?, ignoreWhenInput? }",
+        handler: (args) => {
+          const a = args as Partial<ShellKeyBinding> | undefined;
+          if (!a || typeof a !== "object") throw new Error("Missing args object.");
+          if (typeof a.id !== "string" || typeof a.title !== "string" || typeof a.chord !== "string" || typeof a.commandId !== "string") {
+            throw new Error("Args require id, title, chord, commandId (strings).");
+          }
+          registries.keymap.register({
+            id: a.id,
+            title: a.title,
+            chord: a.chord,
+            commandId: a.commandId,
+            commandArgs:
+              a.commandArgs && typeof a.commandArgs === "object" && !Array.isArray(a.commandArgs)
+                ? (a.commandArgs as Record<string, unknown>)
+                : undefined,
+            sourcePluginId: typeof a.sourcePluginId === "string" ? a.sourcePluginId : null,
+            ignoreWhenInput: typeof a.ignoreWhenInput === "boolean" ? a.ignoreWhenInput : undefined,
+          });
+        },
+      }),
+    );
+  }
 
   return disposers;
 }

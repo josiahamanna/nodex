@@ -80,7 +80,11 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
 
   return (
     <div className="nodex-app-pad box-border flex min-h-0 flex-1 flex-col bg-muted/45 text-foreground dark:bg-muted/25">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-sm box-border">
+      <div
+        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-sm box-border outline-none"
+        data-nodex-main-surface
+        tabIndex={-1}
+      >
         {/* Top bar: N menu + primary tabs */}
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background px-2 py-1.5">
           <div className="relative">
@@ -214,7 +218,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                             title={it.title}
                             onClick={() => {
                               if (it.openViewId) {
-                                views.openView(it.openViewId, "primarySidebar");
+                                views.openView(it.openViewId, it.openViewRegion ?? "primarySidebar");
                                 return;
                               }
                               if (it.commandId) {

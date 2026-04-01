@@ -64,7 +64,7 @@ export function NodexContributionProvider({
   useEffect(() => registry.subscribe(() => bump()), [registry]);
 
   useEffect(() => {
-    const disposers = registerNodexCoreContributions(registry);
+    const disposers = registerNodexCoreContributions(registry, registries);
     return () => {
       for (const d of disposers) {
         d();
@@ -92,7 +92,13 @@ export function NodexContributionProvider({
       const reqId = String(req.id);
       const respond = (resp: ShellRpcResponse) => {
         try {
-          (e.source as Window | null)?.postMessage(resp, "*");
+          const src = e.source as unknown as { postMessage?: (m: unknown, targetOrigin: string) => void } | null;
+          if (src?.postMessage) {
+            src.postMessage(resp, "*");
+            return;
+          }
+          // Fallback: best-effort broadcast (helps when source is null).
+          window.postMessage(resp, "*");
         } catch {
           /* ignore */
         }
@@ -100,6 +106,68 @@ export function NodexContributionProvider({
 
       if (req.method === "context.get") {
         respond({ type: "nodex.shell.rpc.result", id: reqId, ok: true, value: lastCtxRef.current });
+        return;
+      }
+      if (req.method === "commands.list") {
+        respond({ type: "nodex.shell.rpc.result", id: reqId, ok: true, value: registry.listCommands() });
+        return;
+      }
+      if (req.method === "keymap.list") {
+        try {
+          const shell = (window as unknown as { nodex?: { shell?: unknown } }).nodex?.shell as any;
+          const list = shell?.keymap?.list?.();
+          respond({ type: "nodex.shell.rpc.result", id: reqId, ok: true, value: Array.isArray(list) ? list : [] });
+        } catch {
+          respond({ type: "nodex.shell.rpc.result", id: reqId, ok: true, value: [] });
+        }
+        return;
+      }
+      if (req.method === "devtools.describe") {
+        try {
+          const shell = (window as unknown as { nodex?: { shell?: unknown } }).nodex?.shell as any;
+          const layout = shell?.layout;
+          const commands = shell?.commands;
+          const views = shell?.views;
+          const appMenu = shell?.appMenu;
+          const menuRail = shell?.menuRail;
+          const keymap = shell?.keymap;
+          const panelMenu = shell?.panelMenu;
+          const tabs = shell?.tabs;
+
+          const describeObj = (o: any) =>
+            o && typeof o === "object"
+              ? Object.keys(o)
+                  .sort()
+                  .map((k) => ({
+                    key: k,
+                    type: typeof o[k],
+                  }))
+              : [];
+
+          respond({
+            type: "nodex.shell.rpc.result",
+            id: reqId,
+            ok: true,
+            value: {
+              "window.nodex.shell": describeObj(shell),
+              "window.nodex.shell.layout": describeObj(layout),
+              "window.nodex.shell.commands": describeObj(commands),
+              "window.nodex.shell.views": describeObj(views),
+              "window.nodex.shell.appMenu": describeObj(appMenu),
+              "window.nodex.shell.menuRail": describeObj(menuRail),
+              "window.nodex.shell.keymap": describeObj(keymap),
+              "window.nodex.shell.panelMenu": describeObj(panelMenu),
+              "window.nodex.shell.tabs": describeObj(tabs),
+            },
+          });
+        } catch (err) {
+          respond({
+            type: "nodex.shell.rpc.result",
+            id: reqId,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
         return;
       }
       if (req.method === "commands.invoke") {
