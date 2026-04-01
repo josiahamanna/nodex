@@ -13,9 +13,12 @@
 # Follow logs:     npm run docker:api:logs
 #
 # Unified gateway (nginx on host port 5555):
-#   Open http://127.0.0.1:5555 — / → Next on host :3000 (host.docker.internal),
-#   /backend/api/ → /api/v1/, /backend/market/ → /marketplace/files/, plus /api/v1/ and
-#   /marketplace/files/ aliases. Start Next first: npm run dev:web (or next start on :3000).
+#   One command brings up UI + API (+ marketplace) behind http://127.0.0.1:5555
+#   - / → Next UI (nodex-web)
+#   - /backend/api/ → /api/v1/
+#   - /backend/market/ → /marketplace/files/
+#   - /api/v1/ and /marketplace/files/ are also proxied for compatibility
+#
 # API-only (no nginx): docker compose up nodex-api
 #
 # Direct API (bypass gateway): http://127.0.0.1:3847/api/v1/health
@@ -25,6 +28,15 @@
 # mount; use a single API upstream or separate project directories per replica.
 
 services:
+  nodex-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: nodex-web:local
+    container_name: nodex-web
+    expose:
+      - "3000"
+
   nodex-api:
     build:
       context: .
@@ -58,10 +70,8 @@ services:
         target: /etc/nginx/conf.d/default.conf
         read_only: true
     depends_on:
+      - nodex-web
       - nodex-api
-    extra_hosts:
-      # Linux: reach host Next dev server from the nginx container
-      - "host.docker.internal:host-gateway"
 
 volumes:
   nodex-user-data:
