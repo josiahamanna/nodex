@@ -15,7 +15,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Panel,
   PanelGroup,
@@ -121,6 +121,8 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const initialHashApplied = useRef(false);
 
   const primaryRef = React.useRef<ImperativePanelHandle>(null);
+  const railPanelRef = React.useRef<ImperativePanelHandle>(null);
+  const sidebarPanelRef = React.useRef<ImperativePanelHandle>(null);
   const secondaryRef = React.useRef<ImperativePanelHandle>(null);
   const bottomRef = React.useRef<ImperativePanelHandle>(null);
 
@@ -254,6 +256,32 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
 
   const sortableIds = openTabs.map((t) => t.instanceId);
 
+  /** Collapse/expand real `Panel` regions so toggles reclaim space (same idea as unmounting the bottom dock). */
+  useLayoutEffect(() => {
+    if (!showLeft) {
+      primaryRef.current?.collapse();
+      return;
+    }
+    primaryRef.current?.expand(Math.max(10, hSizes[0]));
+    const id = window.requestAnimationFrame(() => {
+      try {
+        if (showMenuRail) {
+          railPanelRef.current?.expand(18);
+        } else {
+          railPanelRef.current?.collapse();
+        }
+        if (showSidebarPanel) {
+          sidebarPanelRef.current?.expand(35);
+        } else {
+          sidebarPanelRef.current?.collapse();
+        }
+      } catch {
+        /* refs not ready */
+      }
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [showLeft, showMenuRail, showSidebarPanel, hSizes[0]]);
+
   return (
     <div className="nodex-app-pad box-border flex min-h-0 flex-1 flex-col bg-muted/45 text-foreground dark:bg-muted/25">
       <div
@@ -343,16 +371,29 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               direction="horizontal"
               className="h-full min-h-0 min-w-0 flex-1 box-border"
               onLayout={(sizes) => {
-                const [p, m, s] = sizes;
-                store.patch((cur) => ({
-                  ...cur,
-                  sizes: {
-                    ...cur.sizes,
-                    primaryPct: p,
-                    mainPct: m,
-                    secondaryPct: s,
-                  },
-                }));
+                store.patch((cur) => {
+                  if (sizes.length >= 3) {
+                    const [p, m, s] = sizes;
+                    return {
+                      ...cur,
+                      sizes: {
+                        ...cur.sizes,
+                        primaryPct: p,
+                        mainPct: m,
+                        secondaryPct: s,
+                      },
+                    };
+                  }
+                  const [p, m] = sizes;
+                  return {
+                    ...cur,
+                    sizes: {
+                      ...cur.sizes,
+                      primaryPct: p,
+                      mainPct: m,
+                    },
+                  };
+                });
               }}
             >
               <Panel
@@ -371,97 +412,111 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 }}
                 className="min-w-0"
               >
-                {showLeft ? (
-                  <div className="flex h-full min-h-0">
-                    {showMenuRail ? (
-                      <div className="flex w-10 shrink-0 flex-col items-center gap-1 border-r border-border bg-muted/15 py-2">
-                        {railItems.map((it) => {
-                          const railActive = Boolean(
-                            activeTab?.tabTypeId && it.tabTypeId && it.tabTypeId === activeTab.tabTypeId,
-                          );
-                          return (
-                            <button
-                              key={it.id}
-                              type="button"
-                              className={`flex h-9 w-9 items-center justify-center rounded-md border text-[12px] ${
-                                railActive
-                                  ? "border-border bg-muted/50 text-foreground"
-                                  : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/30"
-                              }`}
-                              title={it.title}
-                              onClick={() => openFromRailItem(it)}
-                            >
-                              {it.icon ?? "•"}
-                            </button>
-                          );
-                        })}
-                        {widgetSlots.list("rail").map((w) => {
-                          const W = w.component;
-                          return (
-                            <div key={w.id} className="w-full border-t border-border/40 pt-1">
-                              <W slotId="rail" />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                    <div className="min-w-0 flex-1">
-                      {showSidebarPanel ? (
-                        primaryView ? (
-                          <div className="flex h-full min-h-0 flex-col">
-                            <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/10 px-2 py-1">
-                              <div className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
-                                {primaryView.title}
-                              </div>
-                              {panelMenu.listFor("primarySidebar", primaryView.id).length > 0 ? (
-                                <div className="relative">
-                                  <button
-                                    type="button"
-                                    className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
-                                    onClick={() => setPanelMenuOpen((v) => !v)}
-                                    title="Panel menu"
-                                  >
-                                    ⋯
-                                  </button>
-                                  {panelMenuOpen ? (
-                                    <div className="absolute right-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-md border border-border bg-background shadow-lg">
-                                      {panelMenu
-                                        .listFor("primarySidebar", primaryView.id)
-                                        .map((item) => (
-                                          <button
-                                            key={item.id}
-                                            type="button"
-                                            className="block w-full px-3 py-2 text-left text-[11px] text-foreground hover:bg-muted/40"
-                                            onClick={() => {
-                                              setPanelMenuOpen(false);
-                                              void Promise.resolve(
-                                                invokeCommand(item.commandId, item.commandArgs),
-                                              );
-                                            }}
-                                          >
-                                            {item.title}
-                                          </button>
-                                        ))}
-                                    </div>
-                                  ) : null}
+                <PanelGroup direction="horizontal" className="h-full min-h-0 min-w-0">
+                  <Panel
+                    ref={railPanelRef}
+                    order={1}
+                    defaultSize={18}
+                    minSize={0}
+                    maxSize={28}
+                    collapsible
+                    collapsedSize={0}
+                    className="min-w-0"
+                    onCollapse={() => store.setVisible("menuRail", false)}
+                    onExpand={() => store.setVisible("menuRail", true)}
+                  >
+                    <div className="flex h-full min-h-0 w-full flex-col items-center gap-1 border-r border-border bg-muted/15 py-2">
+                      {railItems.map((it) => {
+                        const railActive = Boolean(
+                          activeTab?.tabTypeId && it.tabTypeId && it.tabTypeId === activeTab.tabTypeId,
+                        );
+                        return (
+                          <button
+                            key={it.id}
+                            type="button"
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-[12px] ${
+                              railActive
+                                ? "border-border bg-muted/50 text-foreground"
+                                : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/30"
+                            }`}
+                            title={it.title}
+                            onClick={() => openFromRailItem(it)}
+                          >
+                            {it.icon ?? "•"}
+                          </button>
+                        );
+                      })}
+                      {widgetSlots.list("rail").map((w) => {
+                        const W = w.component;
+                        return (
+                          <div key={w.id} className="w-full border-t border-border/40 pt-1">
+                            <W slotId="rail" />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Panel>
+                  <PanelResizeHandle className="nodex-panel-sash relative w-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-y-0 before:left-1/2 before:z-10 before:w-px before:-translate-x-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
+                  <Panel
+                    ref={sidebarPanelRef}
+                    order={2}
+                    defaultSize={82}
+                    minSize={0}
+                    collapsible
+                    collapsedSize={0}
+                    className="min-w-0"
+                    onCollapse={() => store.setVisible("sidebarPanel", false)}
+                    onExpand={() => store.setVisible("sidebarPanel", true)}
+                  >
+                    {primaryView ? (
+                      <div className="flex h-full min-h-0 flex-col">
+                        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/10 px-2 py-1">
+                          <div className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
+                            {primaryView.title}
+                          </div>
+                          {panelMenu.listFor("primarySidebar", primaryView.id).length > 0 ? (
+                            <div className="relative">
+                              <button
+                                type="button"
+                                className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
+                                onClick={() => setPanelMenuOpen((v) => !v)}
+                                title="Panel menu"
+                              >
+                                ⋯
+                              </button>
+                              {panelMenuOpen ? (
+                                <div className="absolute right-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-md border border-border bg-background shadow-lg">
+                                  {panelMenu
+                                    .listFor("primarySidebar", primaryView.id)
+                                    .map((item) => (
+                                      <button
+                                        key={item.id}
+                                        type="button"
+                                        className="block w-full px-3 py-2 text-left text-[11px] text-foreground hover:bg-muted/40"
+                                        onClick={() => {
+                                          setPanelMenuOpen(false);
+                                          void Promise.resolve(
+                                            invokeCommand(item.commandId, item.commandArgs),
+                                          );
+                                        }}
+                                      >
+                                        {item.title}
+                                      </button>
+                                    ))}
                                 </div>
                               ) : null}
                             </div>
-                            <div className="min-h-0 flex-1">
-                              <ShellViewHost view={primaryView} />
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="h-full min-h-0 w-full bg-background" />
-                        )
-                      ) : (
-                        <div className="h-full min-h-0 w-full bg-background" />
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-full min-h-0 w-full bg-background" />
-                )}
+                          ) : null}
+                        </div>
+                        <div className="min-h-0 flex-1">
+                          <ShellViewHost view={primaryView} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-full min-h-0 w-full bg-background" />
+                    )}
+                  </Panel>
+                </PanelGroup>
               </Panel>
               {renderSash("sash-primary")}
               <Panel defaultSize={hSizes[1]} minSize={30} className="min-w-0">
@@ -469,25 +524,25 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                   {mainView ? <ShellViewHost view={mainView} activeMainTab={activeTab} /> : null}
                 </div>
               </Panel>
-              {renderSash("sash-secondary")}
-              <Panel
-                ref={secondaryRef}
-                defaultSize={hSizes[2]}
-                minSize={showSecondary ? 8 : 0}
-                collapsible
-                collapsedSize={0}
-                onCollapse={() => store.setVisible("secondaryArea", false)}
-                onExpand={() => store.setVisible("secondaryArea", true)}
-                className="min-w-0"
-              >
-                {showSecondary ? (
-                  <div className="h-full min-h-0 w-full bg-background">
-                    {secondaryView ? <ShellViewHost view={secondaryView} /> : null}
-                  </div>
-                ) : (
-                  <div className="h-full min-h-0 w-full bg-background" />
-                )}
-              </Panel>
+              {showSecondary ? (
+                <>
+                  {renderSash("sash-secondary")}
+                  <Panel
+                    ref={secondaryRef}
+                    defaultSize={hSizes[2]}
+                    minSize={8}
+                    collapsible
+                    collapsedSize={0}
+                    onCollapse={() => store.setVisible("secondaryArea", false)}
+                    onExpand={() => store.setVisible("secondaryArea", true)}
+                    className="min-w-0"
+                  >
+                    <div className="h-full min-h-0 w-full bg-background">
+                      {secondaryView ? <ShellViewHost view={secondaryView} /> : null}
+                    </div>
+                  </Panel>
+                </>
+              ) : null}
             </PanelGroup>
           </Panel>
 
