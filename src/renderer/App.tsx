@@ -28,6 +28,7 @@ import PrimarySidebarShell, {
 import type { PluginsSidebarSelection } from "./components/shell/PluginsSidebarList";
 import { AppShellBody } from "./app/AppShellBody";
 import { AppShellMainColumn } from "./app/AppShellMainColumn";
+import { NodexModeLineHost } from "./shell/NodexModeLineHost";
 import {
   LEFT_COLLAPSED_PCT,
   LEFT_EXPANDED_PCT,
@@ -536,6 +537,7 @@ const App: React.FC = () => {
           </Panel>
         </PanelGroup>
       </div>
+      <NodexModeLineHost />
     </div>
   );
 };

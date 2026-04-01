@@ -50,11 +50,14 @@ interface SecurePluginRendererProps {
 const BRIDGE_REQUEST = "nodex-request-bridge";
 const BRIDGE_READY = "nodex-bridge-ready";
 
-/** DevTools + webpack dev server fetch source maps over http/ws; without connect-src, default-src 'none' blocks them. */
-const PLUGIN_IFRAME_CSP_CONNECT_DEV =
+/**
+ * Single `connect-src` for plugin sandbox (`about:srcdoc`). Must not append a second `connect-src`
+ * in dev — Chromium ignores duplicates and leaves only the first, blocking localhost/webpack.
+ */
+const PLUGIN_IFRAME_CSP_CONNECT_SRC =
   process.env.NODE_ENV === "development"
-    ? " connect-src http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss://localhost:* wss://127.0.0.1:*"
-    : "";
+    ? "connect-src nodex-pdf-worker: blob: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss://localhost:* wss://127.0.0.1:*"
+    : "connect-src nodex-pdf-worker: blob:";
 
 /** Chromium built-in PDF viewer nests extension frames (same ID as Chrome). */
 const PLUGIN_IFRAME_CSP_PDF_FRAME =
@@ -623,7 +626,7 @@ function createSandboxedHTML(
 <html class="${dark ? "dark" : ""}">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob: nodex-pdf-worker:; worker-src blob: nodex-pdf-worker:; style-src 'unsafe-inline' blob:; img-src 'self' nodex-asset: data: blob:; media-src 'self' nodex-asset: data: blob:; frame-src 'self' nodex-asset: blob: data: about:${PLUGIN_IFRAME_CSP_PDF_FRAME}; object-src 'self' nodex-asset: blob: data:; font-src data: blob:; connect-src nodex-pdf-worker:;${PLUGIN_IFRAME_CSP_CONNECT_DEV}">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob: nodex-pdf-worker:; worker-src blob: nodex-pdf-worker:; style-src 'unsafe-inline' blob:; img-src 'self' nodex-asset: data: blob:; media-src 'self' nodex-asset: data: blob:; frame-src 'self' nodex-asset: blob: data: about:${PLUGIN_IFRAME_CSP_PDF_FRAME}; object-src 'self' nodex-asset: blob: data:; font-src data: blob:; ${PLUGIN_IFRAME_CSP_CONNECT_SRC}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   ${themeStyle}
   ${videoJsStyle}

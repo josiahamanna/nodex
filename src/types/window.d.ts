@@ -5,6 +5,8 @@ declare global {
     Nodex: NodexRendererApi;
     /** Set in plugin sandbox HTML; pdf.js worker URL (`nodex-pdf-worker:`). */
     __NODEX_PDFJS_WORKER_SRC__?: string;
+    /** Base URL of the headless HTTP API (no trailing slash), e.g. from `?web=1&api=…`. */
+    __NODEX_WEB_API_BASE__?: string;
   }
 }
 

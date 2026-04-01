@@ -4,6 +4,8 @@ export const IPC_CHANNELS = {
   UI_TOGGLE_DEVTOOLS: "ui:toggle-devtools",
   UI_QUIT_APP: "ui:quit-app",
   UI_RELOAD_WINDOW: "ui:reload-window",
+  /** Main → renderer: trigger `NodexContributionRegistry.invokeCommand` (e.g. dev menu). */
+  UI_RUN_CONTRIBUTION_COMMAND: "ui:run-contribution-command",
   GET_PLUGIN_RENDERER_UI_META: "plugin:get-renderer-ui-meta",
   GET_PLUGIN_MANIFEST_UI: "plugin:get-manifest-ui",
   GET_NOTE: "note:get",

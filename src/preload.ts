@@ -405,6 +405,17 @@ const api: NodexRendererApi = {
     ipcRenderer.on(ch, fn);
     return () => ipcRenderer.removeListener(ch, fn);
   },
+  onRunContributionCommand: (callback) => {
+    const ch = IPC_CHANNELS.UI_RUN_CONTRIBUTION_COMMAND;
+    const fn = (_e: unknown, detail: unknown) => {
+      const d = detail as { commandId?: string };
+      if (typeof d?.commandId === "string") {
+        callback({ commandId: d.commandId });
+      }
+    };
+    ipcRenderer.on(ch, fn);
+    return () => ipcRenderer.removeListener(ch, fn);
+  },
   getPluginRendererUiMeta: (noteType) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_RENDERER_UI_META, noteType),
   getPluginManifestUi: (pluginName) =>

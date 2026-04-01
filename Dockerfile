@@ -1,0 +1,30 @@
+# Headless Nodex HTTP API only (no Electron UI in this image).
+# Native module: better-sqlite3 is rebuilt for Linux inside the image.
+
+FROM node:22-bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+
+# postinstall runs electron-rebuild — skip (no Electron in container), then compile sqlite for Node.
+RUN npm ci --ignore-scripts \
+    && npm rebuild better-sqlite3
+
+COPY tsconfig.json ./
+COPY src ./src
+
+ENV NODE_ENV=production
+# Listen on all interfaces so `docker run -p` / Compose port mappings work.
+ENV HOST=0.0.0.0
+ENV PORT=3847
+
+EXPOSE 3847
+
+CMD ["npx", "tsx", "src/nodex-api-server/server.ts"]

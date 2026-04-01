@@ -7,6 +7,17 @@
   <title>Nodex - Programmable Knowledge System</title>
 </head>
 <body>
+  <script>
+    (function () {
+      try {
+        var q = new URLSearchParams(window.location.search);
+        if (q.get("web") === "1" || q.get("web") === "true") {
+          var api = q.get("api");
+          if (api) window.__NODEX_WEB_API_BASE__ = api;
+        }
+      } catch (e) {}
+    })();
+  </script>
   <div id="root"></div>
 </body>
 </html>

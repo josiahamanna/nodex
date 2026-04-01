@@ -5,7 +5,11 @@ import { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import { Provider } from "react-redux";
 import { store } from "./store";
+import { installNodexWebShimIfNeeded } from "./nodex-web-shim";
 import App from "./App";
+
+installNodexWebShimIfNeeded();
+import { NodexContributionProvider } from "./shell/NodexContributionContext";
 import { NodexDialogProvider } from "./dialog/NodexDialogProvider";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { ToastProvider } from "./toast/ToastContext";
@@ -47,7 +51,9 @@ root.render(
       <ToastProvider>
         <NodexDialogProvider>
           <Provider store={store}>
-            <App />
+            <NodexContributionProvider>
+              <App />
+            </NodexContributionProvider>
           </Provider>
         </NodexDialogProvider>
       </ToastProvider>

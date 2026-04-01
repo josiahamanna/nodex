@@ -460,6 +460,10 @@ export type NodexRendererApi = {
   onNativeThemeChanged: (
     callback: (isDark: boolean) => void,
   ) => () => void;
+  /** Subscribe to main-process menu (or other) triggers that run an in-app command by id. */
+  onRunContributionCommand: (
+    callback: (detail: { commandId: string }) => void,
+  ) => () => void;
   getPluginRendererUiMeta: (
     noteType: string,
   ) => Promise<{

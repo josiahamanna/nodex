@@ -1,0 +1,284 @@
+openapi: 3.0.3
+info:
+  title: Nodex HTTP API
+  description: |
+    Contract sketch for the Nodex backend: **resource REST** for durable state and **command invoke**
+    for the shared command registry (palette / mini bar parity). Real paths and schemas will grow with implementation.
+
+    **Real-time:** WebSocket or SSE endpoints (e.g. `/api/v1/events`) are intentionally not fully specified here;
+    document event names and payloads alongside this file when they exist.
+  version: 0.1.0
+
+servers:
+  - url: /api/v1
+    description: API prefix (same origin as SPA in production)
+
+tags:
+  - name: Commands
+    description: Invoke registered command ids (mirrors in-app command registry)
+  - name: Notes
+    description: Note resources
+  - name: Meta
+    description: Health and discovery
+
+paths:
+  /health:
+    get:
+      tags: [Meta]
+      summary: Liveness probe
+      operationId: getHealth
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+
+  /commands/registry:
+    get:
+      tags: [Commands]
+      summary: List command metadata for palette / mini bar (optional discovery)
+      operationId: listCommands
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Registered commands with titles and visibility flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  commands:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CommandDescriptor"
+
+  /commands/{commandId}/invoke:
+    post:
+      tags: [Commands]
+      summary: Execute a command by technical id
+      operationId: invokeCommand
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: nodex.notes.create
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvokeCommandBody"
+      responses:
+        "200":
+          description: Command result (shape depends on command)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          description: Invalid arguments
+        "403":
+          description: Forbidden for current principal
+        "404":
+          description: Unknown command id
+
+  /notes:
+    get:
+      tags: [Notes]
+      summary: List notes (paginated)
+      operationId: listNotes
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Note list page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteListPage"
+    post:
+      tags: [Notes]
+      summary: Create note
+      operationId: createNote
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NoteCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+
+  /notes/{noteId}:
+    parameters:
+      - name: noteId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Notes]
+      summary: Get note by id
+      operationId: getNote
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "404":
+          description: Not found
+    patch:
+      tags: [Notes]
+      summary: Partial update note
+      operationId: patchNote
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+    delete:
+      tags: [Notes]
+      summary: Delete note
+      operationId: deleteNote
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "204":
+          description: Deleted
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: nodex_session
+
+  schemas:
+    CommandDescriptor:
+      type: object
+      required: [id, title]
+      properties:
+        id:
+          type: string
+          description: Technical id e.g. pluginId.commandName
+        title:
+          type: string
+        category:
+          type: string
+        sourcePluginId:
+          type: string
+          nullable: true
+        disambiguation:
+          type: string
+          description: Extra label when titles collide
+        palette:
+          type: boolean
+          default: true
+        miniBar:
+          type: boolean
+          default: true
+        doc:
+          type: string
+          nullable: true
+
+    InvokeCommandBody:
+      type: object
+      properties:
+        args:
+          type: object
+          additionalProperties: true
+        context:
+          type: object
+          description: Optional UI context (active note id, workspace, etc.)
+          additionalProperties: true
+
+    Note:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+        body:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+
+    NoteCreate:
+      type: object
+      properties:
+        title:
+          type: string
+        type:
+          type: string
+        parentId:
+          type: string
+          nullable: true
+
+    NoteListPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Note"
+        nextCursor:
+          type: string
+          nullable: true

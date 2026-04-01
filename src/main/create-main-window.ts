@@ -1,4 +1,5 @@
 import { BrowserWindow, Menu, app, type MenuItemConstructorOptions } from "electron";
+import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { ctx } from "./main-context";
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
@@ -44,20 +45,41 @@ export function createMainWindow(): void {
           submenu: [{ role: "quit" }],
         };
 
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      appMenu,
-      {
-        label: "View",
-        submenu: [
-          { role: "reload", accelerator: "CmdOrCtrl+R" },
-          { type: "separator" },
-          /** Default accelerator is Ctrl+Shift+I (Linux/Win); F12 / Cmd+Opt+I in before-input-event. */
-          { role: "toggleDevTools" },
-        ],
-      },
-    ]),
-  );
+  const template: MenuItemConstructorOptions[] = [
+    appMenu,
+    {
+      label: "View",
+      submenu: [
+        { role: "reload", accelerator: "CmdOrCtrl+R" },
+        { type: "separator" },
+        /** Default accelerator is Ctrl+Shift+I (Linux/Win); F12 / Cmd+Opt+I in before-input-event. */
+        { role: "toggleDevTools" },
+      ],
+    },
+  ];
+
+  if (process.env.NODE_ENV === "development") {
+    template.push({
+      label: "Developer",
+      submenu: [
+        {
+          label: "Log contribution registry count",
+          accelerator:
+            process.platform === "darwin"
+              ? "Alt+Cmd+Shift+L"
+              : "Ctrl+Shift+Alt+L",
+          click: (_item, browserWindow) => {
+            const win = browserWindow ?? ctx.mainWindow;
+            win?.webContents.send(IPC_CHANNELS.UI_RUN_CONTRIBUTION_COMMAND, {
+              commandId: "nodex.contributions.listCommands",
+            });
+          },
+        },
+      ],
+    });
+  }
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 
   ctx.mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
