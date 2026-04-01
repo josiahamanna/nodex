@@ -1,3 +1,4 @@
+import * as path from "path";
 import cors from "cors";
 import express from "express";
 import { initHeadlessFromEnv } from "./headless-bootstrap";
@@ -17,6 +18,22 @@ app.use(
   }),
 );
 app.use(express.json({ limit: "32mb" }));
+
+function resolveMarketplaceStaticDir(): string {
+  const raw = process.env.NODEX_MARKETPLACE_DIR?.trim();
+  if (raw) {
+    return path.resolve(raw);
+  }
+  return path.resolve(process.cwd(), "dist", "plugins");
+}
+
+app.use(
+  "/marketplace/files",
+  express.static(resolveMarketplaceStaticDir(), {
+    index: false,
+    fallthrough: false,
+  }),
+);
 
 app.use("/api/v1", createNodexApiRouter());
 

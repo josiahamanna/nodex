@@ -8,6 +8,7 @@ import SettingsView, {
   type SettingsCategory,
 } from "../components/SettingsView";
 import PluginPanelGeneral from "../components/PluginPanelGeneral";
+import PluginPanelMarketplace from "../components/PluginPanelMarketplace";
 import type { PrimaryTab } from "../components/shell/PrimarySidebarShell";
 import type { PluginsSidebarSelection } from "../components/shell/PluginsSidebarList";
 import type { NotesMainPane } from "./app-shell-types";
@@ -117,6 +118,9 @@ export function AppShellMainColumn(props: AppShellMainColumnProps): React.ReactN
   }
   if (pluginsShell.kind === "general") {
     return <PluginPanelGeneral onPluginsChanged={onPluginsChanged} />;
+  }
+  if (pluginsShell.kind === "market") {
+    return <PluginPanelMarketplace onPluginsChanged={onPluginsChanged} />;
   }
   return (
     <PluginManager

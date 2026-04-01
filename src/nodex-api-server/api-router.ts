@@ -22,11 +22,30 @@ import { isWorkspaceMountNoteId } from "../shared/note-workspace";
 import { isValidNoteId, isValidNoteType } from "../shared/validators";
 import {
   assertProjectOpen,
+  getHeadlessUserDataPath,
   headlessRegisteredTypes,
   headlessSelectableNoteTypes,
   headlessWorkspaceRoots,
   getHeadlessProjectStateView,
 } from "./headless-bootstrap";
+import {
+  getHeadlessSessionRegistry,
+  installHeadlessMarketplacePlugin,
+} from "./headless-marketplace-session";
+import {
+  filterMarketplaceIndexByExistingFiles,
+  loadMarketplaceIndex,
+} from "../shared/marketplace-index";
+
+const MARKETPLACE_FILES_BASE = "/marketplace/files";
+
+function resolveHeadlessMarketplaceDir(): string {
+  const raw = process.env.NODEX_MARKETPLACE_DIR?.trim();
+  if (raw) {
+    return path.resolve(raw);
+  }
+  return path.resolve(process.cwd(), "dist", "plugins");
+}
 
 const MAX_NOTE_TITLE_CHARS = 4_000;
 
@@ -98,6 +117,118 @@ export function createNodexApiRouter(): Router {
 
   router.get("/health", (_req, res) => {
     res.json({ ok: true });
+  });
+
+  router.get("/marketplace/plugins", (_req, res) => {
+    const marketDir = resolveHeadlessMarketplaceDir();
+    const loaded = loadMarketplaceIndex(marketDir);
+    if (!loaded.ok) {
+      res.json({
+        filesBasePath: MARKETPLACE_FILES_BASE,
+        marketplaceDir: marketDir,
+        generatedAt: "",
+        plugins: [] as unknown[],
+        indexError: loaded.error,
+      });
+      return;
+    }
+    const data = filterMarketplaceIndexByExistingFiles(marketDir, loaded.data);
+    res.json({
+      filesBasePath: MARKETPLACE_FILES_BASE,
+      marketplaceDir: marketDir,
+      generatedAt: data.generatedAt,
+      plugins: data.plugins,
+    });
+  });
+
+  router.post("/marketplace/session-install", async (req, res) => {
+    try {
+      const body = (req.body ?? {}) as { packageFile?: string };
+      const raw =
+        typeof body.packageFile === "string" ? body.packageFile.trim() : "";
+      if (!/^[a-zA-Z0-9._-]+\.nodexplugin$/.test(raw)) {
+        res.status(400).json({
+          success: false,
+          error: "packageFile must be a .nodexplugin basename (no paths)",
+        });
+        return;
+      }
+      const packageBasename = raw;
+      const result = await installHeadlessMarketplacePlugin({
+        marketplaceDir: resolveHeadlessMarketplaceDir(),
+        packageBasename,
+        userDataPath: getHeadlessUserDataPath(),
+      });
+      if (!result.success) {
+        res.status(400).json(result);
+        return;
+      }
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  });
+
+  router.post("/plugins/render-html", async (req, res) => {
+    try {
+      const body = (req.body ?? {}) as { type?: unknown; note?: unknown };
+      if (!isValidNoteType(body.type)) {
+        res.status(400).json({ error: "Invalid type" });
+        return;
+      }
+      const note = body.note as Note;
+      if (
+        !note ||
+        typeof note !== "object" ||
+        !isValidNoteId((note as Note).id) ||
+        !isValidNoteType((note as Note).type)
+      ) {
+        res.status(400).json({ error: "Invalid note" });
+        return;
+      }
+      const renderer = getHeadlessSessionRegistry().getRenderer(
+        String(body.type),
+      );
+      if (!renderer) {
+        res.status(404).json({
+          error: `No headless renderer for type "${String(body.type)}". Install the plugin from Market for this API session.`,
+        });
+        return;
+      }
+      const html = await Promise.resolve(renderer.render(note));
+      if (typeof html !== "string" || !html.length) {
+        res.status(500).json({ error: "Renderer returned empty HTML" });
+        return;
+      }
+      res.json({ html });
+    } catch (e) {
+      res.status(500).json({
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  });
+
+  router.get("/plugins/renderer-meta", (req, res) => {
+    const q = req.query.type;
+    const type = typeof q === "string" ? q : "";
+    if (!isValidNoteType(type)) {
+      res.status(400).json({ error: "Invalid type" });
+      return;
+    }
+    const renderer = getHeadlessSessionRegistry().getRenderer(type);
+    if (!renderer) {
+      res.json(null);
+      return;
+    }
+    res.json({
+      theme: renderer.theme ?? "inherit",
+      deferDisplayUntilContentReady:
+        renderer.deferDisplayUntilContentReady === true,
+      designSystemVersion: renderer.designSystemVersion ?? null,
+    });
   });
 
   router.get("/project/state", (_req, res) => {

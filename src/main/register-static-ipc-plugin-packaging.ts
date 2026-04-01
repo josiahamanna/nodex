@@ -10,6 +10,22 @@ import { ctx, getPluginLoader } from "./main-context";
 import { getDialogParent, showOpenDialogWithParent } from "./main-helpers";
 import { registry } from "../core/registry";
 import { emitPluginProgress } from "../core/plugin-progress";
+import {
+  filterMarketplaceIndexByExistingFiles,
+  loadMarketplaceIndex,
+} from "../shared/marketplace-index";
+
+function resolveElectronMarketplaceDir(): string {
+  const env = process.env.NODEX_MARKETPLACE_DIR?.trim();
+  if (env) {
+    return path.resolve(env);
+  }
+  const packaged = path.join(process.resourcesPath, "marketplace", "plugins");
+  if (app.isPackaged && fs.existsSync(packaged)) {
+    return packaged;
+  }
+  return path.resolve(process.cwd(), "dist", "plugins");
+}
 
 export function registerStaticIpcPluginPackagingHandlers(): void {
 ipcMain.handle(IPC_CHANNELS.SELECT_ZIP_FILE, async () => {
@@ -307,6 +323,73 @@ ipcMain.handle(IPC_CHANNELS.IMPORT_PLUGIN, async (_event, zipPath: string) => {
 ipcMain.handle(IPC_CHANNELS.VALIDATE_PLUGIN_ZIP, async (_event, zipPath: string) => {
   return packageManager.validatePackage(zipPath);
 });
+
+ipcMain.handle(IPC_CHANNELS.MARKETPLACE_LIST_PLUGINS, async () => {
+  const marketDir = resolveElectronMarketplaceDir();
+  const loaded = loadMarketplaceIndex(marketDir);
+  if (!loaded.ok) {
+    return {
+      filesBasePath: "",
+      marketplaceDir: marketDir,
+      generatedAt: "",
+      plugins: [],
+      indexError: loaded.error,
+    };
+  }
+  const data = filterMarketplaceIndexByExistingFiles(marketDir, loaded.data);
+  return {
+    filesBasePath: "",
+    marketplaceDir: marketDir,
+    generatedAt: data.generatedAt,
+    plugins: data.plugins,
+  };
+});
+
+ipcMain.handle(
+  IPC_CHANNELS.MARKETPLACE_INSTALL_PLUGIN,
+  async (_event, packageFile: string) => {
+    const base = path.basename(packageFile);
+    if (typeof packageFile !== "string" || base !== packageFile) {
+      return { success: false, error: "Invalid package file name" };
+    }
+    if (!/^[a-zA-Z0-9._-]+\.nodexplugin$/.test(base)) {
+      return { success: false, error: "Expected a .nodexplugin basename" };
+    }
+    const marketDir = path.resolve(resolveElectronMarketplaceDir());
+    const abs = path.resolve(path.join(marketDir, base));
+    const rel = path.relative(marketDir, abs);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      return { success: false, error: "Invalid path" };
+    }
+    if (!fs.existsSync(abs)) {
+      return { success: false, error: "Package not found in marketplace directory" };
+    }
+    const userDataPath = app.getPath("userData");
+    try {
+      const { warnings } = await getPluginLoader().importFromZip(abs, registry);
+      appendPluginAudit(userDataPath, {
+        action: "import-marketplace",
+        detail: base,
+        ok: true,
+      });
+      if (ctx.mainWindow) {
+        ctx.mainWindow.webContents.send(IPC_CHANNELS.PLUGINS_CHANGED);
+      }
+      return { success: true, warnings };
+    } catch (error: unknown) {
+      console.error("[Main] Marketplace plugin install failed:", error);
+      appendPluginAudit(userDataPath, {
+        action: "import-marketplace",
+        detail: base,
+        ok: false,
+      });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  },
+);
 
 ipcMain.handle(
   IPC_CHANNELS.GET_PLUGIN_INSTALL_PLAN,

@@ -5,6 +5,8 @@
 export type {
   CreateNoteRelation,
   MainDebugLogEntry,
+  MarketplaceListResponse,
+  MarketplacePluginRow,
   Note,
   NoteListItem,
   NoteMovePlacement,

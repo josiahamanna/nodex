@@ -18,11 +18,18 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
-    void window.Nodex.getUserPluginsDirectory().then((r) => {
-      if (r.path) {
-        setPath(r.path);
-      }
-    });
+    void window.Nodex
+      .getUserPluginsDirectory()
+      .then((r) => {
+        if (r.path) {
+          setPath(r.path);
+        } else {
+          setPath(r.error ?? "—");
+        }
+      })
+      .catch((e) => {
+        setPath(e instanceof Error ? e.message : "Failed to load plugins directory");
+      });
   }, []);
 
   const handleImportPlugin = async () => {
@@ -71,6 +78,8 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
       const again = await window.Nodex.getUserPluginsDirectory();
       if (again.path) {
         setPath(again.path);
+      } else if (again.error) {
+        setPath(again.error);
       }
     } catch (e) {
       setMessage({
@@ -97,6 +106,8 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
         const again = await window.Nodex.getUserPluginsDirectory();
         if (again.path) {
           setPath(again.path);
+        } else if (again.error) {
+          setPath(again.error);
         }
       } else {
         setMessage({

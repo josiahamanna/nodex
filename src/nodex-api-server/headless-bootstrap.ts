@@ -6,6 +6,10 @@ import {
   readProjectPrefs,
   type ActivateProjectResult,
 } from "../core/project-session";
+import {
+  getHeadlessSessionRegistry,
+  loadPersistedHeadlessSessionPlugins,
+} from "./headless-marketplace-session";
 
 /** Types passed to `activateWorkspace` / seeding when no Electron plugin registry is loaded. */
 const HEADLESS_REGISTERED_TYPES = ["markdown", "text", "root"];
@@ -29,6 +33,9 @@ export function initHeadlessFromEnv(): ActivateProjectResult {
     HEADLESS_REGISTERED_TYPES,
   );
   lastResult = r;
+  if (r.ok && r.workspaceRoots.length > 0) {
+    loadPersistedHeadlessSessionPlugins(userDataPath);
+  }
   if (r.ok && r.workspaceRoots.length === 0) {
     return {
       ok: false,
@@ -89,10 +96,14 @@ export function headlessWorkspaceRoots(): string[] {
 }
 
 export function headlessRegisteredTypes(): string[] {
-  return [...HEADLESS_REGISTERED_TYPES];
+  const extra = getHeadlessSessionRegistry().getRegisteredTypes();
+  return [...new Set([...HEADLESS_REGISTERED_TYPES, ...extra])].sort();
 }
 
 /** Note types allowed in create-note picker (no `root` pseudo-type). */
 export function headlessSelectableNoteTypes(): string[] {
-  return HEADLESS_REGISTERED_TYPES.filter((t) => t !== "root");
+  const reg = getHeadlessSessionRegistry();
+  const fromRegistry = reg.getSelectableNoteTypes();
+  const basePick = HEADLESS_REGISTERED_TYPES.filter((t) => t !== "root");
+  return [...new Set([...basePick, ...fromRegistry])].sort();
 }

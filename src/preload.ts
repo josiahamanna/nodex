@@ -7,6 +7,8 @@ import type { NodexRendererApi } from "./shared/nodex-renderer-api";
 export type {
   CreateNoteRelation,
   MainDebugLogEntry,
+  MarketplaceListResponse,
+  MarketplacePluginRow,
   Note,
   NoteListItem,
   NoteMovePlacement,
@@ -53,6 +55,10 @@ const api: NodexRendererApi = {
   selectZipFile: () => ipcRenderer.invoke(IPC_CHANNELS.SELECT_ZIP_FILE),
   importPlugin: (zipPath) =>
     ipcRenderer.invoke(IPC_CHANNELS.IMPORT_PLUGIN, zipPath),
+  listMarketplacePlugins: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MARKETPLACE_LIST_PLUGINS),
+  installMarketplacePlugin: (packageFile) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MARKETPLACE_INSTALL_PLUGIN, packageFile),
   getInstalledPlugins: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_INSTALLED_PLUGINS),
   getPluginInventory: () =>

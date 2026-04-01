@@ -1,6 +1,82 @@
-import type { NodexRendererApi } from "../shared/nodex-renderer-api";
+import type {
+  MarketplaceListResponse,
+  NodexRendererApi,
+} from "../shared/nodex-renderer-api";
 
 const noopUnsub = (): void => {};
+
+/** Dispatched after headless marketplace session-install so UI refreshes note types. */
+export const NODEX_WEB_PLUGINS_CHANGED = "nodex-web-plugins-changed";
+
+/** Persisted headless API origin for `?web=1` (no `api=` query needed). */
+export const NODEX_WEB_HEADLESS_API_STORAGE_KEY = "nodex-headless-api-base";
+
+export type HeadlessApiPreset = { label: string; value: string };
+
+export function normalizeHeadlessApiBase(url: string): string {
+  return url.trim().replace(/\/$/, "");
+}
+
+/** Presets for the web UI dropdown (call from client components so dev proxy uses current host). */
+export function getHeadlessApiPresetOptions(): HeadlessApiPreset[] {
+  const opts: HeadlessApiPreset[] = [
+    { label: "127.0.0.1:3847", value: "http://127.0.0.1:3847" },
+    { label: "localhost:3847", value: "http://localhost:3847" },
+  ];
+  if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+    const origin = normalizeHeadlessApiBase(window.location.origin);
+    opts.unshift({
+      label: `${window.location.host} (dev proxy)`,
+      value: origin,
+    });
+  }
+  return opts;
+}
+
+/**
+ * Resolve `window.__NODEX_WEB_API_BASE__` before `installNodexWebShimIfNeeded` (Next / plain browser only).
+ * Order: `api` query → localStorage → if `?web=1`: dev same-origin (proxy) or http://127.0.0.1:3847.
+ * Without `web=1` and no saved `api`, leaves unset so the Market tab can prompt via dropdown.
+ */
+export function initHeadlessWebApiBaseFromUrlAndStorage(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const q = new URLSearchParams(window.location.search);
+  const web = q.get("web") === "1" || q.get("web") === "true";
+
+  const api = q.get("api")?.trim();
+  if (api) {
+    window.__NODEX_WEB_API_BASE__ = normalizeHeadlessApiBase(api);
+    return;
+  }
+  try {
+    const s = localStorage.getItem(NODEX_WEB_HEADLESS_API_STORAGE_KEY)?.trim();
+    if (s) {
+      window.__NODEX_WEB_API_BASE__ = normalizeHeadlessApiBase(s);
+      return;
+    }
+  } catch {
+    /* private mode */
+  }
+  if (!web) {
+    return;
+  }
+  if (process.env.NODE_ENV === "development") {
+    window.__NODEX_WEB_API_BASE__ = normalizeHeadlessApiBase(
+      window.location.origin,
+    );
+  } else {
+    window.__NODEX_WEB_API_BASE__ = "http://127.0.0.1:3847";
+  }
+}
+
+/** True when the UI runs in Electron (hide browser-only headless controls). */
+export function isElectronUserAgent(): boolean {
+  return (
+    typeof navigator !== "undefined" && navigator.userAgent.includes("Electron")
+  );
+}
 
 async function webRequest<T>(
   baseUrl: string,
@@ -31,6 +107,10 @@ async function webRequest<T>(
         msg = text;
       }
     }
+    const isHtml = /<\s*html[\s>]/i.test(text) || /<\s*!doctype/i.test(text);
+    if (isHtml && /cannot\s+post/i.test(msg)) {
+      msg = `${msg.trim()}\n\nThe server has no route for this request. Restart the headless API from this repo (\`npm run start:api\`) or rebuild the API image so it includes POST /api/v1/marketplace/session-install.`;
+    }
     throw new Error(msg);
   }
   if (res.status === 204 || text.length === 0) {
@@ -41,7 +121,7 @@ async function webRequest<T>(
 
 /**
  * Minimal `window.Nodex` for browser dev: talks to the headless API (`src/nodex-api-server`) over HTTP.
- * Set `window.__NODEX_WEB_API_BASE__` (see `index.html` query bootstrap) before the bundle runs.
+ * Set `window.__NODEX_WEB_API_BASE__` via `initHeadlessWebApiBaseFromUrlAndStorage()` or the web API bar before the bundle runs.
  */
 export function createWebNodexApi(baseUrl: string): NodexRendererApi {
   const req = <T>(method: string, path: string, body?: unknown) =>
@@ -72,7 +152,13 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
     saveNoteContent: (noteId, content) =>
       req("PATCH", `/notes/${encodeURIComponent(noteId)}`, { content }),
     getComponent: async () => null,
-    getPluginHTML: async () => null,
+    getPluginHTML: async (type, note) => {
+      const r = await req<{ html: string }>("POST", "/plugins/render-html", {
+        type,
+        note,
+      });
+      return r.html;
+    },
     getRegisteredTypes: async () => {
       const r = await req<{ types: string[] }>("GET", "/notes/types/registered");
       return r.types;
@@ -88,7 +174,94 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
     getAppPrefs: async () => ({ seedSampleNotes: true }),
     nodexUndo: () => req("POST", "/undo"),
     nodexRedo: () => req("POST", "/redo"),
-    onPluginsChanged: () => noopUnsub,
+    listMarketplacePlugins: () =>
+      req<MarketplaceListResponse>("GET", "/marketplace/plugins"),
+    installMarketplacePlugin: async (packageFile) => {
+      const out = await req<{
+        success: boolean;
+        error?: string;
+        warnings?: string[];
+      }>("POST", "/marketplace/session-install", { packageFile });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event(NODEX_WEB_PLUGINS_CHANGED));
+      }
+      return (
+        out ?? {
+          success: false,
+          error: "Empty response from marketplace/session-install",
+        }
+      );
+    },
+    getPluginRendererUiMeta: async (noteType) => {
+      const root = baseUrl.replace(/\/$/, "");
+      const u = `${root}/api/v1/plugins/renderer-meta?type=${encodeURIComponent(noteType)}`;
+      const res = await fetch(u);
+      if (!res.ok) {
+        return null;
+      }
+      const text = await res.text();
+      if (!text.length) {
+        return null;
+      }
+      const j = JSON.parse(text) as {
+        theme?: string;
+        deferDisplayUntilContentReady?: boolean;
+        designSystemVersion?: string | null;
+      } | null;
+      if (!j || typeof j !== "object") {
+        return null;
+      }
+      return {
+        theme: j.theme === "isolated" ? "isolated" : "inherit",
+        deferDisplayUntilContentReady: j.deferDisplayUntilContentReady === true,
+        designSystemVersion: j.designSystemVersion ?? undefined,
+      };
+    },
+    getUserPluginsDirectory: async () => ({
+      path: "",
+      error: "User plugin folder is only available in the Nodex desktop app.",
+    }),
+    selectZipFile: async () => null,
+    validatePluginZip: async () => ({
+      valid: false,
+      errors: ["Not available in web mode — use the desktop app to validate zips."],
+      warnings: [],
+    }),
+    importPlugin: async () => ({
+      success: false,
+      error: "Plugin import requires the Nodex desktop app.",
+    }),
+    deletePluginBinAndCaches: async () => ({
+      success: false,
+      error: "Not available in web mode.",
+    }),
+    deleteAllPluginSources: async () => ({
+      success: false,
+      error: "Not available in web mode.",
+    }),
+    formatNodexPluginData: async () => ({
+      success: false,
+      error: "Not available in web mode.",
+    }),
+    getInstalledPlugins: async () => [],
+    getPluginInventory: async () => [],
+    getDisabledPluginIds: async () => [],
+    setPluginEnabled: async () => ({
+      success: false,
+      error: "Not available in web mode.",
+    }),
+    uninstallPlugin: async () => ({
+      success: false,
+      error: "Not available in web mode.",
+    }),
+    onPluginsChanged: (callback) => {
+      if (typeof window === "undefined") {
+        return noopUnsub;
+      }
+      const fn = () => callback();
+      window.addEventListener(NODEX_WEB_PLUGINS_CHANGED, fn);
+      return () => window.removeEventListener(NODEX_WEB_PLUGINS_CHANGED, fn);
+    },
     onProjectRootChanged: () => noopUnsub,
     onPluginProgress: () => noopUnsub,
     onIdeWorkspaceFsChanged: () => noopUnsub,
@@ -130,6 +303,25 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
         );
     },
   });
+}
+
+/** Switch headless API origin at runtime (Next web shell); persists to localStorage. */
+export function applyHeadlessApiBase(raw: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const base = normalizeHeadlessApiBase(raw);
+  if (!/^https?:\/\/.+/i.test(base)) {
+    return;
+  }
+  window.__NODEX_WEB_API_BASE__ = base;
+  try {
+    localStorage.setItem(NODEX_WEB_HEADLESS_API_STORAGE_KEY, base);
+  } catch {
+    /* private mode */
+  }
+  window.Nodex = createWebNodexApi(base);
+  window.dispatchEvent(new Event(NODEX_WEB_PLUGINS_CHANGED));
 }
 
 /**
@@ -262,6 +454,17 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       warnings: [],
     }),
     importPlugin: async () => ({
+      success: false,
+      error: "Not available in plain browser",
+    }),
+    listMarketplacePlugins: async () => ({
+      filesBasePath: "",
+      generatedAt: "",
+      plugins: [],
+      indexError:
+        "Start the API (npm run start:api), then pick its URL under Market → Headless API (or use ?api= on the page URL).",
+    }),
+    installMarketplacePlugin: async () => ({
       success: false,
       error: "Not available in plain browser",
     }),

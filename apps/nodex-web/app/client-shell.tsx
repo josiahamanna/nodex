@@ -9,7 +9,10 @@ import { NodexContributionProvider } from "../../../src/renderer/shell/NodexCont
 import { NodexDialogProvider } from "../../../src/renderer/dialog/NodexDialogProvider";
 import { ThemeProvider } from "../../../src/renderer/theme/ThemeContext";
 import { ToastProvider } from "../../../src/renderer/toast/ToastContext";
-import { installNodexWebShimIfNeeded } from "../../../src/renderer/nodex-web-shim";
+import {
+  initHeadlessWebApiBaseFromUrlAndStorage,
+  installNodexWebShimIfNeeded,
+} from "../../../src/renderer/nodex-web-shim";
 import { store } from "../../../src/renderer/store";
 
 function runClientBootstrap(): void {
@@ -17,13 +20,7 @@ function runClientBootstrap(): void {
     return;
   }
   try {
-    const q = new URLSearchParams(window.location.search);
-    if (q.get("web") === "1" || q.get("web") === "true") {
-      const api = q.get("api");
-      if (api) {
-        window.__NODEX_WEB_API_BASE__ = api;
-      }
-    }
+    initHeadlessWebApiBaseFromUrlAndStorage();
   } catch {
     /* ignore */
   }

@@ -212,6 +212,21 @@ Not every interaction must be synchronous REST. The **Node server** may expose *
 
 **Auth:** sessions, bearer tokens, or both; authorize every mutating route and command invoke. Optional narrow **external API** (ETAPI-style) for integrations.
 
+**Service split guidance (optimize for parity + simplicity):**
+
+- **Start simple:** one **API service** that serves the REST surface plus marketplace endpoints (metadata + static files), one **web frontend** (static export or Next server), and an optional reverse proxy to expose a single origin.
+- **Split marketplace later** only if you need an independent scaling/security boundary. Most “marketplace assets” scale best as **object storage + CDN**, not a dedicated microservice.
+
+### Reference deployment matrix (web + Electron treated equally)
+
+| Mode | UI | Transport | API runtime | Source_of_truth | Notes |
+|------|----|-----------|-------------|-----------------|-------|
+| **Local desktop (Electron)** | Local renderer assets (file://) | IPC (default) | Electron main | **SQLite** (local) | Local-first; no horizontal scaling. Optional: main can also expose HTTP for automation later, but IPC remains the primary path. |
+| **Local web + headless API** | Next dev/static (localhost) | HTTP | Node headless API (localhost) | **SQLite** (local) | Good for browser testing and local use; treat as single-node. |
+| **Cloud web (hosted)** | Next server or static + CDN | HTTP | Node API (container/orchestrated) | **Postgres** (cloud) | Enables load balancing/replicas; put marketplace assets and attachments on object storage/CDN when needed. |
+
+Operational rule: you can load-balance **stateless** UI servers freely; you can load-balance the API **only** when the backing store is a multi-user network DB (e.g. Postgres) and file storage is not tied to local disk.
+
 ### Where plugins run (web)
 
 - **Default (browser client):** Plugins execute **on the Node server** in a **controlled host** (sandbox TBD). The browser does not run arbitrary plugin code with full system access.
@@ -257,6 +272,19 @@ At **runtime**, a given process uses **one** path: Electron **or** browser+Node,
 - **Client (SPA)** — `localStorage` / `IndexedDB` for **UI-only** state: sidebar widths, collapsed panels, last primary tab, palette query history (if desired). No authoritative note data here when using HTTP API.
 - **Server** — source of truth for notes, workspaces, and plugin data; backup and migration strategies live with the API.
 - **Electron** — same as web for UI-only prefs in renderer; **device-scoped** paths (last opened folder) persist via **main** / project prefs (no separate HTTP server required for desktop in the IPC model).
+
+#### Storage backends (treat web and Electron as equal first-class targets)
+
+To keep **product semantics** aligned across both hosts while supporting **local-first** desktop usage and **cloud** web hosting, define a single persistence boundary (repositories/services) and provide **two concrete storage backends**:
+
+- **Local / desktop / dev** — **SQLite** (single-writer). Best for offline vaults, single-user workspaces, and local headless runs.
+- **Cloud** — **Postgres** (or similar multi-user SQL). Best for hosted web and multi-device use; enables horizontal API scaling, backups, and migrations.
+
+Rules of thumb:
+
+- **SQLite mode is single-node.** Do not run multiple API replicas against the same SQLite file (or the same mounted workspace that owns it).
+- **Cloud scaling requires a network DB** (e.g. Postgres) as the source of truth. When notes/attachments involve the filesystem, add an object store (or a well-defined storage service) instead of relying on local disk.
+- If a user needs both “local and cloud”, model it as **sync** (explicit conflict + merge policy) rather than “two databases at once” inside one runtime.
 
 ### Trust and tenancy
 

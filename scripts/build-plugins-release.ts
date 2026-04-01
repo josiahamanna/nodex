@@ -10,6 +10,9 @@
  *   PLUGIN_RELEASE_OUT  — default dist/plugins (.nodexplugin zips)
  *   PLUGIN_RELEASE_ONLY — optional plugin folder name (under root) OR absolute path
  *   PLUGIN_RELEASE_CONCURRENCY — max parallel plugin builds (default: min(CPU, 8), min 1)
+ *
+ * Plugin authors: add README.md under each plugin folder for marketplace copy ({name}-markdown.md)
+ * and readmeSnippet in marketplace-index.json (README is also bundled inside the .nodexplugin).
  */
 import { execSync } from "child_process";
 import * as fs from "fs";
@@ -19,6 +22,11 @@ import { pluginBundler } from "../src/core/plugin-bundler";
 import { packageManager } from "../src/core/package-manager";
 import type { PluginManifest } from "../src/core/plugin-loader-types";
 import { isSafePluginName } from "../src/shared/validators";
+import {
+  MARKETPLACE_INDEX_FILENAME,
+  MARKETPLACE_INDEX_SCHEMA_VERSION,
+  type MarketplaceIndexEntry,
+} from "../src/shared/marketplace-index";
 
 function pluginReleaseConcurrency(): number {
   const raw = process.env.PLUGIN_RELEASE_CONCURRENCY?.trim();
@@ -81,10 +89,26 @@ function copyPluginProductionAssets(
   }
 }
 
+type ExportPluginResult = {
+  zipPath: string;
+  manifest: PluginManifest;
+  devRoot: string;
+};
+
+function readmeSnippetFromPath(readmePath: string, maxLen: number): string {
+  try {
+    const text = fs.readFileSync(readmePath, "utf8").trim();
+    const oneLine = text.replace(/\s+/g, " ");
+    return oneLine.length <= maxLen ? oneLine : `${oneLine.slice(0, maxLen - 1)}…`;
+  } catch {
+    return "";
+  }
+}
+
 async function exportOneDevPlugin(
   devRoot: string,
   outputDir: string,
-): Promise<string> {
+): Promise<ExportPluginResult> {
   const manifestPath = path.join(devRoot, "manifest.json");
   const manifest: PluginManifest = JSON.parse(
     fs.readFileSync(manifestPath, "utf8"),
@@ -95,11 +119,12 @@ async function exportOneDevPlugin(
   }
 
   if (manifest.mode === "production") {
-    return await packageManager.createProductionPackage({
+    const zipPath = await packageManager.createProductionPackage({
       pluginPath: devRoot,
       outputPath: outputDir,
       mode: "production",
     });
+    return { zipPath, manifest, devRoot };
   }
 
   const staging = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-prod-"));
@@ -138,11 +163,12 @@ async function exportOneDevPlugin(
 
     copyPluginProductionAssets(devRoot, staging, manifest);
 
-    return await packageManager.createProductionPackage({
+    const zipPath = await packageManager.createProductionPackage({
       pluginPath: staging,
       outputPath: outputDir,
       mode: "production",
     });
+    return { zipPath, manifest, devRoot };
   } finally {
     fs.rmSync(staging, { recursive: true, force: true });
   }
@@ -230,12 +256,50 @@ async function main(): Promise<void> {
       `[build-plugins-release] ${dirs.length} plugins, concurrency ${Math.min(conc, dirs.length)}`,
     );
   }
-  await mapPool(dirs, conc, async (pluginDir) => {
+  const built = await mapPool(dirs, conc, async (pluginDir) => {
     npmInstallIfNeeded(pluginDir);
     const out = await exportOneDevPlugin(pluginDir, outDir);
-    console.log(`[build-plugins-release] OK ${out}`);
+    console.log(`[build-plugins-release] OK ${out.zipPath}`);
     return out;
   });
+
+  const indexPlugins: MarketplaceIndexEntry[] = [];
+  for (const { zipPath, manifest, devRoot } of built) {
+    const packageFile = path.basename(zipPath);
+    const readmePath = path.join(devRoot, "README.md");
+    let markdownFile: string | null = null;
+    if (fs.existsSync(readmePath)) {
+      const sidecar = path.join(outDir, `${manifest.name}-markdown.md`);
+      fs.copyFileSync(readmePath, sidecar);
+      markdownFile = `${manifest.name}-markdown.md`;
+    }
+    const snippet = fs.existsSync(readmePath)
+      ? readmeSnippetFromPath(readmePath, 400)
+      : "";
+    indexPlugins.push({
+      name: manifest.name,
+      version: manifest.version,
+      displayName: manifest.displayName,
+      description: manifest.description,
+      packageFile,
+      markdownFile,
+      readmeSnippet: snippet || undefined,
+    });
+  }
+  indexPlugins.sort((a, b) => a.name.localeCompare(b.name));
+  const indexDoc = {
+    schemaVersion: MARKETPLACE_INDEX_SCHEMA_VERSION,
+    generatedAt: new Date().toISOString(),
+    plugins: indexPlugins,
+  };
+  fs.writeFileSync(
+    path.join(outDir, MARKETPLACE_INDEX_FILENAME),
+    JSON.stringify(indexDoc, null, 2),
+    "utf8",
+  );
+  console.log(
+    `[build-plugins-release] Wrote ${MARKETPLACE_INDEX_FILENAME} (${indexPlugins.length} plugins)`,
+  );
 }
 
 main().catch((e) => {

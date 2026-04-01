@@ -1,5 +1,5 @@
-# Build & package each plugin under `user-pluggins/*` into its own `.nodexplugin`.
-# On version tags (v*), also publishes the plugin packages to the GitHub Release.
+# Build all plugins under `user-pluggins/*`, write `dist/plugins` (+ marketplace-index.json),
+# zip the folder into one artifact. On version tags (v*), attach that zip to the GitHub Release.
 
 name: Plugins Release
 
@@ -20,23 +20,34 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      has_plugins: ${{ steps.set.outputs.has_plugins }}
     steps:
       - uses: actions/checkout@v4
-      - id: set-matrix
-        name: Discover plugins under user-pluggins/
+      - id: set
+        name: Detect plugins under user-pluggins/
         shell: bash
         run: |
-          matrix="$(node -e "const fs=require('fs'); const path=require('path'); const root=path.resolve('user-pluggins'); let names=[]; if (fs.existsSync(root)) { for (const ent of fs.readdirSync(root,{withFileTypes:true})) { if (!ent.isDirectory() || ent.name.startsWith('.')) continue; const mp=path.join(root,ent.name,'manifest.json'); if (fs.existsSync(mp)) names.push(ent.name); } } names.sort(); process.stdout.write(JSON.stringify({include:names.map(n=>({plugin:n}))}));")"
-          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          node <<'NODE'
+          const fs = require("fs");
+          const path = require("path");
+          const out = process.env.GITHUB_OUTPUT;
+          const root = path.resolve("user-pluggins");
+          let n = 0;
+          if (fs.existsSync(root)) {
+            for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+              if (!ent.isDirectory() || ent.name.startsWith(".")) continue;
+              const mp = path.join(root, ent.name, "manifest.json");
+              if (fs.existsSync(mp)) n++;
+            }
+          }
+          const has = n > 0 ? "true" : "false";
+          fs.appendFileSync(out, `has_plugins=${has}\n`);
+          NODE
 
-  build:
+  build-and-bundle:
     needs: discover
-    if: ${{ fromJSON(needs.discover.outputs.matrix).include[0] != null }}
+    if: needs.discover.outputs.has_plugins == 'true'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,40 +59,46 @@ jobs:
       - name: Install repo dependencies
         run: npm ci
 
-      - name: Build .nodexplugin
+      - name: Build all .nodexplugin packages and marketplace index
         env:
           PLUGIN_RELEASE_ROOT: user-pluggins
-          PLUGIN_RELEASE_ONLY: ${{ matrix.plugin }}
         run: npm run build:plugins
 
-      - name: Upload plugin artifact
+      - name: Zip dist/plugins
+        run: |
+          cd dist/plugins
+          zip -r "$GITHUB_WORKSPACE/nodex-marketplace-plugins.zip" .
+
+      - name: Upload marketplace bundle artifact
         uses: actions/upload-artifact@v4
         with:
-          name: plugin-${{ matrix.plugin }}
-          path: dist/plugins/*.nodexplugin
+          name: nodex-marketplace-plugins
+          path: nodex-marketplace-plugins.zip
           if-no-files-found: error
           retention-days: 14
 
   publish-release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [discover, build-and-bundle]
+    if: |
+      always() &&
+      startsWith(github.ref, 'refs/tags/') &&
+      needs.discover.outputs.has_plugins == 'true' &&
+      needs.build-and-bundle.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download plugin artifacts
+      - name: Download marketplace zip
         uses: actions/download-artifact@v4
         with:
-          pattern: "plugin-*"
-          merge-multiple: true
-          path: plugin-assets
+          name: nodex-marketplace-plugins
+          path: release-assets
 
-      - name: Upload plugin assets to GitHub Release
+      - name: Upload bundle to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           files: |
-            plugin-assets/**/*.nodexplugin
+            release-assets/nodex-marketplace-plugins.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

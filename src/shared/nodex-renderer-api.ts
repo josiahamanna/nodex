@@ -50,6 +50,26 @@ export type PluginProgressPayload = {
 
 export type MainDebugLogEntry = { ts: number; level: string; text: string };
 
+/** Row from marketplace-index.json (HTTP and Electron). */
+export type MarketplacePluginRow = {
+  name: string;
+  version: string;
+  displayName?: string;
+  description?: string;
+  packageFile: string;
+  markdownFile: string | null;
+  readmeSnippet?: string;
+};
+
+export type MarketplaceListResponse = {
+  /** Web: `/marketplace/files` on the API server. Electron: empty (use install IPC). */
+  filesBasePath: string;
+  marketplaceDir?: string;
+  generatedAt: string;
+  plugins: MarketplacePluginRow[];
+  indexError?: string;
+};
+
 export type OpenPluginWorkspaceArgs = {
   editor: string;
   customBin?: string;
@@ -94,6 +114,15 @@ export type NodexRendererApi = {
   selectZipFile: () => Promise<string | null>;
   importPlugin: (
     zipPath: string,
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    warnings?: string[];
+  }>;
+  listMarketplacePlugins: () => Promise<MarketplaceListResponse>;
+  /** Install a package listed in the local marketplace (basename under marketplace dir). Electron only. */
+  installMarketplacePlugin: (
+    packageFile: string,
   ) => Promise<{
     success: boolean;
     error?: string;

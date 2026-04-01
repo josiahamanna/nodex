@@ -12,11 +12,17 @@
 # Stop:            npm run docker:api:down
 # Follow logs:     npm run docker:api:logs
 #
-# API: http://127.0.0.1:3847/api/v1/health
+# Unified gateway (nginx on host port 5555):
+#   Open http://127.0.0.1:5555 — / → Next on host :3000 (host.docker.internal),
+#   /backend/api/ → /api/v1/, /backend/market/ → /marketplace/files/, plus /api/v1/ and
+#   /marketplace/files/ aliases. Start Next first: npm run dev:web (or next start on :3000).
+# API-only (no nginx): docker compose up nodex-api
+#
+# Direct API (bypass gateway): http://127.0.0.1:3847/api/v1/health
 # If 3847 is already in use: NODEX_API_PORT=3848 npm run docker:api:up
-# (and point the browser ?api= URL at that host port)
-# Browser UI still runs on the host (e.g. npm start) with:
-#   ?web=1&api=http://127.0.0.1:3847
+#
+# SQLite warning: do not run multiple nodex-api replicas against the same NODEX_HOST_PROJECT
+# mount; use a single API upstream or separate project directories per replica.
 
 services:
   nodex-api:
@@ -40,6 +46,22 @@ services:
         source: ${NODEX_HOST_PROJECT:?Set NODEX_HOST_PROJECT to an absolute path to your project folder}
         target: /workspace
       - nodex-user-data:/nodex-user-data
+
+  nodex-gateway:
+    image: nginx:1.26-alpine
+    container_name: nodex-gateway
+    ports:
+      - "${NODEX_GATEWAY_PORT:-5555}:80"
+    volumes:
+      - type: bind
+        source: ./deploy/nginx-gateway.conf
+        target: /etc/nginx/conf.d/default.conf
+        read_only: true
+    depends_on:
+      - nodex-api
+    extra_hosts:
+      # Linux: reach host Next dev server from the nginx container
+      - "host.docker.internal:host-gateway"
 
 volumes:
   nodex-user-data:

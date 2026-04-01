@@ -201,6 +201,7 @@ export function AppShellBody(props: AppShellBodyProps): React.ReactNode {
     <PluginsSidebarList
       selection={pluginsShell}
       onSelectGeneral={() => setPluginsShell({ kind: "general" })}
+      onSelectMarket={() => setPluginsShell({ kind: "market" })}
       onSelectPlugin={(id) => setPluginsShell({ kind: "plugin", id })}
     />
   );

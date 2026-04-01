@@ -2,17 +2,20 @@ import React, { useEffect, useState } from "react";
 
 export type PluginsSidebarSelection =
   | { kind: "general" }
+  | { kind: "market" }
   | { kind: "plugin"; id: string };
 
 export interface PluginsSidebarListProps {
   selection: PluginsSidebarSelection;
   onSelectGeneral: () => void;
+  onSelectMarket: () => void;
   onSelectPlugin: (id: string) => void;
 }
 
 const PluginsSidebarList: React.FC<PluginsSidebarListProps> = ({
   selection,
   onSelectGeneral,
+  onSelectMarket,
   onSelectPlugin,
 }) => {
   const [rows, setRows] = useState<
@@ -40,6 +43,7 @@ const PluginsSidebarList: React.FC<PluginsSidebarListProps> = ({
   }, []);
 
   const generalActive = selection.kind === "general";
+  const marketActive = selection.kind === "market";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -53,6 +57,17 @@ const PluginsSidebarList: React.FC<PluginsSidebarListProps> = ({
         }`}
       >
         General
+      </button>
+      <button
+        type="button"
+        onClick={onSelectMarket}
+        className={`border-sidebar-border border-b px-3 py-2.5 text-left text-[12px] transition-colors ${
+          marketActive
+            ? "bg-sidebar-accent font-medium text-foreground"
+            : "text-sidebar-foreground/90 hover:bg-sidebar-accent/40"
+        }`}
+      >
+        Market
       </button>
       <div className="border-sidebar-border border-b px-3 py-2">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">

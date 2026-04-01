@@ -23,6 +23,10 @@ export const IPC_CHANNELS = {
   GET_REGISTERED_TYPES: "plugin:get-registered-types",
   GET_SELECTABLE_NOTE_TYPES: "plugin:get-selectable-note-types",
   IMPORT_PLUGIN: "plugin:import",
+  /** Local marketplace catalog (`marketplace-index.json` under dist/plugins or NODEX_MARKETPLACE_DIR). */
+  MARKETPLACE_LIST_PLUGINS: "plugin:marketplace-list",
+  /** Install a `.nodexplugin` from the marketplace directory by basename (safe join). */
+  MARKETPLACE_INSTALL_PLUGIN: "plugin:marketplace-install",
   GET_INSTALLED_PLUGINS: "plugin:get-installed",
   UNINSTALL_PLUGIN: "plugin:uninstall",
   SELECT_ZIP_FILE: "plugin:select-zip",
