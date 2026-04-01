@@ -1,5 +1,27 @@
 import type { Database } from "better-sqlite3";
+import { getWpnOwnerId } from "./wpn-owner";
 import { WPN_SCHEMA_VERSION } from "./wpn-types";
+
+function wpnWorkspaceHasOwnerIdColumn(db: Database): boolean {
+  const rows = db.prepare("PRAGMA table_info(wpn_workspace)").all() as Array<{
+    name: string;
+  }>;
+  return rows.some((r) => r.name === "owner_id");
+}
+
+/** Add `owner_id` to existing DBs (aligned with Postgres `ensureWpnPgSchema`). */
+export function ensureWpnWorkspaceOwnerColumnSqlite(db: Database): void {
+  if (!wpnWorkspaceHasOwnerIdColumn(db)) {
+    db.exec(
+      "ALTER TABLE wpn_workspace ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'jehu'",
+    );
+  }
+  const owner = getWpnOwnerId();
+  db.prepare(
+    `UPDATE wpn_workspace SET owner_id = @owner
+     WHERE owner_id IS NULL OR TRIM(owner_id) = ''`,
+  ).run({ owner });
+}
 
 /**
  * v2 tables prefixed with `wpn_` — coexist with legacy `notes` / `child_order`.
@@ -16,7 +38,8 @@ export function ensureWpnV2Schema(db: Database): void {
       sort_index INTEGER NOT NULL DEFAULT 0,
       color_token TEXT,
       created_at_ms INTEGER NOT NULL,
-      updated_at_ms INTEGER NOT NULL
+      updated_at_ms INTEGER NOT NULL,
+      owner_id TEXT NOT NULL DEFAULT 'jehu'
     );
     CREATE TABLE IF NOT EXISTS wpn_project (
       id TEXT PRIMARY KEY NOT NULL,
@@ -60,4 +83,5 @@ export function ensureWpnV2Schema(db: Database): void {
       String(WPN_SCHEMA_VERSION),
     );
   }
+  ensureWpnWorkspaceOwnerColumnSqlite(db);
 }

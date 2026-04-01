@@ -6,7 +6,7 @@ import type {
 } from "@nodex/ui-types";
 import type { WpnNoteListItem, WpnProjectRow, WpnWorkspaceRow } from "../../../../../shared/wpn-v2-types";
 import type { RootState } from "../../../../store";
-import { isElectronUserAgent } from "../../../../nodex-web-shim";
+import { fetchHeadlessWpnSession, isElectronUserAgent } from "../../../../nodex-web-shim";
 import { useShellNavigation } from "../../../useShellNavigation";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
@@ -47,6 +47,8 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const [selectableTypes, setSelectableTypes] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
+  const [wpnOwnerLabel, setWpnOwnerLabel] = useState<string | null>(null);
+
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
@@ -81,6 +83,22 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       setSelectableTypes(Array.isArray(t) ? t : []);
     });
   }, []);
+
+  useEffect(() => {
+    if (mountKind !== "wpn-postgres") {
+      setWpnOwnerLabel(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchHeadlessWpnSession().then((s) => {
+      if (!cancelled && s?.wpnOwnerId) {
+        setWpnOwnerLabel(s.wpnOwnerId);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mountKind]);
 
   useEffect(() => {
     void loadWorkspaces();
@@ -388,6 +406,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       onClick={() => setMenu(null)}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border bg-muted/10 px-2 py-1">
+        {wpnOwnerLabel ? (
+          <span
+            className="mr-1 max-w-[8rem] truncate text-[10px] text-muted-foreground"
+            title={`WPN owner: ${wpnOwnerLabel}`}
+          >
+            {wpnOwnerLabel}
+          </span>
+        ) : null}
         <button
           type="button"
           className="rounded border border-border/60 px-2 py-0.5 text-[10px] hover:bg-muted/40"

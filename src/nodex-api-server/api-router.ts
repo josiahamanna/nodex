@@ -45,6 +45,7 @@ import { readMarketplaceS3ConfigFromEnv } from "./marketplace/marketplace-s3";
 import { openMarketplaceDb } from "./marketplace/marketplace-db";
 import { isAssetMediaCategory, extMatchesCategory } from "../shared/asset-media";
 import { getLogicalWpnProjectStateIfAvailable } from "./logical-wpn-project-state";
+import { getWpnOwnerId } from "../core/wpn/wpn-owner";
 
 const MARKETPLACE_FILES_BASE = "/marketplace/files";
 
@@ -146,6 +147,10 @@ export function createNodexApiRouter(): Router {
 
   router.get("/health", (_req, res) => {
     res.json({ ok: true });
+  });
+
+  router.get("/session", (_req, res) => {
+    res.json({ wpnOwnerId: getWpnOwnerId() });
   });
 
   // Minimal assets API for browser mode (import media + serve files).

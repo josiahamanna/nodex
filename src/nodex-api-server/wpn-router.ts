@@ -4,6 +4,7 @@ import { getNotesDatabase } from "../core/notes-sqlite";
 import { assertProjectOpen } from "./headless-bootstrap";
 import { ensureWpnPgSchema } from "../core/wpn/wpn-pg-schema";
 import { getWpnPgPool } from "../core/wpn/wpn-pg-pool";
+import { getWpnOwnerId } from "../core/wpn/wpn-owner";
 import {
   wpnSqliteCreateProject,
   wpnSqliteCreateWorkspace,
@@ -85,11 +86,12 @@ export function createWpnRouter(): Router {
 
   wpn.get("/workspaces", async (_req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const b = await resolveBackend();
       const workspaces =
         b.kind === "postgres"
-          ? await wpnPgListWorkspaces(b.pool)
-          : wpnSqliteListWorkspaces(b.db);
+          ? await wpnPgListWorkspaces(b.pool, ownerId)
+          : wpnSqliteListWorkspaces(b.db, ownerId);
       res.json({ workspaces });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -98,12 +100,13 @@ export function createWpnRouter(): Router {
 
   wpn.post("/workspaces", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const name = typeof req.body?.name === "string" ? req.body.name : "Workspace";
       const b = await resolveBackend();
       const workspace =
         b.kind === "postgres"
-          ? await wpnPgCreateWorkspace(b.pool, name)
-          : wpnSqliteCreateWorkspace(b.db, name);
+          ? await wpnPgCreateWorkspace(b.pool, ownerId, name)
+          : wpnSqliteCreateWorkspace(b.db, ownerId, name);
       res.status(201).json({ workspace });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -112,6 +115,7 @@ export function createWpnRouter(): Router {
 
   wpn.patch("/workspaces/:id", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const { id } = req.params;
       const body = req.body ?? {};
       const patch: {
@@ -127,8 +131,8 @@ export function createWpnRouter(): Router {
       const b = await resolveBackend();
       const workspace =
         b.kind === "postgres"
-          ? await wpnPgUpdateWorkspace(b.pool, id, patch)
-          : wpnSqliteUpdateWorkspace(b.db, id, patch);
+          ? await wpnPgUpdateWorkspace(b.pool, ownerId, id, patch)
+          : wpnSqliteUpdateWorkspace(b.db, ownerId, id, patch);
       if (!workspace) {
         sendErr(res, 404, "Workspace not found");
         return;
@@ -141,12 +145,13 @@ export function createWpnRouter(): Router {
 
   wpn.delete("/workspaces/:id", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const { id } = req.params;
       const b = await resolveBackend();
       const ok =
         b.kind === "postgres"
-          ? await wpnPgDeleteWorkspace(b.pool, id)
-          : wpnSqliteDeleteWorkspace(b.db, id);
+          ? await wpnPgDeleteWorkspace(b.pool, ownerId, id)
+          : wpnSqliteDeleteWorkspace(b.db, ownerId, id);
       if (!ok) {
         sendErr(res, 404, "Workspace not found");
         return;
@@ -159,12 +164,13 @@ export function createWpnRouter(): Router {
 
   wpn.get("/workspaces/:workspaceId/projects", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const { workspaceId } = req.params;
       const b = await resolveBackend();
       const projects =
         b.kind === "postgres"
-          ? await wpnPgListProjects(b.pool, workspaceId)
-          : wpnSqliteListProjects(b.db, workspaceId);
+          ? await wpnPgListProjects(b.pool, ownerId, workspaceId)
+          : wpnSqliteListProjects(b.db, ownerId, workspaceId);
       res.json({ projects });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -173,13 +179,14 @@ export function createWpnRouter(): Router {
 
   wpn.post("/workspaces/:workspaceId/projects", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const { workspaceId } = req.params;
       const name = typeof req.body?.name === "string" ? req.body.name : "Project";
       const b = await resolveBackend();
       const project =
         b.kind === "postgres"
-          ? await wpnPgCreateProject(b.pool, workspaceId, name)
-          : wpnSqliteCreateProject(b.db, workspaceId, name);
+          ? await wpnPgCreateProject(b.pool, ownerId, workspaceId, name)
+          : wpnSqliteCreateProject(b.db, ownerId, workspaceId, name);
       if (!project) {
         sendErr(res, 404, "Workspace not found");
         return;
@@ -192,6 +199,7 @@ export function createWpnRouter(): Router {
 
   wpn.patch("/projects/:id", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const { id } = req.params;
       const body = req.body ?? {};
       const patch: {
@@ -209,8 +217,8 @@ export function createWpnRouter(): Router {
       const b = await resolveBackend();
       const project =
         b.kind === "postgres"
-          ? await wpnPgUpdateProject(b.pool, id, patch)
-          : wpnSqliteUpdateProject(b.db, id, patch);
+          ? await wpnPgUpdateProject(b.pool, ownerId, id, patch)
+          : wpnSqliteUpdateProject(b.db, ownerId, id, patch);
       if (!project) {
         sendErr(res, 404, "Project not found");
         return;
@@ -223,12 +231,13 @@ export function createWpnRouter(): Router {
 
   wpn.delete("/projects/:id", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const { id } = req.params;
       const b = await resolveBackend();
       const ok =
         b.kind === "postgres"
-          ? await wpnPgDeleteProject(b.pool, id)
-          : wpnSqliteDeleteProject(b.db, id);
+          ? await wpnPgDeleteProject(b.pool, ownerId, id)
+          : wpnSqliteDeleteProject(b.db, ownerId, id);
       if (!ok) {
         sendErr(res, 404, "Project not found");
         return;
@@ -241,12 +250,13 @@ export function createWpnRouter(): Router {
 
   wpn.get("/projects/:projectId/notes", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const { projectId } = req.params;
       const b = await resolveBackend();
       const notes =
         b.kind === "postgres"
-          ? await wpnPgListNotesFlat(b.pool, projectId)
-          : wpnSqliteListNotesFlat(b.db, projectId);
+          ? await wpnPgListNotesFlat(b.pool, ownerId, projectId)
+          : wpnSqliteListNotesFlat(b.db, ownerId, projectId);
       res.json({ notes });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -255,12 +265,13 @@ export function createWpnRouter(): Router {
 
   wpn.get("/projects/:projectId/explorer-state", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const { projectId } = req.params;
       const b = await resolveBackend();
       const expanded_ids =
         b.kind === "postgres"
-          ? await wpnPgGetExplorerExpanded(b.pool, projectId)
-          : wpnSqliteGetExplorerExpanded(b.db, projectId);
+          ? await wpnPgGetExplorerExpanded(b.pool, ownerId, projectId)
+          : wpnSqliteGetExplorerExpanded(b.db, ownerId, projectId);
       res.json({ expanded_ids });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -269,6 +280,7 @@ export function createWpnRouter(): Router {
 
   wpn.patch("/projects/:projectId/explorer-state", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const { projectId } = req.params;
       const raw = req.body?.expanded_ids;
       const expanded_ids = Array.isArray(raw)
@@ -276,9 +288,9 @@ export function createWpnRouter(): Router {
         : [];
       const b = await resolveBackend();
       if (b.kind === "postgres") {
-        await wpnPgSetExplorerExpanded(b.pool, projectId, expanded_ids);
+        await wpnPgSetExplorerExpanded(b.pool, ownerId, projectId, expanded_ids);
       } else {
-        wpnSqliteSetExplorerExpanded(b.db, projectId, expanded_ids);
+        wpnSqliteSetExplorerExpanded(b.db, ownerId, projectId, expanded_ids);
       }
       res.json({ expanded_ids });
     } catch (e) {
@@ -288,6 +300,7 @@ export function createWpnRouter(): Router {
 
   wpn.post("/projects/:projectId/notes", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const { projectId } = req.params;
       const body = req.body ?? {};
       const type = typeof body.type === "string" ? body.type : "";
@@ -305,14 +318,14 @@ export function createWpnRouter(): Router {
       const b = await resolveBackend();
       const created =
         b.kind === "postgres"
-          ? await wpnPgCreateNote(b.pool, projectId, {
+          ? await wpnPgCreateNote(b.pool, ownerId, projectId, {
               anchorId: rel === "root" ? undefined : anchorId,
               relation: rel,
               type,
               content: typeof body.content === "string" ? body.content : undefined,
               title: typeof body.title === "string" ? body.title : undefined,
             })
-          : wpnSqliteCreateNote(b.db, projectId, {
+          : wpnSqliteCreateNote(b.db, ownerId, projectId, {
               anchorId: rel === "root" ? undefined : anchorId,
               relation: rel,
               type,
@@ -327,12 +340,13 @@ export function createWpnRouter(): Router {
 
   wpn.get("/notes/:id", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const { id } = req.params;
       const b = await resolveBackend();
       const note =
         b.kind === "postgres"
-          ? await wpnPgGetNoteById(b.pool, id)
-          : wpnSqliteGetNoteById(b.db, id);
+          ? await wpnPgGetNoteById(b.pool, ownerId, id)
+          : wpnSqliteGetNoteById(b.db, ownerId, id);
       if (!note) {
         sendErr(res, 404, "Note not found");
         return;
@@ -345,6 +359,7 @@ export function createWpnRouter(): Router {
 
   wpn.patch("/notes/:id", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const { id } = req.params;
       const body = req.body ?? {};
       const patch: {
@@ -362,8 +377,8 @@ export function createWpnRouter(): Router {
       const b = await resolveBackend();
       const note =
         b.kind === "postgres"
-          ? await wpnPgUpdateNote(b.pool, id, patch)
-          : wpnSqliteUpdateNote(b.db, id, patch);
+          ? await wpnPgUpdateNote(b.pool, ownerId, id, patch)
+          : wpnSqliteUpdateNote(b.db, ownerId, id, patch);
       if (!note) {
         sendErr(res, 404, "Note not found");
         return;
@@ -376,6 +391,7 @@ export function createWpnRouter(): Router {
 
   wpn.post("/notes/delete", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const raw = req.body?.ids;
       if (!Array.isArray(raw)) {
         sendErr(res, 400, "Expected ids array");
@@ -384,9 +400,9 @@ export function createWpnRouter(): Router {
       const ids = raw.filter((x: unknown): x is string => typeof x === "string");
       const b = await resolveBackend();
       if (b.kind === "postgres") {
-        await wpnPgDeleteNotes(b.pool, ids);
+        await wpnPgDeleteNotes(b.pool, ownerId, ids);
       } else {
-        wpnSqliteDeleteNotes(b.db, ids);
+        wpnSqliteDeleteNotes(b.db, ownerId, ids);
       }
       res.json({ ok: true as const });
     } catch (e) {
@@ -396,6 +412,7 @@ export function createWpnRouter(): Router {
 
   wpn.post("/notes/move", async (req: Request, res: Response) => {
     try {
+      const ownerId = getWpnOwnerId();
       const body = req.body ?? {};
       const projectId = typeof body.projectId === "string" ? body.projectId : "";
       const draggedId = typeof body.draggedId === "string" ? body.draggedId : "";
@@ -411,9 +428,23 @@ export function createWpnRouter(): Router {
       }
       const b = await resolveBackend();
       if (b.kind === "postgres") {
-        await wpnPgMoveNote(b.pool, projectId, draggedId, targetId, p as NoteMovePlacement);
+        await wpnPgMoveNote(
+          b.pool,
+          ownerId,
+          projectId,
+          draggedId,
+          targetId,
+          p as NoteMovePlacement,
+        );
       } else {
-        wpnSqliteMoveNote(b.db, projectId, draggedId, targetId, p as NoteMovePlacement);
+        wpnSqliteMoveNote(
+          b.db,
+          ownerId,
+          projectId,
+          draggedId,
+          targetId,
+          p as NoteMovePlacement,
+        );
       }
       res.json({ ok: true as const });
     } catch (e) {

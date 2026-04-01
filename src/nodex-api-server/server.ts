@@ -1,8 +1,12 @@
 import * as path from "path";
 import cors from "cors";
 import express from "express";
-import { initHeadlessFromEnv } from "./headless-bootstrap";
+import {
+  initHeadlessFromEnv,
+  initHeadlessPgOnlyFromEnv,
+} from "./headless-bootstrap";
 import { createNodexApiRouter } from "./api-router";
+import { getWpnPgPool } from "../core/wpn/wpn-pg-pool";
 import {
   readMarketplaceS3ConfigFromEnv,
   streamArtifactToResponse,
@@ -10,8 +14,17 @@ import {
 
 const init = initHeadlessFromEnv();
 if (!init.ok) {
-  console.error("[Nodex API]", init.error);
-  process.exit(1);
+  const pgPool = getWpnPgPool();
+  if (pgPool) {
+    initHeadlessPgOnlyFromEnv();
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[Nodex API] NODEX_PROJECT_ROOT is not set; running in Postgres WPN mode. Legacy /notes, assets, and routes that require an open folder project will return errors until a project root is configured.",
+    );
+  } else {
+    console.error("[Nodex API]", init.error);
+    process.exit(1);
+  }
 }
 
 const app = express();
@@ -61,9 +74,11 @@ const PORT = Number(process.env.PORT ?? "3847");
 const host = process.env.HOST ?? "127.0.0.1";
 
 const server = app.listen(PORT, host, () => {
+  const projectLabel =
+    process.env.NODEX_PROJECT_ROOT?.trim() || "(postgres WPN only, no folder)";
   // eslint-disable-next-line no-console
   console.info(
-    `[Nodex API] listening on http://${host}:${PORT} (project ${process.env.NODEX_PROJECT_ROOT})`,
+    `[Nodex API] listening on http://${host}:${PORT} (project ${projectLabel})`,
   );
 });
 

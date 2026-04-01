@@ -107,3 +107,13 @@ export function headlessSelectableNoteTypes(): string[] {
   const basePick = HEADLESS_REGISTERED_TYPES.filter((t) => t !== "root");
   return [...new Set([...basePick, ...fromRegistry])].sort();
 }
+
+/**
+ * When the API runs with Postgres WPN only (no `NODEX_PROJECT_ROOT`), set a minimal
+ * `userDataPath` so marketplace / prefs code that reads it does not see an empty path.
+ */
+export function initHeadlessPgOnlyFromEnv(): void {
+  userDataPath =
+    process.env.NODEX_USER_DATA_DIR?.trim() ||
+    path.join(os.tmpdir(), "nodex-headless-pg-only");
+}

@@ -1,5 +1,6 @@
 import { ipcMain } from "electron";
 import { getNotesDatabase } from "../core/notes-sqlite";
+import { getWpnOwnerId } from "../core/wpn/wpn-owner";
 import {
   wpnSqliteGetNoteById,
   wpnSqliteUpdateNote,
@@ -47,7 +48,8 @@ ipcMain.handle(IPC_CHANNELS.GET_NOTE, async (_event, noteId?: string) => {
     }
     const db = getNotesDatabase();
     if (db) {
-      const wpn = wpnSqliteGetNoteById(db, noteId);
+      const ownerId = getWpnOwnerId();
+      const wpn = wpnSqliteGetNoteById(db, ownerId, noteId);
       if (wpn) {
         return {
           id: wpn.id,
@@ -158,8 +160,9 @@ ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: strin
     throw new Error("Invalid title");
   }
   const db = getNotesDatabase();
-  if (db && wpnSqliteGetNoteById(db, id)) {
-    wpnSqliteUpdateNote(db, id, { title });
+  const ownerId = getWpnOwnerId();
+  if (db && wpnSqliteGetNoteById(db, ownerId, id)) {
+    wpnSqliteUpdateNote(db, ownerId, id, { title });
     return;
   }
   const registeredTypes = registry.getRegisteredTypes();
@@ -178,13 +181,14 @@ ipcMain.handle(
     }
     const db = getNotesDatabase();
     if (db) {
-      const wpn = wpnSqliteGetNoteById(db, noteId);
+      const ownerId = getWpnOwnerId();
+      const wpn = wpnSqliteGetNoteById(db, ownerId, noteId);
       if (wpn) {
         const err = validatePluginUiStateSize(state);
         if (err) throw new Error(err);
         const meta: Record<string, unknown> = { ...(wpn.metadata ?? {}) };
         meta[PLUGIN_UI_METADATA_KEY] = state;
-        wpnSqliteUpdateNote(db, noteId, { metadata: meta });
+        wpnSqliteUpdateNote(db, ownerId, noteId, { metadata: meta });
         return;
       }
     }
@@ -206,8 +210,9 @@ ipcMain.handle(
       throw new Error("Invalid content");
     }
     const db = getNotesDatabase();
-    if (db && wpnSqliteGetNoteById(db, noteId)) {
-      wpnSqliteUpdateNote(db, noteId, { content });
+    const ownerId = getWpnOwnerId();
+    if (db && wpnSqliteGetNoteById(db, ownerId, noteId)) {
+      wpnSqliteUpdateNote(db, ownerId, noteId, { content });
       return;
     }
     const registeredTypes = registry.getRegisteredTypes();

@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import type { NoteMovePlacement } from "../../shared/nodex-renderer-api";
 import { wpnComputeChildMapAfterMove } from "./wpn-note-move";
 import type { WpnNoteDetail, WpnNoteListItem } from "../../shared/wpn-v2-types";
+import { wpnPgProjectOwnedBy } from "./wpn-pg-service";
 import type { WpnNoteRow } from "./wpn-types";
 
 function nowMs(): number {
@@ -63,10 +64,22 @@ function childrenMapFromRows(rows: WpnNoteRow[]): Map<string | null, WpnNoteRow[
   return m;
 }
 
+async function requireWpnPgProject(
+  pool: Pool,
+  ownerId: string,
+  projectId: string,
+): Promise<void> {
+  if (!(await wpnPgProjectOwnedBy(pool, ownerId, projectId))) {
+    throw new Error("Project not found");
+  }
+}
+
 export async function wpnPgListNotesFlat(
   pool: Pool,
+  ownerId: string,
   projectId: string,
 ): Promise<WpnNoteListItem[]> {
+  await requireWpnPgProject(pool, ownerId, projectId);
   const rows = await loadRows(pool, projectId);
   const cm = childrenMapFromRows(rows);
   const out: WpnNoteListItem[] = [];
@@ -89,11 +102,18 @@ export async function wpnPgListNotesFlat(
   return out;
 }
 
-export async function wpnPgGetNoteById(pool: Pool, noteId: string): Promise<WpnNoteDetail | null> {
+export async function wpnPgGetNoteById(
+  pool: Pool,
+  ownerId: string,
+  noteId: string,
+): Promise<WpnNoteDetail | null> {
   const { rows } = await pool.query(
-    `SELECT id, project_id, parent_id, type, title, content, metadata_json, sibling_index, created_at_ms, updated_at_ms
-     FROM wpn_note WHERE id = $1`,
-    [noteId],
+    `SELECT n.id, n.project_id, n.parent_id, n.type, n.title, n.content, n.metadata_json, n.sibling_index, n.created_at_ms, n.updated_at_ms
+     FROM wpn_note n
+     INNER JOIN wpn_project p ON p.id = n.project_id
+     INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+     WHERE n.id = $1 AND w.owner_id = $2`,
+    [noteId, ownerId],
   );
   const r = rows[0] as Record<string, unknown> | undefined;
   if (!r) return null;
@@ -128,6 +148,7 @@ async function applySiblingOrderPg(
 
 export async function wpnPgCreateNote(
   pool: Pool,
+  ownerId: string,
   projectId: string,
   payload: {
     anchorId?: string;
@@ -138,8 +159,7 @@ export async function wpnPgCreateNote(
     metadata?: Record<string, unknown>;
   },
 ): Promise<{ id: string }> {
-  const { rows: pr } = await pool.query("SELECT id FROM wpn_project WHERE id = $1", [projectId]);
-  if (pr.length === 0) throw new Error("Project not found");
+  await requireWpnPgProject(pool, ownerId, projectId);
 
   const rows = await loadRows(pool, projectId);
   const cm = childrenMapFromRows(rows);
@@ -210,6 +230,7 @@ export async function wpnPgCreateNote(
 
 export async function wpnPgUpdateNote(
   pool: Pool,
+  ownerId: string,
   noteId: string,
   patch: {
     title?: string;
@@ -218,7 +239,7 @@ export async function wpnPgUpdateNote(
     type?: string;
   },
 ): Promise<WpnNoteDetail | null> {
-  const cur = await wpnPgGetNoteById(pool, noteId);
+  const cur = await wpnPgGetNoteById(pool, ownerId, noteId);
   if (!cur) return null;
   const title = patch.title !== undefined ? patch.title.trim() || cur.title : cur.title;
   const content = patch.content !== undefined ? patch.content : cur.content;
@@ -235,16 +256,26 @@ export async function wpnPgUpdateNote(
   }
   const updated_at_ms = nowMs();
   await pool.query(
-    `UPDATE wpn_note SET title = $1, content = $2, metadata_json = $3, type = $4, updated_at_ms = $5 WHERE id = $6`,
-    [title, content, metadata_json, type, updated_at_ms, noteId],
+    `UPDATE wpn_note n SET title = $1, content = $2, metadata_json = $3, type = $4, updated_at_ms = $5
+     FROM wpn_project p INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+     WHERE n.id = $6 AND n.project_id = p.id AND w.owner_id = $7`,
+    [title, content, metadata_json, type, updated_at_ms, noteId, ownerId],
   );
-  return wpnPgGetNoteById(pool, noteId);
+  return wpnPgGetNoteById(pool, ownerId, noteId);
 }
 
-export async function wpnPgDeleteNotes(pool: Pool, ids: string[]): Promise<void> {
+export async function wpnPgDeleteNotes(
+  pool: Pool,
+  ownerId: string,
+  ids: string[],
+): Promise<void> {
   const unique = [...new Set(ids)];
   for (const id of unique) {
-    await pool.query("DELETE FROM wpn_note WHERE id = $1", [id]);
+    await pool.query(
+      `DELETE FROM wpn_note n USING wpn_project p, wpn_workspace w
+       WHERE n.id = $1 AND n.project_id = p.id AND p.workspace_id = w.id AND w.owner_id = $2`,
+      [id, ownerId],
+    );
   }
 }
 
@@ -269,11 +300,13 @@ async function persistTreePg(
 
 export async function wpnPgMoveNote(
   pool: Pool,
+  ownerId: string,
   projectId: string,
   draggedId: string,
   targetId: string,
   placement: NoteMovePlacement,
 ): Promise<void> {
+  await requireWpnPgProject(pool, ownerId, projectId);
   const rows = await loadRows(pool, projectId);
   const childMap = wpnComputeChildMapAfterMove(rows, draggedId, targetId, placement);
   await persistTreePg(pool, projectId, childMap);
@@ -281,11 +314,16 @@ export async function wpnPgMoveNote(
 
 export async function wpnPgGetExplorerExpanded(
   pool: Pool,
+  ownerId: string,
   projectId: string,
 ): Promise<string[]> {
+  await requireWpnPgProject(pool, ownerId, projectId);
   const { rows } = await pool.query(
-    "SELECT expanded_ids_json FROM wpn_explorer_state WHERE project_id = $1",
-    [projectId],
+    `SELECT e.expanded_ids_json FROM wpn_explorer_state e
+     INNER JOIN wpn_project p ON p.id = e.project_id
+     INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+     WHERE e.project_id = $1 AND w.owner_id = $2`,
+    [projectId, ownerId],
   );
   const raw = rows[0] as { expanded_ids_json: string } | undefined;
   if (!raw?.expanded_ids_json) return [];
@@ -299,11 +337,11 @@ export async function wpnPgGetExplorerExpanded(
 
 export async function wpnPgSetExplorerExpanded(
   pool: Pool,
+  ownerId: string,
   projectId: string,
   expandedIds: string[],
 ): Promise<void> {
-  const { rows } = await pool.query("SELECT id FROM wpn_project WHERE id = $1", [projectId]);
-  if (rows.length === 0) throw new Error("Project not found");
+  await requireWpnPgProject(pool, ownerId, projectId);
   const json = JSON.stringify([...new Set(expandedIds)]);
   await pool.query(
     `INSERT INTO wpn_explorer_state (project_id, expanded_ids_json) VALUES ($1, $2)

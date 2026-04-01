@@ -10,25 +10,34 @@ function newId(): string {
   return crypto.randomUUID();
 }
 
-export async function wpnPgListWorkspaces(pool: Pool): Promise<WpnWorkspaceRow[]> {
+export async function wpnPgListWorkspaces(
+  pool: Pool,
+  ownerId: string,
+): Promise<WpnWorkspaceRow[]> {
   const { rows } = await pool.query<WpnWorkspaceRow>(
     `SELECT id, name, sort_index, color_token, created_at_ms, updated_at_ms
-     FROM wpn_workspace ORDER BY sort_index ASC, name ASC`,
+     FROM wpn_workspace WHERE owner_id = $1 ORDER BY sort_index ASC, name ASC`,
+    [ownerId],
   );
   return rows;
 }
 
-export async function wpnPgCreateWorkspace(pool: Pool, name: string): Promise<WpnWorkspaceRow> {
+export async function wpnPgCreateWorkspace(
+  pool: Pool,
+  ownerId: string,
+  name: string,
+): Promise<WpnWorkspaceRow> {
   const id = newId();
   const t = nowMs();
   const { rows: maxRows } = await pool.query<{ m: string }>(
-    "SELECT COALESCE(MAX(sort_index), -1)::text AS m FROM wpn_workspace",
+    "SELECT COALESCE(MAX(sort_index), -1)::text AS m FROM wpn_workspace WHERE owner_id = $1",
+    [ownerId],
   );
   const sort_index = Number(maxRows[0]?.m ?? -1) + 1;
   await pool.query(
-    `INSERT INTO wpn_workspace (id, name, sort_index, color_token, created_at_ms, updated_at_ms)
-     VALUES ($1, $2, $3, NULL, $4, $5)`,
-    [id, name.trim() || "Workspace", sort_index, t, t],
+    `INSERT INTO wpn_workspace (id, name, sort_index, color_token, created_at_ms, updated_at_ms, owner_id)
+     VALUES ($1, $2, $3, NULL, $4, $5, $6)`,
+    [id, name.trim() || "Workspace", sort_index, t, t, ownerId],
   );
   return {
     id,
@@ -42,12 +51,13 @@ export async function wpnPgCreateWorkspace(pool: Pool, name: string): Promise<Wp
 
 export async function wpnPgUpdateWorkspace(
   pool: Pool,
+  ownerId: string,
   id: string,
   patch: { name?: string; sort_index?: number; color_token?: string | null },
 ): Promise<WpnWorkspaceRow | null> {
   const { rows: curRows } = await pool.query<WpnWorkspaceRow>(
-    "SELECT id, name, sort_index, color_token, created_at_ms, updated_at_ms FROM wpn_workspace WHERE id = $1",
-    [id],
+    "SELECT id, name, sort_index, color_token, created_at_ms, updated_at_ms FROM wpn_workspace WHERE id = $1 AND owner_id = $2",
+    [id, ownerId],
   );
   const cur = curRows[0];
   if (!cur) return null;
@@ -57,36 +67,49 @@ export async function wpnPgUpdateWorkspace(
     patch.color_token !== undefined ? patch.color_token : cur.color_token;
   const updated_at_ms = nowMs();
   await pool.query(
-    `UPDATE wpn_workspace SET name = $1, sort_index = $2, color_token = $3, updated_at_ms = $4 WHERE id = $5`,
-    [name, sort_index, color_token, updated_at_ms, id],
+    `UPDATE wpn_workspace SET name = $1, sort_index = $2, color_token = $3, updated_at_ms = $4 WHERE id = $5 AND owner_id = $6`,
+    [name, sort_index, color_token, updated_at_ms, id, ownerId],
   );
   return { ...cur, name, sort_index, color_token, updated_at_ms };
 }
 
-export async function wpnPgDeleteWorkspace(pool: Pool, id: string): Promise<boolean> {
-  const { rowCount } = await pool.query("DELETE FROM wpn_workspace WHERE id = $1", [id]);
+export async function wpnPgDeleteWorkspace(
+  pool: Pool,
+  ownerId: string,
+  id: string,
+): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    "DELETE FROM wpn_workspace WHERE id = $1 AND owner_id = $2",
+    [id, ownerId],
+  );
   return (rowCount ?? 0) > 0;
 }
 
 export async function wpnPgListProjects(
   pool: Pool,
+  ownerId: string,
   workspaceId: string,
 ): Promise<WpnProjectRow[]> {
   const { rows } = await pool.query<WpnProjectRow>(
-    `SELECT id, workspace_id, name, sort_index, color_token, created_at_ms, updated_at_ms
-     FROM wpn_project WHERE workspace_id = $1 ORDER BY sort_index ASC, name ASC`,
-    [workspaceId],
+    `SELECT p.id, p.workspace_id, p.name, p.sort_index, p.color_token, p.created_at_ms, p.updated_at_ms
+     FROM wpn_project p
+     INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+     WHERE p.workspace_id = $1 AND w.owner_id = $2
+     ORDER BY p.sort_index ASC, p.name ASC`,
+    [workspaceId, ownerId],
   );
   return rows;
 }
 
 export async function wpnPgCreateProject(
   pool: Pool,
+  ownerId: string,
   workspaceId: string,
   name: string,
 ): Promise<WpnProjectRow | null> {
-  const { rows: ws } = await pool.query("SELECT id FROM wpn_workspace WHERE id = $1", [
+  const { rows: ws } = await pool.query("SELECT id FROM wpn_workspace WHERE id = $1 AND owner_id = $2", [
     workspaceId,
+    ownerId,
   ]);
   if (ws.length === 0) return null;
   const id = newId();
@@ -114,6 +137,7 @@ export async function wpnPgCreateProject(
 
 export async function wpnPgUpdateProject(
   pool: Pool,
+  ownerId: string,
   id: string,
   patch: {
     name?: string;
@@ -123,16 +147,20 @@ export async function wpnPgUpdateProject(
   },
 ): Promise<WpnProjectRow | null> {
   const { rows: curRows } = await pool.query<WpnProjectRow>(
-    "SELECT id, workspace_id, name, sort_index, color_token, created_at_ms, updated_at_ms FROM wpn_project WHERE id = $1",
-    [id],
+    `SELECT p.id, p.workspace_id, p.name, p.sort_index, p.color_token, p.created_at_ms, p.updated_at_ms
+     FROM wpn_project p
+     INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+     WHERE p.id = $1 AND w.owner_id = $2`,
+    [id, ownerId],
   );
   const cur = curRows[0];
   if (!cur) return null;
   const workspace_id = patch.workspace_id ?? cur.workspace_id;
   if (patch.workspace_id) {
-    const { rows: ws } = await pool.query("SELECT id FROM wpn_workspace WHERE id = $1", [
-      workspace_id,
-    ]);
+    const { rows: ws } = await pool.query(
+      "SELECT id FROM wpn_workspace WHERE id = $1 AND owner_id = $2",
+      [workspace_id, ownerId],
+    );
     if (ws.length === 0) return null;
   }
   const name = patch.name !== undefined ? patch.name.trim() || cur.name : cur.name;
@@ -155,7 +183,29 @@ export async function wpnPgUpdateProject(
   };
 }
 
-export async function wpnPgDeleteProject(pool: Pool, id: string): Promise<boolean> {
-  const { rowCount } = await pool.query("DELETE FROM wpn_project WHERE id = $1", [id]);
+export async function wpnPgDeleteProject(
+  pool: Pool,
+  ownerId: string,
+  id: string,
+): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    `DELETE FROM wpn_project p USING wpn_workspace w
+     WHERE p.id = $1 AND p.workspace_id = w.id AND w.owner_id = $2`,
+    [id, ownerId],
+  );
   return (rowCount ?? 0) > 0;
+}
+
+export async function wpnPgProjectOwnedBy(
+  pool: Pool,
+  ownerId: string,
+  projectId: string,
+): Promise<boolean> {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM wpn_project p
+     INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+     WHERE p.id = $1 AND w.owner_id = $2`,
+    [projectId, ownerId],
+  );
+  return rows.length > 0;
 }

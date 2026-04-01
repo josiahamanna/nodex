@@ -22,6 +22,18 @@ NODEX_GATEWAY_PORT=5555 npm run docker:api:up
 
 ## Bring the stack up
 
+**Recommended (Postgres WPN + notes in DB, default user `jehu`, gateway on :8080):**
+
+```bash
+npm run deploy
+```
+
+This starts **postgres** (`wpn-pg` profile), `nodex-api` (with `NODEX_PG_DATABASE_URL` defaulted for Docker), `nodex-web-blue`, and `nodex-gateway`, then runs the blue/green web image build/swap. Open `http://127.0.0.1:8080`.
+
+Subsequent UI-only updates: `npm run deploy` again, or `npm run deploy:web-only` if the stack is already running.
+
+**Folder-backed SQLite API (no Postgres):**
+
 ```bash
 export NODEX_HOST_PROJECT=/absolute/path/to/project
 npm run docker:api:up

@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { getWpnOwnerId } from "./wpn-owner";
 import { WPN_SCHEMA_VERSION } from "./wpn-types";
 
 /** Postgres DDL aligned with {@link ensureWpnV2Schema} (SQLite). */
@@ -14,7 +15,8 @@ export async function ensureWpnPgSchema(pool: Pool): Promise<void> {
       sort_index INTEGER NOT NULL DEFAULT 0,
       color_token TEXT,
       created_at_ms BIGINT NOT NULL,
-      updated_at_ms BIGINT NOT NULL
+      updated_at_ms BIGINT NOT NULL,
+      owner_id TEXT NOT NULL DEFAULT 'jehu'
     )`,
     `CREATE TABLE IF NOT EXISTS wpn_project (
       id TEXT PRIMARY KEY NOT NULL,
@@ -57,4 +59,20 @@ export async function ensureWpnPgSchema(pool: Pool): Promise<void> {
       String(WPN_SCHEMA_VERSION),
     ]);
   }
+
+  await pool.query(
+    "ALTER TABLE wpn_workspace ADD COLUMN IF NOT EXISTS owner_id TEXT",
+  );
+  const backfillOwner = getWpnOwnerId();
+  await pool.query(
+    `UPDATE wpn_workspace SET owner_id = $1
+     WHERE owner_id IS NULL OR TRIM(owner_id) = ''`,
+    [backfillOwner],
+  );
+  await pool.query(
+    "ALTER TABLE wpn_workspace ALTER COLUMN owner_id SET NOT NULL",
+  );
+  await pool.query(
+    "ALTER TABLE wpn_workspace ALTER COLUMN owner_id SET DEFAULT 'jehu'",
+  );
 }

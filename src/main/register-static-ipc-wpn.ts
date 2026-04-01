@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
 import { registry } from "../core/registry";
 import { getNotesDatabase } from "../core/notes-sqlite";
+import { getWpnOwnerId } from "../core/wpn/wpn-owner";
 import {
   wpnSqliteCreateProject,
   wpnSqliteCreateWorkspace,
@@ -41,13 +42,15 @@ function requireNotesDb() {
 export function registerStaticIpcWpnHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.WPN_LIST_WORKSPACES, async () => {
     const db = requireNotesDb();
-    return { workspaces: wpnSqliteListWorkspaces(db) };
+    const ownerId = getWpnOwnerId();
+    return { workspaces: wpnSqliteListWorkspaces(db, ownerId) };
   });
 
   ipcMain.handle(IPC_CHANNELS.WPN_CREATE_WORKSPACE, async (_e, name?: unknown) => {
     const db = requireNotesDb();
+    const ownerId = getWpnOwnerId();
     const n = typeof name === "string" ? name : "Workspace";
-    const workspace = wpnSqliteCreateWorkspace(db, n);
+    const workspace = wpnSqliteCreateWorkspace(db, ownerId, n);
     return { workspace };
   });
 
@@ -58,10 +61,11 @@ export function registerStaticIpcWpnHandlers(): void {
         throw new Error("Invalid workspace id");
       }
       const db = requireNotesDb();
+      const ownerId = getWpnOwnerId();
       const p = (patch && typeof patch === "object"
         ? patch
         : {}) as WpnWorkspacePatch;
-      const workspace = wpnSqliteUpdateWorkspace(db, id, p);
+      const workspace = wpnSqliteUpdateWorkspace(db, ownerId, id, p);
       if (!workspace) {
         throw new Error("Workspace not found");
       }
@@ -74,7 +78,8 @@ export function registerStaticIpcWpnHandlers(): void {
       throw new Error("Invalid workspace id");
     }
     const db = requireNotesDb();
-    const ok = wpnSqliteDeleteWorkspace(db, id);
+    const ownerId = getWpnOwnerId();
+    const ok = wpnSqliteDeleteWorkspace(db, ownerId, id);
     if (!ok) {
       throw new Error("Workspace not found");
     }
@@ -88,7 +93,8 @@ export function registerStaticIpcWpnHandlers(): void {
         throw new Error("Invalid workspace id");
       }
       const db = requireNotesDb();
-      return { projects: wpnSqliteListProjects(db, workspaceId) };
+      const ownerId = getWpnOwnerId();
+      return { projects: wpnSqliteListProjects(db, ownerId, workspaceId) };
     },
   );
 
@@ -99,8 +105,9 @@ export function registerStaticIpcWpnHandlers(): void {
         throw new Error("Invalid workspace id");
       }
       const db = requireNotesDb();
+      const ownerId = getWpnOwnerId();
       const n = typeof name === "string" ? name : "Project";
-      const project = wpnSqliteCreateProject(db, workspaceId, n);
+      const project = wpnSqliteCreateProject(db, ownerId, workspaceId, n);
       if (!project) {
         throw new Error("Workspace not found");
       }
@@ -115,10 +122,11 @@ export function registerStaticIpcWpnHandlers(): void {
         throw new Error("Invalid project id");
       }
       const db = requireNotesDb();
+      const ownerId = getWpnOwnerId();
       const p = (patch && typeof patch === "object"
         ? patch
         : {}) as WpnProjectPatch;
-      const project = wpnSqliteUpdateProject(db, id, p);
+      const project = wpnSqliteUpdateProject(db, ownerId, id, p);
       if (!project) {
         throw new Error("Project not found");
       }
@@ -131,7 +139,8 @@ export function registerStaticIpcWpnHandlers(): void {
       throw new Error("Invalid project id");
     }
     const db = requireNotesDb();
-    const ok = wpnSqliteDeleteProject(db, id);
+    const ownerId = getWpnOwnerId();
+    const ok = wpnSqliteDeleteProject(db, ownerId, id);
     if (!ok) {
       throw new Error("Project not found");
     }
@@ -143,7 +152,8 @@ export function registerStaticIpcWpnHandlers(): void {
       throw new Error("Invalid project id");
     }
     const db = requireNotesDb();
-    return { notes: wpnSqliteListNotesFlat(db, projectId) };
+    const ownerId = getWpnOwnerId();
+    return { notes: wpnSqliteListNotesFlat(db, ownerId, projectId) };
   });
 
   ipcMain.handle(IPC_CHANNELS.WPN_GET_EXPLORER_STATE, async (_e, projectId: unknown) => {
@@ -151,7 +161,8 @@ export function registerStaticIpcWpnHandlers(): void {
       throw new Error("Invalid project id");
     }
     const db = requireNotesDb();
-    return { expanded_ids: wpnSqliteGetExplorerExpanded(db, projectId) };
+    const ownerId = getWpnOwnerId();
+    return { expanded_ids: wpnSqliteGetExplorerExpanded(db, ownerId, projectId) };
   });
 
   ipcMain.handle(
@@ -164,7 +175,8 @@ export function registerStaticIpcWpnHandlers(): void {
         ? expandedIds.filter((x): x is string => typeof x === "string")
         : [];
       const db = requireNotesDb();
-      wpnSqliteSetExplorerExpanded(db, projectId, ids);
+      const ownerId = getWpnOwnerId();
+      wpnSqliteSetExplorerExpanded(db, ownerId, projectId, ids);
       return { expanded_ids: ids };
     },
   );
@@ -195,7 +207,8 @@ export function registerStaticIpcWpnHandlers(): void {
         throw new Error("Invalid relation");
       }
       const db = requireNotesDb();
-      return wpnSqliteCreateNote(db, projectId, {
+      const ownerId = getWpnOwnerId();
+      return wpnSqliteCreateNote(db, ownerId, projectId, {
         anchorId: rel === "root" ? undefined : p.anchorId,
         relation: rel,
         type,
@@ -219,7 +232,8 @@ export function registerStaticIpcWpnHandlers(): void {
           })
         : {};
     const db = requireNotesDb();
-    const note = wpnSqliteUpdateNote(db, noteId, p);
+    const ownerId = getWpnOwnerId();
+    const note = wpnSqliteUpdateNote(db, ownerId, noteId, p);
     if (!note) {
       throw new Error("Note not found");
     }
@@ -232,7 +246,8 @@ export function registerStaticIpcWpnHandlers(): void {
     }
     const list = ids.filter((x): x is string => typeof x === "string" && isValidNoteId(x));
     const db = requireNotesDb();
-    wpnSqliteDeleteNotes(db, list);
+    const ownerId = getWpnOwnerId();
+    wpnSqliteDeleteNotes(db, ownerId, list);
     return { ok: true as const };
   });
 
@@ -262,8 +277,10 @@ export function registerStaticIpcWpnHandlers(): void {
         throw new Error("Invalid placement");
       }
       const db = requireNotesDb();
+      const ownerId = getWpnOwnerId();
       wpnSqliteMoveNote(
         db,
+        ownerId,
         projectId,
         draggedId,
         targetId,

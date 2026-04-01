@@ -14,7 +14,11 @@ export const NODEX_WEB_HEADLESS_API_STORAGE_KEY = "nodex-headless-api-base";
 export type HeadlessApiPreset = { label: string; value: string };
 
 export function normalizeHeadlessApiBase(url: string): string {
-  return url.trim().replace(/\/$/, "");
+  const t = url.trim();
+  if (t === "") {
+    return "";
+  }
+  return t.replace(/\/$/, "");
 }
 
 /** Presets for the web UI dropdown (call from client components so dev proxy uses current host). */
@@ -59,6 +63,13 @@ export function initHeadlessWebApiBaseFromUrlAndStorage(): void {
   } catch {
     /* private mode */
   }
+  if (
+    process.env.NEXT_PUBLIC_NODEX_API_SAME_ORIGIN === "1" ||
+    process.env.NEXT_PUBLIC_NODEX_API_SAME_ORIGIN === "true"
+  ) {
+    window.__NODEX_WEB_API_BASE__ = "";
+    return;
+  }
   if (!web) {
     return;
   }
@@ -101,8 +112,11 @@ async function webRequest<T>(
   apiPath: string,
   body?: unknown,
 ): Promise<T> {
-  const root = baseUrl.replace(/\/$/, "");
-  const url = `${root}/api/v1${apiPath}`;
+  const path = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+  const url =
+    baseUrl.trim() === ""
+      ? `/api/v1${path}`
+      : `${baseUrl.replace(/\/$/, "")}/api/v1${path}`;
   const init: RequestInit = {
     method,
     headers: { "Content-Type": "application/json" },
@@ -251,8 +265,11 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       );
     },
     getPluginRendererUiMeta: async (noteType) => {
-      const root = baseUrl.replace(/\/$/, "");
-      const u = `${root}/api/v1/plugins/renderer-meta?type=${encodeURIComponent(noteType)}`;
+      const root = baseUrl.trim() === "" ? "" : baseUrl.replace(/\/$/, "");
+      const u =
+        root === ""
+          ? `/api/v1/plugins/renderer-meta?type=${encodeURIComponent(noteType)}`
+          : `${root}/api/v1/plugins/renderer-meta?type=${encodeURIComponent(noteType)}`;
       const res = await fetch(u);
       if (!res.ok) {
         return null;
@@ -368,7 +385,19 @@ export function applyHeadlessApiBase(raw: string): void {
   if (typeof window === "undefined") {
     return;
   }
-  const base = normalizeHeadlessApiBase(raw);
+  const trimmed = raw.trim();
+  if (trimmed === "" || trimmed === "same-origin") {
+    try {
+      localStorage.removeItem(NODEX_WEB_HEADLESS_API_STORAGE_KEY);
+    } catch {
+      /* private mode */
+    }
+    window.__NODEX_WEB_API_BASE__ = "";
+    window.Nodex = createWebNodexApi("");
+    window.dispatchEvent(new Event(NODEX_WEB_PLUGINS_CHANGED));
+    return;
+  }
+  const base = normalizeHeadlessApiBase(trimmed);
   if (!/^https?:\/\/.+/i.test(base)) {
     return;
   }
@@ -506,8 +535,11 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       if (!file) {
         return { ok: false as const, error: "Cancelled" };
       }
-      const root = normalizeHeadlessApiBase(window.location.origin);
-      const url = `${root}/api/v1/assets/import-media`;
+      const b = window.__NODEX_WEB_API_BASE__?.trim();
+      const url =
+        b === undefined || b === ""
+          ? "/api/v1/assets/import-media"
+          : `${normalizeHeadlessApiBase(b)}/api/v1/assets/import-media`;
       const form = new FormData();
       form.append("category", String(category));
       form.append("file", file, file.name);
@@ -701,6 +733,30 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
   });
 }
 
+/**
+ * Reads `GET /api/v1/session` using the same origin / base as the web API shim (for UI labels).
+ */
+export async function fetchHeadlessWpnSession(): Promise<{ wpnOwnerId: string } | null> {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const raw = window.__NODEX_WEB_API_BASE__;
+  const base = typeof raw === "string" ? raw.trim() : "";
+  const url =
+    base === ""
+      ? "/api/v1/session"
+      : `${normalizeHeadlessApiBase(base)}/api/v1/session`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      return null;
+    }
+    return (await res.json()) as { wpnOwnerId: string };
+  } catch {
+    return null;
+  }
+}
+
 export function installNodexWebShimIfNeeded(): void {
   if (typeof window === "undefined") {
     return;
@@ -709,6 +765,12 @@ export function installNodexWebShimIfNeeded(): void {
   if (w.Nodex) {
     return;
   }
-  const base = window.__NODEX_WEB_API_BASE__?.trim();
-  window.Nodex = base ? createWebNodexApi(base) : createPlainBrowserDevStub();
+  if (typeof window.__NODEX_WEB_API_BASE__ === "string") {
+    window.Nodex = createWebNodexApi(normalizeHeadlessApiBase(window.__NODEX_WEB_API_BASE__));
+    return;
+  }
+  const sameOrigin =
+    process.env.NEXT_PUBLIC_NODEX_API_SAME_ORIGIN === "1" ||
+    process.env.NEXT_PUBLIC_NODEX_API_SAME_ORIGIN === "true";
+  window.Nodex = sameOrigin ? createWebNodexApi("") : createPlainBrowserDevStub();
 }

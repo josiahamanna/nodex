@@ -1,8 +1,20 @@
 # Nodex headless API — mount a host project directory into the container.
 #
-# Usage — NODEX_HOST_PROJECT must be a real host path (Compose does not expand $HOME in .env files):
+# Usage — set NODEX_HOST_PROJECT to your vault (Compose does not expand $HOME in .env files):
 #   export NODEX_HOST_PROJECT="$HOME/Documents/my-vault"   # shell expands $HOME → absolute path
 #   npm run docker:api:up
+#
+# If unset, Compose uses ./.nodex-docker-workspace (created as needed) so you can run API-only or
+# Postgres WPN without picking a real folder; legacy /notes still need a real project on disk.
+#
+# Postgres WPN (optional): start DB + set URL (password must match NODEX_PG_PASSWORD):
+#   docker compose --profile wpn-pg up -d postgres nodex-api
+#   NODEX_PG_DATABASE_URL=postgresql://nodex:nodex@postgres:5432/nodex
+# With NODEX_PG_DATABASE_URL set, the API can omit NODEX_PROJECT_ROOT (empty workspace mount is fine).
+#
+# Same-origin browser UI: use nodex-gateway (e.g. :8080) so the browser calls /api/v1 on the gateway
+# (proxied to nodex-api). For Next alone, set NODEX_HEADLESS_API_ORIGIN at build/runtime, or build
+# nodex-web with NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1 when the app is only served behind that proxy.
 #
 # Or use an absolute path directly:
 #   NODEX_HOST_PROJECT=/home/you/Documents/my-vault npm run docker:api:up
@@ -28,12 +40,37 @@
 # Blue/green applies to nodex-web only; a single nodex-api serves both.
 #
 # Zero-downtime UI deploy: deploy/ZERO-DOWNTIME.md and scripts/docker-web-swap.sh
+#
+# Full stack (Postgres WPN + gateway + UI) in one step:
+#   npm run deploy
+#   Open http://127.0.0.1:8080 — WPN workspaces/notes persist in Postgres (default owner jehu).
 
 services:
+  postgres:
+    profiles: ["wpn-pg"]
+    image: postgres:16-alpine
+    container_name: nodex-postgres
+    environment:
+      POSTGRES_USER: nodex
+      POSTGRES_PASSWORD: ${NODEX_PG_PASSWORD:-nodex}
+      POSTGRES_DB: nodex
+    volumes:
+      - nodex-pg-data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nodex -d nodex"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
   nodex-web-blue:
     build:
       context: .
       dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_NODEX_API_SAME_ORIGIN: ${NEXT_PUBLIC_NODEX_API_SAME_ORIGIN:-1}
     image: nodex-web:local
     container_name: nodex-web-blue
     expose:
@@ -56,6 +93,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_NODEX_API_SAME_ORIGIN: ${NEXT_PUBLIC_NODEX_API_SAME_ORIGIN:-1}
     image: nodex-web:local
     container_name: nodex-web-green
     expose:
@@ -90,11 +129,18 @@ services:
       NODEX_USER_DATA_DIR: /nodex-user-data
       # Serve marketplace artifacts from this mounted directory.
       NODEX_MARKETPLACE_DIR: /nodex-marketplace
+      # Optional: Postgres WPN when set (e.g. postgresql://nodex:nodex@postgres:5432/nodex with --profile wpn-pg)
+      NODEX_PG_DATABASE_URL: ${NODEX_PG_DATABASE_URL:-}
+      NODEX_WPN_DEFAULT_OWNER: ${NODEX_WPN_DEFAULT_OWNER:-jehu}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     volumes:
       # Long-form bind so paths are not mistaken for named volumes (short form treats
       # e.g. $HOME/... as a volume name because it does not start with /).
       - type: bind
-        source: ${NODEX_HOST_PROJECT:?Set NODEX_HOST_PROJECT to an absolute path to your project folder}
+        source: ${NODEX_HOST_PROJECT:-./.nodex-docker-workspace}
         target: /workspace
       # Host marketplace artifacts (run `npm run build:plugins` to populate dist/plugins).
       - type: bind
@@ -153,4 +199,5 @@ services:
 
 volumes:
   nodex-user-data:
+  nodex-pg-data:
   nodex-minio-data:

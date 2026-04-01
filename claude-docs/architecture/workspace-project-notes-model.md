@@ -16,7 +16,7 @@ It complements [chrome-shell-navigation-and-notes.md](./chrome-shell-navigation-
 
 ## Logical entities
 
-- **Workspace** — `id`, `name`, `sort_index`, optional `color_token`, timestamps.
+- **Workspace** — `id`, `name`, `sort_index`, optional `color_token`, timestamps, **`owner_id`** (TEXT, server default `jehu`) — scopes rows in shared Postgres/SQLite so multiple logical owners can coexist in one DB without a login UI today.
 - **Project** — `id`, `workspace_id`, `name`, `sort_index`, optional `color_token`, timestamps.
 - **Note (v2)** — `id`, `project_id`, optional `parent_id` (tree **within** project), `type`, `title`, `content`, optional `metadata_json`, `sibling_index`, timestamps.
 
@@ -49,6 +49,8 @@ Surface:
 - `POST /wpn/notes/delete` — body `{ ids: string[] }`
 - `POST /wpn/notes/move` — body `{ projectId, draggedId, targetId, placement }`
 
+**Session (headless)** — `GET /api/v1/session` returns `{ wpnOwnerId: string }` from `NODEX_WPN_DEFAULT_OWNER` (default `jehu`) so the web shell can label the active WPN owner without duplicating env in the client.
+
 On Electron, the same operations are available over IPC (`WPN_*` channels); **note body** reads/writes also go through existing `getNote` / `saveNoteContent` / `renameNote` / `saveNotePluginUiState` when the id exists in `wpn_note`.
 
 Responses use JSON; errors use `{ error: string }` or `{ ok: false, error }` where aligned with existing API style.
@@ -70,7 +72,14 @@ Responses use JSON; errors use `{ error: string }` or `{ ok: false, error }` whe
 | Variable | Purpose |
 |----------|---------|
 | `NODEX_PG_DATABASE_URL` | Optional Postgres connection string for **web** deployments. When unset, WPN routes use **SQLite** (`getNotesDatabase()`). |
-| `NODEX_PROJECT_ROOT` | Still required for current headless bootstrap (opens SQLite under project `data/`). Pure-Postgres-only API mode may relax this in a follow-up. |
+| `NODEX_PROJECT_ROOT` | Headless folder project: when set and valid, opens SQLite under project `data/` and enables legacy `/notes`, assets, etc. When unset **and** `NODEX_PG_DATABASE_URL` is set, the API still starts and serves WPN on Postgres; folder-only routes stay unavailable until a project root is configured. |
+| `NODEX_WPN_DEFAULT_OWNER` | String owner id for all WPN workspace rows (default **`jehu`**). Used by the HTTP WPN router and Electron IPC SQLite path. |
+| `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN` | When `1` or `true`, the Next/web bundle uses **relative** `/api/v1/...` (same origin as the page). Use with **nginx gateway** (or Next rewrites via `NODEX_HEADLESS_API_ORIGIN`) so the browser does not need `?api=` / localStorage API base. |
+
+## Docker / gateway
+
+- **`docker-compose.yml`** — optional **`postgres`** service (`--profile wpn-pg`), `NODEX_PG_DATABASE_URL` and `NODEX_WPN_DEFAULT_OWNER` on **`nodex-api`**, default workspace bind `./.nodex-docker-workspace` when `NODEX_HOST_PROJECT` is unset.
+- **`nodex-gateway`** — recommended access: UI + **`/api/v1/`** on one origin (e.g. port 8080) so `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1` works without per-browser API configuration.
 
 ## Risks
 

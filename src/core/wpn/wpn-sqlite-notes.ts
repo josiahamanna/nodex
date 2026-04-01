@@ -3,6 +3,7 @@ import * as crypto from "crypto";
 import type { NoteMovePlacement } from "../../shared/nodex-renderer-api";
 import type { WpnNoteDetail, WpnNoteListItem } from "../../shared/wpn-v2-types";
 import { wpnComputeChildMapAfterMove } from "./wpn-note-move";
+import { wpnSqliteProjectOwnedBy } from "./wpn-sqlite-service";
 import type { WpnNoteRow } from "./wpn-types";
 
 function applySiblingOrder(
@@ -62,8 +63,19 @@ function childrenMapFromRows(rows: WpnNoteRow[]): Map<string | null, WpnNoteRow[
   return m;
 }
 
+function requireWpnSqliteProject(db: Database, ownerId: string, projectId: string): void {
+  if (!wpnSqliteProjectOwnedBy(db, ownerId, projectId)) {
+    throw new Error("Project not found");
+  }
+}
+
 /** Preorder with depth for explorer. */
-export function wpnSqliteListNotesFlat(db: Database, projectId: string): WpnNoteListItem[] {
+export function wpnSqliteListNotesFlat(
+  db: Database,
+  ownerId: string,
+  projectId: string,
+): WpnNoteListItem[] {
+  requireWpnSqliteProject(db, ownerId, projectId);
   const rows = loadRows(db, projectId);
   const cm = childrenMapFromRows(rows);
   const out: WpnNoteListItem[] = [];
@@ -86,13 +98,20 @@ export function wpnSqliteListNotesFlat(db: Database, projectId: string): WpnNote
   return out;
 }
 
-export function wpnSqliteGetNoteById(db: Database, noteId: string): WpnNoteDetail | null {
+export function wpnSqliteGetNoteById(
+  db: Database,
+  ownerId: string,
+  noteId: string,
+): WpnNoteDetail | null {
   const r = db
     .prepare(
-      `SELECT id, project_id, parent_id, type, title, content, metadata_json, sibling_index, created_at_ms, updated_at_ms
-       FROM wpn_note WHERE id = ?`,
+      `SELECT n.id, n.project_id, n.parent_id, n.type, n.title, n.content, n.metadata_json, n.sibling_index, n.created_at_ms, n.updated_at_ms
+       FROM wpn_note n
+       INNER JOIN wpn_project p ON p.id = n.project_id
+       INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+       WHERE n.id = ? AND w.owner_id = ?`,
     )
-    .get(noteId) as WpnNoteRow | undefined;
+    .get(noteId, ownerId) as WpnNoteRow | undefined;
   if (!r) return null;
   return {
     id: r.id,
@@ -110,6 +129,7 @@ export function wpnSqliteGetNoteById(db: Database, noteId: string): WpnNoteDetai
 
 export function wpnSqliteCreateNote(
   db: Database,
+  ownerId: string,
   projectId: string,
   payload: {
     anchorId?: string;
@@ -120,10 +140,8 @@ export function wpnSqliteCreateNote(
     metadata?: Record<string, unknown>;
   },
 ): { id: string } {
-  const proj = db.prepare("SELECT id FROM wpn_project WHERE id = ?").get(projectId);
-  if (!proj) {
-    throw new Error("Project not found");
-  }
+  requireWpnSqliteProject(db, ownerId, projectId);
+
   const rows = loadRows(db, projectId);
   const cm = childrenMapFromRows(rows);
   const id = newId();
@@ -202,6 +220,7 @@ export function wpnSqliteCreateNote(
 
 export function wpnSqliteUpdateNote(
   db: Database,
+  ownerId: string,
   noteId: string,
   patch: {
     title?: string;
@@ -210,7 +229,7 @@ export function wpnSqliteUpdateNote(
     type?: string;
   },
 ): WpnNoteDetail | null {
-  const cur = wpnSqliteGetNoteById(db, noteId);
+  const cur = wpnSqliteGetNoteById(db, ownerId, noteId);
   if (!cur) return null;
   const title = patch.title !== undefined ? patch.title.trim() || cur.title : cur.title;
   const content = patch.content !== undefined ? patch.content : cur.content;
@@ -227,15 +246,27 @@ export function wpnSqliteUpdateNote(
   }
   const updated_at_ms = nowMs();
   db.prepare(
-    `UPDATE wpn_note SET title = ?, content = ?, metadata_json = ?, type = ?, updated_at_ms = ? WHERE id = ?`,
-  ).run(title, content, metadata_json, type, updated_at_ms, noteId);
-  return wpnSqliteGetNoteById(db, noteId);
+    `UPDATE wpn_note SET title = ?, content = ?, metadata_json = ?, type = ?, updated_at_ms = ?
+     WHERE id = ? AND EXISTS (
+       SELECT 1 FROM wpn_project p
+       INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+       WHERE p.id = wpn_note.project_id AND w.owner_id = ?
+     )`,
+  ).run(title, content, metadata_json, type, updated_at_ms, noteId, ownerId);
+  return wpnSqliteGetNoteById(db, ownerId, noteId);
 }
 
-export function wpnSqliteDeleteNotes(db: Database, ids: string[]): void {
+export function wpnSqliteDeleteNotes(db: Database, ownerId: string, ids: string[]): void {
   const unique = [...new Set(ids)];
+  const del = db.prepare(
+    `DELETE FROM wpn_note WHERE id = ? AND EXISTS (
+       SELECT 1 FROM wpn_project p
+       INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+       WHERE p.id = wpn_note.project_id AND w.owner_id = ?
+     )`,
+  );
   for (const id of unique) {
-    db.prepare("DELETE FROM wpn_note WHERE id = ?").run(id);
+    del.run(id, ownerId);
   }
 }
 
@@ -254,18 +285,25 @@ function persistTree(db: Database, projectId: string, childMap: Map<string | nul
 
 export function wpnSqliteMoveNote(
   db: Database,
+  ownerId: string,
   projectId: string,
   draggedId: string,
   targetId: string,
   placement: NoteMovePlacement,
 ): void {
   if (draggedId === targetId) return;
+  requireWpnSqliteProject(db, ownerId, projectId);
   const rows = loadRows(db, projectId);
   const childMap = wpnComputeChildMapAfterMove(rows, draggedId, targetId, placement);
   persistTree(db, projectId, childMap);
 }
 
-export function wpnSqliteGetExplorerExpanded(db: Database, projectId: string): string[] {
+export function wpnSqliteGetExplorerExpanded(
+  db: Database,
+  ownerId: string,
+  projectId: string,
+): string[] {
+  requireWpnSqliteProject(db, ownerId, projectId);
   const row = db
     .prepare("SELECT expanded_ids_json FROM wpn_explorer_state WHERE project_id = ?")
     .get(projectId) as { expanded_ids_json: string } | undefined;
@@ -280,11 +318,11 @@ export function wpnSqliteGetExplorerExpanded(db: Database, projectId: string): s
 
 export function wpnSqliteSetExplorerExpanded(
   db: Database,
+  ownerId: string,
   projectId: string,
   expandedIds: string[],
 ): void {
-  const proj = db.prepare("SELECT id FROM wpn_project WHERE id = ?").get(projectId);
-  if (!proj) throw new Error("Project not found");
+  requireWpnSqliteProject(db, ownerId, projectId);
   const json = JSON.stringify([...new Set(expandedIds)]);
   db.prepare(
     `INSERT INTO wpn_explorer_state (project_id, expanded_ids_json)

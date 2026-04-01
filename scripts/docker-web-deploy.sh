@@ -42,9 +42,9 @@ fi
 
 if ! docker container inspect "$GATEWAY" &>/dev/null; then
   echo "Error: container '$GATEWAY' does not exist." >&2
-  echo "Start the stack first (deploy reloads nginx in the gateway):" >&2
-  echo "  export NODEX_HOST_PROJECT=/absolute/path/to/project" >&2
-  echo "  npm run docker:api:up:detached" >&2
+  echo "Start the stack first:" >&2
+  echo "  npm run deploy                    # Postgres WPN + API + gateway + UI" >&2
+  echo "  npm run docker:api:up:detached   # compose only (set NODEX_HOST_PROJECT if needed)" >&2
   exit 1
 fi
 

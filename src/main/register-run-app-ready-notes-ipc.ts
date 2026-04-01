@@ -7,6 +7,7 @@ import {
   moveNote as moveNoteInStore,
   moveNotesBulk as moveNotesBulkInStore,
 } from "../core/notes-store";
+import { getWpnOwnerId } from "../core/wpn/wpn-owner";
 import {
   wpnSqliteDeleteNotes,
   wpnSqliteGetNoteById,
@@ -48,17 +49,18 @@ export function registerRunAppReadyNotesTreeIpc(): void {
         return;
       }
       const db = getNotesDatabase();
+      const ownerId = getWpnOwnerId();
       const wpnIds: string[] = [];
       const legacyIds: string[] = [];
       for (const id of deletable) {
-        if (db && wpnSqliteGetNoteById(db, id)) {
+        if (db && wpnSqliteGetNoteById(db, ownerId, id)) {
           wpnIds.push(id);
         } else {
           legacyIds.push(id);
         }
       }
       if (wpnIds.length > 0 && db) {
-        wpnSqliteDeleteNotes(db, wpnIds);
+        wpnSqliteDeleteNotes(db, ownerId, wpnIds);
       }
       if (legacyIds.length > 0) {
         pushNotesUndoSnapshot();
@@ -120,10 +122,11 @@ export function registerRunAppReadyNotesTreeIpc(): void {
       }
       const db = getNotesDatabase();
       if (db) {
-        const a = wpnSqliteGetNoteById(db, draggedId);
-        const b = wpnSqliteGetNoteById(db, targetId);
+        const ownerId = getWpnOwnerId();
+        const a = wpnSqliteGetNoteById(db, ownerId, draggedId);
+        const b = wpnSqliteGetNoteById(db, ownerId, targetId);
         if (a && b && a.project_id === b.project_id) {
-          wpnSqliteMoveNote(db, a.project_id, draggedId, targetId, p);
+          wpnSqliteMoveNote(db, ownerId, a.project_id, draggedId, targetId, p);
           return;
         }
       }
