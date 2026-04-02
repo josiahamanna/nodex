@@ -39,14 +39,14 @@ function MarketingHome({
         <div className="flex shrink-0 flex-nowrap items-center gap-2">
           <button
             type="button"
-            className="h-9 rounded-md border border-border bg-muted/10 px-3 text-[12px] text-foreground hover:bg-muted/30"
+            className="h-9 rounded-md border border-foreground/20 bg-background px-3 text-[12px] text-foreground hover:bg-foreground/6"
             onClick={onLogin}
           >
             Login
           </button>
           <button
             type="button"
-            className="nodex-primary-fill h-9 rounded-md border border-primary/30 bg-primary px-3 text-[12px] font-medium text-primary-foreground hover:brightness-95"
+            className="nodex-btn-neutral h-9 rounded-md px-3 text-[12px] font-medium"
             onClick={onSignup}
           >
             Signup
@@ -79,7 +79,7 @@ function MarketingHome({
             <div className="mt-7 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                className="nodex-primary-fill h-10 rounded-md border border-primary/30 bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:brightness-95"
+                className="nodex-btn-neutral h-10 rounded-md px-4 text-[13px] font-medium"
                 onClick={onSignup}
               >
                 Create an account

@@ -1,8 +1,9 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import type { Note } from "@nodex/ui-types";
+import { baseSlug } from "../../utils/markdown-heading-slugs";
 
 interface MarkdownRendererProps {
   note: Note;
@@ -16,17 +17,6 @@ function extractText(node: React.ReactNode): string {
   if (Array.isArray(node)) return node.map(extractText).join("");
   if (React.isValidElement<{ children?: React.ReactNode }>(node)) return extractText(node.props.children);
   return "";
-}
-
-function baseSlug(text: string): string {
-  const s = text
-    .trim()
-    .toLowerCase()
-    .replace(/['"]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return s || "section";
 }
 
 const markdownShellClass =
@@ -53,16 +43,20 @@ const markdownShellClass =
   "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground";
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note }) => {
-  const slugCounts = useMemo(() => new Map<string, number>(), [note.id, note.content]);
+  // Reset each render so heading ids match a fresh slug sequence (TOC / scroll-to-heading).
+  const slugCountsRef = useRef<Map<string, number>>(new Map());
+  slugCountsRef.current = new Map();
+
   const headingComponents = useMemo(() => {
     const make =
       (Tag: MarkdownHeading) =>
       ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement> & { children?: React.ReactNode }) => {
         const text = extractText(children);
         const slugBase = baseSlug(text);
-        const prev = slugCounts.get(slugBase) ?? 0;
+        const map = slugCountsRef.current;
+        const prev = map.get(slugBase) ?? 0;
         const nextCount = prev + 1;
-        slugCounts.set(slugBase, nextCount);
+        map.set(slugBase, nextCount);
         const id = nextCount === 1 ? slugBase : `${slugBase}-${nextCount}`;
         return (
           <Tag id={id} {...props}>
@@ -78,7 +72,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note }) => {
       h5: make("h5"),
       h6: make("h6"),
     };
-  }, [slugCounts]);
+  }, []);
 
   return (
     <div className={`p-4 nodex-typography max-w-none min-w-0 ${markdownShellClass}`}>

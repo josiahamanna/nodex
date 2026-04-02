@@ -130,6 +130,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const { openNoteById } = useShellNavigation();
   const { workspaceRoots, rootPath, mountKind } = useShellProjectWorkspace();
   const currentNoteId = useSelector((s: RootState) => s.notes.currentNote?.id);
+  const noteRenameEpoch = useSelector((s: RootState) => s.notes.noteRenameEpoch);
 
   const showFolderBasedWorkspaceCreate =
     mountKind !== "wpn-postgres" && (isElectronUserAgent() || rootPath != null);
@@ -139,6 +140,8 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const [expandedWs, setExpandedWs] = useState<Set<string>>(() => new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set());
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const selectedProjectIdRef = useRef<string | null>(null);
+  selectedProjectIdRef.current = selectedProjectId;
   const [notes, setNotes] = useState<WpnNoteListItem[]>([]);
   const [expandedNoteParents, setExpandedNoteParents] = useState<Set<string>>(() => new Set());
   const [selectableTypes, setSelectableTypes] = useState<string[]>([]);
@@ -240,6 +243,13 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     if (!selectedProjectId || !projectOpen) return;
     void loadProjectTree(selectedProjectId);
   }, [selectedProjectId, projectOpen, loadProjectTree]);
+
+  useEffect(() => {
+    if (noteRenameEpoch === 0 || !projectOpen) return;
+    const projectId = selectedProjectIdRef.current;
+    if (!projectId) return;
+    void loadProjectTree(projectId);
+  }, [noteRenameEpoch, projectOpen, loadProjectTree]);
 
   useEffect(() => {
     if (selectedProjectId) return;

@@ -1,23 +1,13 @@
 import React, { useMemo } from "react";
 import { useSelector } from "react-redux";
 import type { RootState } from "../../store";
+import { baseSlug, stripInlineMarkdownHeadingSource } from "../../utils/markdown-heading-slugs";
 import { useShellActiveMainTab } from "../ShellActiveTabContext";
 import type { ShellViewComponentProps } from "../views/ShellViewRegistry";
 
 type NoteTabState = { noteId?: string };
 
 type TocRow = { level: number; text: string; slug: string };
-
-function baseSlug(text: string): string {
-  const s = text
-    .trim()
-    .toLowerCase()
-    .replace(/['"]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return s || "section";
-}
 
 function parseHeadings(md: string): TocRow[] {
   const out: TocRow[] = [];
@@ -32,7 +22,7 @@ function parseHeadings(md: string): TocRow[] {
       const level = atx[1]!.length;
       const text = atx[2]!.trim();
       if (!text) continue;
-      const slugBase = baseSlug(text);
+      const slugBase = baseSlug(stripInlineMarkdownHeadingSource(text));
       const prev = counts.get(slugBase) ?? 0;
       const n = prev + 1;
       counts.set(slugBase, n);
@@ -46,7 +36,7 @@ function parseHeadings(md: string): TocRow[] {
     if (setext && line.trim().length > 0) {
       const level = setext[1]!.startsWith("=") ? 1 : 2;
       const text = line.trim();
-      const slugBase = baseSlug(text);
+      const slugBase = baseSlug(stripInlineMarkdownHeadingSource(text));
       const prev = counts.get(slugBase) ?? 0;
       const n = prev + 1;
       counts.set(slugBase, n);

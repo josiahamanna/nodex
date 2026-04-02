@@ -16,6 +16,11 @@ interface NotesState {
   /** Selected note body fetch */
   detailLoading: boolean;
   error: string | null;
+  /**
+   * Incremented on successful `renameNote` (IPC / API). WPN Notes explorer listens
+   * and refetches the open project tree so titles stay in sync with the editor header.
+   */
+  noteRenameEpoch: number;
 }
 
 const initialState: NotesState = {
@@ -24,6 +29,7 @@ const initialState: NotesState = {
   listLoading: false,
   detailLoading: false,
   error: null,
+  noteRenameEpoch: 0,
 };
 
 export const fetchNote = createAsyncThunk(
@@ -178,6 +184,7 @@ const notesSlice = createSlice({
       })
       .addCase(renameNote.fulfilled, (state, action) => {
         state.error = null;
+        state.noteRenameEpoch += 1;
         if (state.currentNote?.id === action.payload.id) {
           state.currentNote = {
             ...state.currentNote,

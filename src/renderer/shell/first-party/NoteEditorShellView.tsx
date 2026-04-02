@@ -4,14 +4,17 @@ import NoteViewer from "../../components/NoteViewer";
 import { workspaceFolderPathForNote } from "../../../shared/note-workspace";
 import type { AppDispatch, RootState } from "../../store";
 import { fetchAllNotes, fetchNote, renameNote } from "../../store/notesSlice";
+import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import { useShellActiveMainTab } from "../ShellActiveTabContext";
 import { useShellProjectWorkspace } from "../useShellProjectWorkspace";
 import type { ShellViewComponentProps } from "../views/ShellViewRegistry";
+import { SHELL_TAB_NOTE } from "./shellWorkspaceIds";
 
 type NoteTabState = { noteId?: string };
 
 export function NoteEditorShellView(_props: ShellViewComponentProps): React.ReactElement {
   const tab = useShellActiveMainTab();
+  const { tabs } = useShellRegistries();
   const dispatch = useDispatch<AppDispatch>();
   const currentNote = useSelector((s: RootState) => s.notes.currentNote);
   const detailLoading = useSelector((s: RootState) => s.notes.detailLoading);
@@ -42,7 +45,7 @@ export function NoteEditorShellView(_props: ShellViewComponentProps): React.Reac
     );
   }
 
-  if (error && !currentNote) {
+  if (error && !detailLoading && currentNote?.id !== noteId) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-[12px] text-destructive">
         {error}
@@ -65,8 +68,14 @@ export function NoteEditorShellView(_props: ShellViewComponentProps): React.Reac
         assetProjectRoot={assetProjectRoot}
         onTitleCommit={(title) => {
           void (async () => {
-            await dispatch(renameNote({ id: currentNote.id, title })).unwrap();
+            const id = currentNote.id;
+            await dispatch(renameNote({ id, title })).unwrap();
             await dispatch(fetchAllNotes());
+            const tabInst = tabs.findNoteTabByNoteId(id, SHELL_TAB_NOTE);
+            if (tabInst) {
+              const label = title.replace(/\s+/g, " ").trim() || "Untitled";
+              tabs.updateTabPresentation(tabInst.instanceId, { title: label });
+            }
           })();
         }}
       />

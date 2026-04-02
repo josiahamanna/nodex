@@ -84,20 +84,21 @@ export function MarkdownNoteEditor({
         setAndPersistViewMode("both");
       }
 
-      const tryScroll = (attempt: number) => {
+      const deadline = performance.now() + 900;
+      const tryScroll = () => {
         const root = previewScrollRef.current;
-        if (!root) {
-          if (attempt < 8) requestAnimationFrame(() => tryScroll(attempt + 1));
-          return;
+        if (root) {
+          const target = root.querySelector<HTMLElement>(`#${CSS.escape(slug)}`);
+          if (target) {
+            target.scrollIntoView({ block: "start", behavior: "smooth" });
+            return;
+          }
         }
-        const target = root.querySelector<HTMLElement>(`#${CSS.escape(slug)}`);
-        if (!target) {
-          if (attempt < 8) requestAnimationFrame(() => tryScroll(attempt + 1));
-          return;
+        if (performance.now() < deadline) {
+          requestAnimationFrame(tryScroll);
         }
-        target.scrollIntoView({ block: "start" });
       };
-      requestAnimationFrame(() => tryScroll(0));
+      requestAnimationFrame(tryScroll);
     };
 
     window.addEventListener("nodex:markdown-scroll-to-heading", onScrollTo as EventListener);

@@ -237,6 +237,13 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
     };
   }, []);
 
+  // React Strict Mode remounts without resetting refs; clear so note-key run fires again after remount.
+  useEffect(() => {
+    return () => {
+      executeKeySeenRef.current = undefined;
+    };
+  }, []);
+
   useEffect(() => {
     if (!autoRun) return;
     const id = window.setTimeout(() => {

@@ -24,14 +24,18 @@ export type NormalizedNotebookCell = {
 export function normalizeNotebookCells(cells: NotebookCell[]): NormalizedNotebookCell[] {
   const seen = new Set<string>();
   return cells
-    .map((c) => ({
-      id: c.id,
-      name: String(c.name || "").trim(),
-      inputs: (c.inputs || []).map((x) => String(x || "").trim()).filter(Boolean),
-      body: String(c.body || "").trim(),
-      kind: c.kind === "md" ? ("md" satisfies NotebookCellKind) : ("js" satisfies NotebookCellKind),
-    }))
-    .filter((c) => c.name)
+    .map((c) => {
+      const trimmed = String(c.name || "").trim();
+      const slug = c.id.replace(/\W/g, "") || "id";
+      const name = trimmed || `cell_${slug.slice(0, 24)}`;
+      return {
+        id: c.id,
+        name,
+        inputs: (c.inputs || []).map((x) => String(x || "").trim()).filter(Boolean),
+        body: String(c.body || "").trim(),
+        kind: c.kind === "md" ? ("md" satisfies NotebookCellKind) : ("js" satisfies NotebookCellKind),
+      };
+    })
     .map((c): NormalizedNotebookCell => {
       let n = c.name;
       while (seen.has(n)) n = `${n}_`;

@@ -10,11 +10,14 @@ import type { WpnNoteDetail } from "../shared/wpn-v2-types";
 
 /**
  * Resolve a WPN note for the headless HTTP API (same order as Electron GET_NOTE).
+ * @param wpnOwnerId When the client is authenticated (Bearer), pass `req.user.id` so Postgres WPN
+ *   rows match `/wpn/*` (workspaces use JWT `sub` as owner). Otherwise defaults to {@link getWpnOwnerId}.
  */
 export async function headlessGetWpnNoteById(
   noteId: string,
+  wpnOwnerId?: string,
 ): Promise<WpnNoteDetail | null> {
-  const ownerId = getWpnOwnerId();
+  const ownerId = wpnOwnerId ?? getWpnOwnerId();
   const pool = getWpnPgPool();
   if (pool) {
     return wpnPgGetNoteById(pool, ownerId, noteId);
@@ -31,8 +34,9 @@ export async function headlessPatchWpnNote(
     content?: string;
     metadata?: Record<string, unknown> | null;
   },
+  wpnOwnerId?: string,
 ): Promise<WpnNoteDetail | null> {
-  const ownerId = getWpnOwnerId();
+  const ownerId = wpnOwnerId ?? getWpnOwnerId();
   const pool = getWpnPgPool();
   if (pool) {
     return wpnPgUpdateNote(pool, ownerId, noteId, patch);

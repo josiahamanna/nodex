@@ -154,6 +154,12 @@ function noteToApi(n: {
   return { id, type, title, content, metadata };
 }
 
+/** WPN rows in Postgres are keyed by JWT user id; legacy headless uses {@link getWpnOwnerId}. */
+function wpnOwnerIdFromRequest(req: Request): string {
+  const u = (req as AuthedRequest).user;
+  return u?.id ?? getWpnOwnerId();
+}
+
 export function createNodexApiRouter(): Router {
   const router = Router();
 
@@ -515,7 +521,7 @@ export function createNodexApiRouter(): Router {
             res.status(400).json({ error: "Invalid note id" });
             return;
           }
-          const wpn = await headlessGetWpnNoteById(noteId);
+          const wpn = await headlessGetWpnNoteById(noteId, wpnOwnerIdFromRequest(req));
           if (wpn) {
             res.json(noteToApi(wpn));
             return;
@@ -628,7 +634,8 @@ export function createNodexApiRouter(): Router {
         return;
       }
       try {
-        const wpn = await headlessGetWpnNoteById(id);
+        const wpnOwnerId = wpnOwnerIdFromRequest(req);
+        const wpn = await headlessGetWpnNoteById(id, wpnOwnerId);
         if (wpn) {
           if (body.title !== undefined) {
             if (typeof body.title !== "string") {
@@ -670,7 +677,7 @@ export function createNodexApiRouter(): Router {
             res.json(noteToApi(wpn));
             return;
           }
-          const next = await headlessPatchWpnNote(id, patch);
+          const next = await headlessPatchWpnNote(id, patch, wpnOwnerId);
           if (!next) {
             res.status(404).json({ error: "Note not found" });
             return;

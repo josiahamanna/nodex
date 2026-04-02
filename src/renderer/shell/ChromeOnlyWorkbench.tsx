@@ -864,7 +864,9 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               className="min-w-0"
             >
               <div className="h-full min-h-0 min-w-0 w-full bg-background">
-                {secondaryView ? <ShellViewHost view={secondaryView} /> : null}
+                {secondaryView ? (
+                  <ShellViewHost view={secondaryView} activeMainTab={activeTab} />
+                ) : null}
               </div>
             </Panel>
           </PanelGroup>
