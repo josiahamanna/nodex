@@ -37,6 +37,7 @@ import type { ShellAppMenuItem } from "./registries/ShellAppMenuRegistry";
 import type { ShellTabInstance } from "./registries/ShellTabsRegistry";
 import { SHELL_TAB_NOTE } from "./first-party/shellWorkspaceIds";
 import {
+  SHELL_ACTIVITY_BAR_MIN_EXPANDED_PX,
   SHELL_COMPANION_MIN_EXPANDED_PX,
   SHELL_SIDEBAR_MIN_EXPANDED_PX,
 } from "./shellResponsiveConstants";
@@ -231,12 +232,22 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     return (workspaceWidthPx * p) / total;
   }, [workspaceWidthPx, layout.sizes]);
 
+  /** Rail share of the primary column (percent); capped by Panel maxSize 28. */
+  const minRailPanelPct = useMemo(() => {
+    if (!showMenuRail || primaryColumnPx <= 0) return 0;
+    return Math.min(
+      28,
+      Math.max(
+        1,
+        Math.ceil((SHELL_ACTIVITY_BAR_MIN_EXPANDED_PX / primaryColumnPx) * 100),
+      ),
+    );
+  }, [showMenuRail, primaryColumnPx]);
+
   const minSidebarPanelPct = useMemo(() => {
     if (!showSidebarPanel || primaryColumnPx <= 0) return 0;
-    return Math.min(
-      99,
-      Math.max(1, Math.ceil((SHELL_SIDEBAR_MIN_EXPANDED_PX / primaryColumnPx) * 100)),
-    );
+    const pct = Math.ceil((SHELL_SIDEBAR_MIN_EXPANDED_PX / primaryColumnPx) * 100);
+    return Math.min(99, Math.max(1, pct));
   }, [showSidebarPanel, primaryColumnPx]);
 
   const minCompanionPct = useMemo(() => {
@@ -424,12 +435,13 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     const id = window.requestAnimationFrame(() => {
       try {
         if (showMenuRail) {
-          railPanelRef.current?.expand(18);
+          railPanelRef.current?.expand(Math.max(18, minRailPanelPct));
         } else {
           railPanelRef.current?.collapse();
         }
         if (showSidebarPanel) {
-          sidebarPanelRef.current?.expand(35);
+          const sidebarPct = showMenuRail ? Math.max(1, 100 - Math.max(18, minRailPanelPct)) : 100;
+          sidebarPanelRef.current?.expand(sidebarPct);
         } else {
           sidebarPanelRef.current?.collapse();
         }
@@ -438,7 +450,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       }
     });
     return () => window.cancelAnimationFrame(id);
-  }, [showLeft, showMenuRail, showSidebarPanel, hSizes[0]]);
+  }, [showLeft, showMenuRail, showSidebarPanel, hSizes[0], minRailPanelPct]);
 
   /** Collapse/expand companion `Panel` so toggles match store (panel stays mounted). */
   useLayoutEffect(() => {
@@ -455,6 +467,19 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     });
     return () => window.cancelAnimationFrame(id);
   }, [showSecondary, hSizes[2]]);
+
+  /** Keep bottom dock expanded size in sync when `bottomArea` is visible (e.g. after sash collapse + toolbar toggle). */
+  useLayoutEffect(() => {
+    if (!showBottom) return;
+    const id = window.requestAnimationFrame(() => {
+      try {
+        bottomRef.current?.expand(Math.max(10, layout.bottomTabs.heightPct));
+      } catch {
+        /* refs not ready */
+      }
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [showBottom, layout.bottomTabs.heightPct]);
 
   /** When the viewport shrinks, collapse companion and/or side panel if their columns fall below min width (px). Activity bar is not auto-collapsed. */
   useEffect(() => {
@@ -610,84 +635,79 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
           </div>
         </div>
 
-        <PanelGroup
-          direction="vertical"
-          className="h-full min-h-0 min-w-0 flex-1 box-border"
+        {/*
+          Horizontal workbench: primary (activity bar + side panel, full height) | center (main ± bottom dock) | companion (full height).
+          primaryRef = entire left dock; secondaryRef = companion; bottom dock sits only under the main editor column.
+        */}
+        <div
+          ref={horizontalWorkspaceRef}
+          className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col box-border"
         >
-          <Panel defaultSize={100 - layout.bottomTabs.heightPct} minSize={40} className="min-h-0">
-            {/*
-              Horizontal workbench: left dock (activity bar + side panel) | main area | companion.
-              primaryRef = entire left dock; secondaryRef = companion (always mounted, collapsed when hidden).
-            */}
-            <div
-              ref={horizontalWorkspaceRef}
-              className="flex h-full min-h-0 min-w-0 w-full flex-col"
+          <PanelGroup
+            direction="horizontal"
+            className="h-full min-h-0 min-w-0 flex-1 box-border"
+            onLayout={(sizes) => {
+              store.patch((cur) => {
+                if (sizes.length >= 3) {
+                  const [p, m, s] = sizes;
+                  return {
+                    ...cur,
+                    sizes: {
+                      ...cur.sizes,
+                      primaryPct: p,
+                      mainPct: m,
+                      secondaryPct: s,
+                    },
+                  };
+                }
+                const [p, m] = sizes;
+                return {
+                  ...cur,
+                  sizes: {
+                    ...cur.sizes,
+                    primaryPct: p,
+                    mainPct: m,
+                  },
+                };
+              });
+            }}
+          >
+            <Panel
+              ref={primaryRef}
+              defaultSize={hSizes[0]}
+              minSize={showLeft ? 8 : 0}
+              collapsible
+              collapsedSize={0}
+              onCollapse={() => {
+                const v = store.get().visible;
+                beforePrimaryCollapseRef.current = {
+                  menuRail: v.menuRail,
+                  sidebarPanel: v.sidebarPanel,
+                };
+                store.setVisible("menuRail", false);
+                store.setVisible("sidebarPanel", false);
+              }}
+              onExpand={() => {
+                const s = beforePrimaryCollapseRef.current;
+                store.setVisible("menuRail", s.menuRail);
+                store.setVisible("sidebarPanel", s.sidebarPanel);
+              }}
+              className="min-w-0"
             >
-              <PanelGroup
-                direction="horizontal"
-                className="h-full min-h-0 min-w-0 flex-1 box-border"
-                onLayout={(sizes) => {
-                  store.patch((cur) => {
-                    if (sizes.length >= 3) {
-                      const [p, m, s] = sizes;
-                      return {
-                        ...cur,
-                        sizes: {
-                          ...cur.sizes,
-                          primaryPct: p,
-                          mainPct: m,
-                          secondaryPct: s,
-                        },
-                      };
-                    }
-                    const [p, m] = sizes;
-                    return {
-                      ...cur,
-                      sizes: {
-                        ...cur.sizes,
-                        primaryPct: p,
-                        mainPct: m,
-                      },
-                    };
-                  });
-                }}
-              >
+              <PanelGroup direction="horizontal" className="h-full min-h-0 min-w-0">
                 <Panel
-                  ref={primaryRef}
-                  defaultSize={hSizes[0]}
-                  minSize={showLeft ? 8 : 0}
+                  ref={railPanelRef}
+                  order={1}
+                  defaultSize={18}
+                  minSize={showMenuRail ? minRailPanelPct : 0}
+                  maxSize={28}
                   collapsible
                   collapsedSize={0}
-                  onCollapse={() => {
-                    const v = store.get().visible;
-                    beforePrimaryCollapseRef.current = {
-                      menuRail: v.menuRail,
-                      sidebarPanel: v.sidebarPanel,
-                    };
-                    store.setVisible("menuRail", false);
-                    store.setVisible("sidebarPanel", false);
-                  }}
-                  onExpand={() => {
-                    const s = beforePrimaryCollapseRef.current;
-                    store.setVisible("menuRail", s.menuRail);
-                    store.setVisible("sidebarPanel", s.sidebarPanel);
-                  }}
                   className="min-w-0"
+                  onCollapse={() => store.setVisible("menuRail", false)}
+                  onExpand={() => store.setVisible("menuRail", true)}
                 >
-                  <PanelGroup direction="horizontal" className="h-full min-h-0 min-w-0">
-                    <Panel
-                      ref={railPanelRef}
-                      order={1}
-                      defaultSize={18}
-                      minSize={0}
-                      maxSize={28}
-                      collapsible
-                      collapsedSize={0}
-                      className="min-w-0"
-                      onCollapse={() => store.setVisible("menuRail", false)}
-                      onExpand={() => store.setVisible("menuRail", true)}
-                    >
-                    <div className="flex h-full min-h-0 w-full flex-col items-center gap-1 border-r border-border bg-muted/15 py-2">
+                  <div className="flex h-full min-h-0 w-full flex-col items-center gap-1 border-r border-border bg-muted/15 py-2">
                       {railItems.map((it) => {
                         const railActive = Boolean(
                           activeTab?.tabTypeId && it.tabTypeId && it.tabTypeId === activeTab.tabTypeId,
@@ -716,83 +736,127 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                           </div>
                         );
                       })}
+                  </div>
+                </Panel>
+                <PanelResizeHandle className="nodex-panel-sash relative w-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-y-0 before:left-1/2 before:z-10 before:w-px before:-translate-x-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
+                <Panel
+                  ref={sidebarPanelRef}
+                  order={2}
+                  defaultSize={82}
+                  minSize={minSidebarPanelPct}
+                  collapsible
+                  collapsedSize={0}
+                  className="min-w-0"
+                  onCollapse={() => store.setVisible("sidebarPanel", false)}
+                  onExpand={() => store.setVisible("sidebarPanel", true)}
+                >
+                  {primaryView ? (
+                    <div
+                      ref={sidebarColumnMeasureRef}
+                      className="flex h-full min-h-0 min-w-0 flex-col"
+                    >
+                      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/10 px-2 py-1">
+                        <div className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
+                          {primaryView.title}
+                        </div>
+                        {panelMenu.listFor("primarySidebar", primaryView.id).length > 0 ? (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
+                              onClick={() => setPanelMenuOpen((v) => !v)}
+                              title="Side panel menu"
+                            >
+                              ⋯
+                            </button>
+                            {panelMenuOpen ? (
+                              <div className="absolute right-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-md border border-border bg-background shadow-lg">
+                                {panelMenu
+                                  .listFor("primarySidebar", primaryView.id)
+                                  .map((item) => (
+                                    <button
+                                      key={item.id}
+                                      type="button"
+                                      className="block w-full px-3 py-2 text-left text-[11px] text-foreground hover:bg-muted/40"
+                                      onClick={() => {
+                                        setPanelMenuOpen(false);
+                                        void Promise.resolve(
+                                          invokeCommand(item.commandId, item.commandArgs),
+                                        );
+                                      }}
+                                    >
+                                      {item.title}
+                                    </button>
+                                  ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="min-h-0 min-w-0 flex-1">
+                        <ShellViewHost view={primaryView} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      ref={sidebarColumnMeasureRef}
+                      className="h-full min-h-0 min-w-0 w-full bg-background"
+                    />
+                  )}
+                </Panel>
+              </PanelGroup>
+            </Panel>
+            {renderSash("sash-primary")}
+            <Panel
+              ref={mainPanelRef}
+              defaultSize={hSizes[1]}
+              minSize={30}
+              className="min-h-0 min-w-0"
+            >
+              {showBottom ? (
+                <PanelGroup
+                  direction="vertical"
+                  className="h-full min-h-0 min-w-0 box-border"
+                >
+                  <Panel
+                    defaultSize={100 - layout.bottomTabs.heightPct}
+                    minSize={40}
+                    className="min-h-0"
+                  >
+                    <div
+                      className="h-full min-h-0 min-w-0 w-full bg-background"
+                      role="region"
+                      aria-label="Main area"
+                      title="Main area"
+                    >
+                      {mainView ? (
+                        <ShellViewHost view={mainView} activeMainTab={activeTab} />
+                      ) : null}
                     </div>
                   </Panel>
-                  <PanelResizeHandle className="nodex-panel-sash relative w-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-y-0 before:left-1/2 before:z-10 before:w-px before:-translate-x-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
+                  <PanelResizeHandle className="nodex-panel-sash relative h-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-x-0 before:top-1/2 before:z-10 before:h-px before:-translate-y-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
                   <Panel
-                    ref={sidebarPanelRef}
-                    order={2}
-                    defaultSize={82}
-                    minSize={minSidebarPanelPct}
+                    ref={bottomRef}
+                    defaultSize={layout.bottomTabs.heightPct}
+                    minSize={10}
                     collapsible
                     collapsedSize={0}
-                    className="min-w-0"
-                    onCollapse={() => store.setVisible("sidebarPanel", false)}
-                    onExpand={() => store.setVisible("sidebarPanel", true)}
+                    onCollapse={() => store.setVisible("bottomArea", false)}
+                    onExpand={() => store.setVisible("bottomArea", true)}
+                    className="min-h-0"
+                    onResize={(size) => {
+                      store.patch((cur) => ({
+                        ...cur,
+                        bottomTabs: { ...cur.bottomTabs, heightPct: size },
+                      }));
+                    }}
                   >
-                    {primaryView ? (
-                      <div
-                        ref={sidebarColumnMeasureRef}
-                        className="flex h-full min-h-0 min-w-0 flex-col"
-                      >
-                        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/10 px-2 py-1">
-                          <div className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
-                            {primaryView.title}
-                          </div>
-                          {panelMenu.listFor("primarySidebar", primaryView.id).length > 0 ? (
-                            <div className="relative">
-                              <button
-                                type="button"
-                                className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
-                                onClick={() => setPanelMenuOpen((v) => !v)}
-                                title="Side panel menu"
-                              >
-                                ⋯
-                              </button>
-                              {panelMenuOpen ? (
-                                <div className="absolute right-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-md border border-border bg-background shadow-lg">
-                                  {panelMenu
-                                    .listFor("primarySidebar", primaryView.id)
-                                    .map((item) => (
-                                      <button
-                                        key={item.id}
-                                        type="button"
-                                        className="block w-full px-3 py-2 text-left text-[11px] text-foreground hover:bg-muted/40"
-                                        onClick={() => {
-                                          setPanelMenuOpen(false);
-                                          void Promise.resolve(
-                                            invokeCommand(item.commandId, item.commandArgs),
-                                          );
-                                        }}
-                                      >
-                                        {item.title}
-                                      </button>
-                                    ))}
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="min-h-0 min-w-0 flex-1">
-                          <ShellViewHost view={primaryView} />
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        ref={sidebarColumnMeasureRef}
-                        className="h-full min-h-0 min-w-0 w-full bg-background"
-                      />
-                    )}
+                    <div className="h-full min-h-0 w-full bg-background">
+                      {bottomView ? <ShellViewHost view={bottomView} /> : null}
+                    </div>
                   </Panel>
                 </PanelGroup>
-              </Panel>
-              {renderSash("sash-primary")}
-              <Panel
-                ref={mainPanelRef}
-                defaultSize={hSizes[1]}
-                minSize={30}
-                className="min-w-0"
-              >
+              ) : (
                 <div
                   className="h-full min-h-0 min-w-0 w-full bg-background"
                   role="region"
@@ -801,52 +865,25 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 >
                   {mainView ? <ShellViewHost view={mainView} activeMainTab={activeTab} /> : null}
                 </div>
-              </Panel>
-              {renderSash("sash-secondary")}
-              <Panel
-                ref={secondaryRef}
-                defaultSize={hSizes[2]}
-                minSize={minCompanionPct}
-                collapsible
-                collapsedSize={0}
-                onCollapse={() => store.setVisible("secondaryArea", false)}
-                onExpand={() => store.setVisible("secondaryArea", true)}
-                className="min-w-0"
-              >
-                <div className="h-full min-h-0 min-w-0 w-full bg-background">
-                  {secondaryView ? <ShellViewHost view={secondaryView} /> : null}
-                </div>
-              </Panel>
-            </PanelGroup>
-            </div>
-          </Panel>
-
-          {showBottom ? (
-            <>
-              <PanelResizeHandle className="nodex-panel-sash relative h-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-x-0 before:top-1/2 before:z-10 before:h-px before:-translate-y-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
-              <Panel
-                ref={bottomRef}
-                defaultSize={layout.bottomTabs.heightPct}
-                minSize={10}
-                collapsible
-                collapsedSize={0}
-                onCollapse={() => store.setVisible("bottomArea", false)}
-                onExpand={() => store.setVisible("bottomArea", true)}
-                className="min-h-0"
-                onResize={(size) => {
-                  store.patch((cur) => ({
-                    ...cur,
-                    bottomTabs: { ...cur.bottomTabs, heightPct: size },
-                  }));
-                }}
-              >
-                <div className="h-full min-h-0 w-full bg-background">
-                  {bottomView ? <ShellViewHost view={bottomView} /> : null}
-                </div>
-              </Panel>
-            </>
-          ) : null}
-        </PanelGroup>
+              )}
+            </Panel>
+            {renderSash("sash-secondary")}
+            <Panel
+              ref={secondaryRef}
+              defaultSize={hSizes[2]}
+              minSize={minCompanionPct}
+              collapsible
+              collapsedSize={0}
+              onCollapse={() => store.setVisible("secondaryArea", false)}
+              onExpand={() => store.setVisible("secondaryArea", true)}
+              className="min-w-0"
+            >
+              <div className="h-full min-h-0 min-w-0 w-full bg-background">
+                {secondaryView ? <ShellViewHost view={secondaryView} /> : null}
+              </div>
+            </Panel>
+          </PanelGroup>
+        </div>
       </div>
     </div>
   );

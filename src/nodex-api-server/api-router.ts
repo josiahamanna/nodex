@@ -46,6 +46,14 @@ import { openMarketplaceDb } from "./marketplace/marketplace-db";
 import { isAssetMediaCategory, extMatchesCategory } from "../shared/asset-media";
 import { getLogicalWpnProjectStateIfAvailable } from "./logical-wpn-project-state";
 import { getWpnOwnerId } from "../core/wpn/wpn-owner";
+import {
+  headlessGetWpnNoteById,
+  headlessPatchWpnNote,
+} from "./headless-wpn-note-resolve";
+import {
+  PLUGIN_UI_METADATA_KEY,
+  validatePluginUiStateSize,
+} from "../shared/plugin-state-protocol";
 
 const MARKETPLACE_FILES_BASE = "/marketplace/files";
 
@@ -475,28 +483,41 @@ export function createNodexApiRouter(): Router {
   });
 
   router.get("/notes/detail", withNotes, (req, res) => {
-    const q = req.query.id;
-    const noteId =
-      typeof q === "string" && q.length > 0 ? q : undefined;
-    if (noteId !== undefined) {
-      if (!isValidNoteId(noteId)) {
-        res.status(400).json({ error: "Invalid note id" });
-        return;
+    void (async () => {
+      try {
+        const q = req.query.id;
+        const noteId =
+          typeof q === "string" && q.length > 0 ? q : undefined;
+        if (noteId !== undefined) {
+          if (!isValidNoteId(noteId)) {
+            res.status(400).json({ error: "Invalid note id" });
+            return;
+          }
+          const wpn = await headlessGetWpnNoteById(noteId);
+          if (wpn) {
+            res.json(noteToApi(wpn));
+            return;
+          }
+          const note = getNoteById(noteId);
+          if (!note) {
+            res.status(404).json({ error: "Note not found" });
+            return;
+          }
+          res.json(noteToApi(note));
+          return;
+        }
+        const first = getFirstNote();
+        if (!first) {
+          res.json(null);
+          return;
+        }
+        res.json(noteToApi(first));
+      } catch (e) {
+        res.status(503).json({
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
-      const note = getNoteById(noteId);
-      if (!note) {
-        res.status(404).json({ error: "Note not found" });
-        return;
-      }
-      res.json(noteToApi(note));
-      return;
-    }
-    const first = getFirstNote();
-    if (!first) {
-      res.json(null);
-      return;
-    }
-    res.json(noteToApi(first));
+    })();
   });
 
   router.post("/notes", withNotes, (req, res) => {
@@ -569,62 +590,115 @@ export function createNodexApiRouter(): Router {
   });
 
   router.patch("/notes/:noteId", withNotes, (req, res) => {
-    const id = req.params.noteId;
-    if (!isValidNoteId(id)) {
-      res.status(400).json({ error: "Invalid note id" });
-      return;
-    }
-    const body = req.body as {
-      title?: string;
-      content?: string;
-      pluginUiState?: unknown;
-    };
-    if (!body || typeof body !== "object") {
-      res.status(400).json({ error: "Invalid body" });
-      return;
-    }
-    const note = getNoteById(id);
-    if (!note) {
-      res.status(404).json({ error: "Note not found" });
-      return;
-    }
-    let changed = false;
-    try {
-      if (body.title !== undefined) {
-        if (typeof body.title !== "string") {
-          res.status(400).json({ error: "Invalid title" });
-          return;
-        }
-        pushNotesUndoSnapshot();
-        renameNoteInStore(id, body.title);
-        changed = true;
-      }
-      if (body.content !== undefined) {
-        if (typeof body.content !== "string") {
-          res.status(400).json({ error: "Invalid content" });
-          return;
-        }
-        setNoteContentInStore(id, body.content);
-        changed = true;
-      }
-      if (body.pluginUiState !== undefined) {
-        setNotePluginUiState(id, body.pluginUiState);
-        changed = true;
-      }
-      if (changed) {
-        persistHeadlessNotes();
-      }
-      const next = getNoteById(id);
-      if (!next) {
-        res.status(404).json({ error: "Note not found" });
+    void (async () => {
+      const id = req.params.noteId;
+      if (!isValidNoteId(id)) {
+        res.status(400).json({ error: "Invalid note id" });
         return;
       }
-      res.json(noteToApi(next));
-    } catch (e) {
-      res.status(400).json({
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
+      const body = req.body as {
+        title?: string;
+        content?: string;
+        pluginUiState?: unknown;
+      };
+      if (!body || typeof body !== "object") {
+        res.status(400).json({ error: "Invalid body" });
+        return;
+      }
+      try {
+        const wpn = await headlessGetWpnNoteById(id);
+        if (wpn) {
+          if (body.title !== undefined) {
+            if (typeof body.title !== "string") {
+              res.status(400).json({ error: "Invalid title" });
+              return;
+            }
+          }
+          if (body.content !== undefined) {
+            if (typeof body.content !== "string") {
+              res.status(400).json({ error: "Invalid content" });
+              return;
+            }
+          }
+          if (body.pluginUiState !== undefined) {
+            const err = validatePluginUiStateSize(body.pluginUiState);
+            if (err) {
+              res.status(400).json({ error: err });
+              return;
+            }
+          }
+          const patch: {
+            title?: string;
+            content?: string;
+            metadata?: Record<string, unknown> | null;
+          } = {};
+          if (body.title !== undefined) patch.title = body.title;
+          if (body.content !== undefined) patch.content = body.content;
+          if (body.pluginUiState !== undefined) {
+            patch.metadata = {
+              ...(wpn.metadata ?? {}),
+              [PLUGIN_UI_METADATA_KEY]: body.pluginUiState,
+            };
+          }
+          if (
+            patch.title === undefined &&
+            patch.content === undefined &&
+            patch.metadata === undefined
+          ) {
+            res.json(noteToApi(wpn));
+            return;
+          }
+          const next = await headlessPatchWpnNote(id, patch);
+          if (!next) {
+            res.status(404).json({ error: "Note not found" });
+            return;
+          }
+          res.json(noteToApi(next));
+          return;
+        }
+
+        const note = getNoteById(id);
+        if (!note) {
+          res.status(404).json({ error: "Note not found" });
+          return;
+        }
+        let changed = false;
+        if (body.title !== undefined) {
+          if (typeof body.title !== "string") {
+            res.status(400).json({ error: "Invalid title" });
+            return;
+          }
+          pushNotesUndoSnapshot();
+          renameNoteInStore(id, body.title);
+          changed = true;
+        }
+        if (body.content !== undefined) {
+          if (typeof body.content !== "string") {
+            res.status(400).json({ error: "Invalid content" });
+            return;
+          }
+          setNoteContentInStore(id, body.content);
+          changed = true;
+        }
+        if (body.pluginUiState !== undefined) {
+          setNotePluginUiState(id, body.pluginUiState);
+          changed = true;
+        }
+        if (changed) {
+          persistHeadlessNotes();
+        }
+        const nextLegacy = getNoteById(id);
+        if (!nextLegacy) {
+          res.status(404).json({ error: "Note not found" });
+          return;
+        }
+        res.json(noteToApi(nextLegacy));
+      } catch (e) {
+        res.status(400).json({
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    })();
   });
 
   router.post("/notes/delete", withNotes, (req, res) => {

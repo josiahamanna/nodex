@@ -1,6 +1,9 @@
 /** Minimum viewport width (CSS px) for the desktop-only gate (~12" at 96 CSS px/in). */
 export const DESKTOP_MIN_VIEWPORT_WIDTH_PX = 12 * 96;
 
+/** Minimum expanded width (CSS px) for the activity bar (rail) when visible — fits `h-9` controls with margin. */
+export const SHELL_ACTIVITY_BAR_MIN_EXPANDED_PX = 44;
+
 /** Minimum expanded width (CSS px) for the side panel column; also used for shrink-triggered auto-collapse. */
 export const SHELL_SIDEBAR_MIN_EXPANDED_PX = 200;
 
