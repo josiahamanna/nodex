@@ -298,6 +298,91 @@ export function wpnSqliteMoveNote(
   persistTree(db, projectId, childMap);
 }
 
+/** Preorder: parent before descendants (for subtree rooted at `rootId`). */
+function collectSubtreePreorder(rows: WpnNoteRow[], rootId: string): string[] {
+  const cm = childrenMapFromRows(rows);
+  const out: string[] = [];
+  const visit = (id: string): void => {
+    out.push(id);
+    for (const k of cm.get(id) ?? []) {
+      visit(k.id);
+    }
+  };
+  visit(rootId);
+  return out;
+}
+
+/** Clone `rootNoteId` and all descendants with new IDs; insert duplicate root immediately after the original among siblings. */
+export function wpnSqliteDuplicateNoteSubtree(
+  db: Database,
+  ownerId: string,
+  projectId: string,
+  rootNoteId: string,
+): { newRootId: string } {
+  requireWpnSqliteProject(db, ownerId, projectId);
+  const rows = loadRows(db, projectId);
+  const rowMap = new Map(rows.map((r) => [r.id, r]));
+  const rootRow = rowMap.get(rootNoteId);
+  if (!rootRow) {
+    throw new Error("Note not found");
+  }
+  const ordered = collectSubtreePreorder(rows, rootNoteId);
+  const subtreeIds = new Set(ordered);
+  const idMap = new Map<string, string>();
+  for (const id of ordered) {
+    idMap.set(id, newId());
+  }
+  const newRootId = idMap.get(rootNoteId)!;
+  const P = rootRow.parent_id;
+  const cmBefore = childrenMapFromRows(rows);
+  const siblingsAtP = (cmBefore.get(P) ?? []).map((r) => r.id);
+  const idxAtP = siblingsAtP.indexOf(rootNoteId);
+  const newOrderAtP =
+    idxAtP >= 0
+      ? [...siblingsAtP.slice(0, idxAtP + 1), newRootId, ...siblingsAtP.slice(idxAtP + 1)]
+      : [...siblingsAtP, newRootId];
+
+  const t = nowMs();
+  const ins = db.prepare(
+    `INSERT INTO wpn_note (id, project_id, parent_id, type, title, content, metadata_json, sibling_index, created_at_ms, updated_at_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+  );
+
+  for (const oid of ordered) {
+    const r = rowMap.get(oid)!;
+    const nid = idMap.get(oid)!;
+    const newParent =
+      r.parent_id === null
+        ? null
+        : subtreeIds.has(r.parent_id)
+          ? idMap.get(r.parent_id)!
+          : r.parent_id;
+    ins.run(
+      nid,
+      projectId,
+      newParent,
+      r.type,
+      r.title,
+      r.content,
+      r.metadata_json,
+      t,
+      t,
+    );
+  }
+
+  applySiblingOrder(db, projectId, P, newOrderAtP);
+
+  for (const oid of ordered) {
+    const kids = (cmBefore.get(oid) ?? []).filter((k) => subtreeIds.has(k.id));
+    if (kids.length === 0) continue;
+    const newPid = idMap.get(oid)!;
+    const newKidOrder = kids.map((k) => idMap.get(k.id)!);
+    applySiblingOrder(db, projectId, newPid, newKidOrder);
+  }
+
+  return { newRootId };
+}
+
 export function wpnSqliteGetExplorerExpanded(
   db: Database,
   ownerId: string,

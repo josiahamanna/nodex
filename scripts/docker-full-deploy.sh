@@ -28,10 +28,42 @@ mkdir -p .nodex-docker-workspace
 # Orphan from an old compose service name (e.g. nodex-web) — safe to drop.
 docker rm -f nodex-web 2>/dev/null || true
 
+# Stopped nodex-web-blue / nodex-web-green still hold fixed container_name values; compose then
+# errors with "already in use". Remove only slots that are not serving traffic: always remove if
+# stopped; if running, remove only when not the active upstream in deploy/nginx-active-web.upstream.conf
+# (same source the gateway uses). Never touches postgres, nodex-api, or nodex-gateway.
+ACTIVE_FILE="${REPO_ROOT}/deploy/nginx-active-web.upstream.conf"
+active_line=""
+if [[ -f "$ACTIVE_FILE" ]]; then
+  active_line="$(grep -oE 'nodex-web-(blue|green)' "$ACTIVE_FILE" | head -1 || true)"
+fi
+
+remove_stale_web_slot() {
+  local name="$1"
+  if ! docker container inspect "$name" &>/dev/null; then
+    return 0
+  fi
+  local running
+  running="$(docker container inspect -f '{{.State.Running}}' "$name" 2>/dev/null || echo false)"
+  if [[ "$running" != "true" ]]; then
+    echo "[nodex] Removing stopped ${name} (frees fixed container name for compose)."
+    docker rm -f "$name" >/dev/null 2>&1 || true
+    return 0
+  fi
+  if [[ -n "$active_line" && "$name" != "$active_line" ]]; then
+    echo "[nodex] Removing inactive ${name} (not in ${ACTIVE_FILE}; live UI stays on ${active_line})."
+    docker rm -f "$name" >/dev/null 2>&1 || true
+  fi
+}
+
+remove_stale_web_slot nodex-web-blue
+remove_stale_web_slot nodex-web-green
+
 echo "[nodex] Starting Postgres + API + web (blue) + gateway (profile wpn-pg)..."
 if ! docker compose --profile wpn-pg up -d --build --remove-orphans postgres nodex-api nodex-web-blue nodex-gateway; then
-  echo "[nodex] Compose failed (often: container name already in use). Removing web containers and retrying once..."
-  docker rm -f nodex-web-blue nodex-web-green 2>/dev/null || true
+  echo "[nodex] Compose failed — clearing stale web slots again and retrying once..."
+  remove_stale_web_slot nodex-web-blue
+  remove_stale_web_slot nodex-web-green
   docker compose --profile wpn-pg up -d --build --remove-orphans postgres nodex-api nodex-web-blue nodex-gateway
 fi
 

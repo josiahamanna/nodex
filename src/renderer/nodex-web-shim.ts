@@ -246,6 +246,12 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       req("PATCH", `/wpn/notes/${encodeURIComponent(noteId)}`, patch),
     wpnDeleteNotes: (ids) => req("POST", "/wpn/notes/delete", { ids }),
     wpnMoveNote: (payload) => req("POST", "/wpn/notes/move", payload),
+    wpnDuplicateNoteSubtree: (projectId, noteId) =>
+      req(
+        "POST",
+        `/wpn/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}/duplicate`,
+        {},
+      ),
     listMarketplacePlugins: () =>
       req<MarketplaceListResponse>("GET", "/marketplace/plugins"),
     installMarketplacePlugin: async (packageFile) => {
@@ -706,6 +712,9 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
     },
     wpnDeleteNotes: async () => ({ ok: true as const }),
     wpnMoveNote: async () => ({ ok: true as const }),
+    wpnDuplicateNoteSubtree: async () => ({
+      newRootId: "00000000-0000-4000-8000-000000000000",
+    }),
   };
 
   return new Proxy(impl as NodexRendererApi, {

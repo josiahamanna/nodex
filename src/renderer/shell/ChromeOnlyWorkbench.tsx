@@ -24,6 +24,7 @@ import {
 } from "react-resizable-panels";
 import { useShellLayoutState, useShellLayoutStore } from "./layout/ShellLayoutContext";
 import {
+  dispatchShellNoteTabClosed,
   hashForActiveTab,
   parseShellHash,
   replaceWindowHash,
@@ -36,8 +37,8 @@ import type { ShellAppMenuItem } from "./registries/ShellAppMenuRegistry";
 import type { ShellTabInstance } from "./registries/ShellTabsRegistry";
 import { SHELL_TAB_NOTE } from "./first-party/shellWorkspaceIds";
 import {
-  SHELL_COLLAPSE_COMPANION_MIN_PX,
-  SHELL_COLLAPSE_LEFT_DOCK_MIN_PX,
+  SHELL_COMPANION_MIN_EXPANDED_PX,
+  SHELL_SIDEBAR_MIN_EXPANDED_PX,
 } from "./shellResponsiveConstants";
 
 function ShellAppMenuList({
@@ -198,6 +199,9 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const bottomRef = React.useRef<ImperativePanelHandle>(null);
   const horizontalWorkspaceRef = useRef<HTMLDivElement>(null);
   const lastViewportWidthRef = useRef(0);
+  const sidebarColumnMeasureRef = useRef<HTMLDivElement>(null);
+  const beforePrimaryCollapseRef = useRef({ menuRail: true, sidebarPanel: true });
+  const [workspaceWidthPx, setWorkspaceWidthPx] = useState(0);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -220,6 +224,29 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const showSecondary = layout.visible.secondaryArea;
   const showBottom = layout.visible.bottomArea;
 
+  const primaryColumnPx = useMemo(() => {
+    if (workspaceWidthPx <= 0) return 0;
+    const { primaryPct: p, mainPct: m, secondaryPct: s } = layout.sizes;
+    const total = Math.max(1, p + m + s);
+    return (workspaceWidthPx * p) / total;
+  }, [workspaceWidthPx, layout.sizes]);
+
+  const minSidebarPanelPct = useMemo(() => {
+    if (!showSidebarPanel || primaryColumnPx <= 0) return 0;
+    return Math.min(
+      99,
+      Math.max(1, Math.ceil((SHELL_SIDEBAR_MIN_EXPANDED_PX / primaryColumnPx) * 100)),
+    );
+  }, [showSidebarPanel, primaryColumnPx]);
+
+  const minCompanionPct = useMemo(() => {
+    if (!showSecondary || workspaceWidthPx <= 0) return 0;
+    return Math.min(
+      99,
+      Math.max(1, Math.ceil((SHELL_COMPANION_MIN_EXPANDED_PX / workspaceWidthPx) * 100)),
+    );
+  }, [showSecondary, workspaceWidthPx]);
+
   const primaryViewId = views.getOpenViewId("primarySidebar");
   const mainViewId = views.getOpenViewId("mainArea");
   const secondaryViewId = views.getOpenViewId("secondaryArea");
@@ -238,7 +265,15 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const closeTabInstance = useCallback(
     (instanceId: string) => (e: React.MouseEvent) => {
       e.stopPropagation();
+      const inst = tabs.listOpenTabs().find((t) => t.instanceId === instanceId);
+      const closedNoteId =
+        inst?.tabTypeId === SHELL_TAB_NOTE
+          ? (inst.state as { noteId?: string } | undefined)?.noteId
+          : undefined;
       tabs.closeTab(instanceId);
+      if (typeof closedNoteId === "string" && closedNoteId) {
+        dispatchShellNoteTabClosed(closedNoteId);
+      }
       if (tabs.listOpenTabs().length === 0) {
         tabs.openOrReuseTab("shell.tab.welcome", { title: "Welcome", reuseKey: "shell:welcome" });
       }
@@ -381,6 +416,10 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       primaryRef.current?.collapse();
       return;
     }
+    beforePrimaryCollapseRef.current = {
+      menuRail: showMenuRail,
+      sidebarPanel: showSidebarPanel,
+    };
     primaryRef.current?.expand(Math.max(10, hSizes[0]));
     const id = window.requestAnimationFrame(() => {
       try {
@@ -401,7 +440,23 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     return () => window.cancelAnimationFrame(id);
   }, [showLeft, showMenuRail, showSidebarPanel, hSizes[0]]);
 
-  /** When the viewport shrinks, collapse companion and/or left dock if their columns fall below min width (px). */
+  /** Collapse/expand companion `Panel` so toggles match store (panel stays mounted). */
+  useLayoutEffect(() => {
+    if (!showSecondary) {
+      secondaryRef.current?.collapse();
+      return;
+    }
+    const id = window.requestAnimationFrame(() => {
+      try {
+        secondaryRef.current?.expand(Math.max(12, hSizes[2]));
+      } catch {
+        /* refs not ready */
+      }
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [showSecondary, hSizes[2]]);
+
+  /** When the viewport shrinks, collapse companion and/or side panel if their columns fall below min width (px). Activity bar is not auto-collapsed. */
   useEffect(() => {
     const el = horizontalWorkspaceRef.current;
     if (!el) return;
@@ -409,21 +464,22 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     const run = (): void => {
       const W = el.clientWidth;
       if (W <= 0) return;
+      setWorkspaceWidthPx((prev) => (prev !== W ? W : prev));
       const prev = lastViewportWidthRef.current;
       lastViewportWidthRef.current = W;
       const shouldReact = prev === 0 || W < prev;
       if (!shouldReact) return;
 
       const { primaryPct: p, mainPct: m, secondaryPct: s } = layout.sizes;
-      const total = showSecondary ? Math.max(1, p + m + s) : Math.max(1, p + m);
-      const leftPx = (W * p) / total;
-      const rightPx = showSecondary ? (W * s) / total : 0;
+      const total = Math.max(1, p + m + s);
+      const rightPx = (W * s) / total;
 
-      if (showSecondary && rightPx < SHELL_COLLAPSE_COMPANION_MIN_PX) {
+      if (showSecondary && rightPx < SHELL_COMPANION_MIN_EXPANDED_PX) {
         secondaryRef.current?.collapse();
       }
-      if (showLeft && leftPx < SHELL_COLLAPSE_LEFT_DOCK_MIN_PX) {
-        primaryRef.current?.collapse();
+      const sidePx = sidebarColumnMeasureRef.current?.clientWidth ?? 0;
+      if (showSidebarPanel && sidePx > 0 && sidePx < SHELL_SIDEBAR_MIN_EXPANDED_PX) {
+        sidebarPanelRef.current?.collapse();
       }
     };
     const schedule = (): void => {
@@ -440,7 +496,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [layout.sizes, showSecondary, showLeft]);
+  }, [layout.sizes, showSecondary, showSidebarPanel]);
 
   return (
     <div className="nodex-app-pad box-border flex min-h-0 flex-1 flex-col bg-muted/45 text-foreground dark:bg-muted/25">
@@ -561,7 +617,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
           <Panel defaultSize={100 - layout.bottomTabs.heightPct} minSize={40} className="min-h-0">
             {/*
               Horizontal workbench: left dock (activity bar + side panel) | main area | companion.
-              primaryRef = entire left dock; center column = main area; secondaryRef = companion.
+              primaryRef = entire left dock; secondaryRef = companion (always mounted, collapsed when hidden).
             */}
             <div
               ref={horizontalWorkspaceRef}
@@ -603,12 +659,18 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                   collapsible
                   collapsedSize={0}
                   onCollapse={() => {
+                    const v = store.get().visible;
+                    beforePrimaryCollapseRef.current = {
+                      menuRail: v.menuRail,
+                      sidebarPanel: v.sidebarPanel,
+                    };
                     store.setVisible("menuRail", false);
                     store.setVisible("sidebarPanel", false);
                   }}
                   onExpand={() => {
-                    store.setVisible("menuRail", true);
-                    store.setVisible("sidebarPanel", true);
+                    const s = beforePrimaryCollapseRef.current;
+                    store.setVisible("menuRail", s.menuRail);
+                    store.setVisible("sidebarPanel", s.sidebarPanel);
                   }}
                   className="min-w-0"
                 >
@@ -661,7 +723,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                     ref={sidebarPanelRef}
                     order={2}
                     defaultSize={82}
-                    minSize={0}
+                    minSize={minSidebarPanelPct}
                     collapsible
                     collapsedSize={0}
                     className="min-w-0"
@@ -669,7 +731,10 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                     onExpand={() => store.setVisible("sidebarPanel", true)}
                   >
                     {primaryView ? (
-                      <div className="flex h-full min-h-0 flex-col">
+                      <div
+                        ref={sidebarColumnMeasureRef}
+                        className="flex h-full min-h-0 min-w-0 flex-col"
+                      >
                         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/10 px-2 py-1">
                           <div className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
                             {primaryView.title}
@@ -713,7 +778,10 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                         </div>
                       </div>
                     ) : (
-                      <div className="h-full min-h-0 w-full bg-background" />
+                      <div
+                        ref={sidebarColumnMeasureRef}
+                        className="h-full min-h-0 min-w-0 w-full bg-background"
+                      />
                     )}
                   </Panel>
                 </PanelGroup>
@@ -734,25 +802,21 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                   {mainView ? <ShellViewHost view={mainView} activeMainTab={activeTab} /> : null}
                 </div>
               </Panel>
-              {showSecondary ? (
-                <>
-                  {renderSash("sash-secondary")}
-                  <Panel
-                    ref={secondaryRef}
-                    defaultSize={hSizes[2]}
-                    minSize={8}
-                    collapsible
-                    collapsedSize={0}
-                    onCollapse={() => store.setVisible("secondaryArea", false)}
-                    onExpand={() => store.setVisible("secondaryArea", true)}
-                    className="min-w-0"
-                  >
-                    <div className="h-full min-h-0 min-w-0 w-full bg-background">
-                      {secondaryView ? <ShellViewHost view={secondaryView} /> : null}
-                    </div>
-                  </Panel>
-                </>
-              ) : null}
+              {renderSash("sash-secondary")}
+              <Panel
+                ref={secondaryRef}
+                defaultSize={hSizes[2]}
+                minSize={minCompanionPct}
+                collapsible
+                collapsedSize={0}
+                onCollapse={() => store.setVisible("secondaryArea", false)}
+                onExpand={() => store.setVisible("secondaryArea", true)}
+                className="min-w-0"
+              >
+                <div className="h-full min-h-0 min-w-0 w-full bg-background">
+                  {secondaryView ? <ShellViewHost view={secondaryView} /> : null}
+                </div>
+              </Panel>
             </PanelGroup>
             </div>
           </Panel>

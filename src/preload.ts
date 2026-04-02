@@ -464,6 +464,8 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.WPN_DELETE_NOTES, ids),
   wpnMoveNote: (payload) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_MOVE_NOTE, payload),
+  wpnDuplicateNoteSubtree: (projectId, noteId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_DUPLICATE_NOTE_SUBTREE, projectId, noteId),
 };
 
 contextBridge.exposeInMainWorld("Nodex", api);

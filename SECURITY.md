@@ -25,9 +25,10 @@ This document outlines the security measures implemented in the Nodex POC to fol
 - `src/shared/validators.ts` - Validation functions
 
 ### 3. **XSS Prevention**
-- ✅ DOMPurify sanitizes all HTML before rendering
-- ✅ Strict allowlist of HTML tags and attributes
-- ✅ No `dangerouslySetInnerHTML` usage
+- ✅ DOMPurify sanitizes untrusted HTML where HTML strings are injected (e.g. plugin previews)
+- ✅ Documentation hub markdown is rendered with `react-markdown`, `remark-gfm`, and **`rehype-sanitize`** using the GitHub-style default schema (tables, fenced code, links, etc.)
+- ✅ Strict allowlists for any HTML pipeline
+- ✅ Prefer React element trees over raw HTML where practical
 - ✅ Content Security Policy (CSP) headers configured
 
 **CSP Configuration:**
@@ -43,7 +44,7 @@ connect-src 'self' ws://localhost:* http://localhost:*;
 **Files:**
 - `apps/nodex-web/app/layout.tsx` - CSP meta tag (Next.js shell; Electron loads this UI in dev and packaged builds)
 - `src/renderer/components/renderers/PluginRenderer.tsx` - DOMPurify usage
-- `src/renderer/components/renderers/MarkdownRenderer.tsx` - DOMPurify usage
+- `src/renderer/components/renderers/MarkdownRenderer.tsx` - `react-markdown` + `rehype-sanitize` (Documentation hub bundled / generated notes)
 
 ### 4. **Process Isolation**
 - ✅ `contextIsolation: true` - Renderer isolated from main process

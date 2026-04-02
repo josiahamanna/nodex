@@ -138,6 +138,7 @@ export const IPC_CHANNELS = {
   WPN_PATCH_NOTE: "wpn:patch-note",
   WPN_DELETE_NOTES: "wpn:delete-notes",
   WPN_MOVE_NOTE: "wpn:move-note",
+  WPN_DUPLICATE_NOTE_SUBTREE: "wpn:duplicate-note-subtree",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

@@ -1,16 +1,72 @@
 import type { ResolvedCommandApiDoc } from "../../../command-api-metadata";
+import type { CommandArgDefinition } from "../../../nodex-contribution-registry";
 
-/** Strip characters that break the simple MarkdownRenderer (* / _). */
-function mdSafeLine(s: string): string {
+/** Escape cell content for GFM pipes tables (literal `|` and newlines). */
+function cellSafe(s: string): string {
   return String(s || "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\*{1,2}/g, "")
-    .replace(/_/g, " ")
+    .replace(/\|/g, "\\|")
+    .replace(/\r?\n/g, " ")
     .trim();
 }
 
-function mdSafeParagraph(s: string): string {
-  return mdSafeLine(s).replace(/\n+/g, "\n\n");
+/** Normalize free prose; keeps Markdown emphasis intact for the real renderer. */
+function proseBlock(s: string): string {
+  return String(s || "").replace(/\r\n/g, "\n").trim();
+}
+
+function mdTable(headers: string[], rows: string[][]): string {
+  const head = `| ${headers.map((h) => cellSafe(h)).join(" | ")} |`;
+  const sep = `| ${headers.map(() => "---").join(" | ")} |`;
+  const body = rows
+    .map((r) => `| ${r.map((c) => cellSafe(c)).join(" | ")} |`)
+    .join("\n");
+  return [head, sep, body].join("\n");
+}
+
+function fenced(lang: string, body: string): string {
+  const trimmed = body.replace(/\n+$/, "");
+  return "```" + lang + "\n" + trimmed + "\n```";
+}
+
+function exampleArgsObject(doc: ResolvedCommandApiDoc): Record<string, unknown> {
+  if (doc.exampleInvoke === null) {
+    return {};
+  }
+  if (doc.exampleInvoke && typeof doc.exampleInvoke === "object") {
+    return { ...doc.exampleInvoke };
+  }
+  if (doc.args && doc.args.length > 0) {
+    const o: Record<string, unknown> = {};
+    for (const a of doc.args) {
+      if (a.example !== undefined) {
+        o[a.name] = a.example as unknown;
+      } else if (a.default !== undefined) {
+        o[a.name] = a.default as unknown;
+      }
+    }
+    return o;
+  }
+  return {};
+}
+
+function argsTableRows(args: CommandArgDefinition[]): string[][] {
+  return args.map((a) => {
+    let def = "—";
+    if (a.default !== undefined) {
+      try {
+        def = JSON.stringify(a.default);
+      } catch {
+        def = String(a.default);
+      }
+    }
+    return [
+      a.name,
+      a.type,
+      a.required ? "yes" : "no",
+      a.description?.trim() || "—",
+      def,
+    ];
+  });
 }
 
 /**
@@ -19,50 +75,57 @@ function mdSafeParagraph(s: string): string {
 export function resolvedCommandDocToMarkdown(doc: ResolvedCommandApiDoc): string {
   const lines: string[] = [];
 
-  lines.push(`# ${mdSafeLine(doc.commandId)}`);
+  lines.push(`# ${cellSafe(doc.commandId)}`);
   lines.push("");
   lines.push("## Summary");
   lines.push("");
-  lines.push(mdSafeParagraph(doc.summary));
+  lines.push(proseBlock(doc.summary));
   lines.push("");
 
   if (doc.category) {
     lines.push("## Category");
     lines.push("");
-    lines.push(mdSafeLine(doc.category));
+    lines.push(proseBlock(doc.category));
     lines.push("");
   }
 
   lines.push("## Namespace");
   lines.push("");
-  lines.push(`- Namespace: ${mdSafeLine(doc.namespace)}`);
-  lines.push(`- Short name: ${mdSafeLine(doc.shortName)}`);
-  lines.push(`- Fully qualified id: ${mdSafeLine(doc.commandId)}`);
+  lines.push(
+    mdTable(["Field", "Value"], [
+      ["Namespace", doc.namespace],
+      ["Short name", doc.shortName],
+      ["Fully qualified id", doc.commandId],
+    ]),
+  );
   lines.push("");
 
   lines.push("## Discovery");
   lines.push("");
-  lines.push(`- palette: ${doc.palette ? "true" : "false"}`);
-  lines.push(`- miniBar: ${doc.miniBar ? "true" : "false"}`);
+  const discoveryRows: string[][] = [
+    ["palette", doc.palette ? "true" : "false"],
+    ["miniBar", doc.miniBar ? "true" : "false"],
+  ];
   if (doc.sourcePluginId) {
-    lines.push(`- sourcePluginId: ${mdSafeLine(String(doc.sourcePluginId))}`);
+    discoveryRows.push(["sourcePluginId", String(doc.sourcePluginId)]);
   }
   if (doc.disambiguation) {
-    lines.push(`- disambiguation: ${mdSafeLine(doc.disambiguation)}`);
+    discoveryRows.push(["disambiguation", doc.disambiguation]);
   }
+  lines.push(mdTable(["Key", "Value"], discoveryRows));
   lines.push("");
 
   if (doc.apiDetails) {
     lines.push("## Extended description");
     lines.push("");
-    lines.push(mdSafeParagraph(doc.apiDetails));
+    lines.push(proseBlock(doc.apiDetails));
     lines.push("");
   }
 
   if (doc.proseDoc) {
     lines.push("## Documentation");
     lines.push("");
-    lines.push(mdSafeParagraph(doc.proseDoc));
+    lines.push(proseBlock(doc.proseDoc));
     lines.push("");
   }
 
@@ -70,29 +133,43 @@ export function resolvedCommandDocToMarkdown(doc: ResolvedCommandApiDoc): string
   lines.push("");
   if (doc.args && doc.args.length === 0) {
     lines.push(
-      "This command declares no arguments; pass an empty object or omit args when invoking invokeCommand(id, args).",
+      "This command declares **no arguments**. Pass `{}` or omit the args parameter when invoking.",
+    );
+    lines.push("");
+    lines.push("### Shell (React / registry)");
+    lines.push("");
+    lines.push(
+      "Use `invokeCommand` from `useShellNavigation()` (or `NodexContributionRegistry.invokeCommand`):",
+    );
+    lines.push("");
+    lines.push(
+      fenced(
+        "ts",
+        `void invokeCommand(${JSON.stringify(doc.commandId)}, {});`,
+      ),
+    );
+    lines.push("");
+    lines.push("### DevTools");
+    lines.push("");
+    lines.push("When the shell devtools API is exposed:");
+    lines.push("");
+    lines.push(
+      fenced(
+        "js",
+        `await window.nodex?.shell?.commands?.invoke(${JSON.stringify(doc.commandId)}, {});`,
+      ),
     );
   } else if (doc.args && doc.args.length > 0) {
     lines.push(
-      "The handler receives these fields on the args object (second parameter to invokeCommand, or minibuffer JSON):",
+      "The handler receives these fields on the **args** object (second parameter to `invokeCommand`, or minibuffer JSON):",
     );
     lines.push("");
-    for (const a of doc.args) {
-      const req = a.required ? "required" : "optional";
-      const desc = mdSafeLine(a.description ?? "—");
-      lines.push(
-        `- ${mdSafeLine(a.name)} (${mdSafeLine(a.type)}, ${req}) — ${desc}`,
-      );
-      if (a.default !== undefined) {
-        let def: string;
-        try {
-          def = JSON.stringify(a.default);
-        } catch {
-          def = String(a.default);
-        }
-        lines.push(`  - default: ${mdSafeLine(def)}`);
-      }
-    }
+    lines.push(
+      mdTable(
+        ["Field", "Type", "Required", "Description", "Default"],
+        argsTableRows(doc.args),
+      ),
+    );
   } else {
     lines.push(
       "No per-field contract is registered; the handler still receives an optional record of string keys when invoked programmatically.",
@@ -102,33 +179,35 @@ export function resolvedCommandDocToMarkdown(doc: ResolvedCommandApiDoc): string
 
   lines.push("## Example invoke");
   lines.push("");
-  lines.push(`- commandId: ${mdSafeLine(doc.commandId)}`);
-  if (doc.exampleInvoke === null) {
-    lines.push("- args: (none)");
-  } else if (doc.exampleInvoke && typeof doc.exampleInvoke === "object") {
-    lines.push("- args:");
-    for (const [k, v] of Object.entries(doc.exampleInvoke)) {
-      let val: string;
-      try {
-        val = typeof v === "string" ? v : JSON.stringify(v);
-      } catch {
-        val = String(v);
-      }
-      lines.push(`  - ${mdSafeLine(k)}: ${mdSafeLine(val)}`);
-    }
-  } else if (doc.args && doc.args.length > 0) {
-    lines.push("- args: (derived from defaults / examples on each field above)");
-  } else {
-    lines.push("- args: {}");
-  }
+  const argsPayload = exampleArgsObject(doc);
+  const invokeExample =
+    doc.exampleInvoke === null
+      ? { commandId: doc.commandId, args: null }
+      : { commandId: doc.commandId, args: argsPayload };
+  lines.push(fenced("json", JSON.stringify(invokeExample, null, 2)));
   lines.push("");
+  if (doc.args && doc.args.length > 0) {
+    lines.push("### TypeScript");
+    lines.push("");
+    lines.push(
+      fenced(
+        "ts",
+        `void invokeCommand(${JSON.stringify(doc.commandId)}, ${JSON.stringify(argsPayload, null, 2)});`,
+      ),
+    );
+  }
 
+  lines.push("");
   lines.push("## Return type");
   lines.push("");
-  lines.push(`- Type: ${mdSafeLine(doc.returns.type)}`);
-  if (doc.returns.description) {
-    lines.push(`- Description: ${mdSafeParagraph(doc.returns.description)}`);
-  }
+  lines.push(
+    mdTable(["Type", "Description"], [
+      [
+        doc.returns.type,
+        doc.returns.description ? proseBlock(doc.returns.description) : "—",
+      ],
+    ]),
+  );
 
   return lines.join("\n");
 }

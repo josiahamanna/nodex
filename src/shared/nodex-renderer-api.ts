@@ -578,4 +578,8 @@ export type NodexRendererApi = {
     targetId: string;
     placement: NoteMovePlacement;
   }) => Promise<{ ok: true }>;
+  wpnDuplicateNoteSubtree: (
+    projectId: string,
+    noteId: string,
+  ) => Promise<{ newRootId: string }>;
 };

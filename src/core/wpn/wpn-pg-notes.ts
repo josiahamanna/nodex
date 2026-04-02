@@ -312,6 +312,79 @@ export async function wpnPgMoveNote(
   await persistTreePg(pool, projectId, childMap);
 }
 
+function collectSubtreePreorderPg(rows: WpnNoteRow[], rootId: string): string[] {
+  const cm = childrenMapFromRows(rows);
+  const out: string[] = [];
+  const visit = (id: string): void => {
+    out.push(id);
+    for (const k of cm.get(id) ?? []) {
+      visit(k.id);
+    }
+  };
+  visit(rootId);
+  return out;
+}
+
+export async function wpnPgDuplicateNoteSubtree(
+  pool: Pool,
+  ownerId: string,
+  projectId: string,
+  rootNoteId: string,
+): Promise<{ newRootId: string }> {
+  await requireWpnPgProject(pool, ownerId, projectId);
+  const rows = await loadRows(pool, projectId);
+  const rowMap = new Map(rows.map((r) => [r.id, r]));
+  const rootRow = rowMap.get(rootNoteId);
+  if (!rootRow) {
+    throw new Error("Note not found");
+  }
+  const ordered = collectSubtreePreorderPg(rows, rootNoteId);
+  const subtreeIds = new Set(ordered);
+  const idMap = new Map<string, string>();
+  for (const id of ordered) {
+    idMap.set(id, newId());
+  }
+  const newRootId = idMap.get(rootNoteId)!;
+  const P = rootRow.parent_id;
+  const cmBefore = childrenMapFromRows(rows);
+  const siblingsAtP = (cmBefore.get(P) ?? []).map((r) => r.id);
+  const idxAtP = siblingsAtP.indexOf(rootNoteId);
+  const newOrderAtP =
+    idxAtP >= 0
+      ? [...siblingsAtP.slice(0, idxAtP + 1), newRootId, ...siblingsAtP.slice(idxAtP + 1)]
+      : [...siblingsAtP, newRootId];
+
+  const t = nowMs();
+
+  for (const oid of ordered) {
+    const r = rowMap.get(oid)!;
+    const nid = idMap.get(oid)!;
+    const newParent =
+      r.parent_id === null
+        ? null
+        : subtreeIds.has(r.parent_id)
+          ? idMap.get(r.parent_id)!
+          : r.parent_id;
+    await pool.query(
+      `INSERT INTO wpn_note (id, project_id, parent_id, type, title, content, metadata_json, sibling_index, created_at_ms, updated_at_ms)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9)`,
+      [nid, projectId, newParent, r.type, r.title, r.content, r.metadata_json, t, t],
+    );
+  }
+
+  await applySiblingOrderPg(pool, projectId, newOrderAtP);
+
+  for (const oid of ordered) {
+    const kids = (cmBefore.get(oid) ?? []).filter((k) => subtreeIds.has(k.id));
+    if (kids.length === 0) continue;
+    const newPid = idMap.get(oid)!;
+    const newKidOrder = kids.map((k) => idMap.get(k.id)!);
+    await applySiblingOrderPg(pool, projectId, newKidOrder);
+  }
+
+  return { newRootId };
+}
+
 export async function wpnPgGetExplorerExpanded(
   pool: Pool,
   ownerId: string,

@@ -15,6 +15,7 @@ import {
 import {
   wpnSqliteCreateNote,
   wpnSqliteDeleteNotes,
+  wpnSqliteDuplicateNoteSubtree,
   wpnSqliteGetExplorerExpanded,
   wpnSqliteListNotesFlat,
   wpnSqliteMoveNote,
@@ -287,6 +288,18 @@ export function registerStaticIpcWpnHandlers(): void {
         placement as NoteMovePlacement,
       );
       return { ok: true as const };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.WPN_DUPLICATE_NOTE_SUBTREE,
+    async (_e, projectId: unknown, noteId: unknown) => {
+      if (typeof projectId !== "string" || typeof noteId !== "string") {
+        throw new Error("projectId and noteId required");
+      }
+      const db = requireNotesDb();
+      const ownerId = getWpnOwnerId();
+      return wpnSqliteDuplicateNoteSubtree(db, ownerId, projectId, noteId);
     },
   );
 }

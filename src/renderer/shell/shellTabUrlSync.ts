@@ -46,3 +46,13 @@ export function replaceWindowHash(nextHash: string): void {
   u.hash = normalized;
   window.history.replaceState(null, "", `${u.pathname}${u.search}${normalized}`);
 }
+
+/** Fired when a main-area shell note tab is closed (×, command, etc.). Notes explorer listens to cancel debounced single-click opens. */
+export const NODEX_SHELL_NOTE_TAB_CLOSED_EVENT = "nodex:shell-note-tab-closed";
+
+export function dispatchShellNoteTabClosed(noteId: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(NODEX_SHELL_NOTE_TAB_CLOSED_EVENT, { detail: { noteId } }),
+  );
+}

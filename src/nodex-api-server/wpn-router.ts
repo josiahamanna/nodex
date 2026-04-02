@@ -31,6 +31,7 @@ import {
   wpnPgGetExplorerExpanded,
   wpnPgGetNoteById,
   wpnPgListNotesFlat,
+  wpnPgDuplicateNoteSubtree,
   wpnPgMoveNote,
   wpnPgSetExplorerExpanded,
   wpnPgUpdateNote,
@@ -41,6 +42,7 @@ import {
   wpnSqliteGetExplorerExpanded,
   wpnSqliteGetNoteById,
   wpnSqliteListNotesFlat,
+  wpnSqliteDuplicateNoteSubtree,
   wpnSqliteMoveNote,
   wpnSqliteSetExplorerExpanded,
   wpnSqliteUpdateNote,
@@ -409,6 +411,24 @@ export function createWpnRouter(): Router {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
     }
   });
+
+  wpn.post(
+    "/projects/:projectId/notes/:noteId/duplicate",
+    async (req: Request, res: Response) => {
+      try {
+        const ownerId = getWpnOwnerId();
+        const { projectId, noteId } = req.params;
+        const b = await resolveBackend();
+        const result =
+          b.kind === "postgres"
+            ? await wpnPgDuplicateNoteSubtree(b.pool, ownerId, projectId, noteId)
+            : wpnSqliteDuplicateNoteSubtree(b.db, ownerId, projectId, noteId);
+        res.status(201).json(result);
+      } catch (e) {
+        sendErr(res, 503, e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
 
   wpn.post("/notes/move", async (req: Request, res: Response) => {
     try {
