@@ -165,9 +165,15 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       const nextProj: Record<string, WpnProjectRow[]> = {};
       for (const w of ws) {
         const { projects } = await window.Nodex.wpnListProjects(w.id);
-        nextProj[w.id] = projects;
+        // Bundled plugin docs live in a dedicated project; browse them from Documentation, not Notes explorer.
+        nextProj[w.id] = projects.filter((p) => p.name !== "Documentation");
       }
       setProjectsByWs(nextProj);
+      setSelectedProjectId((prev) => {
+        if (!prev) return prev;
+        const visible = Object.values(nextProj).some((arr) => arr.some((p) => p.id === prev));
+        return visible ? prev : null;
+      });
       setExpandedWs(new Set(ws.map((w) => w.id)));
     } finally {
       setBusy(false);
@@ -234,6 +240,12 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     if (!selectedProjectId || !projectOpen) return;
     void loadProjectTree(selectedProjectId);
   }, [selectedProjectId, projectOpen, loadProjectTree]);
+
+  useEffect(() => {
+    if (selectedProjectId) return;
+    setNotes([]);
+    setExpandedNoteParents(new Set());
+  }, [selectedProjectId]);
 
   useEffect(() => {
     return () => {

@@ -5,20 +5,8 @@ import { useNodexCommands } from "../../../NodexContributionContext";
 import type { CommandContribution } from "../../../nodex-contribution-registry";
 import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
 import type { AppDispatch, RootState } from "../../../../store";
-import {
-  createNote,
-  fetchAllNotes,
-  patchNoteMetadata,
-  renameNote,
-  saveNoteContent,
-} from "../../../../store/notesSlice";
-import { useShellLayoutStore } from "../../../layout/ShellLayoutContext";
-import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
-import { useShellViewRegistry } from "../../../views/ShellViewContext";
-import { openNoteInShell } from "../../../openNoteInShell";
+import { fetchAllNotes } from "../../../../store/notesSlice";
 import { DOCS_BC, type DocsBcMessage } from "./documentationConstants";
-import { resolveCommandApiDoc } from "../../../command-api-metadata";
-import { resolvedCommandDocToMarkdown } from "./documentationCommandMarkdown";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 
 function esc(s: string): string {
@@ -32,16 +20,6 @@ function isBundledDocPage(item: NoteListItem): boolean {
   return m != null && m.bundledDoc === true && m.bundledDocRole === "page";
 }
 
-function isCommandDocNote(item: NoteListItem, commandId: string): boolean {
-  const m = item.metadata as Record<string, unknown> | undefined;
-  return (
-    m != null &&
-    m.docsKind === "command" &&
-    m.docsCommandId === commandId &&
-    item.type === "markdown"
-  );
-}
-
 function bundledDocOrder(item: NoteListItem): number {
   const o = item.metadata?.bundledDocOrder;
   return typeof o === "number" ? o : 9999;
@@ -53,9 +31,6 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
   const dispatch = useDispatch<AppDispatch>();
   const commands = useNodexCommands();
   const notesList = useSelector((s: RootState) => s.notes.notesList);
-  const regs = useShellRegistries();
-  const views = useShellViewRegistry();
-  const layout = useShellLayoutStore();
   const { mountKind } = useShellProjectWorkspace();
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>("guides");
   const [q, setQ] = useState("");
@@ -177,7 +152,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
         if (ao !== bo) return ao - bo;
         return String(a.title).localeCompare(String(b.title));
       });
-  }, [notesList]);
+  }, [mountKind, notesList, wpnGuides]);
 
   const norm = (s: string) => String(s || "").toLowerCase().trim();
   const label = (c: CommandContribution) =>
@@ -210,47 +185,6 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
   });
 
   const selectedCommand = selectedCommandId ? commands.find((x) => x.id === selectedCommandId) : null;
-
-  const openNote = useCallback(
-    (noteId: string) => {
-      openNoteInShell(noteId, { tabs: regs.tabs, views, layout });
-    },
-    [layout, regs.tabs, views],
-  );
-
-  const ensureCommandDocNote = useCallback(
-    async (c: CommandContribution): Promise<string> => {
-      const existing = notesList.find((n) => isCommandDocNote(n, c.id));
-      const md = resolvedCommandDocToMarkdown(resolveCommandApiDoc(c));
-      const metaPatch = {
-        docsKind: "command",
-        docsCommandId: c.id,
-        docsReadOnly: true,
-        markdownViewMode: "preview",
-      } as const;
-
-      if (existing) {
-        await dispatch(renameNote({ id: existing.id, title: c.id })).unwrap();
-        await dispatch(saveNoteContent({ noteId: existing.id, content: md })).unwrap();
-        await dispatch(patchNoteMetadata({ noteId: existing.id, patch: metaPatch as unknown as Record<string, unknown> })).unwrap();
-        return existing.id;
-      }
-
-      const created = await dispatch(
-        createNote({
-          relation: "root",
-          type: "markdown",
-          title: c.id,
-          content: md,
-        }),
-      ).unwrap();
-      const newId = created.id;
-      await dispatch(patchNoteMetadata({ noteId: newId, patch: metaPatch as unknown as Record<string, unknown> })).unwrap();
-      await dispatch(fetchAllNotes()).unwrap();
-      return newId;
-    },
-    [dispatch, notesList],
-  );
 
   return (
     <div className="flex h-full min-h-0 flex-col text-[12px]">
@@ -319,18 +253,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
                   className="w-full border border-border/80 bg-muted/10 px-2 py-1.5 text-left hover:bg-muted/40"
                   onClick={() => {
                     setSelectedGuideId(g.id);
-                    if (mountKind === "wpn-postgres") {
-                      // In WPN mode, bundled docs are WPN notes; open directly.
-                      openNote(g.id);
-                      return;
-                    }
-                    void dispatch(
-                      patchNoteMetadata({
-                        noteId: g.id,
-                        patch: { docsReadOnly: true, markdownViewMode: "preview" },
-                      }),
-                    );
-                    openNote(g.id);
+                    postBc({ type: "docs.showBundledDoc", noteId: g.id });
                   }}
                 >
                   <div className="text-[11px] font-medium text-foreground">{esc(g.title)}</div>
@@ -343,7 +266,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
             <div className="shrink-0 border-t border-border bg-muted/10 p-2.5 text-[11px] text-muted-foreground">
               <span className="font-mono text-[10px] text-foreground">{esc(selectedGuideId)}</span>
               <span className="mx-1 opacity-40">·</span>
-              <span>Read-only view in the primary column →</span>
+              <span>Read-only markdown in this tab’s main area →</span>
             </div>
           ) : (
             <div className="shrink-0 border-t border-border p-2 text-[11px] opacity-50">
@@ -380,10 +303,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
                 className="w-full border border-border/80 bg-muted/10 px-2 py-1.5 text-left hover:bg-muted/40"
                 onClick={() => {
                   setSelectedCommandId(c.id);
-                  void (async () => {
-                    const noteId = await ensureCommandDocNote(c);
-                    openNote(noteId);
-                  })();
+                  postBc({ type: "docs.showCommand", commandId: c.id });
                 }}
               >
                 <div className="font-mono text-[10px]">{esc(c.id)}</div>
@@ -395,11 +315,11 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
             <div className="shrink-0 border-t border-border bg-muted/10 p-2.5 text-[11px] text-muted-foreground">
               <span className="font-mono text-[10px] text-foreground">{esc(selectedCommand.id)}</span>
               <span className="mx-1 opacity-40">·</span>
-              <span>Full text is in the primary area →</span>
+              <span>Full API text in this tab’s main area →</span>
             </div>
           ) : (
             <div className="shrink-0 border-t border-border p-2 text-[11px] opacity-50">
-              Select a command (details open in the primary column)
+              Select a command (details open in the main area)
             </div>
           )}
         </>

@@ -85,12 +85,33 @@ body {
   cursor: col-resize;
 }
 
-/* Electron/Chromium: native button fill can hide Tailwind bg-primary on primary actions */
+/* Electron/Chromium: native button fill can hide Tailwind bg-* / text-* on <button> */
 button.nodex-primary-fill {
   appearance: none;
   -webkit-appearance: none;
   background-image: none;
   cursor: pointer;
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+button.nodex-auth-submit {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: none;
+  cursor: pointer;
+  background-color: hsl(var(--foreground));
+  color: hsl(var(--background));
+}
+button.nodex-auth-submit:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+button.nodex-auth-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.dark button.nodex-auth-submit:hover:not(:disabled) {
+  filter: brightness(1.03);
 }
 
 /*

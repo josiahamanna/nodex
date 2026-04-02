@@ -181,7 +181,7 @@ export function AuthScreen({
           <button
             type="submit"
             disabled={!canSubmit || submitting}
-            className="mt-2 h-10 w-full rounded-md border border-border bg-foreground text-[13px] font-medium text-background disabled:cursor-not-allowed disabled:opacity-60"
+            className="nodex-auth-submit mt-2 h-10 w-full rounded-md border border-border text-[13px] font-medium"
           >
             {submitting ? "Please wait…" : title}
           </button>

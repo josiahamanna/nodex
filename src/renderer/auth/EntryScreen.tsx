@@ -69,6 +69,13 @@ function MarketingHome({
               keyboard-first and command-driven, extensible like a toolkit, and self-documenting with
               in-app docs that stay close to the features you use.
             </p>
+            <div className="mt-5 max-w-xl rounded-xl border border-border bg-muted/10 px-4 py-3">
+              <div className="text-[12px] font-semibold text-foreground">Many note types</div>
+              <p className="mt-1.5 text-pretty text-[12px] leading-5 text-muted-foreground">
+                Notes can be text, image, PDF, video, audio, diagrams, code, canvas, and more—each
+                handled in one workspace.
+              </p>
+            </div>
             <div className="mt-7 flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -78,7 +85,7 @@ function MarketingHome({
                 Create an account
               </button>
               <div className="ml-1 text-[11px] text-muted-foreground">
-                Local Electron mode works offline.
+                Offline Electron Application coming soon.
               </div>
             </div>
 
