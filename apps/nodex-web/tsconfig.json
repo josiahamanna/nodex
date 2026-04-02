@@ -23,6 +23,7 @@
     "nodex-globals.d.ts",
     "../../src/types/observable-runtime.d.ts",
     "../../src/types/observable-inspector.d.ts",
+    "../../src/types/observable-stdlib.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts"

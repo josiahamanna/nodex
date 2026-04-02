@@ -10,6 +10,7 @@ apps/nodex-web/.next/
 apps/nodex-web/out/
 src/renderer/styles/tokens-raw.generated.ts
 src/shared/video-js-iframe-css.generated.ts
+data/
 
 # Plugin zips (generated)
 plugin-sources/**/*.zip
