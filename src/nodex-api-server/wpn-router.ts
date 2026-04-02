@@ -4,7 +4,7 @@ import { getNotesDatabase } from "../core/notes-sqlite";
 import { assertProjectOpen } from "./headless-bootstrap";
 import { ensureWpnPgSchema } from "../core/wpn/wpn-pg-schema";
 import { getWpnPgPool } from "../core/wpn/wpn-pg-pool";
-import { getWpnOwnerId } from "../core/wpn/wpn-owner";
+import type { AuthedRequest } from "./auth/auth-middleware";
 import {
   wpnSqliteCreateProject,
   wpnSqliteCreateWorkspace,
@@ -88,7 +88,7 @@ export function createWpnRouter(): Router {
 
   wpn.get("/workspaces", async (_req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (_req as AuthedRequest).user!.id;
       const b = await resolveBackend();
       const workspaces =
         b.kind === "postgres"
@@ -102,7 +102,7 @@ export function createWpnRouter(): Router {
 
   wpn.post("/workspaces", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const name = typeof req.body?.name === "string" ? req.body.name : "Workspace";
       const b = await resolveBackend();
       const workspace =
@@ -117,7 +117,7 @@ export function createWpnRouter(): Router {
 
   wpn.patch("/workspaces/:id", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const { id } = req.params;
       const body = req.body ?? {};
       const patch: {
@@ -147,7 +147,7 @@ export function createWpnRouter(): Router {
 
   wpn.delete("/workspaces/:id", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const { id } = req.params;
       const b = await resolveBackend();
       const ok =
@@ -166,7 +166,7 @@ export function createWpnRouter(): Router {
 
   wpn.get("/workspaces/:workspaceId/projects", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const { workspaceId } = req.params;
       const b = await resolveBackend();
       const projects =
@@ -181,7 +181,7 @@ export function createWpnRouter(): Router {
 
   wpn.post("/workspaces/:workspaceId/projects", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const { workspaceId } = req.params;
       const name = typeof req.body?.name === "string" ? req.body.name : "Project";
       const b = await resolveBackend();
@@ -201,7 +201,7 @@ export function createWpnRouter(): Router {
 
   wpn.patch("/projects/:id", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const { id } = req.params;
       const body = req.body ?? {};
       const patch: {
@@ -233,7 +233,7 @@ export function createWpnRouter(): Router {
 
   wpn.delete("/projects/:id", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const { id } = req.params;
       const b = await resolveBackend();
       const ok =
@@ -252,7 +252,7 @@ export function createWpnRouter(): Router {
 
   wpn.get("/projects/:projectId/notes", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const { projectId } = req.params;
       const b = await resolveBackend();
       const notes =
@@ -267,7 +267,7 @@ export function createWpnRouter(): Router {
 
   wpn.get("/projects/:projectId/explorer-state", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const { projectId } = req.params;
       const b = await resolveBackend();
       const expanded_ids =
@@ -282,7 +282,7 @@ export function createWpnRouter(): Router {
 
   wpn.patch("/projects/:projectId/explorer-state", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const { projectId } = req.params;
       const raw = req.body?.expanded_ids;
       const expanded_ids = Array.isArray(raw)
@@ -302,7 +302,7 @@ export function createWpnRouter(): Router {
 
   wpn.post("/projects/:projectId/notes", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const { projectId } = req.params;
       const body = req.body ?? {};
       const type = typeof body.type === "string" ? body.type : "";
@@ -342,7 +342,7 @@ export function createWpnRouter(): Router {
 
   wpn.get("/notes/:id", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const { id } = req.params;
       const b = await resolveBackend();
       const note =
@@ -361,7 +361,7 @@ export function createWpnRouter(): Router {
 
   wpn.patch("/notes/:id", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const { id } = req.params;
       const body = req.body ?? {};
       const patch: {
@@ -393,7 +393,7 @@ export function createWpnRouter(): Router {
 
   wpn.post("/notes/delete", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const raw = req.body?.ids;
       if (!Array.isArray(raw)) {
         sendErr(res, 400, "Expected ids array");
@@ -416,7 +416,7 @@ export function createWpnRouter(): Router {
     "/projects/:projectId/notes/:noteId/duplicate",
     async (req: Request, res: Response) => {
       try {
-        const ownerId = getWpnOwnerId();
+        const ownerId = (req as AuthedRequest).user!.id;
         const { projectId, noteId } = req.params;
         const b = await resolveBackend();
         const result =
@@ -432,7 +432,7 @@ export function createWpnRouter(): Router {
 
   wpn.post("/notes/move", async (req: Request, res: Response) => {
     try {
-      const ownerId = getWpnOwnerId();
+      const ownerId = (req as AuthedRequest).user!.id;
       const body = req.body ?? {};
       const projectId = typeof body.projectId === "string" ? body.projectId : "";
       const draggedId = typeof body.draggedId === "string" ? body.draggedId : "";

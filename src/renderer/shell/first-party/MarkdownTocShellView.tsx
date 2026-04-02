@@ -69,7 +69,9 @@ export function MarkdownTocShellView(_props: ShellViewComponentProps): React.Rea
       : undefined;
 
   const isMarkdown =
-    currentNote?.id === noteId && (currentNote.type === "markdown" || currentNote.type === "root");
+    currentNote != null &&
+    currentNote.id === noteId &&
+    (currentNote.type === "markdown" || currentNote.type === "root");
 
   const rows = useMemo(() => {
     if (!isMarkdown) return [];

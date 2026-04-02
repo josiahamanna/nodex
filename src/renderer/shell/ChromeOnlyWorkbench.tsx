@@ -50,6 +50,7 @@ import {
   SHELL_COMPANION_MIN_EXPANDED_PX,
   SHELL_SIDEBAR_MIN_EXPANDED_PX,
 } from "./shellResponsiveConstants";
+import { useAuth } from "../auth/AuthContext";
 
 function IconBottomDockLayout({ className }: { className?: string }): React.ReactElement {
   return (
@@ -215,6 +216,7 @@ function SortableTabRow({
 }
 
 export function ChromeOnlyWorkbench(): React.ReactElement {
+  const auth = useAuth();
   const layout = useShellLayoutState();
   const store = useShellLayoutStore();
   const views = useShellViewRegistry();
@@ -638,6 +640,18 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
             </SortableContext>
           </DndContext>
           <div className="flex items-center gap-1">
+            {auth.state.status === "authed" && auth.state.user.id !== "local" ? (
+              <button
+                type="button"
+                className="mr-1 rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
+                onClick={() => {
+                  void auth.logout();
+                }}
+                title="Logout"
+              >
+                Logout
+              </button>
+            ) : null}
             <button
               type="button"
               className={`flex h-8 w-8 items-center justify-center rounded-md border border-border/60 bg-background hover:bg-muted/30 ${

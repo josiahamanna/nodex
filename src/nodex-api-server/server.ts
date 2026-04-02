@@ -8,6 +8,7 @@ import {
 } from "./headless-bootstrap";
 import { createNodexApiRouter } from "./api-router";
 import { getWpnPgPool } from "../core/wpn/wpn-pg-pool";
+import { ensureAuthPgSchema } from "../core/auth/auth-pg-schema";
 import {
   readMarketplaceS3ConfigFromEnv,
   streamArtifactToResponse,
@@ -79,6 +80,7 @@ const host = process.env.HOST ?? "127.0.0.1";
 void (async () => {
   if (getWpnPgPool()) {
     try {
+      await ensureAuthPgSchema(getWpnPgPool()!);
       await headlessPluginsCatalogPgSyncFromDisk(getHeadlessUserDataPath());
     } catch (e) {
       // eslint-disable-next-line no-console

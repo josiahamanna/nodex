@@ -25,6 +25,11 @@ export function MarkdownNoteEditor({
   const persistRef = useRef(persist);
   const noteIdRef = useRef(note.id);
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
+  const meta = (note.metadata ?? {}) as Record<string, unknown>;
+  const readOnly =
+    meta.docsReadOnly === true ||
+    meta.readOnly === true ||
+    meta.bundledDoc === true;
 
   const [viewMode, setViewMode] = useState<MarkdownViewMode>(() => {
     const raw =
@@ -49,11 +54,12 @@ export function MarkdownNoteEditor({
         : undefined;
     const next: MarkdownViewMode =
       raw === "editor" || raw === "preview" || raw === "both" ? raw : "both";
-    setViewMode(next);
+    setViewMode(readOnly ? "preview" : next);
   }, [note.id, note.metadata]);
 
   const setAndPersistViewMode = useCallback(
     (next: MarkdownViewMode) => {
+      if (readOnly) return;
       setViewMode(next);
       if (!persistRef.current) return;
       void dispatch(patchNoteMetadata({ noteId: noteIdRef.current, patch: { markdownViewMode: next } }));
@@ -149,37 +155,42 @@ export function MarkdownNoteEditor({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center justify-between gap-2 pb-3">
-        <div className="inline-flex overflow-hidden rounded-md border border-border bg-muted/10">
-          {(
-            [
-              ["editor", "Editor"],
-              ["preview", "Preview"],
-              ["both", "Both"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={`px-3 py-1.5 text-[11px] font-medium outline-none transition-colors ${
-                viewMode === id
-                  ? "bg-background text-foreground"
-                  : "text-muted-foreground hover:bg-muted/30 hover:text-foreground"
-              }`}
-              onClick={() => setAndPersistViewMode(id)}
-              aria-pressed={viewMode === id}
-            >
-              {label}
-            </button>
-          ))}
+      {!readOnly ? (
+        <div className="flex shrink-0 items-center justify-between gap-2 pb-3">
+          <div className="inline-flex overflow-hidden rounded-md border border-border bg-muted/10">
+            {(
+              [
+                ["editor", "Editor"],
+                ["preview", "Preview"],
+                ["both", "Both"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={`px-3 py-1.5 text-[11px] font-medium outline-none transition-colors ${
+                  viewMode === id
+                    ? "bg-background text-foreground"
+                    : "text-muted-foreground hover:bg-muted/30 hover:text-foreground"
+                }`}
+                onClick={() => setAndPersistViewMode(id)}
+                aria-pressed={viewMode === id}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="text-[11px] text-muted-foreground">Markdown</div>
         </div>
-        <div className="text-[11px] text-muted-foreground">
-          Markdown
+      ) : (
+        <div className="flex shrink-0 items-center justify-between gap-2 pb-3">
+          <div className="text-[11px] font-medium text-muted-foreground">Preview</div>
+          <div className="text-[11px] text-muted-foreground">Read-only</div>
         </div>
-      </div>
+      )}
 
       <div className="flex h-full min-h-0 w-full flex-col gap-3 md:flex-row">
-        {viewMode === "editor" || viewMode === "both" ? (
+        {!readOnly && (viewMode === "editor" || viewMode === "both") ? (
           <div className="flex min-h-[240px] min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-background">
             <div className="border-b border-border px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               Editor

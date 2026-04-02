@@ -2,6 +2,8 @@ import type {
   MarketplaceListResponse,
   NodexRendererApi,
 } from "../shared/nodex-renderer-api";
+import { getAccessToken, setAccessToken } from "./auth/auth-session";
+import { authRefresh } from "./auth/auth-client";
 
 const noopUnsub = (): void => {};
 
@@ -111,6 +113,7 @@ async function webRequest<T>(
   method: string,
   apiPath: string,
   body?: unknown,
+  attempt?: number,
 ): Promise<T> {
   const path = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
   const url =
@@ -119,12 +122,28 @@ async function webRequest<T>(
       : `${baseUrl.replace(/\/$/, "")}/api/v1${path}`;
   const init: RequestInit = {
     method,
-    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    headers: (() => {
+      const token = getAccessToken();
+      const h: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) {
+        h.Authorization = `Bearer ${token}`;
+      }
+      return h;
+    })(),
   };
   if (body !== undefined && method !== "GET" && method !== "HEAD") {
     init.body = JSON.stringify(body);
   }
   const res = await fetch(url, init);
+  if (res.status === 401 && (attempt ?? 0) < 1) {
+    try {
+      await authRefresh();
+      return await webRequest<T>(baseUrl, method, apiPath, body, (attempt ?? 0) + 1);
+    } catch {
+      setAccessToken(null);
+    }
+  }
   const text = await res.text();
   if (!res.ok) {
     let msg = `${method} ${apiPath} failed (${res.status})`;

@@ -56,6 +56,8 @@ import {
   PLUGIN_UI_METADATA_KEY,
   validatePluginUiStateSize,
 } from "../shared/plugin-state-protocol";
+import { createAuthRouter } from "./auth/auth-router";
+import { authMiddleware, requireAuth, type AuthedRequest } from "./auth/auth-middleware";
 
 const MARKETPLACE_FILES_BASE = "/marketplace/files";
 
@@ -155,13 +157,22 @@ function noteToApi(n: {
 export function createNodexApiRouter(): Router {
   const router = Router();
 
+  router.use(authMiddleware);
+
   router.get("/health", (_req, res) => {
     res.json({ ok: true });
   });
 
-  router.get("/session", (_req, res) => {
+  router.get("/session", (req, res) => {
+    const u = (req as AuthedRequest).user;
+    if (u) {
+      res.json({ user: u, wpnOwnerId: u.id });
+      return;
+    }
     res.json({ wpnOwnerId: getWpnOwnerId() });
   });
+
+  router.use("/auth", createAuthRouter());
 
   // Minimal assets API for browser mode (import media + serve files).
   router.post(
@@ -893,6 +904,11 @@ export function createNodexApiRouter(): Router {
     res.json({ ok: true as const, touchedNotes: r.touchedNotes === true });
   });
 
+  router.use("/wpn", (req, res, next) => {
+    const u = requireAuth(req as AuthedRequest, res);
+    if (!u) return;
+    next();
+  });
   router.use("/wpn", createWpnRouter());
 
   router.post("/redo", withNotes, (_req, res) => {

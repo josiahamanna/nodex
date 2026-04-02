@@ -55,6 +55,10 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
   const [sandbox, setSandbox] = useState(false);
   const [autoRun, setAutoRun] = useState(false);
   const [lastRunLabel, setLastRunLabel] = useState<string | null>(null);
+  const [sandboxRun, setSandboxRun] = useState<{
+    ids: string[];
+    results: NotebookSandboxCellResult[];
+  } | null>(null);
 
   const outRef = useRef<HTMLDivElement>(null);
   const trustedDisposeRef = useRef<(() => void) | null>(null);
@@ -86,6 +90,7 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
     trustedDisposeRef.current = null;
     if (outRef.current) outRef.current.innerHTML = "";
     setLastRunLabel(null);
+    setSandboxRun(null);
   }, []);
 
   const run = useCallback(async () => {
@@ -100,6 +105,7 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
     trustedDisposeRef.current = null;
     root.innerHTML = "";
     setErr(null);
+    setSandboxRun(null);
 
     runIdRef.current += 1;
     const meta = { runId: runIdRef.current, startedAt: Date.now() };
@@ -115,33 +121,7 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
           kind: c.kind,
         }));
         const results = await runNotebookCellsInSandbox(payload);
-        const renderSandboxRow = (r: NotebookSandboxCellResult): void => {
-          const block = document.createElement("div");
-          block.className = "mb-2.5 rounded-lg border border-border p-2.5";
-          const h = document.createElement("div");
-          h.className = "mb-1.5 font-mono text-[11px] opacity-70";
-          h.textContent = r.name;
-          block.appendChild(h);
-          if ("skipped" in r) {
-            const p = document.createElement("p");
-            p.className = "text-[11px] opacity-60";
-            p.textContent = "(markdown — not executed in sandbox)";
-            block.appendChild(p);
-          } else if (r.ok) {
-            const pre = document.createElement("pre");
-            pre.className =
-              "max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] opacity-90";
-            pre.textContent = r.serialized;
-            block.appendChild(pre);
-          } else {
-            const er = document.createElement("div");
-            er.className = "text-[11px] text-destructive";
-            er.textContent = r.error;
-            block.appendChild(er);
-          }
-          root.appendChild(block);
-        };
-        for (const r of results) renderSandboxRow(r);
+        setSandboxRun({ ids: norm.map((c) => c.id), results });
       } else {
         const { dispose } = runObservableNotebookTrusted({
           cells: norm,
@@ -277,8 +257,7 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
           {err}
         </div>
       ) : null}
-      <div className="grid min-h-0 flex-1 grid-cols-2 gap-0 divide-x divide-border">
-        <div className="min-h-0 overflow-auto p-3">
+      <div className="min-h-0 flex-1 overflow-auto p-3">
           <p className="mb-2 text-[11px] leading-relaxed opacity-70">
             JS cells use <code className="font-mono">@observablehq/runtime</code> plus stdlib builtins;{" "}
             <code className="font-mono">nodex</code> calls shell commands.{" "}
@@ -298,6 +277,9 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
               .map((x) => x.name.trim())
               .filter((n, i) => n && i !== idx);
             const completionNames = Array.from(new Set([...others, ...c.inputs]));
+            const sandboxIdx = sandboxRun ? sandboxRun.ids.indexOf(c.id) : -1;
+            const sandboxResult =
+              sandboxRun && sandboxIdx >= 0 ? sandboxRun.results[sandboxIdx] : null;
 
             return (
               <div key={c.id} className="mb-2.5 rounded-lg border border-border p-2.5">
@@ -373,21 +355,44 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
                     </div>
                   </>
                 ) : (
-                  <NotebookCellEditor
-                    value={c.body}
-                    onChange={(body) =>
-                      onCellsChange(cells.map((x) => (x.id === c.id ? { ...x, body } : x)))
-                    }
-                    completionCellNames={completionNames}
-                    dark={resolvedDark}
-                    onModEnter={() => void run()}
-                  />
+                  <>
+                    <NotebookCellEditor
+                      value={c.body}
+                      onChange={(body) =>
+                        onCellsChange(cells.map((x) => (x.id === c.id ? { ...x, body } : x)))
+                      }
+                      completionCellNames={completionNames}
+                      dark={resolvedDark}
+                      onModEnter={() => void run()}
+                    />
+                    {sandbox && sandboxResult ? (
+                      <div className="mt-2 rounded border border-border bg-muted/10 p-2.5">
+                        <div className="mb-1 font-mono text-[10px] opacity-70">Output</div>
+                        {"skipped" in sandboxResult ? (
+                          <div className="text-[11px] opacity-60">(markdown — not executed in sandbox)</div>
+                        ) : sandboxResult.ok ? (
+                          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] opacity-90">
+                            {sandboxResult.serialized}
+                          </pre>
+                        ) : (
+                          <div className="text-[11px] text-destructive">{sandboxResult.error}</div>
+                        )}
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </div>
             );
           })}
-        </div>
-        <div ref={outRef} className="min-h-0 overflow-auto p-3" />
+
+        {!sandbox ? (
+          <div className="mt-4">
+            <div className="mb-2 text-[11px] font-semibold opacity-80">Outputs</div>
+            <div ref={outRef} className="min-h-0 rounded-lg border border-border bg-background p-3" />
+          </div>
+        ) : (
+          <div ref={outRef} className="hidden" />
+        )}
       </div>
     </div>
   );

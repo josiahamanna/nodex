@@ -16,6 +16,8 @@ import { useRegisterObservableNotebookPlugin } from "./shell/first-party/plugins
 import { useRegisterNotesShellPlugin } from "./shell/first-party/useRegisterNotesShellPlugin";
 import { useRegisterMarkdownNotePlugin } from "./shell/first-party/plugins/markdown/useRegisterMarkdownNotePlugin";
 import { DesktopOnlyGate } from "./shell/DesktopOnlyGate";
+import { AuthProvider } from "./auth/AuthContext";
+import { AuthGate } from "./auth/AuthGate";
 
 ensureSesLockdown();
 
@@ -32,19 +34,23 @@ const App: React.FC = () => {
   useRegisterNotesExplorerPlugin();
 
   return (
-    <DesktopOnlyGate>
-      <div className="flex h-screen min-h-0 flex-col">
-        {/* Reserve vertical space for mode line + minibuffer so they do not overlay the workbench. */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ChromeOnlyWorkbench />
-        </div>
-        {/* Emacs order: mode line above minibuffer; minibuffer sits on the bottom edge. */}
-        {layout.visible.modeLine ? <NodexModeLineHost /> : null}
-        <NodexCommandPalette vm={shellVm} />
-        {layout.visible.miniBar ? <NodexMiniBar vm={shellVm} /> : null}
-        <NodexReplOverlay />
-      </div>
-    </DesktopOnlyGate>
+    <AuthProvider>
+      <AuthGate>
+        <DesktopOnlyGate>
+          <div className="flex h-screen min-h-0 flex-col">
+            {/* Reserve vertical space for mode line + minibuffer so they do not overlay the workbench. */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <ChromeOnlyWorkbench />
+            </div>
+            {/* Emacs order: mode line above minibuffer; minibuffer sits on the bottom edge. */}
+            {layout.visible.modeLine ? <NodexModeLineHost /> : null}
+            <NodexCommandPalette vm={shellVm} />
+            {layout.visible.miniBar ? <NodexMiniBar vm={shellVm} /> : null}
+            <NodexReplOverlay />
+          </div>
+        </DesktopOnlyGate>
+      </AuthGate>
+    </AuthProvider>
   );
 };
 
