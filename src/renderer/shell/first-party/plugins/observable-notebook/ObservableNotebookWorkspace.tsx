@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
@@ -16,6 +16,8 @@ import {
   normalizeNotebookCells,
 } from "./observable-notebook-types";
 import { useTheme } from "../../../../theme/ThemeContext";
+import { useShellLayoutStore } from "../../../layout/ShellLayoutContext";
+import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 
 const mdPreviewClass =
   "mt-2 rounded border border-border bg-muted/20 p-2 text-[11px] text-foreground [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4";
@@ -46,6 +48,8 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
     executeWhenKeyChanges,
   } = props;
   const { resolvedDark } = useTheme();
+  const registries = useShellRegistries();
+  const layout = useShellLayoutStore();
 
   const [err, setErr] = useState<string | null>(null);
   const [sandbox, setSandbox] = useState(false);
@@ -57,6 +61,16 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
   const abortRef = useRef<AbortController | null>(null);
   const runIdRef = useRef(0);
   const executeKeySeenRef = useRef<string | undefined>(undefined);
+
+  const nodex = useMemo(
+    () =>
+      createNotebookNodexHost({
+        invoke: invokeCommand,
+        registries,
+        layout,
+      }),
+    [invokeCommand, registries, layout],
+  );
 
   useEffect(() => {
     setNotebookSandboxCommandInvoker((commandId: string, args?: Record<string, unknown>) =>
@@ -129,7 +143,6 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
         };
         for (const r of results) renderSandboxRow(r);
       } else {
-        const nodex = createNotebookNodexHost(invokeCommand);
         const { dispose } = runObservableNotebookTrusted({
           cells: norm,
           outputRoot: root,
@@ -147,7 +160,7 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
       }
       setErr(e instanceof Error ? e.message : String(e));
     }
-  }, [cells, invokeCommand, sandbox]);
+  }, [cells, nodex, sandbox]);
 
   useEffect(() => {
     return () => {

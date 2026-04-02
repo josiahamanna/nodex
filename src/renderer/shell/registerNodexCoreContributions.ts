@@ -317,6 +317,107 @@ export function registerNodexCoreContributions(
         },
       }),
     );
+
+    disposers.push(
+      registry.registerCommand({
+        id: "nodex.devtools.tabs.listOpen",
+        title: "Devtools: List open shell tabs (log)",
+        category: "Nodex",
+        sourcePluginId: null,
+        palette: process.env.NODE_ENV !== "production",
+        miniBar: true,
+        doc: "Logs ShellTabsRegistry.listOpenTabs() to the browser console.",
+        api: {
+          summary: "Development helper: log all open shell tabs.",
+          args: [],
+          exampleInvoke: {},
+          returns: { type: "void", description: "console.table (or console.info) output." },
+        },
+        handler: () => {
+          const list = registries.tabs.listOpenTabs();
+          // eslint-disable-next-line no-console
+          if (typeof console.table === "function") console.table(list);
+          // eslint-disable-next-line no-console
+          else console.info("[Nodex] Open shell tabs:", list);
+        },
+      }),
+    );
+
+    disposers.push(
+      registry.registerCommand({
+        id: "nodex.devtools.tabs.active",
+        title: "Devtools: Log active shell tab",
+        category: "Nodex",
+        sourcePluginId: null,
+        palette: process.env.NODE_ENV !== "production",
+        miniBar: true,
+        doc: "Logs ShellTabsRegistry.getActiveTab() to the browser console.",
+        api: {
+          summary: "Development helper: log active tab instance.",
+          args: [],
+          exampleInvoke: {},
+          returns: { type: "void", description: "console.info output." },
+        },
+        handler: () => {
+          const active = registries.tabs.getActiveTab();
+          // eslint-disable-next-line no-console
+          console.info("[Nodex] Active tab:", active);
+        },
+      }),
+    );
+
+    disposers.push(
+      registry.registerCommand({
+        id: "nodex.devtools.tabs.close",
+        title: "Devtools: Close shell tab",
+        category: "Nodex",
+        sourcePluginId: null,
+        palette: process.env.NODE_ENV !== "production",
+        miniBar: true,
+        doc: 'Closes a tab instance. Args: { instanceId: "..." }',
+        api: {
+          summary: "Close a shell tab by instance id.",
+          args: [{ name: "instanceId", type: "string", required: true, description: "Tab instance id." }],
+          exampleInvoke: { instanceId: "shell.tab.welcome:..." },
+          returns: { type: "void", description: "Updates ShellTabsRegistry." },
+        },
+        handler: (args) => {
+          const a = args as { instanceId?: unknown } | undefined;
+          const instanceId = a?.instanceId;
+          if (typeof instanceId !== "string" || !instanceId.trim()) {
+            throw new Error('Missing args.instanceId (string). Example: {"instanceId":"..."}');
+          }
+          registries.tabs.closeTab(instanceId.trim());
+        },
+      }),
+    );
+
+    disposers.push(
+      registry.registerCommand({
+        id: "nodex.devtools.tabs.setActive",
+        title: "Devtools: Activate shell tab",
+        category: "Nodex",
+        sourcePluginId: null,
+        palette: process.env.NODE_ENV !== "production",
+        miniBar: true,
+        doc: 'Activates a tab instance. Args: { instanceId: "..." }',
+        api: {
+          summary: "Activate a shell tab by instance id.",
+          args: [{ name: "instanceId", type: "string", required: true, description: "Tab instance id." }],
+          exampleInvoke: { instanceId: "shell.tab.welcome:..." },
+          returns: { type: "void", description: "Updates ShellTabsRegistry." },
+        },
+        handler: (args) => {
+          const a = args as { instanceId?: unknown } | undefined;
+          const instanceId = a?.instanceId;
+          if (typeof instanceId !== "string" || !instanceId.trim()) {
+            throw new Error('Missing args.instanceId (string). Example: {"instanceId":"..."}');
+          }
+          registries.tabs.setActiveTab(instanceId.trim());
+        },
+      }),
+    );
+
     disposers.push(
       registry.registerCommand({
         id: "nodex.shell.keymap.register",

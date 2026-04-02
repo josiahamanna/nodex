@@ -1,5 +1,40 @@
+import type { ShellLayoutStore } from "../../../layout/ShellLayoutStore";
+import type { ShellRegistries } from "../../../registries/ShellRegistriesContext";
+import type { ShellRegionId } from "../../../layout/ShellLayoutState";
+
 /** Injected as the `nodex` builtin in trusted notebook runs. */
 export interface NodexNotebookHost {
+  /** Proxy/parity surface roughly matching `window.nodex.shell` for notebook cells. */
+  shell: {
+    tabs: {
+      listOpen(): ReturnType<ShellRegistries["tabs"]["listOpenTabs"]>;
+      getActive(): ReturnType<ShellRegistries["tabs"]["getActiveTab"]>;
+      setActive(instanceId: string): void;
+      close(instanceId: string): void;
+      openOrReuse(
+        tabTypeId: string,
+        o?: { title?: string; state?: unknown; reuseKey?: string },
+      ): unknown;
+    };
+    commands: {
+      invoke(commandId: string, args?: Record<string, unknown>): void | Promise<void>;
+    };
+    layout: {
+      get(): ReturnType<ShellLayoutStore["get"]>;
+      setVisible(regionId: ShellRegionId, visible: boolean): void;
+      toggle(regionId: ShellRegionId): void;
+      apply(patch: Partial<ReturnType<ShellLayoutStore["get"]>>): void;
+    };
+  };
+
+  /** Convenience alias: `nodex.devtools.*` maps to the same underlying shell surface. */
+  devtools: {
+    tabs: NodexNotebookHost["shell"]["tabs"];
+    commands: NodexNotebookHost["shell"]["commands"];
+    layout: NodexNotebookHost["shell"]["layout"];
+  };
+
+  /** Back-compat helpers used in docs/examples. */
   commands: {
     run(commandId: string, args?: Record<string, unknown>): void | Promise<void>;
   };
@@ -27,9 +62,43 @@ export const NODEX_NOTEBOOK_DOCUMENTED_COMMANDS = [
 ] as const;
 
 export function createNotebookNodexHost(
-  invoke: (id: string, args?: Record<string, unknown>) => void | Promise<void>,
+  opts: {
+    invoke: (id: string, args?: Record<string, unknown>) => void | Promise<void>;
+    registries: ShellRegistries;
+    layout: ShellLayoutStore;
+  },
 ): NodexNotebookHost {
+  const { invoke, registries, layout } = opts;
+
+  const shell: NodexNotebookHost["shell"] = {
+    tabs: {
+      listOpen: () => registries.tabs.listOpenTabs(),
+      getActive: () => registries.tabs.getActiveTab(),
+      setActive: (instanceId: string) => registries.tabs.setActiveTab(String(instanceId)),
+      close: (instanceId: string) => registries.tabs.closeTab(String(instanceId)),
+      openOrReuse: (tabTypeId: string, o?: { title?: string; state?: unknown; reuseKey?: string }) =>
+        registries.tabs.openOrReuseTab(String(tabTypeId), o),
+    },
+    commands: {
+      invoke: (commandId: string, args?: Record<string, unknown>) => invoke(commandId, args),
+    },
+    layout: {
+      get: () => layout.get(),
+      setVisible: (regionId: ShellRegionId, visible: boolean) =>
+        layout.setVisible(regionId, Boolean(visible)),
+      toggle: (regionId: ShellRegionId) => layout.toggle(regionId),
+      apply: (patch: Partial<ReturnType<ShellLayoutStore["get"]>>) =>
+        layout.patch((cur) => ({ ...cur, ...(patch as object) })),
+    },
+  };
+
   return {
+    shell,
+    devtools: {
+      tabs: shell.tabs,
+      commands: shell.commands,
+      layout: shell.layout,
+    },
     commands: {
       run: (commandId, args) => invoke(commandId, args),
     },
