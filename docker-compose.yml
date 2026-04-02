@@ -124,6 +124,8 @@ services:
     environment:
       HOST: "0.0.0.0"
       PORT: "3847"
+      # Auth signing key (required in production; in dev the API generates a temporary secret if unset).
+      NODEX_AUTH_JWT_SECRET: ${NODEX_AUTH_JWT_SECRET:-}
       # Path *inside* the container (see volume mount below)
       NODEX_PROJECT_ROOT: /workspace
       NODEX_USER_DATA_DIR: /nodex-user-data

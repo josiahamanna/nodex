@@ -34,7 +34,7 @@ const KBD =
   "inline rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px] text-foreground/90 shadow-sm";
 
 const SettingsView: React.FC<SettingsViewProps> = ({ category }) => {
-  const { colorMode, setColorMode } = useTheme();
+  const { colorMode } = useTheme();
   const { toggleMainDebugDock, mainDebugDockExpanded } = useMainDebugDock();
   const [debugMode, setDebugMode] = useState(readDebugModeFlag);
   const [seedSampleNotes, setSeedSampleNotes] = useState(true);
@@ -117,32 +117,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({ category }) => {
           <legend className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Color mode
           </legend>
-          <label className="flex cursor-pointer items-center gap-2 text-[12px]">
+          <p className="text-[11px] text-muted-foreground">
+            Light mode only for now. Dark and system options will return later.
+          </p>
+          <label className="flex cursor-not-allowed items-center gap-2 text-[12px] text-muted-foreground">
             <input
               type="radio"
               name="nodex-color"
               checked={colorMode === "light"}
-              onChange={() => setColorMode("light")}
+              disabled
             />
             Light
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 text-[12px]">
-            <input
-              type="radio"
-              name="nodex-color"
-              checked={colorMode === "dark"}
-              onChange={() => setColorMode("dark")}
-            />
-            Dark
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 text-[12px]">
-            <input
-              type="radio"
-              name="nodex-color"
-              checked={colorMode === "system"}
-              onChange={() => setColorMode("system")}
-            />
-            System
           </label>
         </fieldset>
         <fieldset className="mt-8 space-y-2">

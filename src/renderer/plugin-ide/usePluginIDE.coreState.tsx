@@ -197,8 +197,13 @@ export function usePluginIDECoreState(
   }, []);
 
   const refreshTypes = useCallback(async () => {
-    const raw = await window.Nodex.getSelectableNoteTypes();
-    const t = raw.filter((x) => x !== "root");
+    const [registered, selectable] = await Promise.all([
+      window.Nodex.getRegisteredTypes(),
+      window.Nodex.getSelectableNoteTypes(),
+    ]);
+    const reg = new Set(Array.isArray(registered) ? registered : []);
+    const raw = Array.isArray(selectable) ? selectable : [];
+    const t = raw.filter((x) => x !== "root" && reg.has(x));
     setTypes(t);
     setPreviewType((cur) => (t.includes(cur) ? cur : t[0] ?? ""));
   }, []);

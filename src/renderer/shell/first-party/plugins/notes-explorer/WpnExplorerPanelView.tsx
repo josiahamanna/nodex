@@ -16,7 +16,11 @@ import { closeShellTabsForNoteIds } from "../../../shellTabClose";
 import { useShellNavigation } from "../../../useShellNavigation";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import { NODEX_SHELL_NOTE_TAB_CLOSED_EVENT } from "../../../shellTabUrlSync";
-import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
+
+type ShellViewComponentProps = {
+  viewId: string;
+  title: string;
+};
 
 const WPN_COLOR_TOKENS = [
   "c01",
@@ -172,9 +176,17 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
 
   useEffect(() => {
     const refresh = (): void => {
-      void window.Nodex.getSelectableNoteTypes().then((t) => {
-        setSelectableTypes(Array.isArray(t) ? t : []);
-      });
+      void (async () => {
+        const [registered, selectable] = await Promise.all([
+          window.Nodex.getRegisteredTypes(),
+          window.Nodex.getSelectableNoteTypes(),
+        ]);
+        const reg = new Set(Array.isArray(registered) ? registered : []);
+        const sel = Array.isArray(selectable) ? selectable : [];
+        // Only show types that are both selectable and actually registered (installed/loaded).
+        // Also hide internal "root" (created implicitly; not user-selectable as a type).
+        setSelectableTypes(sel.filter((t) => t !== "root" && reg.has(t)));
+      })();
     };
     refresh();
     const onWebPlugins = (): void => {

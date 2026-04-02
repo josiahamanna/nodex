@@ -11,9 +11,20 @@ export type AccessTokenClaims = {
   isAdmin: boolean;
 };
 
+let devFallbackJwtSecret: string | null = null;
+
 export function requireAuthJwtSecret(): string {
   const raw = process.env.NODEX_AUTH_JWT_SECRET?.trim();
   if (!raw) {
+    if (process.env.NODE_ENV !== "production") {
+      if (!devFallbackJwtSecret) {
+        devFallbackJwtSecret = crypto.randomBytes(32).toString("base64url");
+        console.warn(
+          "[auth] NODEX_AUTH_JWT_SECRET is not set; using an ephemeral dev secret (set it to persist sessions).",
+        );
+      }
+      return devFallbackJwtSecret;
+    }
     throw new Error("Set NODEX_AUTH_JWT_SECRET");
   }
   if (raw.length < 24) {

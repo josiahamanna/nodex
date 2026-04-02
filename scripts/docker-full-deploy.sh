@@ -27,6 +27,12 @@ export NODEX_PG_PASSWORD="${NODEX_PG_PASSWORD:-nodex}"
 export NODEX_PG_DATABASE_URL="${NODEX_PG_DATABASE_URL:-postgresql://nodex:${NODEX_PG_PASSWORD}@postgres:5432/nodex}"
 export NODEX_WPN_DEFAULT_OWNER="${NODEX_WPN_DEFAULT_OWNER:-jehu}"
 
+if [[ -z "${NODEX_AUTH_JWT_SECRET:-}" ]]; then
+  NODEX_AUTH_JWT_SECRET="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))")"
+  export NODEX_AUTH_JWT_SECRET
+  echo "[nodex] Generated NODEX_AUTH_JWT_SECRET for this deploy (export it to persist sessions across restarts)."
+fi
+
 mkdir -p dist/plugins
 mkdir -p .nodex-docker-workspace
 

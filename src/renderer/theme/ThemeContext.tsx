@@ -11,6 +11,9 @@ import type { ColorMode } from "./theme-types";
 const STORAGE_COLOR_MODE = "nodex-color-mode";
 const LEGACY_PRESET_KEY = "nodex-theme-preset";
 
+/** Temporary: dark/system modes disabled until ready. */
+const FORCE_LIGHT_COLOR_MODE = true;
+
 export type { ColorMode };
 
 type ThemeContextValue = {
@@ -23,6 +26,9 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function readStoredColorMode(): ColorMode {
+  if (FORCE_LIGHT_COLOR_MODE) {
+    return "light";
+  }
   try {
     const v = localStorage.getItem(STORAGE_COLOR_MODE);
     if (v === "light" || v === "dark" || v === "system") {
@@ -43,6 +49,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     try {
       localStorage.removeItem(LEGACY_PRESET_KEY);
+      if (FORCE_LIGHT_COLOR_MODE) {
+        localStorage.setItem(STORAGE_COLOR_MODE, "light");
+      }
     } catch {
       /* ignore */
     }
@@ -61,15 +70,20 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const setColorMode = useCallback((m: ColorMode) => {
+    const next: ColorMode = FORCE_LIGHT_COLOR_MODE ? "light" : m;
     try {
-      localStorage.setItem(STORAGE_COLOR_MODE, m);
+      localStorage.setItem(STORAGE_COLOR_MODE, next);
     } catch {
       /* ignore */
     }
-    setColorModeState(m);
+    setColorModeState(next);
   }, []);
 
   useEffect(() => {
+    if (FORCE_LIGHT_COLOR_MODE) {
+      applyDarkClass(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       if (colorMode === "system") {
@@ -93,6 +107,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [colorMode, applyDarkClass]);
 
   useEffect(() => {
+    if (FORCE_LIGHT_COLOR_MODE) {
+      return;
+    }
     const unsub = window.Nodex.onNativeThemeChanged((isDark: boolean) => {
       if (colorMode === "system") {
         applyDarkClass(isDark);

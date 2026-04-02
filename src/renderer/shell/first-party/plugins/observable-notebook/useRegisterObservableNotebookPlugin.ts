@@ -39,6 +39,18 @@ export function useRegisterObservableNotebookPlugin(): void {
     );
 
     disposers.push(
+      regs.menuRail.registerItem({
+        id: "plugin.observable-notebook.rail",
+        title: "Observable",
+        icon: "◉",
+        order: 18,
+        tabTypeId: TAB_NOTEBOOK,
+        tabReuseKey: "plugin.observable-notebook",
+        expandChrome: { menuRail: true },
+      }),
+    );
+
+    disposers.push(
       contrib.registerCommand({
         id: "nodex.observableNotebook.open",
         title: "Observable: Open notebook",
