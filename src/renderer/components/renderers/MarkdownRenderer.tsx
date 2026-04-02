@@ -30,7 +30,7 @@ const markdownShellClass =
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note }) => {
   return (
-    <div className={`p-8 prose max-w-none min-w-0 ${markdownShellClass}`}>
+    <div className={`p-8 nodex-typography max-w-none min-w-0 ${markdownShellClass}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[[rehypeSanitize, defaultSchema]]}

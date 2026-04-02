@@ -19,13 +19,14 @@ function collectOpenNoteIds(tabs: ShellTabsRegistry): Set<string> {
  * clear Redux current note when its tab is gone, and fetch the newly active note tab.
  */
 export function closeShellTabInstance(tabs: ShellTabsRegistry, instanceId: string): void {
-  const inst = tabs.listOpenTabs().find((t) => t.instanceId === instanceId);
+  const normalizedInstanceId = String(instanceId).trim();
+  const inst = tabs.listOpenTabs().find((t) => t.instanceId === normalizedInstanceId);
   const closedNoteId =
     inst?.tabTypeId === SHELL_TAB_NOTE
       ? (inst.state as { noteId?: string } | undefined)?.noteId
       : undefined;
 
-  tabs.closeTab(instanceId);
+  tabs.closeTab(normalizedInstanceId);
 
   if (typeof closedNoteId === "string" && closedNoteId) {
     dispatchShellNoteTabClosed(closedNoteId);
@@ -60,7 +61,11 @@ export function closeShellTabInstance(tabs: ShellTabsRegistry, instanceId: strin
  * and Welcome — same end state as calling {@link closeShellTabInstance} for each, with a single `fetchNote` for the new active tab.
  */
 export function closeShellTabsForNoteIds(tabs: ShellTabsRegistry, noteIds: readonly string[]): void {
-  const idSet = new Set(noteIds.filter((id) => typeof id === "string" && id.length > 0));
+  const idSet = new Set(
+    noteIds
+      .map((id) => String(id).trim())
+      .filter((id) => typeof id === "string" && id.length > 0),
+  );
   if (idSet.size === 0) return;
 
   const open = tabs.listOpenTabs();

@@ -33,7 +33,18 @@ export function NodexCommandPalette({ vm }: { vm: NodexShellVm }): React.ReactEl
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-0 z-[50000] flex items-start justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-[50000] flex items-start justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => {
+        // Click-away: only close when the dimmed backdrop itself is clicked.
+        if (e.target === e.currentTarget) close();
+      }}
+      onTouchStart={(e) => {
+        if (e.target === e.currentTarget) close();
+      }}
+    >
       <div className="w-full max-w-2xl rounded-lg border border-border bg-background shadow-xl">
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <span className="text-[11px] font-semibold text-muted-foreground">Command palette</span>

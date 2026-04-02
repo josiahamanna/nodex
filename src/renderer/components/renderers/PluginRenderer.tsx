@@ -82,7 +82,7 @@ const PluginRenderer: React.FC<PluginRendererProps> = ({ note }) => {
 
   return (
     <div className="p-8">
-      <div className="prose max-w-none">
+      <div className="nodex-typography max-w-none">
         <div ref={containerRef} />
       </div>
     </div>

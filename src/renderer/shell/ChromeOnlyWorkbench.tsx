@@ -2,6 +2,7 @@ import {
   closestCenter,
   DndContext,
   type DragEndEvent,
+  MeasuringStrategy,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -15,7 +16,15 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   Panel,
   PanelGroup,
@@ -194,9 +203,6 @@ function SortableTabRow({
         className="relative z-10 rounded-r-md border border-transparent px-1.5 text-[12px] leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
         aria-label="Close tab"
         title="Close tab"
-        onPointerDownCapture={(e) => {
-          e.stopPropagation();
-        }}
         onClick={(e) => {
           e.stopPropagation();
           onClose(e);
@@ -228,6 +234,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const lastViewportWidthRef = useRef(0);
   const sidebarColumnMeasureRef = useRef<HTMLDivElement>(null);
   const beforePrimaryCollapseRef = useRef({ menuRail: true, sidebarPanel: true });
+  const lastPrimaryPctWithSidebarRef = useRef<number>(layout.sizes.primaryPct);
   const [workspaceWidthPx, setWorkspaceWidthPx] = useState(0);
 
   const sensors = useSensors(
@@ -271,6 +278,22 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
 
   const railItems = menuRail.list();
   const appMenuItems = appMenu.list();
+
+  /**
+   * Ensure `ChromeOnlyWorkbench` always re-renders when the tabs registry emits.
+   * We still read `tabs.listOpenTabs()` below, but this subscription guarantees React sees the change.
+   */
+  const tabsEpoch = useSyncExternalStore(
+    (onStoreChange) => tabs.subscribe(onStoreChange),
+    () => {
+      const list = tabs.listOpenTabs();
+      const active = tabs.getActiveTab()?.instanceId ?? "";
+      return `${list.length}:${list.map((t) => t.instanceId).join(",")}:${active}`;
+    },
+    () => "0::",
+  );
+  void tabsEpoch;
+
   const openTabs = tabs.listOpenTabs();
   const activeTab = tabs.getActiveTab();
 
@@ -411,6 +434,12 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
 
   const sortableIds = openTabs.map((t) => t.instanceId);
 
+  const activityRailPct = useMemo(() => {
+    if (workspaceWidthPx <= 0) return 0;
+    // `react-resizable-panels` uses percentages for `expand()`. We keep a small minimum so it's still clickable.
+    return Math.min(99, Math.max(1, (SHELL_ACTIVITY_BAR_WIDTH_PX / workspaceWidthPx) * 100));
+  }, [workspaceWidthPx]);
+
   /** Collapse/expand primary `Panel` so toggles reclaim space (same idea as unmounting the bottom dock). */
   useLayoutEffect(() => {
     if (!showLeft) {
@@ -421,8 +450,14 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       menuRail: showMenuRail,
       sidebarPanel: showSidebarPanel,
     };
-    primaryRef.current?.expand(Math.max(10, hSizes[0]));
-  }, [showLeft, showMenuRail, showSidebarPanel, hSizes[0]]);
+    // If the sidebar panel is hidden but the activity bar remains, shrink the whole left panel
+    // to the rail width so we don't leave an empty "frame" taking up space.
+    if (showMenuRail && !showSidebarPanel) {
+      primaryRef.current?.expand(activityRailPct);
+      return;
+    }
+    primaryRef.current?.expand(Math.max(10, lastPrimaryPctWithSidebarRef.current || hSizes[0]));
+  }, [showLeft, showMenuRail, showSidebarPanel, hSizes[0], activityRailPct]);
 
   /** Collapse/expand companion `Panel` so toggles match store (panel stays mounted). */
   useLayoutEffect(() => {
@@ -552,6 +587,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
             modifiers={[restrictToHorizontalAxis]}
             onDragEnd={onDragEnd}
           >
@@ -612,6 +648,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               store.patch((cur) => {
                 if (sizes.length >= 3) {
                   const [p, m, s] = sizes;
+                  if (store.get().visible.sidebarPanel) lastPrimaryPctWithSidebarRef.current = p;
                   return {
                     ...cur,
                     sizes: {
@@ -623,6 +660,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                   };
                 }
                 const [p, m] = sizes;
+                if (store.get().visible.sidebarPanel) lastPrimaryPctWithSidebarRef.current = p;
                 return {
                   ...cur,
                   sizes: {

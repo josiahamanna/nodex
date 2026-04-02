@@ -1,5 +1,6 @@
 import CodeMirror from "@uiw/react-codemirror";
-import React, { useMemo } from "react";
+import type { EditorView } from "@codemirror/view";
+import React, { useEffect, useMemo, useRef } from "react";
 import { notebookEditorExtensions } from "./observable-notebook-codemirror";
 
 export type NotebookCellEditorProps = {
@@ -13,6 +14,9 @@ export type NotebookCellEditorProps = {
 
 export function NotebookCellEditor(props: NotebookCellEditorProps): React.ReactElement {
   const { value, onChange, completionCellNames, dark, onModEnter } = props;
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const rafRef = useRef(0);
 
   const namesKey = [...completionCellNames].sort().join("\0");
   const extensions = useMemo(
@@ -26,15 +30,45 @@ export function NotebookCellEditor(props: NotebookCellEditorProps): React.ReactE
     [namesKey, dark, onModEnter],
   );
 
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    if (typeof ResizeObserver === "undefined") return;
+
+    const ro = new ResizeObserver(() => {
+      if (!viewRef.current) return;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = 0;
+        viewRef.current?.requestMeasure();
+      });
+    });
+    ro.observe(host);
+    return () => {
+      ro.disconnect();
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
+    };
+  }, []);
+
   return (
-    <CodeMirror
-      value={value}
-      height="120px"
-      theme="none"
-      basicSetup={false}
-      extensions={extensions}
-      className="overflow-hidden rounded-md border border-border text-[11px]"
-      onChange={(v) => onChange(v)}
-    />
+    <div ref={hostRef} className="rounded-md border border-border text-[11px]">
+      <CodeMirror
+        value={value}
+        height="120px"
+        theme="none"
+        basicSetup={false}
+        extensions={extensions}
+        className="rounded-md"
+        onCreateEditor={(view) => {
+          viewRef.current = view;
+          // Ensure layout/cursor is correct on first paint.
+          view.requestMeasure();
+        }}
+        onChange={(v) => onChange(v)}
+      />
+    </div>
   );
 }
