@@ -59,7 +59,7 @@ export function useRegisterShellCoreBlocks(): void {
             { id: "shell.menu.shell.palette", title: "Command palette", commandId: "nodex.shell.openPalette" },
             { id: "shell.menu.shell.minibuffer", title: "Mini buffer (M-x)", commandId: "nodex.shell.openMiniBar" },
             { id: "shell.menu.shell.toggleActivityBar", title: "Toggle activity bar", commandId: "nodex.shell.toggle.menuRail" },
-            { id: "shell.menu.shell.toggleSidebar", title: "Toggle sidebar", commandId: "nodex.shell.toggle.sidebarPanel" },
+            { id: "shell.menu.shell.toggleSidebar", title: "Toggle side panel", commandId: "nodex.shell.toggle.sidebarPanel" },
             { id: "shell.menu.shell.toggleSecondary", title: "Toggle companion", commandId: "nodex.shell.toggle.secondaryArea" },
             { id: "shell.menu.shell.toggleBottom", title: "Toggle bottom dock", commandId: "nodex.shell.toggle.bottomDock" },
           ],

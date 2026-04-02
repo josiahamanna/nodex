@@ -24,7 +24,7 @@ export function ShellViewHost({
       : [];
   const inner = (
     <div
-      className="h-full min-h-0 w-full overflow-hidden bg-background"
+      className="h-full min-h-0 min-w-0 w-full overflow-auto bg-background"
       data-nodex-view-id={view.id}
       data-nodex-allowed-commands={
         typeof allowedCommands === "string"

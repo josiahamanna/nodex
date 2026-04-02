@@ -35,7 +35,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note }) => {
       const html = renderMarkdown(note.content);
       const sanitized = DOMPurify.sanitize(html, {
         RETURN_TRUSTED_TYPE: false,
-        ALLOWED_TAGS: ["h1", "h2", "h3", "p", "br", "strong", "em", "li"],
+        ALLOWED_TAGS: ["h1", "h2", "h3", "p", "br", "strong", "em", "li", "code"],
         ALLOWED_ATTR: ["class"],
       });
       containerRef.current.innerHTML = sanitized;
@@ -43,8 +43,8 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note }) => {
   }, [note.content]);
 
   return (
-    <div className="p-8 prose max-w-none">
-      <div className="text-gray-800" ref={containerRef} />
+    <div className="p-8 prose max-w-none min-w-0">
+      <div className="text-foreground [&_code]:rounded-sm [&_code]:bg-muted/50 [&_code]:px-1 [&_code]:font-mono [&_code]:text-[11px]" ref={containerRef} />
     </div>
   );
 };
