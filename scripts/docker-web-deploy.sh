@@ -15,6 +15,8 @@
 # Notes:
 #   - This is zero-downtime for the UI tier: old stays live until new is healthy.
 #   - It does not attempt blue/green for nodex-api (SQLite mount is not replica-safe).
+#   - After a successful switch, `docker image prune -f` removes untagged parents from rebuilds.
+#   - With --stop-old, the inactive container is removed (not only stopped) so old image layers can be pruned.
 
 set -euo pipefail
 
@@ -132,7 +134,9 @@ docker exec "$GATEWAY" nginx -s reload
 echo "[nodex] Switched UI: ${current} -> ${next}"
 
 if [[ "$STOP_OLD" == "true" ]]; then
-  echo "[nodex] Stopping ${old_container}..."
-  docker stop "$old_container" >/dev/null 2>&1 || true
+  echo "[nodex] Removing ${old_container} (--stop-old)..."
+  docker rm -f "$old_container" >/dev/null 2>&1 || true
 fi
 
+# Same tag after rebuild leaves the prior image untagged; prune drops it once no container references it.
+docker image prune -f

@@ -3,7 +3,7 @@
 # Usage (from repo root):
 #   ./scripts/docker-web-swap.sh blue
 #   ./scripts/docker-web-swap.sh green
-# Optional: --stop-old  stop the inactive color after reload (saves RAM).
+# Optional: --stop-old  remove the inactive container after reload (saves RAM; allows image prune).
 #
 # Prerequisites:
 #   - Stack running: nodex-api, nodex-web-blue, nodex-gateway
@@ -107,10 +107,11 @@ echo "Active UI upstream: nodex-web-${TARGET} (gateway reloaded)."
 
 if [[ "$STOP_OLD" == "true" ]]; then
   if [[ "$TARGET" == "green" ]]; then
-    echo "Stopping nodex-web-blue..."
-    docker stop nodex-web-blue 2>/dev/null || true
+    echo "Removing nodex-web-blue (--stop-old)..."
+    docker rm -f nodex-web-blue 2>/dev/null || true
   else
-    echo "Stopping nodex-web-green..."
-    docker stop nodex-web-green 2>/dev/null || true
+    echo "Removing nodex-web-green (--stop-old)..."
+    docker rm -f nodex-web-green 2>/dev/null || true
   fi
+  docker image prune -f
 fi

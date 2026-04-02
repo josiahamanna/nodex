@@ -37,10 +37,37 @@ import type { ShellAppMenuItem } from "./registries/ShellAppMenuRegistry";
 import type { ShellTabInstance } from "./registries/ShellTabsRegistry";
 import { SHELL_TAB_NOTE } from "./first-party/shellWorkspaceIds";
 import {
-  SHELL_ACTIVITY_BAR_MIN_EXPANDED_PX,
+  SHELL_ACTIVITY_BAR_WIDTH_PX,
   SHELL_COMPANION_MIN_EXPANDED_PX,
   SHELL_SIDEBAR_MIN_EXPANDED_PX,
 } from "./shellResponsiveConstants";
+
+function IconBottomDockLayout({ className }: { className?: string }): React.ReactElement {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.25" />
+      <rect x="3" y="10" width="10" height="4" rx="0.75" fill="currentColor" />
+    </svg>
+  );
+}
+
+function IconCompanionLayout({ className }: { className?: string }): React.ReactElement {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.25" />
+      <rect x="10" y="3" width="4" height="10" rx="0.75" fill="currentColor" />
+    </svg>
+  );
+}
+
+function IconPrimarySidebarLayout({ className }: { className?: string }): React.ReactElement {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.25" />
+      <rect x="3" y="3" width="4" height="10" rx="0.75" fill="currentColor" />
+    </svg>
+  );
+}
 
 function ShellAppMenuList({
   items,
@@ -193,8 +220,6 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const initialHashApplied = useRef(false);
 
   const primaryRef = React.useRef<ImperativePanelHandle>(null);
-  const railPanelRef = React.useRef<ImperativePanelHandle>(null);
-  const sidebarPanelRef = React.useRef<ImperativePanelHandle>(null);
   const mainPanelRef = React.useRef<ImperativePanelHandle>(null);
   const secondaryRef = React.useRef<ImperativePanelHandle>(null);
   const bottomRef = React.useRef<ImperativePanelHandle>(null);
@@ -224,31 +249,6 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const showLeft = showMenuRail || showSidebarPanel;
   const showSecondary = layout.visible.secondaryArea;
   const showBottom = layout.visible.bottomArea;
-
-  const primaryColumnPx = useMemo(() => {
-    if (workspaceWidthPx <= 0) return 0;
-    const { primaryPct: p, mainPct: m, secondaryPct: s } = layout.sizes;
-    const total = Math.max(1, p + m + s);
-    return (workspaceWidthPx * p) / total;
-  }, [workspaceWidthPx, layout.sizes]);
-
-  /** Rail share of the primary column (percent); capped by Panel maxSize 28. */
-  const minRailPanelPct = useMemo(() => {
-    if (!showMenuRail || primaryColumnPx <= 0) return 0;
-    return Math.min(
-      28,
-      Math.max(
-        1,
-        Math.ceil((SHELL_ACTIVITY_BAR_MIN_EXPANDED_PX / primaryColumnPx) * 100),
-      ),
-    );
-  }, [showMenuRail, primaryColumnPx]);
-
-  const minSidebarPanelPct = useMemo(() => {
-    if (!showSidebarPanel || primaryColumnPx <= 0) return 0;
-    const pct = Math.ceil((SHELL_SIDEBAR_MIN_EXPANDED_PX / primaryColumnPx) * 100);
-    return Math.min(99, Math.max(1, pct));
-  }, [showSidebarPanel, primaryColumnPx]);
 
   const minCompanionPct = useMemo(() => {
     if (!showSecondary || workspaceWidthPx <= 0) return 0;
@@ -421,7 +421,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
 
   const sortableIds = openTabs.map((t) => t.instanceId);
 
-  /** Collapse/expand real `Panel` regions so toggles reclaim space (same idea as unmounting the bottom dock). */
+  /** Collapse/expand primary `Panel` so toggles reclaim space (same idea as unmounting the bottom dock). */
   useLayoutEffect(() => {
     if (!showLeft) {
       primaryRef.current?.collapse();
@@ -432,25 +432,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       sidebarPanel: showSidebarPanel,
     };
     primaryRef.current?.expand(Math.max(10, hSizes[0]));
-    const id = window.requestAnimationFrame(() => {
-      try {
-        if (showMenuRail) {
-          railPanelRef.current?.expand(Math.max(18, minRailPanelPct));
-        } else {
-          railPanelRef.current?.collapse();
-        }
-        if (showSidebarPanel) {
-          const sidebarPct = showMenuRail ? Math.max(1, 100 - Math.max(18, minRailPanelPct)) : 100;
-          sidebarPanelRef.current?.expand(sidebarPct);
-        } else {
-          sidebarPanelRef.current?.collapse();
-        }
-      } catch {
-        /* refs not ready */
-      }
-    });
-    return () => window.cancelAnimationFrame(id);
-  }, [showLeft, showMenuRail, showSidebarPanel, hSizes[0], minRailPanelPct]);
+  }, [showLeft, showMenuRail, showSidebarPanel, hSizes[0]]);
 
   /** Collapse/expand companion `Panel` so toggles match store (panel stays mounted). */
   useLayoutEffect(() => {
@@ -504,7 +486,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       }
       const sidePx = sidebarColumnMeasureRef.current?.clientWidth ?? 0;
       if (showSidebarPanel && sidePx > 0 && sidePx < SHELL_SIDEBAR_MIN_EXPANDED_PX) {
-        sidebarPanelRef.current?.collapse();
+        store.setVisible("sidebarPanel", false);
       }
     };
     const schedule = (): void => {
@@ -521,7 +503,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [layout.sizes, showSecondary, showSidebarPanel]);
+  }, [layout.sizes, showSecondary, showSidebarPanel, store]);
 
   return (
     <div className="nodex-app-pad box-border flex min-h-0 flex-1 flex-col bg-muted/45 text-foreground dark:bg-muted/25">
@@ -602,35 +584,25 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
           <div className="flex items-center gap-1">
             <button
               type="button"
-              className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
-              onClick={() => store.toggle("menuRail")}
-              title="Toggle activity bar"
-            >
-              Activity bar
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
-              onClick={() => store.toggle("sidebarPanel")}
-              title="Toggle side panel"
-            >
-              Side panel
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
-              onClick={() => store.toggle("secondaryArea")}
-              title="Toggle companion"
-            >
-              Companion
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
+              className={`flex h-8 w-8 items-center justify-center rounded-md border border-border/60 bg-background hover:bg-muted/30 ${
+                showBottom ? "border-border text-foreground" : "text-muted-foreground"
+              }`}
               onClick={() => store.toggle("bottomArea")}
               title="Toggle bottom dock"
+              aria-label="Toggle bottom dock"
             >
-              Bottom
+              <IconBottomDockLayout className="shrink-0" />
+            </button>
+            <button
+              type="button"
+              className={`flex h-8 w-8 items-center justify-center rounded-md border border-border/60 bg-background hover:bg-muted/30 ${
+                showSecondary ? "border-border text-foreground" : "text-muted-foreground"
+              }`}
+              onClick={() => store.toggle("secondaryArea")}
+              title="Toggle companion"
+              aria-label="Toggle companion"
+            >
+              <IconCompanionLayout className="shrink-0" />
             </button>
           </div>
         </div>
@@ -694,20 +666,13 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               }}
               className="min-w-0"
             >
-              <PanelGroup direction="horizontal" className="h-full min-h-0 min-w-0">
-                <Panel
-                  ref={railPanelRef}
-                  order={1}
-                  defaultSize={18}
-                  minSize={showMenuRail ? minRailPanelPct : 0}
-                  maxSize={28}
-                  collapsible
-                  collapsedSize={0}
-                  className="min-w-0"
-                  onCollapse={() => store.setVisible("menuRail", false)}
-                  onExpand={() => store.setVisible("menuRail", true)}
-                >
-                  <div className="flex h-full min-h-0 w-full flex-col items-center gap-1 border-r border-border bg-muted/15 py-2">
+              <div className="flex h-full min-h-0 min-w-0">
+                {showMenuRail ? (
+                  <div
+                    className="flex h-full min-h-0 shrink-0 flex-col border-r border-border bg-muted/15"
+                    style={{ width: SHELL_ACTIVITY_BAR_WIDTH_PX }}
+                  >
+                    <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
                       {railItems.map((it) => {
                         const railActive = Boolean(
                           activeTab?.tabTypeId && it.tabTypeId && it.tabTypeId === activeTab.tabTypeId,
@@ -736,25 +701,37 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                           </div>
                         );
                       })}
+                    </div>
+                    <div className="flex shrink-0 flex-col items-center border-t border-border/40 py-2">
+                      <button
+                        type="button"
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${
+                          showSidebarPanel
+                            ? "border-border bg-muted/50 text-foreground"
+                            : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/30"
+                        }`}
+                        title="Toggle side panel"
+                        aria-label="Toggle side panel"
+                        onClick={() => store.toggle("sidebarPanel")}
+                      >
+                        <IconPrimarySidebarLayout className="shrink-0" />
+                      </button>
+                    </div>
                   </div>
-                </Panel>
-                <PanelResizeHandle className="nodex-panel-sash relative w-1 shrink-0 bg-transparent transition-colors before:absolute before:inset-y-0 before:left-1/2 before:z-10 before:w-px before:-translate-x-1/2 before:bg-border before:transition-colors hover:before:bg-resize-handle-hover data-[panel-resize-handle-active=true]:before:bg-resize-handle-active" />
-                <Panel
-                  ref={sidebarPanelRef}
-                  order={2}
-                  defaultSize={82}
-                  minSize={minSidebarPanelPct}
-                  collapsible
-                  collapsedSize={0}
-                  className="min-w-0"
-                  onCollapse={() => store.setVisible("sidebarPanel", false)}
-                  onExpand={() => store.setVisible("sidebarPanel", true)}
+                ) : null}
+                <div
+                  ref={sidebarColumnMeasureRef}
+                  className={
+                    showSidebarPanel
+                      ? "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+                      : "min-h-0 w-0 min-w-0 flex-[0_0_0] overflow-hidden"
+                  }
+                  style={
+                    showSidebarPanel ? { minWidth: SHELL_SIDEBAR_MIN_EXPANDED_PX } : undefined
+                  }
                 >
                   {primaryView ? (
-                    <div
-                      ref={sidebarColumnMeasureRef}
-                      className="flex h-full min-h-0 min-w-0 flex-col"
-                    >
+                    <div className="flex h-full min-h-0 min-w-0 flex-col">
                       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/10 px-2 py-1">
                         <div className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
                           {primaryView.title}
@@ -798,13 +775,10 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                       </div>
                     </div>
                   ) : (
-                    <div
-                      ref={sidebarColumnMeasureRef}
-                      className="h-full min-h-0 min-w-0 w-full bg-background"
-                    />
+                    <div className="h-full min-h-0 min-w-0 w-full bg-background" />
                   )}
-                </Panel>
-              </PanelGroup>
+                </div>
+              </div>
             </Panel>
             {renderSash("sash-primary")}
             <Panel

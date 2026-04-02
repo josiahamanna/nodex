@@ -10,7 +10,7 @@
 #   2. Ensures ./.nodex-docker-workspace exists (default API workspace bind).
 #   3. Brings up postgres (wpn-pg profile), nodex-api, nodex-web-blue, nodex-gateway with
 #      NODEX_PG_DATABASE_URL defaulted for the compose network (WPN data in Postgres; default owner jehu).
-#   4. Runs scripts/docker-web-deploy.sh to build the web image and blue/green swap.
+#   4. Runs scripts/docker-web-deploy.sh to build the web image, blue/green swap, and prune dangling images.
 #
 # Override URL or password via environment or a .env file in the repo root (compose loads .env).
 set -euo pipefail
@@ -59,11 +59,30 @@ remove_stale_web_slot() {
 remove_stale_web_slot nodex-web-blue
 remove_stale_web_slot nodex-web-green
 
+# UI blue/green swap uses `docker run`, so slots lose compose labels. Compose then tries to
+# create the same container_name and hits "already in use". Drop only non-compose slots.
+remove_docker_run_web_slot() {
+  local name="$1"
+  if ! docker container inspect "$name" &>/dev/null; then
+    return 0
+  fi
+  local proj
+  proj="$(docker container inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$name" 2>/dev/null || true)"
+  if [[ -z "$proj" ]]; then
+    echo "[nodex] Removing ${name} (not compose-managed; frees fixed name for compose)."
+    docker rm -f "$name" >/dev/null 2>&1 || true
+  fi
+}
+remove_docker_run_web_slot nodex-web-blue
+remove_docker_run_web_slot nodex-web-green
+
 echo "[nodex] Starting Postgres + API + web (blue) + gateway (profile wpn-pg)..."
 if ! docker compose --profile wpn-pg up -d --build --remove-orphans postgres nodex-api nodex-web-blue nodex-gateway; then
   echo "[nodex] Compose failed — clearing stale web slots again and retrying once..."
   remove_stale_web_slot nodex-web-blue
   remove_stale_web_slot nodex-web-green
+  remove_docker_run_web_slot nodex-web-blue
+  remove_docker_run_web_slot nodex-web-green
   docker compose --profile wpn-pg up -d --build --remove-orphans postgres nodex-api nodex-web-blue nodex-gateway
 fi
 
