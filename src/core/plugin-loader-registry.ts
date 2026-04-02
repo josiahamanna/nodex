@@ -33,8 +33,59 @@ import type { NoteRenderer } from "../shared/plugin-api";
 import { writeHybridPluginScaffoldFiles } from "./plugin-loader-scaffold-writer";
 import type { PluginManifest } from "./plugin-loader-types";
 import { PluginLoaderRuntime } from "./plugin-loader-runtime";
+import {
+  readUserLoadedPluginIds,
+  readUserTierPluginInventory,
+  syncPluginCatalogRows,
+  type PluginCatalogPersistRow,
+} from "./plugin-catalog-sqlite";
 
 export class PluginLoaderRegistry extends PluginLoaderRuntime {
+  /** When set (Electron userData), plugin inventory is read from SQLite after each rescan. */
+  private pluginCatalogUserDataPath: string | null = null;
+
+  setPluginCatalogUserDataPath(userDataPath: string): void {
+    this.pluginCatalogUserDataPath = userDataPath.trim() || null;
+  }
+
+  /** Snapshot of all discovered plugins for persistence (bundled + user). */
+  private buildPluginCatalogPersistRows(): PluginCatalogPersistRow[] {
+    const disabled = this.getDisabledUserPluginIds();
+    const bundled = this.listBundledPluginFolderNames();
+    const user = this.collectUserPluginIds();
+    const ids = new Set<string>([...bundled, ...user]);
+    return [...ids].sort().map((id) => {
+      const isBundled = this.isBundledPluginFolder(id);
+      const tier = this.readHostTierForPluginId(id);
+      return {
+        plugin_id: id,
+        host_tier: tier,
+        is_bundled: isBundled,
+        can_toggle: !isBundled,
+        enabled: isBundled || !disabled.has(id),
+        loaded: this.loadedPlugins.has(id),
+        manifest_version: this.readManifestVersionForPluginId(id),
+      };
+    });
+  }
+
+  private persistPluginCatalogToSqlite(): void {
+    if (!this.pluginCatalogUserDataPath) {
+      return;
+    }
+    try {
+      syncPluginCatalogRows(
+        this.pluginCatalogUserDataPath,
+        this.buildPluginCatalogPersistRows(),
+      );
+    } catch (e) {
+      console.warn(
+        "[PluginLoader] plugin catalog sqlite sync failed:",
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+
   getPluginInventory(): {
     id: string;
     isBundled: boolean;
@@ -42,9 +93,44 @@ export class PluginLoaderRegistry extends PluginLoaderRuntime {
     enabled: boolean;
     loaded: boolean;
   }[] {
+    if (this.pluginCatalogUserDataPath) {
+      try {
+        const fromDb = readUserTierPluginInventory(
+          this.pluginCatalogUserDataPath,
+        );
+        if (fromDb.length > 0) {
+          return fromDb;
+        }
+      } catch (e) {
+        console.warn(
+          "[PluginLoader] read plugin catalog sqlite failed, using scan:",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
     return super
       .getPluginInventory()
       .filter((row) => this.readHostTierForPluginId(row.id) === "user");
+  }
+
+  /**
+   * User-tier plugins that successfully loaded (for note-type pickers, etc.).
+   * Prefers SQLite when catalog is configured and populated.
+   */
+  getUserFacingLoadedPluginsFromCatalog(): string[] {
+    if (this.pluginCatalogUserDataPath) {
+      try {
+        const ids = readUserLoadedPluginIds(this.pluginCatalogUserDataPath);
+        if (ids.length > 0) {
+          return ids;
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+    return [...this.loadedPlugins].filter(
+      (id) => this.readHostTierForPluginId(id) === "user",
+    );
   }
 
   loadAll(registry: Registry): void {
@@ -56,6 +142,7 @@ export class PluginLoaderRegistry extends PluginLoaderRuntime {
       this.loadPluginsInDirectory(root, registry);
     }
     this.loadUserPlugins(registry);
+    this.persistPluginCatalogToSqlite();
   }
 
   /** Each immediate child directory with a manifest.json is one plugin. */

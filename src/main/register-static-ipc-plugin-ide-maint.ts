@@ -257,7 +257,7 @@ ipcMain.handle(IPC_CHANNELS.PLUGIN_MAINT_DELETE_SOURCES, async () => {
 });
 
 ipcMain.handle(IPC_CHANNELS.GET_INSTALLED_PLUGINS, async () => {
-  return getPluginLoader().getUserFacingLoadedPlugins();
+  return getPluginLoader().getUserFacingLoadedPluginsFromCatalog();
 });
 
 ipcMain.handle(

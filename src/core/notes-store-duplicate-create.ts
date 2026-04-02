@@ -175,3 +175,18 @@ export function setNotePluginUiState(noteId: string, state: unknown): void {
   meta[PLUGIN_UI_METADATA_KEY] = state;
   n.metadata = meta;
 }
+
+export function patchNoteMetadata(noteId: string, patch: Record<string, unknown>): void {
+  if (!patch || typeof patch !== "object") {
+    throw new Error("Invalid metadata patch");
+  }
+  const n = notes.get(noteId);
+  if (!n) {
+    throw new Error("Note not found");
+  }
+  const base: Record<string, unknown> = { ...(n.metadata ?? {}) };
+  for (const [k, v] of Object.entries(patch)) {
+    base[k] = v;
+  }
+  n.metadata = base;
+}

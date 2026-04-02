@@ -18,6 +18,7 @@ export const IPC_CHANNELS = {
   PASTE_SUBTREE: "note:paste-subtree",
   SAVE_NOTE_PLUGIN_UI_STATE: "note:save-plugin-ui-state",
   SAVE_NOTE_CONTENT: "note:save-content",
+  PATCH_NOTE_METADATA: "note:patch-metadata",
   GET_COMPONENT: "plugin:get-component",
   GET_PLUGIN_HTML: "plugin:get-html",
   GET_REGISTERED_TYPES: "plugin:get-registered-types",

@@ -116,6 +116,10 @@ export type NodexRendererApi = {
     state: unknown,
   ) => Promise<void>;
   saveNoteContent: (noteId: string, content: string) => Promise<void>;
+  patchNoteMetadata: (
+    noteId: string,
+    patch: Record<string, unknown>,
+  ) => Promise<void>;
   getComponent: (type: string) => Promise<string | null>;
   getPluginHTML: (type: string, note: Note) => Promise<string | null>;
   getRegisteredTypes: () => Promise<string[]>;

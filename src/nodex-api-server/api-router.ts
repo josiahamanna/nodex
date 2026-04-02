@@ -32,6 +32,7 @@ import {
   getHeadlessProjectStateView,
 } from "./headless-bootstrap";
 import {
+  getHeadlessSessionInstalledPluginIdsResolved,
   getHeadlessSessionLoadedPluginIds,
   getHeadlessSessionRegistry,
   installHeadlessMarketplacePlugin,
@@ -372,8 +373,13 @@ export function createNodexApiRouter(): Router {
     }
   });
 
-  router.get("/plugins/session-installed", (_req, res) => {
-    res.json({ ids: getHeadlessSessionLoadedPluginIds() });
+  router.get("/plugins/session-installed", async (_req, res) => {
+    try {
+      const ids = await getHeadlessSessionInstalledPluginIdsResolved();
+      res.json({ ids });
+    } catch {
+      res.json({ ids: getHeadlessSessionLoadedPluginIds() });
+    }
   });
 
   router.get("/plugins/renderer-meta", (req, res) => {

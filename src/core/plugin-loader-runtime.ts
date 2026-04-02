@@ -101,6 +101,21 @@ export class PluginLoaderRuntime extends PluginLoaderBase {
     }
   }
 
+  protected readManifestVersionForPluginId(pluginId: string): string | null {
+    const mp = this.getManifestPathForPluginId(pluginId);
+    if (!mp) {
+      return null;
+    }
+    try {
+      const manifest = JSON.parse(fs.readFileSync(mp, "utf8")) as {
+        version?: string;
+      };
+      return typeof manifest.version === "string" ? manifest.version : null;
+    } catch {
+      return null;
+    }
+  }
+
   protected resolvePluginRuntimePath(installedFolderName: string): string | null {
     if (!isSafePluginName(installedFolderName)) {
       return null;

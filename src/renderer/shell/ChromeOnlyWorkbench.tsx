@@ -797,7 +797,6 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                       className="h-full min-h-0 min-w-0 w-full bg-background"
                       role="region"
                       aria-label="Main area"
-                      title="Main area"
                     >
                       {mainView ? (
                         <ShellViewHost view={mainView} activeMainTab={activeTab} />
@@ -831,7 +830,6 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                   className="h-full min-h-0 min-w-0 w-full bg-background"
                   role="region"
                   aria-label="Main area"
-                  title="Main area"
                 >
                   {mainView ? <ShellViewHost view={mainView} activeMainTab={activeTab} /> : null}
                 </div>

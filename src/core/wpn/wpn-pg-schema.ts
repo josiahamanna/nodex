@@ -46,6 +46,12 @@ export async function ensureWpnPgSchema(pool: Pool): Promise<void> {
       project_id TEXT PRIMARY KEY NOT NULL REFERENCES wpn_project(id) ON DELETE CASCADE,
       expanded_ids_json TEXT NOT NULL DEFAULT '[]'
     )`,
+    `CREATE TABLE IF NOT EXISTS nodex_headless_session_plugin (
+      plugin_id TEXT PRIMARY KEY NOT NULL,
+      manifest_version TEXT,
+      loaded BOOLEAN NOT NULL DEFAULT true,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`,
   ];
   for (const sql of stmts) {
     await pool.query(sql);

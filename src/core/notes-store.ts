@@ -41,6 +41,7 @@ export {
   renameNote,
   setNoteContent,
   setNotePluginUiState,
+  patchNoteMetadata,
 } from "./notes-store-duplicate-create";
 
 export type { SerializedNotesState } from "./notes-store-serialize";

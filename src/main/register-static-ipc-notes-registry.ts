@@ -14,6 +14,7 @@ import {
   renameNote as renameNoteInStore,
   setNoteContent as setNoteContentInStore,
   setNotePluginUiState,
+  patchNoteMetadata,
 } from "../core/notes-store";
 import { MAX_NOTE_CONTENT_CHARS } from "../core/notes-store-duplicate-create";
 import { registry } from "../core/registry";
@@ -218,6 +219,36 @@ ipcMain.handle(
     const registeredTypes = registry.getRegisteredTypes();
     ensureNotesSeeded(registeredTypes);
     setNoteContentInStore(noteId, content);
+    persistNotes();
+  },
+);
+
+ipcMain.handle(
+  IPC_CHANNELS.PATCH_NOTE_METADATA,
+  async (_event, noteId: string, patch: Record<string, unknown>) => {
+    assertProjectOpenForNotes();
+    if (!isValidNoteId(noteId)) {
+      throw new Error("Invalid note id");
+    }
+    if (!patch || typeof patch !== "object") {
+      throw new Error("Invalid metadata patch");
+    }
+    const db = getNotesDatabase();
+    if (db) {
+      const ownerId = getWpnOwnerId();
+      const wpn = wpnSqliteGetNoteById(db, ownerId, noteId);
+      if (wpn) {
+        const meta: Record<string, unknown> = { ...(wpn.metadata ?? {}) };
+        for (const [k, v] of Object.entries(patch)) {
+          meta[k] = v;
+        }
+        wpnSqliteUpdateNote(db, ownerId, noteId, { metadata: meta });
+        return;
+      }
+    }
+    const registeredTypes = registry.getRegisteredTypes();
+    ensureNotesSeeded(registeredTypes);
+    patchNoteMetadata(noteId, patch);
     persistNotes();
   },
 );

@@ -58,6 +58,7 @@ export function runAppReady(): void {
 
   ctx.pluginLoader = new PluginLoader(pluginsPath, bundledRoots);
   getPluginLoader().setUserDataPathForDisabled(userDataPath);
+  getPluginLoader().setPluginCatalogUserDataPath(userDataPath);
 
   registerRunAppReadyUiPluginIpc();
 

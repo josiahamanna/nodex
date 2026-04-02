@@ -5,9 +5,11 @@ import { openNoteInShell } from "../openNoteInShell";
 import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../views/ShellViewContext";
 import { NoteEditorShellView } from "./NoteEditorShellView";
+import { MarkdownTocShellView } from "./MarkdownTocShellView";
 import {
   NOTES_EXPLORER_VIEW_SIDEBAR,
   SHELL_TAB_NOTE,
+  SHELL_VIEW_MARKDOWN_TOC,
   SHELL_VIEW_NOTE_EDITOR,
 } from "./shellWorkspaceIds";
 
@@ -33,12 +35,23 @@ export function useRegisterNotesShellPlugin(): void {
     );
 
     disposers.push(
+      views.registerView({
+        id: SHELL_VIEW_MARKDOWN_TOC,
+        title: "Outline",
+        defaultRegion: "secondaryArea",
+        component: MarkdownTocShellView,
+        capabilities: { allowedCommands: "allShellCommands", readContext: true },
+      }),
+    );
+
+    disposers.push(
       regs.tabs.registerTabType({
         id: SHELL_TAB_NOTE,
         title: "Note",
         order: 12,
         viewId: SHELL_VIEW_NOTE_EDITOR,
         primarySidebarViewId: NOTES_EXPLORER_VIEW_SIDEBAR,
+        secondaryViewId: SHELL_VIEW_MARKDOWN_TOC,
       }),
     );
 

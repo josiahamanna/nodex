@@ -121,6 +121,14 @@ export const saveNoteContent = createAsyncThunk(
   },
 );
 
+export const patchNoteMetadata = createAsyncThunk(
+  "notes/patchNoteMetadata",
+  async ({ noteId, patch }: { noteId: string; patch: Record<string, unknown> }) => {
+    await window.Nodex.patchNoteMetadata(noteId, patch);
+    return { noteId, patch };
+  },
+);
+
 const notesSlice = createSlice({
   name: "notes",
   initialState,
@@ -217,6 +225,20 @@ const notesSlice = createSlice({
       .addCase(saveNoteContent.rejected, (state, action) => {
         state.error =
           action.error.message || "Failed to save note content";
+      });
+    builder
+      .addCase(patchNoteMetadata.fulfilled, (state, action) => {
+        const { noteId, patch } = action.payload;
+        if (state.currentNote?.id === noteId) {
+          state.currentNote = {
+            ...state.currentNote,
+            metadata: { ...(state.currentNote.metadata ?? {}), ...patch },
+          };
+        }
+      })
+      .addCase(patchNoteMetadata.rejected, (state, action) => {
+        state.error =
+          action.error.message || "Failed to save note metadata";
       });
   },
 });

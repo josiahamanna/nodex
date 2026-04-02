@@ -2,6 +2,7 @@ import * as path from "path";
 import cors from "cors";
 import express from "express";
 import {
+  getHeadlessUserDataPath,
   initHeadlessFromEnv,
   initHeadlessPgOnlyFromEnv,
 } from "./headless-bootstrap";
@@ -11,6 +12,7 @@ import {
   readMarketplaceS3ConfigFromEnv,
   streamArtifactToResponse,
 } from "./marketplace/marketplace-s3";
+import { headlessPluginsCatalogPgSyncFromDisk } from "./headless-marketplace-session";
 
 const init = initHeadlessFromEnv();
 if (!init.ok) {
@@ -48,7 +50,8 @@ const marketS3 = readMarketplaceS3ConfigFromEnv();
 if (marketS3) {
   app.get("/marketplace/files/*", async (req, res) => {
     try {
-      const objectKey = String(req.params[0] ?? "").replace(/^\/+/, "");
+      const p0 = (req.params as { 0?: string })["0"];
+      const objectKey = String(p0 ?? "").replace(/^\/+/, "");
       if (!objectKey) {
         res.status(404).end();
         return;
@@ -73,33 +76,49 @@ app.use("/api/v1", createNodexApiRouter());
 const PORT = Number(process.env.PORT ?? "3847");
 const host = process.env.HOST ?? "127.0.0.1";
 
-const server = app.listen(PORT, host, () => {
-  const projectLabel =
-    process.env.NODEX_PROJECT_ROOT?.trim() || "(postgres WPN only, no folder)";
-  // eslint-disable-next-line no-console
-  console.info(
-    `[Nodex API] listening on http://${host}:${PORT} (project ${projectLabel})`,
-  );
-});
-
-function shutdown(signal: string) {
-  // eslint-disable-next-line no-console
-  console.info(`[Nodex API] ${signal} received, closing HTTP server...`);
-  server.close((err) => {
-    if (err) {
+void (async () => {
+  if (getWpnPgPool()) {
+    try {
+      await headlessPluginsCatalogPgSyncFromDisk(getHeadlessUserDataPath());
+    } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[Nodex API] error during server.close:", err);
-      process.exit(1);
+      console.warn(
+        "[Nodex API] headless plugin catalog PG sync:",
+        e instanceof Error ? e.message : e,
+      );
     }
-    process.exit(0);
-  });
-  // Docker / orchestrators will SIGKILL after stop_grace_period; exit hard if close stalls.
-  setTimeout(() => {
-    // eslint-disable-next-line no-console
-    console.error("[Nodex API] shutdown timeout, exiting.");
-    process.exit(1);
-  }, 9_000).unref();
-}
+  }
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+  const server = app.listen(PORT, host, () => {
+    const projectLabel =
+      process.env.NODEX_PROJECT_ROOT?.trim() || "(postgres WPN only, no folder)";
+    // eslint-disable-next-line no-console
+    console.info(
+      `[Nodex API] listening on http://${host}:${PORT} (project ${projectLabel})`,
+    );
+  });
+
+  function shutdown(signal: string) {
+    // eslint-disable-next-line no-console
+    console.info(`[Nodex API] ${signal} received, closing HTTP server...`);
+    server.close((err) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error("[Nodex API] error during server.close:", err);
+        process.exit(1);
+      }
+      process.exit(0);
+    });
+    setTimeout(() => {
+      // eslint-disable-next-line no-console
+      console.error("[Nodex API] shutdown timeout, exiting.");
+      process.exit(1);
+    }, 9_000).unref();
+  }
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+})().catch((err) => {
+  console.error("[Nodex API] startup failed:", err);
+  process.exit(1);
+});
