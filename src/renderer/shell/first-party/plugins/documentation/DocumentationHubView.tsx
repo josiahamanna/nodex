@@ -120,40 +120,71 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
       });
   }, [bundledNoteId]);
 
+  const docHubDismissBtn =
+    "shrink-0 rounded-md border border-border/60 bg-background px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted/40";
+
   if (bundledNoteId) {
     if (bundledLoading) {
       return (
-        <div className="flex h-full min-h-0 items-center justify-center p-5 text-[13px] text-muted-foreground">
-          Loading guide…
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex shrink-0 justify-end border-b border-border px-3 py-2">
+            <button type="button" className={docHubDismissBtn} onClick={() => setBundledNoteId(null)}>
+              Close
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center p-5 text-[13px] text-muted-foreground">
+            Loading guide…
+          </div>
         </div>
       );
     }
     if (bundledError) {
       return (
-        <div className="flex h-full min-h-0 flex-col gap-2 p-5 text-[13px] text-destructive">
-          <p className="font-medium">Could not load this guide</p>
-          <p className="text-muted-foreground">{esc(bundledError)}</p>
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex shrink-0 justify-end border-b border-border px-3 py-2">
+            <button type="button" className={docHubDismissBtn} onClick={() => setBundledNoteId(null)}>
+              Close
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-2 p-5 text-[13px] text-destructive">
+            <p className="font-medium">Could not load this guide</p>
+            <p className="text-muted-foreground">{esc(bundledError)}</p>
+          </div>
         </div>
       );
     }
     if (!bundledNote) {
       return (
-        <div className="flex h-full min-h-0 flex-col gap-2 p-5 text-[13px] text-muted-foreground">
-          <p className="font-medium text-foreground">Guide not available</p>
-          <p>
-            This note id is not in the current workspace, or notes have not finished loading. Open a project and
-            ensure bundled docs have seeded.
-          </p>
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex shrink-0 justify-end border-b border-border px-3 py-2">
+            <button type="button" className={docHubDismissBtn} onClick={() => setBundledNoteId(null)}>
+              Close
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-2 p-5 text-[13px] text-muted-foreground">
+            <p className="font-medium text-foreground">Guide not available</p>
+            <p>
+              This note id is not in the current workspace, or notes have not finished loading. Open a project and
+              ensure bundled docs have seeded.
+            </p>
+          </div>
         </div>
       );
     }
     return (
       <div className="flex h-full min-h-0 flex-col overflow-auto">
         <div className="shrink-0 border-b border-border px-5 py-3">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Bundled guide (read-only)
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Bundled guide (read-only)
+              </div>
+              <h1 className="mt-1 text-lg font-semibold text-foreground">{esc(bundledNote.title)}</h1>
+            </div>
+            <button type="button" className={docHubDismissBtn} onClick={() => setBundledNoteId(null)}>
+              Close
+            </button>
           </div>
-          <h1 className="mt-1 text-lg font-semibold text-foreground">{esc(bundledNote.title)}</h1>
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
           <MarkdownRenderer note={bundledNote} />
@@ -184,6 +215,11 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto p-5 text-[13px]">
+      <div className="mb-3 flex justify-end">
+        <button type="button" className={docHubDismissBtn} onClick={() => setCommandId(null)}>
+          Back to overview
+        </button>
+      </div>
       <header className="mb-5 border-b border-border pb-4">
         <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           Command identifier

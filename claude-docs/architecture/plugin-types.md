@@ -17,6 +17,7 @@ Implementation notes:
 - Bundled plugins under `plugins/core` default to **`core`** if `hostTier` is omitted.
 - The **code** editor plugin sets `"hostTier": "system"` in [`plugins/core/code/manifest.json`](../../plugins/core/code/manifest.json).
 - Renderer IPC: all registered types remain available for opening existing notes (`getRegisteredTypes`). Note creation, the notes UI, and **Plugin IDE → Preview note type** use `getSelectableNoteTypes` (excludes system). The IDE preview list also drops **`root`** (workspace home pseudo-type).
+- **Headless / browser API:** `GET /notes/types/selectable` returns only types registered on the **headless session registry** (marketplace-installed `.nodexplugin` packages for that server). It does **not** inject `markdown` / `text` unless those plugins are actually loaded. Baseline types in `HEADLESS_REGISTERED_TYPES` still apply to **`/notes/types/registered`**, workspace seeding, and compatibility with folder-based projects — not to the create-note picker.
 - Inventory and “installed” lists for Plugin Manager only include **`user`** tier plugins.
 - **Sample seed notes** (new empty workspace): Home still follows `pickWorkspaceOverviewType` from full registered types; **child** samples use `registry.getSelectableNoteTypes()` via [`sampleChildNoteTypes`](../../src/core/notes-store-seed.ts), so **system** types (e.g. `code`) are not auto-created under Home.
 

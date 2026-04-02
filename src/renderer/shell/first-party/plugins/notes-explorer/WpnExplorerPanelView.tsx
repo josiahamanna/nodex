@@ -6,7 +6,11 @@ import type {
 } from "@nodex/ui-types";
 import type { WpnNoteListItem, WpnProjectRow, WpnWorkspaceRow } from "../../../../../shared/wpn-v2-types";
 import type { RootState } from "../../../../store";
-import { fetchHeadlessWpnSession, isElectronUserAgent } from "../../../../nodex-web-shim";
+import {
+  fetchHeadlessWpnSession,
+  isElectronUserAgent,
+  NODEX_WEB_PLUGINS_CHANGED,
+} from "../../../../nodex-web-shim";
 import { useShellNavigation } from "../../../useShellNavigation";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
@@ -79,9 +83,21 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   }, [projectOpen]);
 
   useEffect(() => {
-    void window.Nodex.getSelectableNoteTypes().then((t) => {
-      setSelectableTypes(Array.isArray(t) ? t : []);
-    });
+    const refresh = (): void => {
+      void window.Nodex.getSelectableNoteTypes().then((t) => {
+        setSelectableTypes(Array.isArray(t) ? t : []);
+      });
+    };
+    refresh();
+    const onWebPlugins = (): void => {
+      refresh();
+    };
+    window.addEventListener(NODEX_WEB_PLUGINS_CHANGED, onWebPlugins);
+    const offMain = window.Nodex.onPluginsChanged(refresh);
+    return () => {
+      window.removeEventListener(NODEX_WEB_PLUGINS_CHANGED, onWebPlugins);
+      offMain();
+    };
   }, []);
 
   useEffect(() => {
@@ -528,23 +544,36 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                       </div>
                       {expandedProjects.has(p.id) && selectedProjectId === p.id ? (
                         <div className="border-l border-border/40 pl-1">
-                          <div className="flex gap-1 py-1 pl-6">
+                          <div className="flex flex-wrap items-center gap-1 py-1 pl-6">
                             <select
-                              className="max-w-[7rem] rounded border border-border/60 bg-background text-[10px]"
+                              className="max-w-[7rem] rounded border border-border/60 bg-background text-[10px] disabled:opacity-50"
                               defaultValue=""
+                              disabled={selectableTypes.length === 0}
+                              title={
+                                selectableTypes.length === 0
+                                  ? "Install note plugins (Plugin Manager) to enable new note types"
+                                  : undefined
+                              }
                               onChange={(e) => {
                                 const t = e.target.value;
                                 e.target.value = "";
                                 if (t) void onCreateNote(p.id, "root", t);
                               }}
                             >
-                              <option value="">+ Root note…</option>
+                              <option value="">
+                                {selectableTypes.length === 0 ? "No types — install plugins" : "+ Root note…"}
+                              </option>
                               {selectableTypes.map((t) => (
                                 <option key={t} value={t}>
                                   {t}
                                 </option>
                               ))}
                             </select>
+                            {selectableTypes.length === 0 ? (
+                              <span className="max-w-[14rem] text-[9px] leading-tight text-muted-foreground">
+                                Install markdown, PDF, etc. from Plugin Manager so types appear here.
+                              </span>
+                            ) : null}
                           </div>
                           {renderNoteRows(p.id)}
                         </div>
@@ -680,15 +709,23 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                 <div key={rel} className="px-1 py-0.5">
                   <div className="text-[9px] uppercase text-muted-foreground">{rel}</div>
                   <select
-                    className="w-full rounded border border-border/60 bg-background text-[10px]"
+                    className="w-full rounded border border-border/60 bg-background text-[10px] disabled:opacity-50"
                     defaultValue=""
+                    disabled={selectableTypes.length === 0}
+                    title={
+                      selectableTypes.length === 0
+                        ? "Install note plugins (Plugin Manager) first"
+                        : undefined
+                    }
                     onChange={(e) => {
                       const t = e.target.value;
                       e.target.value = "";
                       if (t) void onCreateNote(menu.projectId!, rel, t, menu.id);
                     }}
                   >
-                    <option value="">Type…</option>
+                    <option value="">
+                      {selectableTypes.length === 0 ? "No types — install plugins" : "Type…"}
+                    </option>
                     {selectableTypes.map((t) => (
                       <option key={t} value={t}>
                         {t}

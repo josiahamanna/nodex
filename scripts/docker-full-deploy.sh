@@ -25,8 +25,15 @@ export NODEX_WPN_DEFAULT_OWNER="${NODEX_WPN_DEFAULT_OWNER:-jehu}"
 mkdir -p dist/plugins
 mkdir -p .nodex-docker-workspace
 
+# Orphan from an old compose service name (e.g. nodex-web) — safe to drop.
+docker rm -f nodex-web 2>/dev/null || true
+
 echo "[nodex] Starting Postgres + API + web (blue) + gateway (profile wpn-pg)..."
-docker compose --profile wpn-pg up -d --build postgres nodex-api nodex-web-blue nodex-gateway
+if ! docker compose --profile wpn-pg up -d --build --remove-orphans postgres nodex-api nodex-web-blue nodex-gateway; then
+  echo "[nodex] Compose failed (often: container name already in use). Removing web containers and retrying once..."
+  docker rm -f nodex-web-blue nodex-web-green 2>/dev/null || true
+  docker compose --profile wpn-pg up -d --build --remove-orphans postgres nodex-api nodex-web-blue nodex-gateway
+fi
 
 echo "[nodex] Waiting for nodex-gateway to be running..."
 for _ in $(seq 1 60); do

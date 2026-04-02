@@ -100,12 +100,14 @@ export function headlessRegisteredTypes(): string[] {
   return [...new Set([...HEADLESS_REGISTERED_TYPES, ...extra])].sort();
 }
 
-/** Note types allowed in create-note picker (no `root` pseudo-type). */
+/**
+ * Types allowed when creating a note via the HTTP API / web shim.
+ * Only types backed by a loaded session plugin ({@link loadProductionPluginAt}) — no implicit markdown/text.
+ * Opening existing notes and seeding still use {@link headlessRegisteredTypes} (includes baseline types).
+ */
 export function headlessSelectableNoteTypes(): string[] {
-  const reg = getHeadlessSessionRegistry();
-  const fromRegistry = reg.getSelectableNoteTypes();
-  const basePick = HEADLESS_REGISTERED_TYPES.filter((t) => t !== "root");
-  return [...new Set([...basePick, ...fromRegistry])].sort();
+  const types = getHeadlessSessionRegistry().getSelectableNoteTypes();
+  return [...types].sort();
 }
 
 /**
@@ -116,4 +118,5 @@ export function initHeadlessPgOnlyFromEnv(): void {
   userDataPath =
     process.env.NODEX_USER_DATA_DIR?.trim() ||
     path.join(os.tmpdir(), "nodex-headless-pg-only");
+  loadPersistedHeadlessSessionPlugins(userDataPath);
 }

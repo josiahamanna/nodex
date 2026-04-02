@@ -32,8 +32,57 @@ import { useShellNavigation } from "./useShellNavigation";
 import { ShellViewHost } from "./views/ShellViewHost";
 import { useShellViewRegistry } from "./views/ShellViewContext";
 import { useShellRegistries } from "./registries/ShellRegistriesContext";
+import type { ShellAppMenuItem } from "./registries/ShellAppMenuRegistry";
 import type { ShellTabInstance } from "./registries/ShellTabsRegistry";
 import { SHELL_TAB_NOTE } from "./first-party/shellWorkspaceIds";
+
+function ShellAppMenuList({
+  items,
+  depth,
+  invokeCommand,
+  onDone,
+}: {
+  items: ShellAppMenuItem[];
+  depth: number;
+  invokeCommand: (commandId: string, args?: Record<string, unknown>) => unknown;
+  onDone: () => void;
+}): React.ReactElement {
+  return (
+    <>
+      {items.map((item) =>
+        item.children?.length ? (
+          <div key={item.id}>
+            <div
+              className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+              style={{ paddingLeft: 12 + depth * 10 }}
+            >
+              {item.title}
+            </div>
+            <ShellAppMenuList
+              items={item.children}
+              depth={depth + 1}
+              invokeCommand={invokeCommand}
+              onDone={onDone}
+            />
+          </div>
+        ) : item.commandId ? (
+          <button
+            key={item.id}
+            type="button"
+            className="block w-full px-3 py-2 text-left text-[11px] text-foreground hover:bg-muted/40"
+            style={{ paddingLeft: 12 + depth * 10 }}
+            onClick={() => {
+              onDone();
+              void Promise.resolve(invokeCommand(item.commandId!, item.args));
+            }}
+          >
+            {item.title}
+          </button>
+        ) : null,
+      )}
+    </>
+  );
+}
 
 function SortableTabRow({
   tab,
@@ -111,6 +160,9 @@ function SortableTabRow({
         className="relative z-10 rounded-r-md border border-transparent px-1.5 text-[12px] leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
         aria-label="Close tab"
         title="Close tab"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+        }}
         onClick={(e) => {
           e.stopPropagation();
           onClose(e);
@@ -129,6 +181,8 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const { menuRail, appMenu, panelMenu, tabs, widgetSlots } = useShellRegistries();
   const { openFromRailItem, openNoteById, invokeCommand } = useShellNavigation();
   const [panelMenuOpen, setPanelMenuOpen] = useState(false);
+  const [appMenuOpen, setAppMenuOpen] = useState(false);
+  const appMenuWrapRef = useRef<HTMLDivElement>(null);
   const lastSyncedHash = useRef<string>("");
   const initialHashApplied = useRef(false);
 
@@ -257,6 +311,18 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   }, [openNoteById, tabs]);
 
   useEffect(() => {
+    if (!appMenuOpen) return;
+    const onDocDown = (e: MouseEvent): void => {
+      const el = appMenuWrapRef.current;
+      if (el && !el.contains(e.target as Node)) {
+        setAppMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+  }, [appMenuOpen]);
+
+  useEffect(() => {
     return tabs.subscribe(() => {
       const a = tabs.getActiveTab();
       const h = hashForActiveTab(a);
@@ -336,19 +402,51 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
         tabIndex={-1}
       >
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background px-2 py-1.5">
-          <div className="relative">
+          <div className="relative" ref={appMenuWrapRef}>
             <button
               type="button"
               className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-muted/20 text-[12px] font-semibold hover:bg-muted/40"
-              title="App menu"
+              title="App menu — Welcome and shell actions"
+              aria-expanded={appMenuOpen}
+              aria-haspopup="menu"
               onClick={() => {
                 if (appMenuItems.length === 0) {
                   store.toggle("sidebarPanel");
+                  return;
                 }
+                setAppMenuOpen((v) => !v);
               }}
             >
               N
             </button>
+            {appMenuOpen && appMenuItems.length > 0 ? (
+              <div
+                className="absolute left-0 top-full z-50 mt-1 min-w-[13rem] overflow-hidden rounded-md border border-border bg-background py-1 shadow-lg"
+                role="menu"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-2 text-left text-[11px] text-foreground hover:bg-muted/40"
+                  onClick={() => {
+                    setAppMenuOpen(false);
+                    tabs.openOrReuseTab("shell.tab.welcome", {
+                      title: "Welcome",
+                      reuseKey: "shell:welcome",
+                    });
+                  }}
+                >
+                  Welcome
+                </button>
+                <div className="my-1 border-t border-border" role="separator" />
+                <ShellAppMenuList
+                  items={appMenuItems}
+                  depth={0}
+                  invokeCommand={invokeCommand}
+                  onDone={() => setAppMenuOpen(false)}
+                />
+              </div>
+            ) : null}
           </div>
           <DndContext
             sensors={sensors}
