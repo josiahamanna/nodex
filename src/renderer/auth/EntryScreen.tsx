@@ -18,13 +18,13 @@ function MarketingHome({
     "inline-flex items-center gap-2 rounded-full border border-border bg-muted/10 px-3 py-1 text-[11px] text-muted-foreground";
 
   return (
-    <div className="flex h-screen min-h-0 w-full flex-col overflow-hidden bg-background text-foreground">
+    <div className="flex h-screen min-h-0 w-full flex-col overflow-y-auto bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -left-40 -top-40 h-[36rem] w-[36rem] rounded-full bg-primary/15 blur-3xl" />
         <div className="absolute -bottom-48 -right-40 h-[34rem] w-[34rem] rounded-full bg-primary/10 blur-3xl" />
       </div>
 
-      <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-6 py-5">
+      <header className="sticky top-0 z-20 mx-auto flex w-full max-w-6xl items-center justify-between gap-3 border-b border-border/40 bg-background/70 px-6 py-5 backdrop-blur">
         <div className="flex items-center gap-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-muted/10 text-primary">
             <NodexLogo className="h-5 w-5" title="Nodex" />
@@ -32,7 +32,7 @@ function MarketingHome({
           <div className="leading-tight">
             <div className="text-[13px] font-semibold tracking-tight">Nodex</div>
             <div className="text-[11px] text-muted-foreground">
-              Notebook-native studio for building & documenting systems
+              A studio for building & documenting note systems
             </div>
           </div>
         </div>
@@ -49,26 +49,27 @@ function MarketingHome({
             className="nodex-primary-fill h-9 rounded-md border border-primary/30 bg-primary px-3 text-[12px] font-medium text-primary-foreground hover:brightness-95"
             onClick={onSignup}
           >
-            Get started
+            Signup
           </button>
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 overflow-auto px-6 pb-10 pt-6">
+      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 px-6 pb-10 pt-6">
         <section className="grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
           <div className="min-w-0">
             <div className={pill}>
               <span className="h-2 w-2 rounded-full bg-primary" />
               <span>Bring code, notes, and docs into one place</span>
             </div>
-            <h1 className="mt-4 text-balance text-[32px] font-semibold tracking-tight md:text-[40px]">
-              Build systems with notebooks—then ship the documentation with them.
+            <h1 className="mt-4 text-balance text-[34px] font-semibold tracking-tight md:text-[46px]">
+              Build notes and systems—then ship them.
             </h1>
             <p className="mt-3 max-w-xl text-pretty text-[14px] leading-6 text-muted-foreground">
-              Nodex is a studio for technical work: notes, markdown docs, and interactive
-              notebooks. Organize knowledge like a product, not a folder.
+              Nodex is a studio for technical work: notes, markdown docs, and interactive notebooks.
+              It’s keyboard-first and command-driven, extensible like a toolkit, and self-documenting
+              with in-app docs that stay close to the features you use.
             </p>
-            <div className="mt-6 flex flex-wrap items-center gap-2">
+            <div className="mt-7 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 className="nodex-primary-fill h-10 rounded-md border border-primary/30 bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:brightness-95"
@@ -172,18 +173,18 @@ function MarketingHome({
           </div>
         </section>
 
-        <footer className="flex flex-col items-center justify-between gap-2 border-t border-border/60 pt-6 text-[11px] text-muted-foreground md:flex-row">
-          <div>© {new Date().getFullYear()} Nodex Studio</div>
-          <div className="flex items-center gap-3">
-            <button type="button" className="hover:text-foreground" onClick={onLogin}>
-              Login
-            </button>
-            <button type="button" className="hover:text-foreground" onClick={onSignup}>
-              Signup
-            </button>
+        <section className="rounded-2xl border border-border bg-muted/10 p-5">
+          <div className="text-[12px] font-semibold">A useful mental model</div>
+          <div className="mt-1 max-w-3xl text-[12px] leading-5 text-muted-foreground">
+            If you like tools that reward learning their keys and composing small actions into powerful workflows,
+            Nodex will feel familiar. Think of it as <span className="font-medium text-foreground">Emacs for note-taking</span>.
           </div>
-        </footer>
+        </section>
       </main>
+
+      <footer className="relative z-10 mx-auto w-full max-w-6xl px-6 pb-5 text-center text-[11px] text-muted-foreground">
+        Built by Jehu Shalom Amanna
+      </footer>
     </div>
   );
 }

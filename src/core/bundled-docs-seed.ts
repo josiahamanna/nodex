@@ -10,6 +10,8 @@ import {
 import { renameNote, setNoteContent } from "./notes-store-duplicate-create";
 
 const DEFAULT_RELATIVE_DIR = path.join("docs", "bundled-plugin-authoring");
+const ABOUT_NODEX_RELATIVE_FILE = path.join("docs", "about-nodex.md");
+const ABOUT_NODEX_NOTE_ID = "nodex-docs:about-nodex";
 
 export type BundledDocsManifest = {
   version: number;
@@ -167,6 +169,37 @@ export function seedBundledDocumentationNotesFromDir(): boolean {
       prevPage.title !== page.title
     ) {
       modified = true;
+    }
+  }
+
+  // Extra bundled docs that aren't part of the plugin-authoring manifest.
+  // These are still seeded into the SQLite notes tree so the Docs hub can display them.
+  const aboutPath = path.resolve(process.cwd(), ABOUT_NODEX_RELATIVE_FILE);
+  if (fs.existsSync(aboutPath)) {
+    try {
+      const content = fs.readFileSync(aboutPath, "utf8");
+      const rec: NoteRecord = {
+        id: ABOUT_NODEX_NOTE_ID,
+        parentId: manifest.folder.id,
+        type: "markdown",
+        title: "About Nodex",
+        content,
+        metadata: {
+          ...metaBase,
+          bundledDocRole: "page",
+          bundledDocOrder: -10,
+          sourceFile: path.basename(ABOUT_NODEX_RELATIVE_FILE),
+        },
+      };
+
+      const prev = notes.get(rec.id);
+      upsertNote(rec);
+      ensureChildOf(manifest.folder.id, rec.id);
+      if (!prev || prev.content !== content || prev.title !== rec.title) {
+        modified = true;
+      }
+    } catch {
+      /* ignore */
     }
   }
 

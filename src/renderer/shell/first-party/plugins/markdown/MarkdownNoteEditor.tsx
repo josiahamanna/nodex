@@ -4,7 +4,7 @@ import type { Note } from "@nodex/ui-types";
 import type { AppDispatch } from "../../../../store";
 import { patchNoteMetadata, saveNoteContent } from "../../../../store/notesSlice";
 import MarkdownRenderer from "../../../../components/renderers/MarkdownRenderer";
-import { useAuth } from "../../../auth/AuthContext";
+import { useAuth } from "../../../../auth/AuthContext";
 
 type MarkdownViewMode = "editor" | "preview" | "both";
 
