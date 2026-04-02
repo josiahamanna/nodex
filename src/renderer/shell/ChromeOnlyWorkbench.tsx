@@ -232,8 +232,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const bottomRef = React.useRef<ImperativePanelHandle>(null);
   const horizontalWorkspaceRef = useRef<HTMLDivElement>(null);
   const lastViewportWidthRef = useRef(0);
-  const sidebarColumnMeasureRef = useRef<HTMLDivElement>(null);
-  const beforePrimaryCollapseRef = useRef({ menuRail: true, sidebarPanel: true });
+  const beforePrimaryCollapseRef = useRef({ sidebarPanel: true });
   const lastPrimaryPctWithSidebarRef = useRef<number>(layout.sizes.primaryPct);
   const pendingPanelGroupLayoutRef = useRef<number[] | null>(null);
   const panelGroupLayoutRafRef = useRef<number | null>(null);
@@ -436,12 +435,6 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
 
   const sortableIds = openTabs.map((t) => t.instanceId);
 
-  const activityRailPct = useMemo(() => {
-    if (workspaceWidthPx <= 0) return 0;
-    // `react-resizable-panels` uses percentages for `expand()`. We keep a small minimum so it's still clickable.
-    return Math.min(99, Math.max(1, (SHELL_ACTIVITY_BAR_WIDTH_PX / workspaceWidthPx) * 100));
-  }, [workspaceWidthPx]);
-
   const schedulePersistPanelLayout = useCallback(
     (sizes: number[]) => {
       pendingPanelGroupLayoutRef.current = sizes;
@@ -491,24 +484,14 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     };
   }, []);
 
-  /** Collapse/expand primary `Panel` so toggles reclaim space (same idea as unmounting the bottom dock). */
+  /** Collapse/expand the side panel `Panel` based on store visibility. */
   useLayoutEffect(() => {
-    if (!showLeft) {
+    if (!showSidebarPanel) {
       primaryRef.current?.collapse();
       return;
     }
-    beforePrimaryCollapseRef.current = {
-      menuRail: showMenuRail,
-      sidebarPanel: showSidebarPanel,
-    };
-    // If the sidebar panel is hidden but the activity bar remains, shrink the whole left panel
-    // to the rail width so we don't leave an empty "frame" taking up space.
-    if (showMenuRail && !showSidebarPanel) {
-      primaryRef.current?.expand(activityRailPct);
-      return;
-    }
     primaryRef.current?.expand(Math.max(10, lastPrimaryPctWithSidebarRef.current || hSizes[0]));
-  }, [showLeft, showMenuRail, showSidebarPanel, activityRailPct]);
+  }, [showSidebarPanel]);
 
   /** Collapse/expand companion `Panel` so toggles match store (panel stays mounted). */
   useLayoutEffect(() => {
@@ -539,7 +522,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     return () => window.cancelAnimationFrame(id);
   }, [showBottom, layout.bottomTabs.heightPct]);
 
-  /** When the viewport shrinks, collapse companion and/or side panel if their columns fall below min width (px). Activity bar is not auto-collapsed. */
+  /** When the viewport shrinks, collapse companion if its column falls below min width (px). */
   useEffect(() => {
     const el = horizontalWorkspaceRef.current;
     if (!el) return;
@@ -560,10 +543,6 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       if (showSecondary && rightPx < SHELL_COMPANION_MIN_EXPANDED_PX) {
         secondaryRef.current?.collapse();
       }
-      const sidePx = sidebarColumnMeasureRef.current?.clientWidth ?? 0;
-      if (showSidebarPanel && sidePx > 0 && sidePx < SHELL_SIDEBAR_MIN_EXPANDED_PX) {
-        store.setVisible("sidebarPanel", false);
-      }
     };
     const schedule = (): void => {
       if (raf) cancelAnimationFrame(raf);
@@ -579,7 +558,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [layout.sizes, showSecondary, showSidebarPanel, store]);
+  }, [layout.sizes, showSecondary]);
 
   return (
     <div className="nodex-app-pad box-border flex min-h-0 flex-1 flex-col bg-muted/45 text-foreground dark:bg-muted/25">
@@ -685,152 +664,116 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
         </div>
 
         {/*
-          Horizontal workbench: primary (activity bar + side panel, full height) | center (main ± bottom dock) | companion (full height).
-          primaryRef = entire left dock; secondaryRef = companion; bottom dock sits only under the main editor column.
+          Horizontal workbench: activity bar (fixed px) | sidebar (resizable, collapsible) | center (main ± bottom dock) | companion (resizable, collapsible).
+          primaryRef = sidebar panel; secondaryRef = companion; bottom dock sits only under the main editor column.
         */}
         <div
           ref={horizontalWorkspaceRef}
-          className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col box-border"
+          className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-row box-border"
         >
+          {showMenuRail ? (
+            <div
+              className="flex h-full min-h-0 shrink-0 flex-col border-r border-border bg-muted/15"
+              style={{ width: SHELL_ACTIVITY_BAR_WIDTH_PX }}
+            >
+              <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
+                {railItems.map((it) => {
+                  const railActive = Boolean(
+                    activeTab?.tabTypeId && it.tabTypeId && it.tabTypeId === activeTab.tabTypeId,
+                  );
+                  return (
+                    <button
+                      key={it.id}
+                      type="button"
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-[12px] ${
+                        railActive
+                          ? "border-border bg-muted/50 text-foreground"
+                          : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/30"
+                      }`}
+                      title={it.title}
+                      onClick={() => openFromRailItem(it)}
+                    >
+                      {it.icon ?? "•"}
+                    </button>
+                  );
+                })}
+                {widgetSlots.list("rail").map((w) => {
+                  const W = w.component;
+                  return (
+                    <div key={w.id} className="w-full border-t border-border/40 pt-1">
+                      <W slotId="rail" />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex shrink-0 flex-col items-center border-t border-border/40 py-2">
+                <button
+                  type="button"
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${
+                    showSidebarPanel
+                      ? "border-border bg-muted/50 text-foreground"
+                      : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/30"
+                  }`}
+                  title="Toggle side panel"
+                  aria-label="Toggle side panel"
+                  onClick={() => store.toggle("sidebarPanel")}
+                >
+                  <IconPrimarySidebarLayout className="shrink-0" />
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <PanelGroup
             direction="horizontal"
             className="h-full min-h-0 min-w-0 flex-1 box-border"
             onLayout={(sizes) => schedulePersistPanelLayout(sizes)}
           >
-            <Panel
-              ref={primaryRef}
-              defaultSize={hSizes[0]}
-              minSize={showLeft ? (showMenuRail && !showSidebarPanel ? activityRailPct : 8) : 0}
-              collapsible
-              collapsedSize={0}
-              onCollapse={() => {
-                const v = store.get().visible;
-                beforePrimaryCollapseRef.current = {
-                  menuRail: v.menuRail,
-                  sidebarPanel: v.sidebarPanel,
-                };
-                store.setVisible("menuRail", false);
-                store.setVisible("sidebarPanel", false);
-              }}
-              onExpand={() => {
-                const s = beforePrimaryCollapseRef.current;
-                store.setVisible("menuRail", s.menuRail);
-                store.setVisible("sidebarPanel", s.sidebarPanel);
-              }}
-              className="min-w-0"
-            >
-              <div className="flex h-full min-h-0 min-w-0">
-                {showMenuRail ? (
-                  <div
-                    className="flex h-full min-h-0 shrink-0 flex-col border-r border-border bg-muted/15"
-                    style={{ width: SHELL_ACTIVITY_BAR_WIDTH_PX }}
-                  >
-                    <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
-                      {railItems.map((it) => {
-                        const railActive = Boolean(
-                          activeTab?.tabTypeId && it.tabTypeId && it.tabTypeId === activeTab.tabTypeId,
-                        );
-                        return (
+            <Panel ref={primaryRef} defaultSize={hSizes[0]} minSize={1} collapsible collapsedSize={0} className="min-w-0">
+              <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden" style={{ minWidth: SHELL_SIDEBAR_MIN_EXPANDED_PX }}>
+                {primaryView ? (
+                  <div className="flex h-full min-h-0 min-w-0 flex-col">
+                    <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/10 px-2 py-1">
+                      <div className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
+                        {primaryView.title}
+                      </div>
+                      {panelMenu.listFor("primarySidebar", primaryView.id).length > 0 ? (
+                        <div className="relative">
                           <button
-                            key={it.id}
                             type="button"
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-[12px] ${
-                              railActive
-                                ? "border-border bg-muted/50 text-foreground"
-                                : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/30"
-                            }`}
-                            title={it.title}
-                            onClick={() => openFromRailItem(it)}
+                            className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
+                            onClick={() => setPanelMenuOpen((v) => !v)}
+                            title="Side panel menu"
                           >
-                            {it.icon ?? "•"}
+                            ⋯
                           </button>
-                        );
-                      })}
-                      {widgetSlots.list("rail").map((w) => {
-                        const W = w.component;
-                        return (
-                          <div key={w.id} className="w-full border-t border-border/40 pt-1">
-                            <W slotId="rail" />
-                          </div>
-                        );
-                      })}
+                          {panelMenuOpen ? (
+                            <div className="absolute right-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-md border border-border bg-background shadow-lg">
+                              {panelMenu.listFor("primarySidebar", primaryView.id).map((item) => (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  className="block w-full px-3 py-2 text-left text-[11px] text-foreground hover:bg-muted/40"
+                                  onClick={() => {
+                                    setPanelMenuOpen(false);
+                                    void Promise.resolve(invokeCommand(item.commandId, item.commandArgs));
+                                  }}
+                                >
+                                  {item.title}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="flex shrink-0 flex-col items-center border-t border-border/40 py-2">
-                      <button
-                        type="button"
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${
-                          showSidebarPanel
-                            ? "border-border bg-muted/50 text-foreground"
-                            : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/30"
-                        }`}
-                        title="Toggle side panel"
-                        aria-label="Toggle side panel"
-                        onClick={() => store.toggle("sidebarPanel")}
-                      >
-                        <IconPrimarySidebarLayout className="shrink-0" />
-                      </button>
+                    <div className="min-h-0 min-w-0 flex-1">
+                      <ShellViewHost view={primaryView} />
                     </div>
                   </div>
-                ) : null}
-                <div
-                  ref={sidebarColumnMeasureRef}
-                  className={
-                    showSidebarPanel
-                      ? "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-                      : "min-h-0 w-0 min-w-0 flex-[0_0_0] overflow-hidden"
-                  }
-                  style={
-                    showSidebarPanel ? { minWidth: SHELL_SIDEBAR_MIN_EXPANDED_PX } : undefined
-                  }
-                >
-                  {primaryView ? (
-                    <div className="flex h-full min-h-0 min-w-0 flex-col">
-                      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/10 px-2 py-1">
-                        <div className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
-                          {primaryView.title}
-                        </div>
-                        {panelMenu.listFor("primarySidebar", primaryView.id).length > 0 ? (
-                          <div className="relative">
-                            <button
-                              type="button"
-                              className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30"
-                              onClick={() => setPanelMenuOpen((v) => !v)}
-                              title="Side panel menu"
-                            >
-                              ⋯
-                            </button>
-                            {panelMenuOpen ? (
-                              <div className="absolute right-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-md border border-border bg-background shadow-lg">
-                                {panelMenu
-                                  .listFor("primarySidebar", primaryView.id)
-                                  .map((item) => (
-                                    <button
-                                      key={item.id}
-                                      type="button"
-                                      className="block w-full px-3 py-2 text-left text-[11px] text-foreground hover:bg-muted/40"
-                                      onClick={() => {
-                                        setPanelMenuOpen(false);
-                                        void Promise.resolve(
-                                          invokeCommand(item.commandId, item.commandArgs),
-                                        );
-                                      }}
-                                    >
-                                      {item.title}
-                                    </button>
-                                  ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="min-h-0 min-w-0 flex-1">
-                        <ShellViewHost view={primaryView} />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-full min-h-0 min-w-0 w-full bg-background" />
-                  )}
-                </div>
+                ) : (
+                  <div className="h-full min-h-0 min-w-0 w-full bg-background" />
+                )}
               </div>
             </Panel>
             {renderSash("sash-primary")}
