@@ -1,26 +1,18 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Inspector } from "@observablehq/inspector";
 import { Runtime } from "@observablehq/runtime";
-import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useDispatch } from "react-redux";
+import type { AppDispatch } from "../../../../store";
+import { saveNoteContent } from "../../../../store/notesSlice";
+import type { NoteTypeReactEditorProps } from "../../../nodex-contribution-registry";
 
 type Cell = { id: string; name: string; inputs: string[]; body: string };
-
-const LS_KEY = "nodex.observableNotebook.cells.v1";
 
 function makeId(): string {
   return `${Math.random().toString(16).slice(2)}-${Date.now().toString(16)}`;
 }
 
-function safeParse(raw: string | null, fb: Cell[]): Cell[] {
-  try {
-    const v = raw ? JSON.parse(raw) : null;
-    return Array.isArray(v) ? v : fb;
-  } catch {
-    return fb;
-  }
-}
-
-function defaults(): Cell[] {
+function defaultCells(): Cell[] {
   return [
     { id: makeId(), name: "x", inputs: [], body: "42" },
     { id: makeId(), name: "y", inputs: ["x"], body: "x + 1" },
@@ -28,23 +20,95 @@ function defaults(): Cell[] {
   ];
 }
 
-export function ObservableNotebookShellView(_props: ShellViewComponentProps): React.ReactElement {
-  const [cells, setCells] = useState<Cell[]>(() => {
-    if (typeof localStorage === "undefined") return defaults();
-    const parsed = safeParse(localStorage.getItem(LS_KEY), []);
-    return parsed.length ? parsed : defaults();
-  });
+function parseCellsFromContent(raw: string | undefined): Cell[] {
+  try {
+    const v = raw?.trim() ? (JSON.parse(raw) as unknown) : null;
+    if (Array.isArray(v) && v.length > 0) {
+      return v as Cell[];
+    }
+  } catch {
+    /* fall through */
+  }
+  return defaultCells();
+}
+
+function cellsToJson(cells: Cell[]): string {
+  return JSON.stringify(cells);
+}
+
+/**
+ * Observable notebook backed by `note.content` (JSON array of cells).
+ */
+export function ObservableNoteEditor({
+  note,
+  persistToNotesStore = true,
+}: NoteTypeReactEditorProps): React.ReactElement {
+  const dispatch = useDispatch<AppDispatch>();
+  const persist = persistToNotesStore !== false;
+  const [cells, setCells] = useState<Cell[]>(() => parseCellsFromContent(note.content));
   const [err, setErr] = useState<string | null>(null);
   const outRef = useRef<HTMLDivElement>(null);
+  const latestJsonRef = useRef(cellsToJson(cells));
+  const rafRef = useRef(0);
+  const persistRef = useRef(persist);
+  const noteIdRef = useRef(note.id);
 
-  const persist = useCallback((next: Cell[]) => {
+  persistRef.current = persist;
+  noteIdRef.current = note.id;
+
+  useEffect(() => {
+    const next = parseCellsFromContent(note.content);
     setCells(next);
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(next));
-    } catch {
-      /* ignore */
+    latestJsonRef.current = cellsToJson(next);
+  }, [note.id, note.content]);
+
+  const flushNow = useCallback(() => {
+    if (rafRef.current !== 0) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
     }
-  }, []);
+    if (!persistRef.current) return;
+    void dispatch(
+      saveNoteContent({ noteId: noteIdRef.current, content: latestJsonRef.current }),
+    );
+  }, [dispatch]);
+
+  const scheduleBatchedFlush = useCallback(() => {
+    if (!persistRef.current) return;
+    if (rafRef.current !== 0) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      if (!persistRef.current) return;
+      void dispatch(
+        saveNoteContent({ noteId: noteIdRef.current, content: latestJsonRef.current }),
+      );
+    });
+  }, [dispatch]);
+
+  useEffect(() => {
+    const idWhenAttached = note.id;
+    return () => {
+      if (rafRef.current !== 0) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
+      if (persistRef.current) {
+        void dispatch(
+          saveNoteContent({ noteId: idWhenAttached, content: latestJsonRef.current }),
+        );
+      }
+    };
+  }, [note.id, dispatch]);
+
+  const persistCells = useCallback(
+    (next: Cell[]) => {
+      setCells(next);
+      const j = cellsToJson(next);
+      latestJsonRef.current = j;
+      scheduleBatchedFlush();
+    },
+    [scheduleBatchedFlush],
+  );
 
   const run = useCallback(async () => {
     setErr(null);
@@ -95,9 +159,8 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
 
   useEffect(() => {
     void run();
-    // Initial run only; further runs via the Run button.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [note.id]);
 
   return (
     <div className="flex h-full min-h-0 flex-col text-[12px]">
@@ -114,7 +177,7 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
           type="button"
           className="rounded border border-border bg-muted/20 px-2.5 py-1.5 text-[12px]"
           onClick={() =>
-            persist([
+            persistCells([
               ...cells,
               { id: makeId(), name: `cell${cells.length + 1}`, inputs: [], body: "0" },
             ])
@@ -125,11 +188,17 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
         <button
           type="button"
           className="rounded border border-border bg-muted/20 px-2.5 py-1.5 text-[12px]"
-          onClick={() => persist(defaults())}
+          onClick={() => persistCells(defaultCells())}
         >
           Reset
         </button>
-        <span className="ml-auto text-[11px] opacity-65">Scratch (not a project note)</span>
+        <button
+          type="button"
+          className="rounded border border-border bg-muted/20 px-2.5 py-1.5 text-[12px]"
+          onClick={() => flushNow()}
+        >
+          Save now
+        </button>
       </div>
       {err ? (
         <div className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
@@ -139,8 +208,8 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-0 divide-x divide-border">
         <div className="min-h-0 overflow-auto p-3">
           <p className="mb-2 text-[11px] leading-relaxed opacity-70">
-            Cells are JS expressions via <code className="font-mono">@observablehq/runtime</code>. Dependencies
-            are comma-separated.
+            Cells are JS expressions via <code className="font-mono">@observablehq/runtime</code>. Stored as JSON
+            in the note.
           </p>
           {cells.map((c) => (
             <div key={c.id} className="mb-2.5 rounded-lg border border-border p-2.5">
@@ -150,7 +219,7 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
                   placeholder="name"
                   value={c.name}
                   onChange={(e) =>
-                    persist(cells.map((x) => (x.id === c.id ? { ...x, name: e.target.value } : x)))
+                    persistCells(cells.map((x) => (x.id === c.id ? { ...x, name: e.target.value } : x)))
                   }
                 />
                 <input
@@ -158,7 +227,7 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
                   placeholder="inputs: a, b"
                   value={c.inputs.join(", ")}
                   onChange={(e) =>
-                    persist(
+                    persistCells(
                       cells.map((x) =>
                         x.id === c.id
                           ? {
@@ -176,7 +245,7 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
                 <button
                   type="button"
                   className="rounded border border-border px-2 py-1 text-[11px]"
-                  onClick={() => persist(cells.filter((x) => x.id !== c.id))}
+                  onClick={() => persistCells(cells.filter((x) => x.id !== c.id))}
                 >
                   Del
                 </button>
@@ -186,7 +255,7 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
                 spellCheck={false}
                 value={c.body}
                 onChange={(e) =>
-                  persist(cells.map((x) => (x.id === c.id ? { ...x, body: e.target.value } : x)))
+                  persistCells(cells.map((x) => (x.id === c.id ? { ...x, body: e.target.value } : x)))
                 }
               />
             </div>
@@ -196,4 +265,8 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
       </div>
     </div>
   );
+}
+
+export function ObservableNoteEditorHost(props: NoteTypeReactEditorProps): React.ReactElement {
+  return <ObservableNoteEditor note={props.note} persistToNotesStore={props.persistToNotesStore} />;
 }

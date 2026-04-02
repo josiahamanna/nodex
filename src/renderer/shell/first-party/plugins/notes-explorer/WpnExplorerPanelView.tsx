@@ -1209,32 +1209,39 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
           ) : null}
           {menu.kind === "note" && menu.projectId ? (
             <>
-              <div className="px-2 py-0.5 text-[10px] text-muted-foreground">New note as child</div>
-              <div className="max-h-24 overflow-y-auto px-1">
-                {selectableTypes.map((t) => (
-                  <button
-                    key={`c-${t}`}
-                    type="button"
-                    className="block w-full truncate rounded px-2 py-0.5 text-left hover:bg-muted/40"
-                    onClick={() => void onCreateNote(menu.projectId!, "child", t, menu.id)}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <div className="px-2 py-0.5 text-[10px] text-muted-foreground">New note as sibling</div>
-              <div className="max-h-24 overflow-y-auto px-1">
-                {selectableTypes.map((t) => (
-                  <button
-                    key={`s-${t}`}
-                    type="button"
-                    className="block w-full truncate rounded px-2 py-0.5 text-left hover:bg-muted/40"
-                    onClick={() => void onCreateNote(menu.projectId!, "sibling", t, menu.id)}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
+              <button
+                type="button"
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
+                onClick={() => {
+                  setTypePicker({
+                    x: menu.x,
+                    y: menu.y,
+                    projectId: menu.projectId!,
+                    relation: "child",
+                    anchorId: menu.id,
+                  });
+                  setMenu(null);
+                }}
+              >
+                New child…
+              </button>
+              <button
+                type="button"
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
+                onClick={() => {
+                  setTypePicker({
+                    x: menu.x,
+                    y: menu.y,
+                    projectId: menu.projectId!,
+                    relation: "sibling",
+                    anchorId: menu.id,
+                  });
+                  setMenu(null);
+                }}
+              >
+                New sibling…
+              </button>
+              <div className="my-1 h-px bg-border" />
               <button
                 type="button"
                 className="mt-1 block w-full rounded px-2 py-1 text-left hover:bg-muted/40"

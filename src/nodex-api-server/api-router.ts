@@ -32,6 +32,7 @@ import {
   getHeadlessProjectStateView,
 } from "./headless-bootstrap";
 import {
+  getHeadlessSessionLoadedPluginIds,
   getHeadlessSessionRegistry,
   installHeadlessMarketplacePlugin,
 } from "./headless-marketplace-session";
@@ -369,6 +370,10 @@ export function createNodexApiRouter(): Router {
         error: e instanceof Error ? e.message : String(e),
       });
     }
+  });
+
+  router.get("/plugins/session-installed", (_req, res) => {
+    res.json({ ids: getHeadlessSessionLoadedPluginIds() });
   });
 
   router.get("/plugins/renderer-meta", (req, res) => {

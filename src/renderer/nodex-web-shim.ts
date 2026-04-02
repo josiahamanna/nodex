@@ -324,7 +324,14 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       success: false,
       error: "Not available in web mode.",
     }),
-    getInstalledPlugins: async () => [],
+    getInstalledPlugins: async () => {
+      try {
+        const r = await req<{ ids: string[] }>("GET", "/plugins/session-installed");
+        return Array.isArray(r?.ids) ? r.ids : [];
+      } catch {
+        return [];
+      }
+    },
     getPluginInventory: async () => [],
     getDisabledPluginIds: async () => [],
     setPluginEnabled: async () => ({
@@ -563,7 +570,22 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       }
       return { ok: true as const, assetRel: j.assetRel };
     },
-    getInstalledPlugins: async () => [],
+    getInstalledPlugins: async () => {
+      if (typeof window === "undefined") return [];
+      try {
+        const b = window.__NODEX_WEB_API_BASE__?.trim();
+        const url =
+          b === undefined || b === ""
+            ? "/api/v1/plugins/session-installed"
+            : `${normalizeHeadlessApiBase(b)}/api/v1/plugins/session-installed`;
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const j = (await res.json()) as { ids?: string[] };
+        return Array.isArray(j.ids) ? j.ids : [];
+      } catch {
+        return [];
+      }
+    },
     getPluginInventory: async () => [],
     getDisabledPluginIds: async () => [],
     getPluginLoadIssues: async () => [],

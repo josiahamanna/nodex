@@ -128,6 +128,10 @@ const notesSlice = createSlice({
     setCurrentNote: (state, action: PayloadAction<Note>) => {
       state.currentNote = action.payload;
     },
+    clearCurrentNote: (state) => {
+      state.currentNote = null;
+      state.detailLoading = false;
+    },
     clearError: (state) => {
       state.error = null;
     },
@@ -217,5 +221,5 @@ const notesSlice = createSlice({
   },
 });
 
-export const { setCurrentNote, clearError } = notesSlice.actions;
+export const { setCurrentNote, clearCurrentNote, clearError } = notesSlice.actions;
 export default notesSlice.reducer;

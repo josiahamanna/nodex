@@ -12,6 +12,7 @@ import {
 import { readAppPrefs } from "../core/app-prefs";
 import { setSeedSampleNotesPreference } from "../core/notes-store";
 import { registry } from "../core/registry";
+import { registerBuiltinObservableNoteRenderer } from "../core/register-builtin-observable-note-type";
 import {
   installMainProcessDebugLogTap,
   setMainDebugLogWindow,
@@ -61,6 +62,7 @@ export function runAppReady(): void {
   registerRunAppReadyUiPluginIpc();
 
   getPluginLoader().loadAll(registry);
+  registerBuiltinObservableNoteRenderer(registry);
 
   setSeedSampleNotesPreference(readAppPrefs(userDataPath).seedSampleNotes);
 

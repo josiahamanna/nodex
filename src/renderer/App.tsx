@@ -11,6 +11,7 @@ import { useRegisterShellCoreBlocks } from "./shell/first-party/registerShellCor
 import { useRegisterShellDefaultKeybindings } from "./shell/first-party/registerShellDefaultKeybindings";
 import { useRegisterDocumentationPlugin } from "./shell/first-party/plugins/documentation/useRegisterDocumentationPlugin";
 import { useRegisterNotesExplorerPlugin } from "./shell/first-party/plugins/notes-explorer/useRegisterNotesExplorerPlugin";
+import { useRegisterObservableNoteEditor } from "./shell/first-party/plugins/observable-notebook/useRegisterObservableNoteEditor";
 import { useRegisterObservableNotebookPlugin } from "./shell/first-party/plugins/observable-notebook/useRegisterObservableNotebookPlugin";
 import { useRegisterNotesShellPlugin } from "./shell/first-party/useRegisterNotesShellPlugin";
 import { useRegisterMarkdownNotePlugin } from "./shell/first-party/plugins/markdown/useRegisterMarkdownNotePlugin";
@@ -25,6 +26,7 @@ const App: React.FC = () => {
   useRegisterShellCoreBlocks();
   useRegisterShellDefaultKeybindings();
   useRegisterObservableNotebookPlugin();
+  useRegisterObservableNoteEditor();
   useRegisterDocumentationPlugin();
   useRegisterNotesShellPlugin();
   useRegisterNotesExplorerPlugin();

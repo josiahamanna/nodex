@@ -1,9 +1,8 @@
 import type { NodexContributionRegistry } from "./nodex-contribution-registry";
 import type { ShellRegistries } from "./registries/ShellRegistriesContext";
 import type { ShellKeyBinding } from "./registries/ShellKeymapRegistry";
-import { SHELL_TAB_NOTE } from "./first-party/shellWorkspaceIds";
 import { NODEX_REPL_TOGGLE_EVENT } from "./NodexReplOverlay";
-import { dispatchShellNoteTabClosed } from "./shellTabUrlSync";
+import { closeShellTabInstance } from "./shellTabClose";
 
 /** Core `nodex.*` commands and host mode-line segments. Expand as features migrate to the registry. */
 export function registerNodexCoreContributions(
@@ -314,20 +313,7 @@ export function registerNodexCoreContributions(
         handler: () => {
           const active = registries.tabs.getActiveTab();
           if (!active) return;
-          const closedNoteId =
-            active.tabTypeId === SHELL_TAB_NOTE
-              ? (active.state as { noteId?: string } | undefined)?.noteId
-              : undefined;
-          registries.tabs.closeTab(active.instanceId);
-          if (typeof closedNoteId === "string" && closedNoteId) {
-            dispatchShellNoteTabClosed(closedNoteId);
-          }
-          if (registries.tabs.listOpenTabs().length === 0) {
-            registries.tabs.openOrReuseTab("shell.tab.welcome", {
-              title: "Welcome",
-              reuseKey: "shell:welcome",
-            });
-          }
+          closeShellTabInstance(registries.tabs, active.instanceId);
         },
       }),
     );

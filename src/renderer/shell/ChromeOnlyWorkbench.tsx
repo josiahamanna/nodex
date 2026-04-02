@@ -23,8 +23,8 @@ import {
   type ImperativePanelHandle,
 } from "react-resizable-panels";
 import { useShellLayoutState, useShellLayoutStore } from "./layout/ShellLayoutContext";
+import { closeShellTabInstance } from "./shellTabClose";
 import {
-  dispatchShellNoteTabClosed,
   hashForActiveTab,
   parseShellHash,
   replaceWindowHash,
@@ -190,10 +190,11 @@ function SortableTabRow({
       </button>
       <button
         type="button"
+        data-nodex-tab-close=""
         className="relative z-10 rounded-r-md border border-transparent px-1.5 text-[12px] leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
         aria-label="Close tab"
         title="Close tab"
-        onPointerDown={(e) => {
+        onPointerDownCapture={(e) => {
           e.stopPropagation();
         }}
         onClick={(e) => {
@@ -276,18 +277,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const closeTabInstance = useCallback(
     (instanceId: string) => (e: React.MouseEvent) => {
       e.stopPropagation();
-      const inst = tabs.listOpenTabs().find((t) => t.instanceId === instanceId);
-      const closedNoteId =
-        inst?.tabTypeId === SHELL_TAB_NOTE
-          ? (inst.state as { noteId?: string } | undefined)?.noteId
-          : undefined;
-      tabs.closeTab(instanceId);
-      if (typeof closedNoteId === "string" && closedNoteId) {
-        dispatchShellNoteTabClosed(closedNoteId);
-      }
-      if (tabs.listOpenTabs().length === 0) {
-        tabs.openOrReuseTab("shell.tab.welcome", { title: "Welcome", reuseKey: "shell:welcome" });
-      }
+      closeShellTabInstance(tabs, instanceId);
     },
     [tabs],
   );

@@ -39,6 +39,12 @@ const defaultSampleContent: Record<
   audio: {
     content: '{"assetRel":""}',
   },
+  observable: {
+    content: JSON.stringify([
+      { id: "seed-o1", name: "greeting", inputs: [], body: '"Hello from Observable"' },
+      { id: "seed-o2", name: "n", inputs: [], body: "40 + 2" },
+    ]),
+  },
 };
 
 const defaultTypeToTitle: Record<string, string> = {
@@ -50,6 +56,7 @@ const defaultTypeToTitle: Record<string, string> = {
   image: "Image",
   video: "Video",
   audio: "Audio",
+  observable: "Observable Notebook",
 };
 
 export function titleForType(type: string): string {

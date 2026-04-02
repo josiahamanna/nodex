@@ -22,6 +22,11 @@ export function getHeadlessSessionRegistry(): Registry {
   return sessionRegistry;
 }
 
+/** Package ids loaded into the headless session registry (persisted + marketplace installs). */
+export function getHeadlessSessionLoadedPluginIds(): string[] {
+  return [...loadedPluginIds].sort();
+}
+
 function assertPluginFilesExist(
   pluginPath: string,
   manifest: PluginManifest,
