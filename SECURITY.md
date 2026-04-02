@@ -43,7 +43,7 @@ connect-src 'self' ws://localhost:* http://localhost:*;
 
 **Files:**
 - `apps/nodex-web/app/layout.tsx` - CSP meta tag (Next.js shell; Electron loads this UI in dev and packaged builds)
-- `src/renderer/components/renderers/PluginRenderer.tsx` - DOMPurify usage
+- `src/renderer/shell/first-party/plugins/observable-notebook/observable-notebook-run-trusted.ts` - DOMPurify for Observable run output
 - `src/renderer/components/renderers/MarkdownRenderer.tsx` - `react-markdown` + `rehype-sanitize` (Documentation hub bundled / generated notes)
 
 ### 4. **Process Isolation**

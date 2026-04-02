@@ -201,7 +201,6 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       }),
     saveNoteContent: (noteId, content) =>
       req("PATCH", `/notes/${encodeURIComponent(noteId)}`, { content }),
-    getComponent: async () => null,
     getPluginHTML: async (type, note) => {
       const r = await req<{ html: string }>("POST", "/plugins/render-html", {
         type,
@@ -652,7 +651,6 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       error: "Not available in plain browser",
     }),
     selectZipFile: async () => null,
-    getComponent: async () => null,
     getPluginHTML: async () => null,
     getPluginRendererUiMeta: async () => null,
     getPluginManifestUi: async () => null,

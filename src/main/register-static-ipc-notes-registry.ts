@@ -253,19 +253,6 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle(IPC_CHANNELS.GET_COMPONENT, async (_event, type: string) => {
-  if (!isValidNoteType(type)) {
-    throw new Error("Invalid note type");
-  }
-
-  const component = registry.getComponent(type);
-  if (!component) {
-    return null;
-  }
-
-  return component;
-});
-
 ipcMain.handle(
   IPC_CHANNELS.GET_PLUGIN_HTML,
   async (_event, type: string, note: Note) => {

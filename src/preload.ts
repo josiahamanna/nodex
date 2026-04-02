@@ -47,7 +47,6 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.SAVE_NOTE_CONTENT, noteId, content),
   patchNoteMetadata: (noteId, patch) =>
     ipcRenderer.invoke(IPC_CHANNELS.PATCH_NOTE_METADATA, noteId, patch),
-  getComponent: (type) => ipcRenderer.invoke(IPC_CHANNELS.GET_COMPONENT, type),
   getPluginHTML: (type, note) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_HTML, type, note),
   getRegisteredTypes: () =>

@@ -45,14 +45,14 @@ export type TrustedRunMeta = {
 
 export function runObservableNotebookTrusted(opts: {
   cells: NormalizedNotebookCell[];
-  outputRoot: HTMLElement;
+  /** Mount each cell's inspector here; use a detached element if no UI slot (e.g. dependency-only). */
+  getOutputSlot: (cellId: string) => HTMLElement | null;
   nodexFactory: () => unknown;
   signal?: AbortSignal;
   meta: TrustedRunMeta;
   onCellFinished?: (cellId: string, ms: number, errorMessage?: string) => void;
 }): { dispose: () => void } {
-  const { cells, outputRoot, nodexFactory, signal, meta, onCellFinished } = opts;
-  outputRoot.innerHTML = "";
+  const { cells, getOutputSlot, nodexFactory, signal, meta, onCellFinished } = opts;
 
   const lib = new Library();
   const builtins: Record<string, unknown> = { ...lib, nodex: nodexFactory };
@@ -62,25 +62,19 @@ export function runObservableNotebookTrusted(opts: {
   for (const c of cells) {
     if (c.kind === "md") continue;
 
+    const root = getOutputSlot(c.id);
     const block = document.createElement("div");
     block.dataset.cellId = c.id;
-    block.className = "mb-2.5 rounded-lg border border-border p-2.5";
-    const h = document.createElement("div");
-    h.className = "mb-1.5 flex flex-wrap items-center gap-2 font-mono text-[11px] opacity-70";
-    const title = document.createElement("span");
-    title.textContent = c.name;
-    const metaEl = document.createElement("span");
-    metaEl.className = "text-[10px] opacity-60";
-    metaEl.textContent = `#${meta.runId}`;
-    h.appendChild(title);
-    h.appendChild(metaEl);
+    block.className = "nodex-notebook-cell-out";
     const errSlot = document.createElement("div");
     errSlot.className = "nodex-notebook-cell-error mb-1 hidden text-[11px] text-destructive";
     const slot = document.createElement("div");
-    block.appendChild(h);
     block.appendChild(errSlot);
     block.appendChild(slot);
-    outputRoot.appendChild(block);
+    if (root) {
+      root.innerHTML = "";
+      root.appendChild(block);
+    }
 
     const makeObserver = Inspector.into(slot);
     const wrappedObserver = wrapInspectorForHtml(slot, makeObserver);

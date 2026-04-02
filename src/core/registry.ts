@@ -1,4 +1,5 @@
 import type { Note, NoteRenderer } from "../shared/plugin-api";
+import { isHostDisabledNoteType } from "./host-disabled-note-types";
 import type { PluginHostTier } from "./plugin-loader-types";
 
 export type PluginThemeMode = "inherit" | "isolated";
@@ -15,18 +16,10 @@ export interface PluginRenderer {
 }
 
 export class Registry {
-  private components: Map<string, string> = new Map();
   private renderers: Map<string, PluginRenderer> = new Map();
   /** Note type string → host tier from the plugin that registered the renderer. */
   private typeHostTier: Map<string, PluginHostTier> = new Map();
 
-  // Legacy method for old plugin system
-  register(type: string, componentCode: string): void {
-    this.components.set(type, componentCode);
-    console.log(`[Registry] Registered component: ${type}`);
-  }
-
-  // New method for secure plugin system
   registerRenderer(
     pluginName: string,
     type: string,
@@ -38,6 +31,9 @@ export class Registry {
       hostTier?: PluginHostTier;
     },
   ): void {
+    if (isHostDisabledNoteType(type)) {
+      return;
+    }
     this.renderers.set(type, {
       pluginName,
       render: renderer.render,
@@ -62,6 +58,9 @@ export class Registry {
   }
 
   getRenderer(type: string): PluginRenderer | null {
+    if (isHostDisabledNoteType(type)) {
+      return null;
+    }
     const direct = this.renderers.get(type);
     if (direct) {
       return direct;
@@ -73,20 +72,14 @@ export class Registry {
     return null;
   }
 
-  getComponent(type: string): string | null {
-    return this.components.get(type) || null;
-  }
-
   getRegisteredTypes(): string[] {
-    // Combine both old and new systems
-    const types = new Set([
-      ...this.components.keys(),
-      ...this.renderers.keys(),
-    ]);
+    const types = new Set([...this.renderers.keys()]);
     if (types.has("markdown") && !types.has("root")) {
       types.add("root");
     }
-    return [...types].sort();
+    return [...types]
+      .filter((t) => !isHostDisabledNoteType(t))
+      .sort();
   }
 
   /**
@@ -99,7 +92,6 @@ export class Registry {
   }
 
   clear(): void {
-    this.components.clear();
     this.renderers.clear();
     this.typeHostTier.clear();
   }

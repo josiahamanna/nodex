@@ -59,15 +59,15 @@ function MarketingHome({
           <div className="min-w-0">
             <div className={pill}>
               <span className="h-2 w-2 rounded-full bg-primary" />
-              <span>Bring code, notes, and docs into one place</span>
+              <span>Bring notes docs into one system.</span>
             </div>
             <h1 className="mt-4 text-balance text-[34px] font-semibold tracking-tight md:text-[46px]">
               Build notes and systems—then ship them.
             </h1>
             <p className="mt-3 max-w-xl text-pretty text-[14px] leading-6 text-muted-foreground">
-              Nodex is a studio for technical work: notes, markdown docs, and interactive notebooks.
-              It’s keyboard-first and command-driven, extensible like a toolkit, and self-documenting
-              with in-app docs that stay close to the features you use.
+              Nodex is a studio for technical work: notes, markdown docs. The system is interactive,
+              keyboard-first and command-driven, extensible like a toolkit, and self-documenting with
+              in-app docs that stay close to the features you use.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-2">
               <button
@@ -90,21 +90,21 @@ function MarketingHome({
                 </div>
               </div>
               <div className={card}>
-                <div className="text-[12px] font-semibold">Observable notebooks</div>
+                <div className="text-[12px] font-semibold">JavaScript Observable notebooks</div>
                 <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  Turn exploration into reusable, reviewable artifacts.
+                  Delve into note system exploration.
                 </div>
               </div>
               <div className={card}>
-                <div className="text-[12px] font-semibold">Command API documentation</div>
+                <div className="text-[12px] font-semibold">Integrated IDE for plugin development</div>
+                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                  Extend the system with first‑party and bundled plugins.
+                </div>
+              </div>
+              <div className={card}>
+                <div className="text-[12px] font-semibold">Self-documenting system</div>
                 <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
                   Built‑in docs hub for commands and guides, searchable in‑app.
-                </div>
-              </div>
-              <div className={card}>
-                <div className="text-[12px] font-semibold">Plugins & contributions</div>
-                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  Extend the studio with first‑party and bundled plugins.
                 </div>
               </div>
             </div>
@@ -145,36 +145,39 @@ function MarketingHome({
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-3 lg:grid-cols-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3 lg:col-span-3">
-            <div className={card}>
-              <div className="text-[12px] font-semibold">For teams</div>
-              <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                Make documentation a living part of the workflow, not an afterthought.
+        <section className="w-full">
+          <div className="ml-auto flex w-full max-w-4xl flex-col gap-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className={card}>
+                <div className="text-[12px] font-semibold">For maintainers</div>
+                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                  Use admin capabilities to keep system docs accurate and up to date.
+                </div>
+              </div>
+              <div className="rounded-2xl border border-border bg-muted/10 p-5">
+                <div className="text-[12px] font-semibold">A useful mental model</div>
+                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                  If you like tools that reward learning their keys and composing small actions into powerful workflows,
+                  Nodex will feel familiar.
+                </div>
+                <div className="mt-2 text-[12px] leading-5 text-muted-foreground">
+                  Think of it as <span className="font-medium text-foreground">Emacs for note-taking</span>.
+                </div>
               </div>
             </div>
-            <div className={card}>
-              <div className="text-[12px] font-semibold">For builders</div>
-              <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                Keep experiments, decisions, and implementation notes in one place.
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className={card}>
+                <div className="text-[12px] font-semibold">For teams</div>
+                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                  Make documentation a living part of the workflow, not an afterthought.
+                </div>
               </div>
-            </div>
-            <div className={card}>
-              <div className="text-[12px] font-semibold">For maintainers</div>
-              <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                Use admin capabilities to keep system docs accurate and up to date.
+              <div className={card}>
+                <div className="text-[12px] font-semibold">For builders</div>
+                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                  Keep experiments, decisions, and implementation notes in one place.
+                </div>
               </div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-muted/10 p-5 lg:col-span-1">
-            <div className="text-[12px] font-semibold">A useful mental model</div>
-            <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-              If you like tools that reward learning their keys and composing small actions into powerful workflows,
-              Nodex will feel familiar.
-            </div>
-            <div className="mt-2 text-[12px] leading-5 text-muted-foreground">
-              Think of it as <span className="font-medium text-foreground">Emacs for note-taking</span>.
             </div>
           </div>
         </section>

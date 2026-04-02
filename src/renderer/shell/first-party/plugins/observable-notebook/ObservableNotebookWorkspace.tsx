@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import { setNotebookSandboxCommandInvoker } from "../../../notebookSandboxBridge";
-import { runNotebookCellsInSandbox, type NotebookSandboxCellResult } from "../../../scriptHost";
 import { NotebookCellEditor } from "./NotebookCellEditor";
 import {
   createNotebookNodexHost,
@@ -52,15 +50,11 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
   const layout = useShellLayoutStore();
 
   const [err, setErr] = useState<string | null>(null);
-  const [sandbox, setSandbox] = useState(false);
   const [autoRun, setAutoRun] = useState(false);
   const [lastRunLabel, setLastRunLabel] = useState<string | null>(null);
-  const [sandboxRun, setSandboxRun] = useState<{
-    ids: string[];
-    results: NotebookSandboxCellResult[];
-  } | null>(null);
+  const [runBusy, setRunBusy] = useState(false);
 
-  const outRef = useRef<HTMLDivElement>(null);
+  const cellOutputSlotRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const trustedDisposeRef = useRef<(() => void) | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const runIdRef = useRef(0);
@@ -76,71 +70,164 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
     [invokeCommand, registries, layout],
   );
 
-  useEffect(() => {
-    setNotebookSandboxCommandInvoker((commandId: string, args?: Record<string, unknown>) =>
-      invokeCommand(commandId, args),
-    );
-    return () => setNotebookSandboxCommandInvoker(undefined);
-  }, [invokeCommand]);
+  const clearPerCellOutputDom = useCallback(() => {
+    cellOutputSlotRef.current.forEach((el) => {
+      el.innerHTML = "";
+    });
+  }, []);
 
   const clearOutputs = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     trustedDisposeRef.current?.();
     trustedDisposeRef.current = null;
-    if (outRef.current) outRef.current.innerHTML = "";
+    clearPerCellOutputDom();
     setLastRunLabel(null);
-    setSandboxRun(null);
+  }, [clearPerCellOutputDom]);
+
+  const stopRun = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    trustedDisposeRef.current?.();
+    trustedDisposeRef.current = null;
+    setRunBusy(false);
   }, []);
 
-  const run = useCallback(async () => {
-    const root = outRef.current;
-    if (!root) return;
+  const clearTrustedSlotsForIds = useCallback((ids: Iterable<string>) => {
+    for (const id of ids) {
+      const el = cellOutputSlotRef.current.get(id);
+      if (el) el.innerHTML = "";
+    }
+  }, []);
 
+  const getOutputSlot = useCallback((cellId: string) => cellOutputSlotRef.current.get(cellId) ?? null, []);
+
+  const run = useCallback(async () => {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
 
     trustedDisposeRef.current?.();
     trustedDisposeRef.current = null;
-    root.innerHTML = "";
     setErr(null);
-    setSandboxRun(null);
 
     runIdRef.current += 1;
     const meta = { runId: runIdRef.current, startedAt: Date.now() };
     const norm = normalizeNotebookCells(cells);
     const t0 = performance.now();
 
-    try {
-      if (sandbox) {
-        const payload = norm.map((c) => ({
-          name: c.name,
-          inputs: c.inputs,
-          body: c.body,
-          kind: c.kind,
-        }));
-        const results = await runNotebookCellsInSandbox(payload);
-        setSandboxRun({ ids: norm.map((c) => c.id), results });
-      } else {
-        const { dispose } = runObservableNotebookTrusted({
-          cells: norm,
-          outputRoot: root,
-          nodexFactory: () => nodex,
-          signal: ac.signal,
-          meta,
-        });
-        trustedDisposeRef.current = dispose;
+    clearPerCellOutputDom();
+    const jsCount = norm.filter((c) => c.kind === "js").length;
+    setRunBusy(true);
+    ac.signal.addEventListener("abort", () => setRunBusy(false), { once: true });
+
+    if (jsCount === 0) {
+      setLastRunLabel(`Run #${meta.runId} · 0ms`);
+      setRunBusy(false);
+      return;
+    }
+
+    let trustedFinished = 0;
+    let trustedCompletionHandled = false;
+    const onTrustedCellDone = () => {
+      trustedFinished += 1;
+      if (trustedCompletionHandled || trustedFinished < jsCount) return;
+      trustedCompletionHandled = true;
+      if (!ac.signal.aborted) {
+        const ms = Math.round(performance.now() - t0);
+        setLastRunLabel(`Run #${meta.runId} · ${ms}ms`);
       }
-      const ms = Math.round(performance.now() - t0);
-      setLastRunLabel(`Run #${meta.runId} · ${ms}ms${sandbox ? " (sandbox)" : ""}`);
+      setRunBusy(false);
+    };
+
+    try {
+      const { dispose } = runObservableNotebookTrusted({
+        cells: norm,
+        getOutputSlot,
+        nodexFactory: () => nodex,
+        signal: ac.signal,
+        meta,
+        onCellFinished: () => onTrustedCellDone(),
+      });
+      trustedDisposeRef.current = dispose;
     } catch (e) {
+      setRunBusy(false);
       if (e instanceof DOMException && e.name === "AbortError") {
         return;
       }
       setErr(e instanceof Error ? e.message : String(e));
     }
-  }, [cells, nodex, sandbox]);
+  }, [cells, clearPerCellOutputDom, getOutputSlot, nodex]);
+
+  const runCell = useCallback(
+    async (cellId: string) => {
+      const idx = cells.findIndex((c) => c.id === cellId);
+      if (idx < 0) return;
+      const target = cells[idx];
+      if (target.kind === "md") return;
+
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+
+      trustedDisposeRef.current?.();
+      trustedDisposeRef.current = null;
+
+      const prefix = cells.slice(0, idx + 1);
+      const norm = normalizeNotebookCells(prefix);
+      if (norm.length === 0) return;
+
+      const jsIds = new Set(norm.filter((c) => c.kind === "js").map((c) => c.id));
+      clearTrustedSlotsForIds(jsIds);
+
+      runIdRef.current += 1;
+      const meta = { runId: runIdRef.current, startedAt: Date.now() };
+      const t0 = performance.now();
+      setErr(null);
+
+      const jsCount = norm.filter((c) => c.kind === "js").length;
+      setRunBusy(true);
+      ac.signal.addEventListener("abort", () => setRunBusy(false), { once: true });
+
+      if (jsCount === 0) {
+        setLastRunLabel(`Cell · run #${meta.runId} · 0ms`);
+        setRunBusy(false);
+        return;
+      }
+
+      let trustedFinished = 0;
+      let trustedCompletionHandled = false;
+      const onTrustedCellDone = () => {
+        trustedFinished += 1;
+        if (trustedCompletionHandled || trustedFinished < jsCount) return;
+        trustedCompletionHandled = true;
+        if (!ac.signal.aborted) {
+          const ms = Math.round(performance.now() - t0);
+          setLastRunLabel(`Cell · run #${meta.runId} · ${ms}ms`);
+        }
+        setRunBusy(false);
+      };
+
+      try {
+        const { dispose } = runObservableNotebookTrusted({
+          cells: norm,
+          getOutputSlot,
+          nodexFactory: () => nodex,
+          signal: ac.signal,
+          meta,
+          onCellFinished: () => onTrustedCellDone(),
+        });
+        trustedDisposeRef.current = dispose;
+      } catch (e) {
+        setRunBusy(false);
+        if (e instanceof DOMException && e.name === "AbortError") {
+          return;
+        }
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [cells, clearTrustedSlotsForIds, getOutputSlot, nodex],
+  );
 
   useEffect(() => {
     return () => {
@@ -197,10 +284,19 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
         <div className="text-[12px] font-bold opacity-85">Observable notebook</div>
         <button
           type="button"
-          className="rounded border border-border bg-muted/20 px-2.5 py-1.5 text-[12px]"
+          className="rounded border border-border bg-muted/20 px-2.5 py-1.5 text-[12px] disabled:opacity-40"
+          disabled={runBusy}
           onClick={() => void run()}
         >
-          Run
+          Run all
+        </button>
+        <button
+          type="button"
+          className="rounded border border-border bg-muted/20 px-2.5 py-1.5 text-[12px] disabled:opacity-40"
+          disabled={!runBusy}
+          onClick={stopRun}
+        >
+          Stop
         </button>
         <button
           type="button"
@@ -209,17 +305,6 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
         >
           Clear outputs
         </button>
-        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] opacity-85">
-          <input
-            type="checkbox"
-            checked={sandbox}
-            onChange={(e) => {
-              setSandbox(e.target.checked);
-              clearOutputs();
-            }}
-          />
-          Sandbox
-        </label>
         <label className="flex cursor-pointer items-center gap-1.5 text-[11px] opacity-85">
           <input type="checkbox" checked={autoRun} onChange={(e) => setAutoRun(e.target.checked)} />
           Auto-run
@@ -258,141 +343,147 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
         </div>
       ) : null}
       <div className="min-h-0 flex-1 overflow-auto p-3">
-          <p className="mb-2 text-[11px] leading-relaxed opacity-70">
-            JS cells use <code className="font-mono">@observablehq/runtime</code> plus stdlib builtins;{" "}
-            <code className="font-mono">nodex</code> calls shell commands.{" "}
-            <kbd className="rounded border border-border px-0.5 font-mono">Mod+Enter</kbd> runs the notebook.
-            Sandbox mode runs sequentially without the reactive graph (stdio-style output).
-          </p>
-          <details className="mb-3 text-[10px] opacity-70">
-            <summary className="cursor-pointer select-none">Documented command ids</summary>
-            <ul className="mt-1 list-inside list-disc font-mono">
-              {NODEX_NOTEBOOK_DOCUMENTED_COMMANDS.map((id) => (
-                <li key={id}>{id}</li>
-              ))}
-            </ul>
-          </details>
-          {cells.map((c, idx) => {
-            const others = cells
-              .map((x) => x.name.trim())
-              .filter((n, i) => n && i !== idx);
-            const completionNames = Array.from(new Set([...others, ...c.inputs]));
-            const sandboxIdx = sandboxRun ? sandboxRun.ids.indexOf(c.id) : -1;
-            const sandboxResult =
-              sandboxRun && sandboxIdx >= 0 ? sandboxRun.results[sandboxIdx] : null;
+        <p className="mb-2 text-[11px] leading-relaxed opacity-70">
+          JS cells use <code className="font-mono">@observablehq/runtime</code> plus stdlib builtins;{" "}
+          <code className="font-mono">nodex</code> calls shell commands.{" "}
+          <kbd className="rounded border border-border px-0.5 font-mono">Mod+Enter</kbd> runs the focused JS cell
+          (from the top through that cell).
+        </p>
+        <details className="mb-3 text-[10px] opacity-70">
+          <summary className="cursor-pointer select-none">Documented command ids</summary>
+          <ul className="mt-1 list-inside list-disc font-mono">
+            {NODEX_NOTEBOOK_DOCUMENTED_COMMANDS.map((id) => (
+              <li key={id}>{id}</li>
+            ))}
+          </ul>
+        </details>
+        {cells.map((c, idx) => {
+          const others = cells
+            .map((x) => x.name.trim())
+            .filter((n, i) => n && i !== idx);
+          const completionNames = Array.from(new Set([...others, ...c.inputs]));
 
-            return (
-              <div key={c.id} className="mb-2.5 rounded-lg border border-border p-2.5">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className="text-[10px] uppercase opacity-50">{c.kind === "md" ? "md" : "js"}</span>
-                  <input
-                    className="w-40 rounded border border-border px-2 py-1 font-mono text-[11px]"
-                    placeholder="name"
-                    value={c.name}
-                    onChange={(e) =>
-                      onCellsChange(
-                        cells.map((x) => (x.id === c.id ? { ...x, name: e.target.value } : x)),
-                      )
-                    }
-                  />
-                  <input
-                    className="w-52 rounded border border-border px-2 py-1 font-mono text-[11px]"
-                    placeholder="inputs: a, b"
-                    value={c.inputs.join(", ")}
-                    onChange={(e) =>
-                      onCellsChange(
-                        cells.map((x) =>
-                          x.id === c.id
-                            ? {
-                                ...x,
-                                inputs: e.target.value
-                                  .split(",")
-                                  .map((s) => s.trim())
-                                  .filter(Boolean),
-                              }
-                            : x,
-                        ),
-                      )
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="rounded border border-border px-2 py-1 text-[10px]"
-                    onClick={() =>
-                      onCellsChange(
-                        cells.map((x) =>
-                          x.id === c.id ? { ...x, kind: x.kind === "md" ? "js" : "md" } : x,
-                        ),
-                      )
-                    }
-                  >
-                    {c.kind === "md" ? "→ JS" : "→ MD"}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border border-border px-2 py-1 text-[11px]"
-                    onClick={() => onCellsChange(cells.filter((x) => x.id !== c.id))}
-                  >
-                    Del
-                  </button>
-                </div>
-                {c.kind === "md" ? (
+          return (
+            <div key={c.id} className="mb-2.5 rounded-lg border border-border p-2.5">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="text-[10px] uppercase opacity-50">{c.kind === "md" ? "md" : "js"}</span>
+                <input
+                  className="w-40 rounded border border-border px-2 py-1 font-mono text-[11px]"
+                  placeholder="name"
+                  value={c.name}
+                  onChange={(e) =>
+                    onCellsChange(
+                      cells.map((x) => (x.id === c.id ? { ...x, name: e.target.value } : x)),
+                    )
+                  }
+                />
+                <input
+                  className="w-52 rounded border border-border px-2 py-1 font-mono text-[11px]"
+                  placeholder="inputs: a, b"
+                  value={c.inputs.join(", ")}
+                  onChange={(e) =>
+                    onCellsChange(
+                      cells.map((x) =>
+                        x.id === c.id
+                          ? {
+                              ...x,
+                              inputs: e.target.value
+                                .split(",")
+                                .map((s) => s.trim())
+                                .filter(Boolean),
+                            }
+                          : x,
+                      ),
+                    )
+                  }
+                />
+                <button
+                  type="button"
+                  className="rounded border border-border px-2 py-1 text-[10px]"
+                  onClick={() =>
+                    onCellsChange(
+                      cells.map((x) =>
+                        x.id === c.id ? { ...x, kind: x.kind === "md" ? "js" : "md" } : x,
+                      ),
+                    )
+                  }
+                >
+                  {c.kind === "md" ? "→ JS" : "→ MD"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-border px-2 py-1 text-[11px]"
+                  onClick={() => onCellsChange(cells.filter((x) => x.id !== c.id))}
+                >
+                  Del
+                </button>
+                {c.kind === "js" ? (
                   <>
-                    <textarea
-                      className="mb-2 h-28 w-full resize-none rounded border border-border px-2 py-2 font-mono text-[11px] outline-none"
-                      spellCheck={false}
-                      value={c.body}
-                      onChange={(e) =>
-                        onCellsChange(
-                          cells.map((x) => (x.id === c.id ? { ...x, body: e.target.value } : x)),
-                        )
-                      }
-                    />
-                    <div className={mdPreviewClass}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeSanitize, defaultSchema]]}>
-                        {c.body}
-                      </ReactMarkdown>
-                    </div>
+                    <button
+                      type="button"
+                      className="rounded border border-border bg-muted/15 px-2 py-1 text-[11px] disabled:opacity-40"
+                      disabled={runBusy}
+                      onClick={() => void runCell(c.id)}
+                    >
+                      Run cell
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-border px-2 py-1 text-[11px] disabled:opacity-40"
+                      disabled={!runBusy}
+                      onClick={stopRun}
+                    >
+                      Stop
+                    </button>
                   </>
-                ) : (
-                  <>
-                    <NotebookCellEditor
-                      value={c.body}
-                      onChange={(body) =>
-                        onCellsChange(cells.map((x) => (x.id === c.id ? { ...x, body } : x)))
-                      }
-                      completionCellNames={completionNames}
-                      dark={resolvedDark}
-                      onModEnter={() => void run()}
-                    />
-                    {sandbox && sandboxResult ? (
-                      <div className="mt-2 rounded border border-border bg-muted/10 p-2.5">
-                        <div className="mb-1 font-mono text-[10px] opacity-70">Output</div>
-                        {"skipped" in sandboxResult ? (
-                          <div className="text-[11px] opacity-60">(markdown — not executed in sandbox)</div>
-                        ) : sandboxResult.ok ? (
-                          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] opacity-90">
-                            {sandboxResult.serialized}
-                          </pre>
-                        ) : (
-                          <div className="text-[11px] text-destructive">{sandboxResult.error}</div>
-                        )}
-                      </div>
-                    ) : null}
-                  </>
-                )}
+                ) : null}
               </div>
-            );
-          })}
-
-        {!sandbox ? (
-          <div className="mt-4">
-            <div className="mb-2 text-[11px] font-semibold opacity-80">Outputs</div>
-            <div ref={outRef} className="min-h-0 rounded-lg border border-border bg-background p-3" />
-          </div>
-        ) : (
-          <div ref={outRef} className="hidden" />
-        )}
+              {c.kind === "md" ? (
+                <>
+                  <textarea
+                    className="mb-2 h-28 w-full resize-none rounded border border-border px-2 py-2 font-mono text-[11px] outline-none"
+                    spellCheck={false}
+                    value={c.body}
+                    onChange={(e) =>
+                      onCellsChange(
+                        cells.map((x) => (x.id === c.id ? { ...x, body: e.target.value } : x)),
+                      )
+                    }
+                  />
+                  <div className={mdPreviewClass}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeSanitize, defaultSchema]]}>
+                      {c.body}
+                    </ReactMarkdown>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <NotebookCellEditor
+                    value={c.body}
+                    onChange={(body) =>
+                      onCellsChange(cells.map((x) => (x.id === c.id ? { ...x, body } : x)))
+                    }
+                    completionCellNames={completionNames}
+                    dark={resolvedDark}
+                    onModEnter={() => void runCell(c.id)}
+                  />
+                  <div className="mt-2 rounded border border-border bg-muted/10 p-2.5">
+                    <div className="mb-1 font-mono text-[10px] opacity-70">Output</div>
+                    <div
+                      ref={(el) => {
+                        const m = cellOutputSlotRef.current;
+                        if (el) m.set(c.id, el);
+                        else m.delete(c.id);
+                      }}
+                      className="min-h-[4px] text-[11px]"
+                    />
+                    <p className="mt-1.5 text-[10px] opacity-45">Run this cell or Run all to show results here.</p>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
