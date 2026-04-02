@@ -20,7 +20,6 @@ RUN npm ci --ignore-scripts \
 COPY tsconfig.json ./
 COPY src ./src
 COPY scripts ./scripts
-COPY user-pluggins ./user-pluggins
 
 # Build bundled marketplace artifacts into dist/plugins (marketplace-index.json + .nodexplugin zips)
 RUN npm run build:plugins

@@ -6,7 +6,7 @@
  *   npx tsx scripts/build-plugins-release.ts
  *
  * Env:
- *   PLUGIN_RELEASE_ROOT — default user-pluggins
+ *   PLUGIN_RELEASE_ROOT — default plugins/marketplace
  *   PLUGIN_RELEASE_OUT  — default dist/plugins (.nodexplugin zips)
  *   PLUGIN_RELEASE_ONLY — optional plugin folder name (under root) OR absolute path
  *   PLUGIN_RELEASE_CONCURRENCY — max parallel plugin builds (default: min(CPU, 8), min 1)
@@ -210,7 +210,7 @@ function npmInstallIfNeeded(pluginDir: string): void {
 
 async function main(): Promise<void> {
   const root = path.resolve(
-    process.env.PLUGIN_RELEASE_ROOT ?? "user-pluggins",
+    process.env.PLUGIN_RELEASE_ROOT ?? "plugins/marketplace",
   );
   const outDir = path.resolve(
     process.env.PLUGIN_RELEASE_OUT ?? "dist/plugins",

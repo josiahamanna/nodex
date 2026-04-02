@@ -1,4 +1,4 @@
-# Build all plugins under `user-pluggins/*`, write `dist/plugins` (+ marketplace-index.json),
+# Build all plugins under `plugins/marketplace/*`, write `dist/plugins` (+ marketplace-index.json),
 # zip the folder into one artifact. On version tags (v*), attach that zip to the GitHub Release.
 
 name: Plugins Release
@@ -24,14 +24,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: set
-        name: Detect plugins under user-pluggins/
+        name: Detect plugins under plugins/marketplace/
         shell: bash
         run: |
           node <<'NODE'
           const fs = require("fs");
           const path = require("path");
           const out = process.env.GITHUB_OUTPUT;
-          const root = path.resolve("user-pluggins");
+          const root = path.resolve("plugins/marketplace");
           let n = 0;
           if (fs.existsSync(root)) {
             for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
@@ -61,7 +61,7 @@ jobs:
 
       - name: Build all .nodexplugin packages and marketplace index
         env:
-          PLUGIN_RELEASE_ROOT: user-pluggins
+          PLUGIN_RELEASE_ROOT: plugins/marketplace
         run: npm run build:plugins
 
       - name: Zip dist/plugins

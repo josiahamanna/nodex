@@ -90,14 +90,10 @@ zip -r your-plugin-name.zip manifest.json index.js
 
 Sample and bundled behavior:
 
-### Markdown and rich text (user-facing samples)
+### Markdown and rich text
 
-- **Markdown** (`markdown`) and **Tiptap** (`text`) are typically installed as user plugins (seeded under your user plugins directory). They appear in Plugin Manager and in the new-note type list.
-- **Browser / HTTP API:** the WPN “new note” type list uses only types from plugins actually loaded on the API server (marketplace install into the headless session). Nothing is implied for `markdown` or `text` until those packages are installed there.
-
-### Media (user plugins)
-
-- **Video** (`video`) — sample under `user-pluggins/video`: pick or import files into `assets/` and play them with **Video.js** via `window.Nodex.VideoJS` (host-injected; see Available Libraries). Plain `nodex-asset:` playback matches the default plugin iframe CSP; remote URLs need CSP updates in the host.
+- **Markdown** (`markdown`) is provided by the **system** note editor (first-party, no iframe).
+- **Rich text** can be provided by a plugin (marketplace / packaged plugin) if you choose to install one.
 
 ### Code editor (system tier)
 

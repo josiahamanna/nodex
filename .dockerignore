@@ -9,9 +9,8 @@ coverage
 .env
 .env.*
 claude-docs
-# Include `user-pluggins` so API image can build bundled marketplace artifacts.
-# (If you do not want this baked in, keep it ignored and use the compose bind mount instead.)
-# user-pluggins
+# Marketplace plugins are built into dist/plugins by CI and container builds.
+# If you keep local marketplace sources, place them under plugins/marketplace/.
 plugins
 .plans
 .cursor

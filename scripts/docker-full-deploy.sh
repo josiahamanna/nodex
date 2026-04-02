@@ -71,6 +71,10 @@ remove_docker_run_web_slot() {
   if ! docker container inspect "$name" &>/dev/null; then
     return 0
   fi
+  # Never remove the active UI slot — that would cause avoidable downtime.
+  if [[ -n "$active_line" && "$name" == "$active_line" ]]; then
+    return 0
+  fi
   local proj
   proj="$(docker container inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$name" 2>/dev/null || true)"
   if [[ -z "$proj" ]]; then
@@ -82,13 +86,31 @@ remove_docker_run_web_slot nodex-web-blue
 remove_docker_run_web_slot nodex-web-green
 
 echo "[nodex] Starting Postgres + API + web (blue) + gateway (profile wpn-pg)..."
-if ! docker compose --profile wpn-pg up -d --build --remove-orphans postgres nodex-api nodex-web-blue nodex-gateway; then
+active_is_docker_run=false
+if [[ -n "$active_line" ]]; then
+  active_proj="$(docker container inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$active_line" 2>/dev/null || true)"
+  if [[ -z "$active_proj" ]]; then
+    active_is_docker_run=true
+  fi
+fi
+
+compose_up() {
+  if [[ "$active_is_docker_run" == "true" ]]; then
+    # Avoid pulling in nodex-web-blue via depends_on (would conflict with an active docker-run slot).
+    docker compose --profile wpn-pg up -d --build --remove-orphans postgres nodex-api
+    docker compose --profile wpn-pg up -d --build --remove-orphans --no-deps nodex-gateway
+  else
+    docker compose --profile wpn-pg up -d --build --remove-orphans postgres nodex-api nodex-web-blue nodex-gateway
+  fi
+}
+
+if ! compose_up; then
   echo "[nodex] Compose failed — clearing stale web slots again and retrying once..."
   remove_stale_web_slot nodex-web-blue
   remove_stale_web_slot nodex-web-green
   remove_docker_run_web_slot nodex-web-blue
   remove_docker_run_web_slot nodex-web-green
-  docker compose --profile wpn-pg up -d --build --remove-orphans postgres nodex-api nodex-web-blue nodex-gateway
+  compose_up
 fi
 
 echo "[nodex] Waiting for nodex-gateway to be running..."

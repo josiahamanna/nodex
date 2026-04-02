@@ -235,6 +235,8 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const sidebarColumnMeasureRef = useRef<HTMLDivElement>(null);
   const beforePrimaryCollapseRef = useRef({ menuRail: true, sidebarPanel: true });
   const lastPrimaryPctWithSidebarRef = useRef<number>(layout.sizes.primaryPct);
+  const pendingPanelGroupLayoutRef = useRef<number[] | null>(null);
+  const panelGroupLayoutRafRef = useRef<number | null>(null);
   const [workspaceWidthPx, setWorkspaceWidthPx] = useState(0);
 
   const sensors = useSensors(
@@ -440,6 +442,55 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     return Math.min(99, Math.max(1, (SHELL_ACTIVITY_BAR_WIDTH_PX / workspaceWidthPx) * 100));
   }, [workspaceWidthPx]);
 
+  const schedulePersistPanelLayout = useCallback(
+    (sizes: number[]) => {
+      pendingPanelGroupLayoutRef.current = sizes;
+      if (panelGroupLayoutRafRef.current != null) return;
+      panelGroupLayoutRafRef.current = window.requestAnimationFrame(() => {
+        panelGroupLayoutRafRef.current = null;
+        const next = pendingPanelGroupLayoutRef.current;
+        pendingPanelGroupLayoutRef.current = null;
+        if (!next) return;
+        store.patch((cur) => {
+          if (next.length >= 3) {
+            const [p, m, s] = next;
+            if (store.get().visible.sidebarPanel) lastPrimaryPctWithSidebarRef.current = p;
+            return {
+              ...cur,
+              sizes: {
+                ...cur.sizes,
+                primaryPct: p,
+                mainPct: m,
+                secondaryPct: s,
+              },
+            };
+          }
+          const [p, m] = next;
+          if (store.get().visible.sidebarPanel) lastPrimaryPctWithSidebarRef.current = p;
+          return {
+            ...cur,
+            sizes: {
+              ...cur.sizes,
+              primaryPct: p,
+              mainPct: m,
+            },
+          };
+        });
+      });
+    },
+    [store],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (panelGroupLayoutRafRef.current != null) {
+        window.cancelAnimationFrame(panelGroupLayoutRafRef.current);
+        panelGroupLayoutRafRef.current = null;
+      }
+      pendingPanelGroupLayoutRef.current = null;
+    };
+  }, []);
+
   /** Collapse/expand primary `Panel` so toggles reclaim space (same idea as unmounting the bottom dock). */
   useLayoutEffect(() => {
     if (!showLeft) {
@@ -457,7 +508,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       return;
     }
     primaryRef.current?.expand(Math.max(10, lastPrimaryPctWithSidebarRef.current || hSizes[0]));
-  }, [showLeft, showMenuRail, showSidebarPanel, hSizes[0], activityRailPct]);
+  }, [showLeft, showMenuRail, showSidebarPanel, activityRailPct]);
 
   /** Collapse/expand companion `Panel` so toggles match store (panel stays mounted). */
   useLayoutEffect(() => {
@@ -644,38 +695,12 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
           <PanelGroup
             direction="horizontal"
             className="h-full min-h-0 min-w-0 flex-1 box-border"
-            onLayout={(sizes) => {
-              store.patch((cur) => {
-                if (sizes.length >= 3) {
-                  const [p, m, s] = sizes;
-                  if (store.get().visible.sidebarPanel) lastPrimaryPctWithSidebarRef.current = p;
-                  return {
-                    ...cur,
-                    sizes: {
-                      ...cur.sizes,
-                      primaryPct: p,
-                      mainPct: m,
-                      secondaryPct: s,
-                    },
-                  };
-                }
-                const [p, m] = sizes;
-                if (store.get().visible.sidebarPanel) lastPrimaryPctWithSidebarRef.current = p;
-                return {
-                  ...cur,
-                  sizes: {
-                    ...cur.sizes,
-                    primaryPct: p,
-                    mainPct: m,
-                  },
-                };
-              });
-            }}
+            onLayout={(sizes) => schedulePersistPanelLayout(sizes)}
           >
             <Panel
               ref={primaryRef}
               defaultSize={hSizes[0]}
-              minSize={showLeft ? 8 : 0}
+              minSize={showLeft ? (showMenuRail && !showSidebarPanel ? activityRailPct : 8) : 0}
               collapsible
               collapsedSize={0}
               onCollapse={() => {
