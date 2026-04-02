@@ -13,6 +13,7 @@ import { seedBundledDocumentationNotesFromDir } from "./bundled-docs-seed";
 import {
   closeNotesSqlite,
   countNotesInDb,
+  getHomeWelcomeMarkdown,
   getNotesDatabase,
   initWorkspaceNotesDatabase,
   loadFromDatabase,
@@ -106,7 +107,9 @@ export function bootstrapWorkspaceNotes(
   }
 
   if (mainEmpty && allAttachedEmpty) {
-    ensureNotesSeeded(registeredTypes);
+    ensureNotesSeeded(registeredTypes, {
+      homeMarkdown: getHomeWelcomeMarkdown(db),
+    });
     mergeMultipleRootsIfNeeded();
     saveWorkspaceToDatabases(db);
     trySeedBundledDocsAndSave(db);
@@ -115,7 +118,9 @@ export function bootstrapWorkspaceNotes(
 
   if (!loadFromDatabase(db)) {
     resetNotesStore();
-    ensureNotesSeeded(registeredTypes);
+    ensureNotesSeeded(registeredTypes, {
+      homeMarkdown: getHomeWelcomeMarkdown(db),
+    });
     mergeMultipleRootsIfNeeded();
     saveWorkspaceToDatabases(db);
     trySeedBundledDocsAndSave(db);
@@ -139,7 +144,9 @@ export function bootstrapWorkspaceNotes(
 
   if (getNotesFlat().length === 0 && registeredTypes.length > 0) {
     resetNotesStore();
-    ensureNotesSeeded(registeredTypes);
+    ensureNotesSeeded(registeredTypes, {
+      homeMarkdown: getHomeWelcomeMarkdown(db),
+    });
     mergeMultipleRootsIfNeeded();
     saveWorkspaceToDatabases(db);
     trySeedBundledDocsAndSave(db);

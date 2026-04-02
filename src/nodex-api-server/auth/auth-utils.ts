@@ -8,6 +8,7 @@ export type AccessTokenClaims = {
   sub: string;
   email: string;
   username: string;
+  isAdmin: boolean;
 };
 
 export function requireAuthJwtSecret(): string {
@@ -45,6 +46,7 @@ export function signAccessToken(user: AuthUserPublic): string {
     sub: user.id,
     email: user.email,
     username: user.username,
+    isAdmin: (user as AuthUserPublic & { isAdmin?: unknown }).isAdmin === true,
   };
   return jwt.sign(claims, secret, { expiresIn: accessTokenTtlSeconds() });
 }
@@ -59,10 +61,11 @@ export function verifyAccessToken(token: string): AccessTokenClaims {
   const sub = typeof rec.sub === "string" ? rec.sub : "";
   const email = typeof rec.email === "string" ? rec.email : "";
   const username = typeof rec.username === "string" ? rec.username : "";
+  const isAdmin = rec.isAdmin === true;
   if (!sub || !email || !username) {
     throw new Error("Invalid token claims");
   }
-  return { sub, email, username };
+  return { sub, email, username, isAdmin };
 }
 
 export async function hashPassword(password: string): Promise<string> {

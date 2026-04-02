@@ -1,6 +1,6 @@
 import React from "react";
 import { useAuth } from "./AuthContext";
-import { AuthScreen } from "./AuthScreen";
+import { EntryScreen } from "./EntryScreen";
 import { isElectronUserAgent } from "../nodex-web-shim";
 
 export function AuthGate({ children }: { children: React.ReactNode }): React.ReactElement {
@@ -22,6 +22,6 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
     );
   }
 
-  return <AuthScreen />;
+  return <EntryScreen />;
 }
 

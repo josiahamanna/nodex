@@ -551,6 +551,7 @@ export type NodexRendererApi = {
   ) => Promise<{ project: WpnProjectRow }>;
   wpnDeleteProject: (id: string) => Promise<{ ok: true }>;
   wpnListNotes: (projectId: string) => Promise<{ notes: WpnNoteListItem[] }>;
+  wpnGetNote: (noteId: string) => Promise<{ note: WpnNoteDetail }>;
   wpnGetExplorerState: (projectId: string) => Promise<{ expanded_ids: string[] }>;
   wpnSetExplorerState: (
     projectId: string,

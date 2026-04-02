@@ -20,6 +20,10 @@ const CSP = [
 export const metadata: Metadata = {
   title: "Nodex",
   description: "Programmable Knowledge System",
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

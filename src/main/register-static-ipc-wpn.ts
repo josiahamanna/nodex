@@ -17,6 +17,7 @@ import {
   wpnSqliteDeleteNotes,
   wpnSqliteDuplicateNoteSubtree,
   wpnSqliteGetExplorerExpanded,
+  wpnSqliteGetNoteById,
   wpnSqliteListNotesFlat,
   wpnSqliteMoveNote,
   wpnSqliteSetExplorerExpanded,
@@ -155,6 +156,19 @@ export function registerStaticIpcWpnHandlers(): void {
     const db = requireNotesDb();
     const ownerId = getWpnOwnerId();
     return { notes: wpnSqliteListNotesFlat(db, ownerId, projectId) };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WPN_GET_NOTE, async (_e, noteId: unknown) => {
+    if (typeof noteId !== "string" || !noteId) {
+      throw new Error("Invalid note id");
+    }
+    const db = requireNotesDb();
+    const ownerId = getWpnOwnerId();
+    const note = wpnSqliteGetNoteById(db, ownerId, noteId);
+    if (!note) {
+      throw new Error("Note not found");
+    }
+    return { note };
   });
 
   ipcMain.handle(IPC_CHANNELS.WPN_GET_EXPLORER_STATE, async (_e, projectId: unknown) => {

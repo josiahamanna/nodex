@@ -19,6 +19,7 @@ import { openNoteInShell } from "../../../openNoteInShell";
 import { DOCS_BC, type DocsBcMessage } from "./documentationConstants";
 import { resolveCommandApiDoc } from "../../../command-api-metadata";
 import { resolvedCommandDocToMarkdown } from "./documentationCommandMarkdown";
+import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 
 function esc(s: string): string {
   return String(s || "").replace(/[&<>"]/g, (ch) =>
@@ -55,11 +56,14 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
   const regs = useShellRegistries();
   const views = useShellViewRegistry();
   const layout = useShellLayoutStore();
+  const { mountKind } = useShellProjectWorkspace();
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>("guides");
   const [q, setQ] = useState("");
   const [miniOnly, setMiniOnly] = useState(true);
   const [selectedCommandId, setSelectedCommandId] = useState<string | null>(null);
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
+  const [wpnGuides, setWpnGuides] = useState<Array<{ id: string; title: string }>>([]);
+  const [wpnGuidesError, setWpnGuidesError] = useState<string | null>(null);
 
   const postBc = useCallback((msg: DocsBcMessage) => {
     if (typeof BroadcastChannel === "undefined") return;
@@ -69,8 +73,74 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
   }, []);
 
   useEffect(() => {
+    // Legacy notes list (folder-backed / bundled docs in SQLite notes tree)
+    if (mountKind === "wpn-postgres") {
+      return;
+    }
     void dispatch(fetchAllNotes());
-  }, [dispatch]);
+  }, [dispatch, mountKind]);
+
+  useEffect(() => {
+    if (mountKind !== "wpn-postgres") {
+      setWpnGuides([]);
+      setWpnGuidesError(null);
+      return;
+    }
+    let cancelled = false;
+    setWpnGuidesError(null);
+    void (async () => {
+      try {
+        const { workspaces } = await window.Nodex.wpnListWorkspaces();
+        const ws0 = workspaces[0];
+        if (!ws0) {
+          if (!cancelled) setWpnGuides([]);
+          return;
+        }
+        const { projects } = await window.Nodex.wpnListProjects(ws0.id);
+        const docsProject = projects.find((p) => p.name === "Documentation");
+        if (!docsProject) {
+          if (!cancelled) setWpnGuides([]);
+          return;
+        }
+        const { notes } = await window.Nodex.wpnListNotes(docsProject.id);
+        // Fetch details for each note so we can filter bundledDocRole/pages.
+        const details = await Promise.all(
+          notes.map(async (n) => {
+            try {
+              const r = await window.Nodex.wpnGetNote(n.id);
+              return r.note;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        const pages = details
+          .filter((n): n is NonNullable<typeof n> => !!n)
+          .filter((n) => n.metadata?.bundledDoc === true && n.metadata?.bundledDocRole === "page")
+          .map((n) => ({ id: n.id, title: n.title }));
+        // Stable ordering using bundledDocOrder when present.
+        pages.sort((a, b) => {
+          const ao = (details.find((x) => x?.id === a.id)?.metadata as Record<string, unknown> | undefined)
+            ?.bundledDocOrder;
+          const bo = (details.find((x) => x?.id === b.id)?.metadata as Record<string, unknown> | undefined)
+            ?.bundledDocOrder;
+          const an = typeof ao === "number" ? ao : 9999;
+          const bn = typeof bo === "number" ? bo : 9999;
+          if (an !== bn) return an - bn;
+          return a.title.localeCompare(b.title);
+        });
+        if (!cancelled) setWpnGuides(pages);
+      } catch (e) {
+        if (!cancelled) {
+          setWpnGuides([]);
+          setWpnGuidesError(e instanceof Error ? e.message : String(e));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mountKind]);
 
   useEffect(() => {
     const bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(DOCS_BC) : null;
@@ -89,6 +159,16 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
   }, []);
 
   const guideRows = useMemo(() => {
+    if (mountKind === "wpn-postgres") {
+      return wpnGuides.map((g) => ({
+        id: g.id,
+        title: g.title,
+        type: "markdown",
+        parentId: null,
+        depth: 0,
+        metadata: { bundledDoc: true, bundledDocRole: "page" },
+      })) as NoteListItem[];
+    }
     return notesList
       .filter(isBundledDocPage)
       .sort((a, b) => {
@@ -225,8 +305,11 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
           <div className="min-h-0 flex-1 space-y-1 overflow-auto px-2 pb-2">
             {guideRows.length === 0 ? (
               <p className="px-1 py-2 text-[11px] text-muted-foreground">
-                No bundled guides in the notes database yet. Open a workspace so bundled docs can seed, then
-                switch back here.
+                {mountKind === "wpn-postgres"
+                  ? wpnGuidesError
+                    ? `Could not load guides from Postgres: ${wpnGuidesError}`
+                    : "No bundled guides found in the server workspace yet."
+                  : "No bundled guides in the notes database yet. Open a workspace so bundled docs can seed, then switch back here."}
               </p>
             ) : (
               filteredGuides.slice(0, 200).map((g) => (
@@ -236,6 +319,11 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
                   className="w-full border border-border/80 bg-muted/10 px-2 py-1.5 text-left hover:bg-muted/40"
                   onClick={() => {
                     setSelectedGuideId(g.id);
+                    if (mountKind === "wpn-postgres") {
+                      // In WPN mode, bundled docs are WPN notes; open directly.
+                      openNote(g.id);
+                      return;
+                    }
                     void dispatch(
                       patchNoteMetadata({
                         noteId: g.id,

@@ -13,6 +13,7 @@ export async function ensureAuthPgSchema(pool: Pool): Promise<void> {
       email TEXT NOT NULL UNIQUE,
       username TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
+      is_admin BOOLEAN NOT NULL DEFAULT FALSE,
       created_at_ms BIGINT NOT NULL,
       updated_at_ms BIGINT NOT NULL
     )`,
@@ -37,6 +38,9 @@ export async function ensureAuthPgSchema(pool: Pool): Promise<void> {
   for (const sql of stmts) {
     await pool.query(sql);
   }
+
+  // Ensure forward-compatible schema (older installs may already have the table).
+  await pool.query("ALTER TABLE auth_user ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE");
 
   const { rows } = await pool.query<{ value: string }>(
     "SELECT value FROM auth_meta WHERE key = $1",

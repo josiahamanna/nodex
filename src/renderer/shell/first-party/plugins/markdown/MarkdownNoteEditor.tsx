@@ -4,6 +4,7 @@ import type { Note } from "@nodex/ui-types";
 import type { AppDispatch } from "../../../../store";
 import { patchNoteMetadata, saveNoteContent } from "../../../../store/notesSlice";
 import MarkdownRenderer from "../../../../components/renderers/MarkdownRenderer";
+import { useAuth } from "../../../auth/AuthContext";
 
 type MarkdownViewMode = "editor" | "preview" | "both";
 
@@ -19,6 +20,7 @@ export function MarkdownNoteEditor({
   persist: boolean;
 }): React.ReactElement {
   const dispatch = useDispatch<AppDispatch>();
+  const auth = useAuth();
   const [value, setValue] = useState(note.content ?? "");
   const latestRef = useRef(note.content ?? "");
   const rafRef = useRef(0);
@@ -26,10 +28,11 @@ export function MarkdownNoteEditor({
   const noteIdRef = useRef(note.id);
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
   const meta = (note.metadata ?? {}) as Record<string, unknown>;
+  const isAdmin = auth.state.status === "authed" && auth.state.user.isAdmin === true;
   const readOnly =
     meta.docsReadOnly === true ||
     meta.readOnly === true ||
-    meta.bundledDoc === true;
+    (meta.bundledDoc === true && !isAdmin);
 
   const [viewMode, setViewMode] = useState<MarkdownViewMode>(() => {
     const raw =

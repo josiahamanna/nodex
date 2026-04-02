@@ -5,6 +5,7 @@ import { resolveCommandApiDoc } from "../../../command-api-metadata";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import { DOCS_BC, type DocsBcMessage } from "./documentationConstants";
 import { resolvedCommandDocToMarkdown } from "./documentationCommandMarkdown";
+import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 
 function esc(s: string): string {
   return String(s || "").replace(/[&<>"]/g, (ch) =>
@@ -18,6 +19,7 @@ function esc(s: string): string {
  */
 export function DocumentationHubView(_props: { viewId: string; title: string }): React.ReactElement {
   const registry = useNodexContributionRegistry();
+  const { mountKind } = useShellProjectWorkspace();
   const [commandId, setCommandId] = useState<string | null>(null);
   const [bundledNoteId, setBundledNoteId] = useState<string | null>(null);
   const [bundledNote, setBundledNote] = useState<Note | null>(null);
@@ -77,7 +79,14 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     }
     setBundledLoading(true);
     setBundledError(null);
-    void window.Nodex.getNote(bundledNoteId)
+    const load = async () => {
+      if (mountKind === "wpn-postgres" || bundledNoteId.startsWith("wpn-docs:")) {
+        const r = await window.Nodex.wpnGetNote(bundledNoteId);
+        return r.note as unknown as Note;
+      }
+      return await window.Nodex.getNote(bundledNoteId);
+    };
+    void load()
       .then((n) => {
         setBundledNote(n);
         setBundledLoading(false);
@@ -86,7 +95,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
         setBundledError(e instanceof Error ? e.message : String(e));
         setBundledLoading(false);
       });
-  }, [bundledNoteId]);
+  }, [bundledNoteId, mountKind]);
 
   const docHubDismissBtn =
     "shrink-0 rounded-md border border-border/60 bg-background px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted/40";

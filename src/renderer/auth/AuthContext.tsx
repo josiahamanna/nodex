@@ -32,7 +32,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     if (typeof window !== "undefined" && !isElectronUserAgent()) {
       return { status: "loading", user: null };
     }
-    return { status: "authed", user: { id: "local", email: "local@nodex", username: "local" } };
+    return {
+      status: "authed",
+      user: { id: "local", email: "local@nodex", username: "local", isAdmin: true },
+    };
   });
 
   const refreshSession = useCallback(async () => {

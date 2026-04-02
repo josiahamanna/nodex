@@ -134,7 +134,10 @@ export function getSeedSampleNotesPreference(): boolean {
   return seedSampleNotesEnabled;
 }
 
-export function ensureNotesSeeded(registeredTypes: string[]): void {
+export function ensureNotesSeeded(
+  registeredTypes: string[],
+  opts?: { homeMarkdown?: string },
+): void {
   if (!seedSampleNotesEnabled) {
     return;
   }
@@ -145,15 +148,19 @@ export function ensureNotesSeeded(registeredTypes: string[]): void {
   if (!overviewType) {
     return;
   }
-  const { title: overviewTitle, content, metadata } =
-    overviewTitleAndBody(overviewType);
+  const { title: overviewTitle, content, metadata } = overviewTitleAndBody(
+    overviewType,
+  );
   const homeId = randomUUID();
   notes.set(homeId, {
     id: homeId,
     parentId: null,
     type: overviewType,
     title: overviewTitle,
-    content,
+    content:
+      overviewType === "markdown" && opts?.homeMarkdown != null
+        ? opts.homeMarkdown
+        : content,
     metadata,
   });
   const childTypes = sampleChildNoteTypes(

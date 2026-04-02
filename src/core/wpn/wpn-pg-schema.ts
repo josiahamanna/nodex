@@ -46,6 +46,16 @@ export async function ensureWpnPgSchema(pool: Pool): Promise<void> {
       project_id TEXT PRIMARY KEY NOT NULL REFERENCES wpn_project(id) ON DELETE CASCADE,
       expanded_ids_json TEXT NOT NULL DEFAULT '[]'
     )`,
+    `CREATE TABLE IF NOT EXISTS wpn_workspace_settings (
+      workspace_id TEXT PRIMARY KEY NOT NULL REFERENCES wpn_workspace(id) ON DELETE CASCADE,
+      settings_json TEXT NOT NULL DEFAULT '{}',
+      updated_at_ms BIGINT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS wpn_project_settings (
+      project_id TEXT PRIMARY KEY NOT NULL REFERENCES wpn_project(id) ON DELETE CASCADE,
+      settings_json TEXT NOT NULL DEFAULT '{}',
+      updated_at_ms BIGINT NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS nodex_headless_session_plugin (
       plugin_id TEXT PRIMARY KEY NOT NULL,
       manifest_version TEXT,

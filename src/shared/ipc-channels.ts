@@ -133,6 +133,7 @@ export const IPC_CHANNELS = {
   WPN_UPDATE_PROJECT: "wpn:update-project",
   WPN_DELETE_PROJECT: "wpn:delete-project",
   WPN_LIST_NOTES: "wpn:list-notes",
+  WPN_GET_NOTE: "wpn:get-note",
   WPN_GET_EXPLORER_STATE: "wpn:get-explorer-state",
   WPN_SET_EXPLORER_STATE: "wpn:set-explorer-state",
   WPN_CREATE_NOTE_IN_PROJECT: "wpn:create-note-in-project",

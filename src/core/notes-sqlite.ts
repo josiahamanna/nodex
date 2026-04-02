@@ -10,6 +10,38 @@ import {
 import { ensureWpnV2Schema } from "./wpn/wpn-schema-sqlite";
 
 const SchemaVersion = 1;
+const APP_META_HOME_WELCOME_MD_KEY = "home_welcome_markdown_v1";
+
+const DEFAULT_HOME_WELCOME_MARKDOWN = `# Welcome to Nodex
+
+This **Home** note is the workspace root — use it as your documentation landing page.
+
+## Tips
+
+- Add child notes for topics, specs, and runbooks.
+- Use **Markdown** notes for readable docs; other note types showcase plugins.
+- The tree on the left is your single outline for everything in this workspace.
+
+---
+
+_Edit this page anytime to match your project._`;
+
+export function getAppMeta(db: Database, key: string): string | null {
+  const row = db
+    .prepare("SELECT value FROM app_meta WHERE key = ?")
+    .get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setAppMeta(db: Database, key: string, value: string): void {
+  db.prepare(
+    "INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  ).run(key, value);
+}
+
+export function getHomeWelcomeMarkdown(db: Database): string {
+  return getAppMeta(db, APP_META_HOME_WELCOME_MD_KEY) ?? DEFAULT_HOME_WELCOME_MARKDOWN;
+}
 
 function requireBetterSqlite(): typeof import("better-sqlite3") {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -54,6 +86,17 @@ function ensureSchema(db: Database): void {
     db.prepare("INSERT INTO app_meta (key, value) VALUES (?, ?)").run(
       "schema_version",
       String(SchemaVersion),
+    );
+  }
+  // Seed DB-backed Home/Welcome markdown once so it can be edited by changing the DB,
+  // without rebuilding the app. (Used only when seeding an empty workspace.)
+  const welcome = db
+    .prepare("SELECT value FROM app_meta WHERE key = ?")
+    .get(APP_META_HOME_WELCOME_MD_KEY) as { value: string } | undefined;
+  if (!welcome) {
+    db.prepare("INSERT INTO app_meta (key, value) VALUES (?, ?)").run(
+      APP_META_HOME_WELCOME_MD_KEY,
+      DEFAULT_HOME_WELCOME_MARKDOWN,
     );
   }
   ensureWpnV2Schema(db);

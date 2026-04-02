@@ -66,13 +66,20 @@ async function requirePool(): Promise<ReturnType<typeof getWpnPgPool>> {
 async function readUserByEmail(
   pool: NonNullable<ReturnType<typeof getWpnPgPool>>,
   email: string,
-): Promise<{ id: string; email: string; username: string; password_hash: string } | null> {
+): Promise<{
+  id: string;
+  email: string;
+  username: string;
+  password_hash: string;
+  is_admin: boolean;
+} | null> {
   const { rows } = await pool.query<{
     id: string;
     email: string;
     username: string;
     password_hash: string;
-  }>("SELECT id, email, username, password_hash FROM auth_user WHERE email = $1", [email]);
+    is_admin: boolean;
+  }>("SELECT id, email, username, password_hash, is_admin FROM auth_user WHERE email = $1", [email]);
   return rows[0] ?? null;
 }
 
@@ -80,15 +87,25 @@ async function readUserById(
   pool: NonNullable<ReturnType<typeof getWpnPgPool>>,
   id: string,
 ): Promise<AuthUserPublic | null> {
-  const { rows } = await pool.query<{ id: string; email: string; username: string }>(
-    "SELECT id, email, username FROM auth_user WHERE id = $1",
+  const { rows } = await pool.query<{ id: string; email: string; username: string; isAdmin: boolean }>(
+    'SELECT id, email, username, is_admin AS "isAdmin" FROM auth_user WHERE id = $1',
     [id],
   );
   return rows[0] ?? null;
 }
 
+function parseAdminEmailsAllowlist(): Set<string> {
+  const raw = process.env.NODEX_AUTH_ADMIN_EMAILS ?? "";
+  const parts = raw
+    .split(/[,\s]+/g)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return new Set(parts);
+}
+
 export function createAuthRouter(): Router {
   const router = Router();
+  const adminEmails = parseAdminEmailsAllowlist();
 
   router.post("/signup", async (req: Request, res: Response) => {
     try {
@@ -112,13 +129,14 @@ export function createAuthRouter(): Router {
         return;
       }
       const password_hash = await hashPassword(password);
+      const isAdmin = adminEmails.has(email);
       const id = newId();
       const t = nowMs();
       try {
         await pool.query(
-          `INSERT INTO auth_user (id, email, username, password_hash, created_at_ms, updated_at_ms)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [id, email, username, password_hash, t, t],
+          `INSERT INTO auth_user (id, email, username, password_hash, is_admin, created_at_ms, updated_at_ms)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [id, email, username, password_hash, isAdmin, t, t],
         );
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -130,7 +148,7 @@ export function createAuthRouter(): Router {
         return;
       }
 
-      const user: AuthUserPublic = { id, email, username };
+      const user: AuthUserPublic & { isAdmin: boolean } = { id, email, username, isAdmin };
       const accessToken = signAccessToken(user);
       const refreshToken = newRefreshToken();
       const refreshHash = hashRefreshToken(refreshToken);
@@ -172,7 +190,19 @@ export function createAuthRouter(): Router {
         res.status(401).json({ error: "Invalid credentials" });
         return;
       }
-      const user: AuthUserPublic = { id: row.id, email: row.email, username: row.username };
+      const shouldBeAdmin = adminEmails.has(row.email);
+      if (shouldBeAdmin && row.is_admin !== true) {
+        await pool.query("UPDATE auth_user SET is_admin = TRUE, updated_at_ms = $1 WHERE id = $2", [
+          nowMs(),
+          row.id,
+        ]);
+      }
+      const user: AuthUserPublic & { isAdmin: boolean } = {
+        id: row.id,
+        email: row.email,
+        username: row.username,
+        isAdmin: row.is_admin === true || shouldBeAdmin,
+      };
       const accessToken = signAccessToken(user);
       const refreshToken = newRefreshToken();
       const refreshHash = hashRefreshToken(refreshToken);
@@ -298,7 +328,9 @@ export function createAuthRouter(): Router {
       // Lazy import to avoid circular deps if future changes add middleware here.
       const { verifyAccessToken } = await import("./auth-utils");
       const claims = verifyAccessToken(token);
-      res.json({ user: { id: claims.sub, email: claims.email, username: claims.username } });
+      res.json({
+        user: { id: claims.sub, email: claims.email, username: claims.username, isAdmin: claims.isAdmin },
+      });
     } catch (e) {
       res.status(401).json({ error: "Unauthorized" });
     }

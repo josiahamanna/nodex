@@ -36,6 +36,13 @@ import {
   wpnPgSetExplorerExpanded,
   wpnPgUpdateNote,
 } from "../core/wpn/wpn-pg-notes";
+import { wpnPgEnsureBundledDocsSeeded } from "../core/wpn/wpn-pg-docs-seed";
+import {
+  wpnPgGetProjectSettings,
+  wpnPgGetWorkspaceSettings,
+  wpnPgPatchProjectSettings,
+  wpnPgPatchWorkspaceSettings,
+} from "../core/wpn/wpn-pg-settings";
 import {
   wpnSqliteCreateNote,
   wpnSqliteDeleteNotes,
@@ -109,6 +116,11 @@ export function createWpnRouter(): Router {
         b.kind === "postgres"
           ? await wpnPgCreateWorkspace(b.pool, ownerId, name)
           : wpnSqliteCreateWorkspace(b.db, ownerId, name);
+      if (b.kind === "postgres") {
+        // Seed bundled docs into Postgres so "documentation" lives in the DB.
+        // Safe to call; no-ops if docs dir is missing.
+        await wpnPgEnsureBundledDocsSeeded(b.pool, ownerId, workspace.id);
+      }
       res.status(201).json({ workspace });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -467,6 +479,72 @@ export function createWpnRouter(): Router {
         );
       }
       res.json({ ok: true as const });
+    } catch (e) {
+      sendErr(res, 503, e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  wpn.get("/workspaces/:workspaceId/settings", async (req: Request, res: Response) => {
+    try {
+      const ownerId = (req as AuthedRequest).user!.id;
+      const { workspaceId } = req.params;
+      const b = await resolveBackend();
+      if (b.kind !== "postgres") {
+        sendErr(res, 400, "Workspace settings are only available on Postgres");
+        return;
+      }
+      const settings = await wpnPgGetWorkspaceSettings(b.pool, ownerId, workspaceId);
+      res.json({ settings });
+    } catch (e) {
+      sendErr(res, 503, e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  wpn.patch("/workspaces/:workspaceId/settings", async (req: Request, res: Response) => {
+    try {
+      const ownerId = (req as AuthedRequest).user!.id;
+      const { workspaceId } = req.params;
+      const patch = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+      const b = await resolveBackend();
+      if (b.kind !== "postgres") {
+        sendErr(res, 400, "Workspace settings are only available on Postgres");
+        return;
+      }
+      const settings = await wpnPgPatchWorkspaceSettings(b.pool, ownerId, workspaceId, patch);
+      res.json({ settings });
+    } catch (e) {
+      sendErr(res, 503, e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  wpn.get("/projects/:projectId/settings", async (req: Request, res: Response) => {
+    try {
+      const ownerId = (req as AuthedRequest).user!.id;
+      const { projectId } = req.params;
+      const b = await resolveBackend();
+      if (b.kind !== "postgres") {
+        sendErr(res, 400, "Project settings are only available on Postgres");
+        return;
+      }
+      const settings = await wpnPgGetProjectSettings(b.pool, ownerId, projectId);
+      res.json({ settings });
+    } catch (e) {
+      sendErr(res, 503, e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  wpn.patch("/projects/:projectId/settings", async (req: Request, res: Response) => {
+    try {
+      const ownerId = (req as AuthedRequest).user!.id;
+      const { projectId } = req.params;
+      const patch = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+      const b = await resolveBackend();
+      if (b.kind !== "postgres") {
+        sendErr(res, 400, "Project settings are only available on Postgres");
+        return;
+      }
+      const settings = await wpnPgPatchProjectSettings(b.pool, ownerId, projectId, patch);
+      res.json({ settings });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
     }

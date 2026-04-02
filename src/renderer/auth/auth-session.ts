@@ -1,4 +1,4 @@
-export type AuthUser = { id: string; email: string; username: string };
+export type AuthUser = { id: string; email: string; username: string; isAdmin?: boolean };
 
 let accessToken: string | null = null;
 

@@ -51,6 +51,7 @@ import {
   SHELL_SIDEBAR_MIN_EXPANDED_PX,
 } from "./shellResponsiveConstants";
 import { useAuth } from "../auth/AuthContext";
+import { NodexLogo } from "../components/NodexLogo";
 
 function IconBottomDockLayout({ className }: { className?: string }): React.ReactElement {
   return (
@@ -585,7 +586,9 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 setAppMenuOpen((v) => !v);
               }}
             >
-              N
+              <span className="text-primary">
+                <NodexLogo className="h-4 w-4" title="Nodex" />
+              </span>
             </button>
             {appMenuOpen && appMenuItems.length > 0 ? (
               <div
