@@ -132,6 +132,8 @@ services:
       # Optional: Postgres WPN when set (e.g. postgresql://nodex:nodex@postgres:5432/nodex with --profile wpn-pg)
       NODEX_PG_DATABASE_URL: ${NODEX_PG_DATABASE_URL:-}
       NODEX_WPN_DEFAULT_OWNER: ${NODEX_WPN_DEFAULT_OWNER:-jehu}
+      # Bundled Documentation guides (manifest + markdown baked into API image; see Dockerfile).
+      NODEX_BUNDLED_DOCS_DIR: /app/docs/bundled-plugin-authoring
     depends_on:
       postgres:
         condition: service_healthy

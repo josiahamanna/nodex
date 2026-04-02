@@ -7,6 +7,8 @@ import type {
 } from "@nodex/ui-types";
 import { workspaceFolderPathForNote } from "../../../../../shared/note-workspace";
 import type { AppDispatch, RootState } from "../../../../store";
+import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
+import { closeShellTabsForNoteIds } from "../../../shellTabClose";
 import {
   createNote,
   deleteNotesInTree,
@@ -22,6 +24,7 @@ export function useNotesExplorerShellHandlers(opts: {
   openNoteById: (id: string) => void;
   workspaceRoots: string[];
 }) {
+  const { tabs } = useShellRegistries();
   const dispatch = useDispatch<AppDispatch>();
   const currentNoteId = useSelector((s: RootState) => s.notes.currentNote?.id);
   const [assetFsTick, setAssetFsTick] = useState(0);
@@ -90,9 +93,10 @@ export function useNotesExplorerShellHandlers(opts: {
   const onDeleteNotes = useCallback(
     async (ids: string[]) => {
       await dispatch(deleteNotesInTree(ids)).unwrap();
+      closeShellTabsForNoteIds(tabs, ids);
       await dispatch(fetchAllNotes());
     },
-    [dispatch],
+    [dispatch, tabs],
   );
 
   const onPasteSubtree = useCallback(

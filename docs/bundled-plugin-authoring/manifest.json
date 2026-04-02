@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "folder": {
     "id": "nodex-bundled-docs",
     "title": "Nodex — Plugin authoring (bundled)"
@@ -19,6 +19,11 @@
       "id": "nodex-bundled-plugin-example",
       "file": "03-minimal-example.md",
       "title": "Minimal code example"
+    },
+    {
+      "id": "nodex-bundled-plugin-complete-guide",
+      "file": "04-plugin-authoring-complete-guide.md",
+      "title": "Plugin authoring — complete guide"
     }
   ]
 }

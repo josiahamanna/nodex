@@ -19,3 +19,4 @@ Metadata on seeded notes includes `bundledDoc: true` so the UI can filter them f
 
 - Read **Shell registration and commands** for `useRegister*Plugin` patterns.
 - Read **Minimal code example** for a copy-paste starting point.
+- Read **Plugin authoring — complete guide** for first-party vs packaged plugins, API surfaces, Hello World, and checklists.

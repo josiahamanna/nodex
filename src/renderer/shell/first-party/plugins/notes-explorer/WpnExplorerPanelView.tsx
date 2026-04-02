@@ -11,6 +11,8 @@ import {
   isElectronUserAgent,
   NODEX_WEB_PLUGINS_CHANGED,
 } from "../../../../nodex-web-shim";
+import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
+import { closeShellTabsForNoteIds } from "../../../shellTabClose";
 import { useShellNavigation } from "../../../useShellNavigation";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import { NODEX_SHELL_NOTE_TAB_CLOSED_EVENT } from "../../../shellTabUrlSync";
@@ -120,6 +122,7 @@ type RenamingState =
   | null;
 
 export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.ReactElement {
+  const { tabs } = useShellRegistries();
   const { openNoteById } = useShellNavigation();
   const { workspaceRoots, rootPath, mountKind } = useShellProjectWorkspace();
   const currentNoteId = useSelector((s: RootState) => s.notes.currentNote?.id);
@@ -360,6 +363,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const onDeleteNotes = async (projectId: string, ids: string[]) => {
     if (!window.confirm(`Delete ${ids.length} note(s)?`)) return;
     await window.Nodex.wpnDeleteNotes(ids);
+    closeShellTabsForNoteIds(tabs, ids);
     await loadProjectTree(projectId);
     closeAllMenus();
   };

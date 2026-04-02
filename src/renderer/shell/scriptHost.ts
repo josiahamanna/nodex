@@ -1,3 +1,5 @@
+import { getNotebookSandboxCommandInvoker } from "./notebookSandboxBridge";
+
 type RpcRequest =
   | {
       type: "eval";
@@ -11,11 +13,18 @@ type RpcRequest =
       args: unknown[];
     };
 
+export type NotebookSandboxCellResult =
+  | { name: string; kind: "md"; skipped: true }
+  | { name: string; ok: true; serialized: string }
+  | { name: string; ok: false; error: string };
+
 type RpcResponse =
   | { type: "evalResult"; id: string; ok: true; value: unknown; logs: string[] }
   | { type: "evalResult"; id: string; ok: false; error: string; logs: string[] }
   | { type: "rpcResult"; id: string; ok: true; value: unknown }
-  | { type: "rpcResult"; id: string; ok: false; error: string };
+  | { type: "rpcResult"; id: string; ok: false; error: string }
+  | { type: "notebookRunResult"; id: string; ok: true; results: NotebookSandboxCellResult[] }
+  | { type: "notebookRunResult"; id: string; ok: false; error: string };
 
 let iframe: HTMLIFrameElement | null = null;
 let ready = false;
@@ -83,6 +92,60 @@ function ensureIframe(): HTMLIFrameElement {
           installFromMarket: (packageFile) => rpc("plugins.installMarketplace", [packageFile]),
         };
 
+        const notebookNodex = {
+          commands: {
+            run: (commandId, args) => rpc("notebook.invokeCommand", [commandId, args || {}]),
+          },
+          openNote: (noteId) => rpc("notebook.invokeCommand", ["nodex.notes.open", { noteId: String(noteId) }]),
+          openPalette: () => rpc("notebook.invokeCommand", ["nodex.shell.openPalette", {}]),
+          openMiniBar: (prefill) =>
+            rpc("notebook.invokeCommand", ["nodex.shell.openMiniBar", prefill ? { prefill: String(prefill) } : {}]),
+          openObservableScratch: () =>
+            rpc("notebook.invokeCommand", ["nodex.observableNotebook.open", {}]),
+        };
+
+        async function runNotebookCells(cells) {
+          const scope = {};
+          const results = [];
+          for (let i = 0; i < cells.length; i++) {
+            const c = cells[i];
+            const kind = c.kind === "md" ? "md" : "js";
+            if (kind === "md") {
+              results.push({ name: c.name, kind: "md", skipped: true });
+              continue;
+            }
+            const inputs = Array.isArray(c.inputs) ? c.inputs : [];
+            const body = String(c.body || "");
+            try {
+              const fn = new Function(
+                ...inputs,
+                "nodex",
+                '"use strict"; return (async () => { return (' + body + '); })();',
+              );
+              const args = inputs.map((n) => scope[n]);
+              const v = await fn(...args, notebookNodex);
+              scope[c.name] = v;
+              let serialized = "";
+              try {
+                if (v === null || v === undefined) serialized = String(v);
+                else if (typeof v === "string" || typeof v === "number" || typeof v === "boolean")
+                  serialized = JSON.stringify(v);
+                else serialized = JSON.stringify(v, null, 2);
+              } catch {
+                serialized = String(v);
+              }
+              results.push({ name: c.name, ok: true, serialized });
+            } catch (e) {
+              results.push({
+                name: c.name,
+                ok: false,
+                error: e && e.message ? String(e.message) : String(e),
+              });
+            }
+          }
+          return results;
+        }
+
         function captureConsole(logs) {
           const orig = console;
           const wrap = (level) => (...args) => {
@@ -122,7 +185,22 @@ function ensureIframe(): HTMLIFrameElement {
 
         window.addEventListener("message", async (e) => {
           const d = e && e.data;
-          if (!d || d.type !== "eval" || typeof d.code !== "string" || typeof d.id !== "string") return;
+          if (!d || typeof d.id !== "string") return;
+          if (d.type === "notebookRun" && Array.isArray(d.cells)) {
+            try {
+              const results = await runNotebookCells(d.cells);
+              send({ type: "notebookRunResult", id: d.id, ok: true, results });
+            } catch (err) {
+              send({
+                type: "notebookRunResult",
+                id: d.id,
+                ok: false,
+                error: err && err.message ? String(err.message) : String(err),
+              });
+            }
+            return;
+          }
+          if (d.type !== "eval" || typeof d.code !== "string") return;
           const out = await evalCode(d.code);
           send({ type: "evalResult", id: d.id, ...out });
         });
@@ -166,6 +244,32 @@ async function handleRpc(req: Extract<RpcRequest, { type: "rpc" }>): Promise<voi
     iframe?.contentWindow?.postMessage(resp, "*");
   };
   try {
+    if (req.method === "notebook.invokeCommand") {
+      const inv = getNotebookSandboxCommandInvoker();
+      if (!inv) {
+        post({
+          type: "rpcResult",
+          id: req.id,
+          ok: false,
+          error: "Notebook sandbox bridge not mounted",
+        });
+        return;
+      }
+      const commandId = String(req.args?.[0] ?? "").trim();
+      if (!commandId) {
+        post({ type: "rpcResult", id: req.id, ok: false, error: "Missing command id" });
+        return;
+      }
+      const raw = req.args?.[1];
+      const cmdArgs =
+        raw && typeof raw === "object" && !Array.isArray(raw)
+          ? (raw as Record<string, unknown>)
+          : undefined;
+      await Promise.resolve(inv(commandId, cmdArgs));
+      post({ type: "rpcResult", id: req.id, ok: true, value: undefined });
+      return;
+    }
+
     const api = window.Nodex;
     if (!api) {
       post({ type: "rpcResult", id: req.id, ok: false, error: "No host API" });
@@ -242,5 +346,28 @@ export async function evalInSandbox(code: string): Promise<EvalResult> {
   }
   if (resp.ok) return { ok: true, value: resp.value, logs: resp.logs };
   return { ok: false, error: resp.error, logs: resp.logs };
+}
+
+export async function runNotebookCellsInSandbox(
+  cells: Array<{ name: string; inputs: string[]; body: string; kind?: string }>,
+): Promise<NotebookSandboxCellResult[]> {
+  const f = ensureIframe();
+  const win = f.contentWindow;
+  if (!win) {
+    throw new Error("Sandbox iframe not ready");
+  }
+  const id = `nb.${Date.now()}.${Math.random().toString(16).slice(2)}`;
+  const p = new Promise<RpcResponse>((resolve) => {
+    pending.set(id, resolve);
+  });
+  win.postMessage({ type: "notebookRun", id, cells }, "*");
+  const resp = await p;
+  if (resp.type !== "notebookRunResult") {
+    throw new Error("Unexpected notebook sandbox response");
+  }
+  if (!resp.ok) {
+    throw new Error(resp.error);
+  }
+  return resp.results;
 }
 

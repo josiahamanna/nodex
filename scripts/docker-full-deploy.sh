@@ -12,6 +12,11 @@
 #      NODEX_PG_DATABASE_URL defaulted for the compose network (WPN data in Postgres; default owner jehu).
 #   4. Runs scripts/docker-web-deploy.sh to build the web image, blue/green swap, and prune dangling images.
 #
+# Bundled Documentation (Guides): docs/bundled-plugin-authoring/ is copied into the nodex-api image
+# (Dockerfile) and NODEX_BUNDLED_DOCS_DIR points there. Each deploy rebuilds/restarts the API when
+# sources change; startup runs workspace bootstrap, which upserts those markdown notes into the
+# workspace SQLite under the bind mount (default ./.nodex-docker-workspace).
+#
 # Override URL or password via environment or a .env file in the repo root (compose loads .env).
 set -euo pipefail
 

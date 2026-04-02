@@ -25,6 +25,10 @@ COPY user-pluggins ./user-pluggins
 # Build bundled marketplace artifacts into dist/plugins (marketplace-index.json + .nodexplugin zips)
 RUN npm run build:plugins
 
+# Plugin-authoring guides for Documentation (seeded into workspace SQLite on API startup).
+# Placed after build:plugins so editing markdown does not invalidate the heavy plugin build layer.
+COPY docs/bundled-plugin-authoring ./docs/bundled-plugin-authoring
+
 ENV NODE_ENV=production
 # Listen on all interfaces so `docker run -p` / Compose port mappings work.
 ENV HOST=0.0.0.0

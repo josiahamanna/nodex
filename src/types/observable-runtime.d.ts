@@ -1,5 +1,6 @@
 declare module "@observablehq/runtime" {
   export class Runtime {
+    constructor(builtins?: unknown, globalFn?: unknown);
     module(): {
       variable: (observer?: unknown) => {
         define: (

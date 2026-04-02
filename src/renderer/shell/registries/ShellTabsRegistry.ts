@@ -113,9 +113,17 @@ export class ShellTabsRegistry {
 
   closeTab(instanceId: string): void {
     const before = this.instances;
+    const removedIndex = before.findIndex((t) => t.instanceId === instanceId);
+    if (removedIndex < 0) return;
     this.instances = before.filter((t) => t.instanceId !== instanceId);
     if (this.activeInstanceId === instanceId) {
-      this.activeInstanceId = this.instances.at(-1)?.instanceId ?? null;
+      if (this.instances.length === 0) {
+        this.activeInstanceId = null;
+      } else if (removedIndex <= 0) {
+        this.activeInstanceId = this.instances[0]!.instanceId;
+      } else {
+        this.activeInstanceId = this.instances[removedIndex - 1]!.instanceId;
+      }
     }
     if (before.length !== this.instances.length) {
       this.emit();
