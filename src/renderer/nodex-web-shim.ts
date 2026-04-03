@@ -388,6 +388,24 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
     },
     onRunContributionCommand: () => noopUnsub,
     sendClientLog: () => {},
+    openExternalUrl: async (url: string) => {
+      const t = typeof url === "string" ? url.trim() : "";
+      if (!t) {
+        return { ok: false as const, error: "Invalid url" };
+      }
+      let parsed: URL;
+      try {
+        parsed = new URL(t);
+      } catch {
+        return { ok: false as const, error: "Invalid URL" };
+      }
+      const proto = parsed.protocol.toLowerCase();
+      if (proto !== "http:" && proto !== "https:" && proto !== "mailto:") {
+        return { ok: false as const, error: "Unsupported protocol" };
+      }
+      window.open(t, "_blank", "noopener,noreferrer");
+      return { ok: true as const };
+    },
     assetUrl: () => "nodex-asset:web-unsupported",
     getNativeThemeDark: async () =>
       typeof window !== "undefined" &&
@@ -538,6 +556,24 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
     toggleDeveloperTools: async () => ({ success: false }),
     quitApp: async () => ({ success: false }),
     reloadWindow: async () => ({ success: false }),
+    openExternalUrl: async (url: string) => {
+      const t = typeof url === "string" ? url.trim() : "";
+      if (!t) {
+        return { ok: false as const, error: "Invalid url" };
+      }
+      let parsed: URL;
+      try {
+        parsed = new URL(t);
+      } catch {
+        return { ok: false as const, error: "Invalid URL" };
+      }
+      const proto = parsed.protocol.toLowerCase();
+      if (proto !== "http:" && proto !== "https:" && proto !== "mailto:") {
+        return { ok: false as const, error: "Unsupported protocol" };
+      }
+      window.open(t, "_blank", "noopener,noreferrer");
+      return { ok: true as const };
+    },
     listAssets: async () => ({
       ok: true as const,
       entries: [],

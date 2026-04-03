@@ -16,6 +16,7 @@ import {
 } from "./observable-notebook-types";
 import { useTheme } from "../../../../theme/ThemeContext";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
+import { useNodexNoteModeLine } from "../../../useNodexNoteModeLine";
 import { useShellLayoutStore } from "../../../layout/ShellLayoutContext";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../../../views/ShellViewContext";
@@ -32,6 +33,8 @@ export type ObservableNotebookWorkspaceProps = {
   cells: NotebookCell[];
   onCellsChange: (next: NotebookCell[]) => void;
   invokeCommand: (commandId: string, args?: Record<string, unknown>) => void | Promise<void>;
+  /** Scopes mode-line contributions (note id, scratch key, etc.). */
+  modeLineScopeId: string;
   /** Shown on the right of the toolbar (e.g. scratch vs project note). */
   toolbarHint?: React.ReactNode;
   showSaveNow?: boolean;
@@ -47,6 +50,7 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
     cells,
     onCellsChange,
     invokeCommand,
+    modeLineScopeId,
     toolbarHint,
     showSaveNow,
     onSaveNow,
@@ -63,6 +67,26 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
   const [autoRun, setAutoRun] = useState(false);
   const [lastRunLabel, setLastRunLabel] = useState<string | null>(null);
   const [runBusy, setRunBusy] = useState(false);
+
+  const observableModeLinePrimary = useMemo(() => {
+    const n = cells.length;
+    return `Observable · ${n} cell${n === 1 ? "" : "s"}`;
+  }, [cells.length]);
+
+  const observableModeLineSecondary = useMemo(() => {
+    if (runBusy) return "Running…";
+    if (err) return err.length > 52 ? `${err.slice(0, 49)}…` : err;
+    if (lastRunLabel) return lastRunLabel;
+    if (autoRun) return "Auto-run on";
+    return null;
+  }, [autoRun, err, lastRunLabel, runBusy]);
+
+  useNodexNoteModeLine({
+    scopeId: modeLineScopeId,
+    primaryLine: observableModeLinePrimary,
+    secondaryLine: observableModeLineSecondary,
+    sourcePluginId: "nodex.observable-notebook",
+  });
 
   const cellOutputSlotRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const trustedDisposeRef = useRef<(() => void) | null>(null);

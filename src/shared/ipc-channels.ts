@@ -4,6 +4,8 @@ export const IPC_CHANNELS = {
   UI_TOGGLE_DEVTOOLS: "ui:toggle-devtools",
   UI_QUIT_APP: "ui:quit-app",
   UI_RELOAD_WINDOW: "ui:reload-window",
+  /** Open http(s) or mailto in the system browser (Electron). */
+  UI_OPEN_EXTERNAL_URL: "ui:open-external-url",
   /** Main → renderer: trigger `NodexContributionRegistry.invokeCommand` (e.g. dev menu). */
   UI_RUN_CONTRIBUTION_COMMAND: "ui:run-contribution-command",
   GET_PLUGIN_RENDERER_UI_META: "plugin:get-renderer-ui-meta",

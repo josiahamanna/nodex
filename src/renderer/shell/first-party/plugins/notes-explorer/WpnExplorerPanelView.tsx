@@ -875,6 +875,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     return (
       <div
         className="relative flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground"
+        data-nodex-own-contextmenu
         onClick={() => closeAllMenus()}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -938,6 +939,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   return (
     <div
       className="flex h-full min-h-0 min-w-0 w-full flex-col bg-sidebar text-sidebar-foreground"
+      data-nodex-own-contextmenu
       onClick={() => closeAllMenus()}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border bg-muted/10 px-2 py-1">

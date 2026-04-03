@@ -213,7 +213,10 @@ export default function ProjectAssetsInline({
           </button>
         </div>
         {expanded ? (
-          <div className="max-h-52 overflow-y-auto px-1 py-1">
+          <div
+            className="max-h-52 overflow-y-auto px-1 py-1"
+            data-nodex-own-contextmenu
+          >
             {relDir ? (
               <button
                 type="button"

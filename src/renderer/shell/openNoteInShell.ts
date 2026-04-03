@@ -9,6 +9,8 @@ import type { ShellNoteTabState } from "./shellTabUrlSync";
 
 export type OpenNoteInShellOptions = {
   markdownHeadingSlug?: string;
+  /** Always add a new note tab instead of focusing an existing tab for this note. */
+  newTab?: boolean;
 };
 
 export function openNoteInShell(
@@ -26,6 +28,11 @@ export function openNoteInShell(
     options?.markdownHeadingSlug !== undefined && options.markdownHeadingSlug !== ""
       ? { noteId, markdownHeadingSlug: options.markdownHeadingSlug }
       : { noteId };
+  if (options?.newTab) {
+    deps.tabs.openTab(SHELL_TAB_NOTE, title, state);
+    void store.dispatch(fetchNote(noteId));
+    return;
+  }
   const existing = deps.tabs.findNoteTabByNoteId(noteId, SHELL_TAB_NOTE);
   if (existing) {
     deps.tabs.setActiveTab(existing.instanceId);

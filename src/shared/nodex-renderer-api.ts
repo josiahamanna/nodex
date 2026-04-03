@@ -153,6 +153,10 @@ export type NodexRendererApi = {
   toggleDeveloperTools: () => Promise<{ success: boolean }>;
   quitApp: () => Promise<{ success: boolean }>;
   reloadWindow: () => Promise<{ success: boolean }>;
+  /** Open http(s) or mailto in the system browser (Electron); web shim uses `window.open`. */
+  openExternalUrl: (
+    url: string,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   getUserPluginsDirectory: () => Promise<{ path: string; error?: string }>;
   resetUserPluginsDirectory: () => Promise<{
     success: boolean;

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useDispatch } from "react-redux";
 import Editor from "@monaco-editor/react";
 import { loader } from "@monaco-editor/react";
@@ -8,6 +8,7 @@ import type { AppDispatch } from "../../store";
 import { saveNoteContent } from "../../store/notesSlice";
 import { useTheme } from "../../theme/ThemeContext";
 import { useNodexContributionRegistry } from "../../shell/NodexContributionContext";
+import { useNodexNoteModeLine } from "../../shell/useNodexNoteModeLine";
 
 loader.config({ monaco });
 
@@ -38,6 +39,14 @@ function useDebouncedNoteSave(
   );
 }
 
+function lineColAtPlainText(text: string, offset: number): { line: number; col: number } {
+  const head = Math.max(0, Math.min(offset, text.length));
+  const lines = text.slice(0, head).split("\n");
+  const line = lines.length;
+  const col = (lines[lines.length - 1] ?? "").length + 1;
+  return { line, col };
+}
+
 function TextNoteEditor({
   note,
   persist,
@@ -46,20 +55,42 @@ function TextNoteEditor({
   persist: boolean;
 }): React.ReactElement {
   const [value, setValue] = useState(note.content ?? "");
+  const [caret, setCaret] = useState(0);
   const save = useDebouncedNoteSave(note.id, persist, 400);
 
   useEffect(() => {
     setValue(note.content ?? "");
   }, [note.id, note.content]);
 
+  const syncCaret = useCallback((el: HTMLTextAreaElement) => {
+    setCaret(el.selectionStart);
+  }, []);
+
+  const textSecondary = useMemo(() => {
+    const { line, col } = lineColAtPlainText(value, caret);
+    return `Ln ${line}, Col ${col} · ${value.length} chars`;
+  }, [caret, value]);
+
+  useNodexNoteModeLine({
+    scopeId: note.id,
+    primaryLine: "Plain text",
+    secondaryLine: textSecondary,
+    sourcePluginId: "nodex.text-note",
+  });
+
   return (
     <textarea
       className="h-full min-h-[320px] w-full resize-none border border-border bg-background p-3 font-mono text-[13px] outline-none"
       spellCheck={false}
       value={value}
+      onSelect={(e) => syncCaret(e.currentTarget)}
+      onClick={(e) => syncCaret(e.currentTarget)}
+      onKeyUp={(e) => syncCaret(e.currentTarget)}
       onChange={(e) => {
-        const v = e.target.value;
+        const el = e.currentTarget;
+        const v = el.value;
         setValue(v);
+        setCaret(el.selectionStart);
         save(v);
       }}
     />
@@ -82,6 +113,18 @@ function CodeNoteEditor({
   useEffect(() => {
     setValue(note.content ?? "");
   }, [note.id, note.content]);
+
+  const codeSecondary = useMemo(() => {
+    const lines = value.length === 0 ? 1 : value.split("\n").length;
+    return `${lines} line${lines === 1 ? "" : "s"} · ${value.length} chars`;
+  }, [value]);
+
+  useNodexNoteModeLine({
+    scopeId: note.id,
+    primaryLine: `Code · ${language}`,
+    secondaryLine: codeSecondary,
+    sourcePluginId: "nodex.code-note",
+  });
 
   return (
     <div className="h-full min-h-[420px] w-full overflow-hidden rounded-md border border-border">

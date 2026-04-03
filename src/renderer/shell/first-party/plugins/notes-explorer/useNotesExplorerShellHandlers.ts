@@ -21,7 +21,10 @@ import {
 } from "../../../../store/notesSlice";
 
 export function useNotesExplorerShellHandlers(opts: {
-  openNoteById: (id: string, nav?: { markdownHeadingSlug?: string }) => void;
+  openNoteById: (
+    id: string,
+    nav?: { markdownHeadingSlug?: string; newTab?: boolean },
+  ) => void;
   workspaceRoots: string[];
 }) {
   const { tabs } = useShellRegistries();

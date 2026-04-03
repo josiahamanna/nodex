@@ -1,4 +1,4 @@
-import { app, ipcMain } from "electron";
+import { app, ipcMain, shell } from "electron";
 import { registry } from "../core/registry";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { isSafePluginName, isValidNoteType } from "../shared/validators";
@@ -22,6 +22,30 @@ export function registerRunAppReadyUiPluginIpc(): void {
       ctx.mainWindow.webContents.reload();
     }
     return { success: true as const };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.UI_OPEN_EXTERNAL_URL, (_e, url: unknown) => {
+    if (typeof url !== "string" || !url.trim()) {
+      return { ok: false as const, error: "Invalid url" };
+    }
+    const trimmed = url.trim();
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      return { ok: false as const, error: "Invalid URL" };
+    }
+    const proto = parsed.protocol.toLowerCase();
+    if (proto !== "http:" && proto !== "https:" && proto !== "mailto:") {
+      return { ok: false as const, error: "Unsupported protocol" };
+    }
+    return shell
+      .openExternal(trimmed)
+      .then(() => ({ ok: true as const }))
+      .catch((err: unknown) => ({
+        ok: false as const,
+        error: err instanceof Error ? err.message : String(err),
+      }));
   });
 
   ipcMain.handle(IPC_CHANNELS.PLUGIN_GET_DISABLED_IDS, () =>

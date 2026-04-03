@@ -54,6 +54,7 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
       cells={cells}
       onCellsChange={persist}
       invokeCommand={invokeCommand}
+      modeLineScopeId="nodex.shell.observable-scratch"
       executeOnMount
       toolbarHint={<span>Scratch (not a project note)</span>}
     />

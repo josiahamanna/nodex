@@ -217,6 +217,7 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
       />
       <div
         className="min-h-[120px] rounded-md transition-shadow duration-150"
+        data-nodex-own-contextmenu
         onContextMenu={(e) => {
           const el = e.target as HTMLElement;
           if (el.closest("[data-note-row]")) {

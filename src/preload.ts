@@ -75,6 +75,8 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.UI_TOGGLE_DEVTOOLS),
   quitApp: () => ipcRenderer.invoke(IPC_CHANNELS.UI_QUIT_APP),
   reloadWindow: () => ipcRenderer.invoke(IPC_CHANNELS.UI_RELOAD_WINDOW),
+  openExternalUrl: (url: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.UI_OPEN_EXTERNAL_URL, url),
   getUserPluginsDirectory: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGIN_GET_USER_PLUGINS_DIR),
   resetUserPluginsDirectory: () =>

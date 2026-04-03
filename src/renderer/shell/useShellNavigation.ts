@@ -12,7 +12,7 @@ export function useShellNavigation(): {
   openFromRailItem: (item: ShellMenuRailItem) => void;
   openNoteById: (
     noteId: string,
-    opts?: { markdownHeadingSlug?: string },
+    opts?: { markdownHeadingSlug?: string; newTab?: boolean },
   ) => void;
   invokeCommand: (commandId: string, args?: Record<string, unknown>) => unknown;
 } {
@@ -40,7 +40,10 @@ export function useShellNavigation(): {
   );
 
   const openNoteById = useCallback(
-    (noteId: string, opts?: { markdownHeadingSlug?: string }) => {
+    (
+      noteId: string,
+      opts?: { markdownHeadingSlug?: string; newTab?: boolean },
+    ) => {
       openNoteInShell(noteId, deps, opts);
     },
     [deps],

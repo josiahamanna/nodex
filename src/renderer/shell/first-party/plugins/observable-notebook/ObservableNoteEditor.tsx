@@ -118,6 +118,7 @@ export function ObservableNoteEditor({
       cells={cells}
       onCellsChange={persistCells}
       invokeCommand={invokeCommand}
+      modeLineScopeId={note.id}
       executeWhenKeyChanges={note.id}
       showSaveNow={persist}
       onSaveNow={flushNow}

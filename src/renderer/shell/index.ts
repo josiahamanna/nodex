@@ -4,6 +4,7 @@ export {
   useNodexCommands,
   useNodexModeLineSegment,
 } from "./NodexContributionContext";
+export { useNodexNoteModeLine } from "./useNodexNoteModeLine";
 export { NodexContributionMenuBridge } from "./NodexContributionMenuBridge";
 export { NodexModeLineHost } from "./NodexModeLineHost";
 export {

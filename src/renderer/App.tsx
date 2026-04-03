@@ -16,6 +16,7 @@ import { useRegisterObservableNotebookPlugin } from "./shell/first-party/plugins
 import { useRegisterNotesShellPlugin } from "./shell/first-party/useRegisterNotesShellPlugin";
 import { useRegisterMarkdownNotePlugin } from "./shell/first-party/plugins/markdown/useRegisterMarkdownNotePlugin";
 import { DesktopOnlyGate } from "./shell/DesktopOnlyGate";
+import { GlobalContextMenuHost } from "./shell/GlobalContextMenuHost";
 import { AuthProvider } from "./auth/AuthContext";
 import { AuthGate } from "./auth/AuthGate";
 
@@ -47,6 +48,7 @@ const App: React.FC = () => {
             <NodexCommandPalette vm={shellVm} />
             {layout.visible.miniBar ? <NodexMiniBar vm={shellVm} /> : null}
             <NodexReplOverlay />
+            <GlobalContextMenuHost />
           </div>
         </DesktopOnlyGate>
       </AuthGate>

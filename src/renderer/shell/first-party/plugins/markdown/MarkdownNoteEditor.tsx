@@ -19,6 +19,7 @@ import {
   type MarkdownNoteSelectionSyncRef,
   type MarkdownNoteWikiKeymapState,
 } from "./markdown-note-editor-codemirror";
+import { useNodexNoteModeLine } from "../../../useNodexNoteModeLine";
 import { useShellActiveMainTab } from "../../../ShellActiveTabContext";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import { SHELL_TAB_NOTE } from "../../shellWorkspaceIds";
@@ -26,6 +27,14 @@ import type { ShellNoteTabState } from "../../../shellTabUrlSync";
 import { fetchWpnNoteLinkIndex, filterWpnNoteLinkRows, type WpnNoteLinkRow } from "./wpnNoteLinkIndex";
 
 type MarkdownViewMode = "editor" | "preview" | "both";
+
+function lineColAt(text: string, offset: number): { line: number; col: number } {
+  const head = Math.max(0, Math.min(offset, text.length));
+  const lines = text.slice(0, head).split("\n");
+  const line = lines.length;
+  const col = (lines[lines.length - 1] ?? "").length + 1;
+  return { line, col };
+}
 
 /**
  * System markdown note editor (CodeMirror 6 + debounced react-markdown preview).
@@ -107,6 +116,42 @@ export function MarkdownNoteEditor({
   );
 
   const showWiki = Boolean(wikiTrig) && !wikiDismissed;
+
+  const markdownModeLineLabel = useMemo(() => {
+    if (readOnly) return "Preview";
+    if (viewMode === "both") return "Split";
+    if (viewMode === "editor") return "Editor";
+    return "Preview";
+  }, [readOnly, viewMode]);
+
+  const markdownModeLineSecondary = useMemo(() => {
+    const parts: string[] = [];
+    if (wikiLoading) parts.push("Resolving wiki links…");
+    if (showWiki && wikiRows.length > 0) {
+      parts.push(`Wiki pick ${wikiSelected + 1}/${wikiRows.length}`);
+    }
+    if (!readOnly && viewMode !== "preview") {
+      const { line, col } = lineColAt(value, caretHead);
+      parts.push(`Ln ${line}, Col ${col}`);
+    }
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }, [
+    caretHead,
+    readOnly,
+    showWiki,
+    value,
+    viewMode,
+    wikiLoading,
+    wikiRows.length,
+    wikiSelected,
+  ]);
+
+  useNodexNoteModeLine({
+    scopeId: note.id,
+    primaryLine: `Markdown · ${markdownModeLineLabel}`,
+    secondaryLine: markdownModeLineSecondary,
+    sourcePluginId: "nodex.markdown",
+  });
 
   const prevWikiTrigRef = useRef<ReturnType<typeof findActiveWikiLinkTrigger>>(null);
   useEffect(() => {
