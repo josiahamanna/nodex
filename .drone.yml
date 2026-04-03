@@ -1,0 +1,44 @@
+# Drone pipelines for Nodex (local drone-runner-docker; GitHub as Git + OAuth provider).
+# Default: lint + unit tests on push/PR to main.
+# Tags v*: same CI gate; full multi-OS releases stay in .github/workflows/release.yml unless you add runners.
+
+kind: pipeline
+type: docker
+name: ci
+
+trigger:
+  event:
+    - push
+    - pull_request
+  branch:
+    - main
+    - master
+
+steps:
+  - name: install-lint-test
+    image: node:22-bookworm
+    commands:
+      - apt-get update && apt-get install -y --no-install-recommends python3 make g++ ca-certificates git
+      - npm ci
+      - npm run lint
+      - npm run test
+
+---
+kind: pipeline
+type: docker
+name: verify-tag
+
+trigger:
+  event:
+    - tag
+  ref:
+    - refs/tags/v*
+
+steps:
+  - name: install-lint-test
+    image: node:22-bookworm
+    commands:
+      - apt-get update && apt-get install -y --no-install-recommends python3 make g++ ca-certificates git
+      - npm ci
+      - npm run lint
+      - npm run test

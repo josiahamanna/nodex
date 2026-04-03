@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Optional local deploy after commit. OFF by default so laptops are not tied to Docker deploys.
+# Server-side push automation: deploy/git-server/post-receive.example
+#
+# Enable on a machine that should deploy on every local commit:
+#   export NODEX_POST_COMMIT_DEPLOY=1
+#   npm run hooks:install
+#
+# Skip for one commit: put [skip deploy] in the commit message.
+
+set -euo pipefail
+
+if [[ "${NODEX_POST_COMMIT_DEPLOY:-}" != "1" ]]; then
+  exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+MSG="$(git log -1 --pretty=%B 2>/dev/null || true)"
+if [[ "$MSG" == *"[skip deploy]"* ]]; then
+  echo "[nodex] [skip deploy] in commit message — skipping deploy hook."
+  exit 0
+fi
+
+echo "[nodex] post-commit: npm run deploy -- --stop-old"
+npm run deploy -- --stop-old

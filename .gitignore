@@ -29,3 +29,6 @@ npm-debug.log*
 
 # Default empty bind mount for docker-compose when NODEX_HOST_PROJECT is unset
 .nodex-docker-workspace/
+
+# Local Drone / Gitea (docker-compose.drone.yml)
+deploy/drone/.env

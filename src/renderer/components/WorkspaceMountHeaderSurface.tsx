@@ -114,6 +114,7 @@ export default function WorkspaceMountHeaderSurface({
       className={`relative min-w-0 flex-1 rounded-md transition-[box-shadow,background-color] duration-150 ${
         draggingId === mount.id ? "opacity-55" : ""
       }`}
+      data-nodex-own-contextmenu
       role="presentation"
       onDragOver={(e) => {
         const fromMime =

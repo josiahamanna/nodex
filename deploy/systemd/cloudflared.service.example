@@ -1,0 +1,28 @@
+# Example systemd unit for Cloudflare Tunnel (cloudflared).
+# Install:
+#   sudo cp cloudflared.service.example /etc/systemd/system/cloudflared.service
+#   sudoedit /etc/systemd/system/cloudflared.service   # fix User, paths, tunnel UUID
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cloudflared
+#
+# Docs: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/tunnel-guide/
+
+[Unit]
+Description=Cloudflare Tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Dedicated user recommended; must be able to read tunnel credentials JSON.
+User=cloudflared
+Group=cloudflared
+ExecStart=/usr/local/bin/cloudflared tunnel --config /etc/cloudflared/config.yml run YOUR_TUNNEL_UUID
+Restart=on-failure
+RestartSec=5
+
+# Hardening (optional; adjust if cloudflared needs more)
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

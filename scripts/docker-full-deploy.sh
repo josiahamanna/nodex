@@ -5,6 +5,8 @@
 #   npm run deploy
 #   npm run deploy -- --stop-old
 #
+# Bare git server (mirror to GitHub + tag-triggered deploy): deploy/git-server/MIGRATION.md (full steps), SERVER-LAYOUT.md (layout)
+#
 # What it does:
 #   1. Ensures dist/plugins exists (compose bind mount).
 #   2. Ensures ./.nodex-docker-workspace exists (default API workspace bind).
