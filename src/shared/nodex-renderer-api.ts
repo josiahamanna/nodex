@@ -6,8 +6,10 @@
 import type { ClientLogPayload } from "./client-log";
 import type { AssetMediaCategory } from "./asset-media";
 import type {
+  WpnBacklinkSourceItem,
   WpnNoteDetail,
   WpnNoteListItem,
+  WpnNoteWithContextListItem,
   WpnProjectPatch,
   WpnProjectRow,
   WpnWorkspacePatch,
@@ -550,6 +552,8 @@ export type NodexRendererApi = {
   ) => Promise<{ project: WpnProjectRow }>;
   wpnDeleteProject: (id: string) => Promise<{ ok: true }>;
   wpnListNotes: (projectId: string) => Promise<{ notes: WpnNoteListItem[] }>;
+  wpnListAllNotesWithContext: () => Promise<{ notes: WpnNoteWithContextListItem[] }>;
+  wpnListBacklinksToNote: (targetNoteId: string) => Promise<{ sources: WpnBacklinkSourceItem[] }>;
   wpnGetNote: (noteId: string) => Promise<{ note: WpnNoteDetail }>;
   wpnGetExplorerState: (projectId: string) => Promise<{ expanded_ids: string[] }>;
   wpnSetExplorerState: (

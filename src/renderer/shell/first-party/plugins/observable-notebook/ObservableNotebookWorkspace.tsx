@@ -7,6 +7,7 @@ import {
   createNotebookNodexHost,
   NODEX_NOTEBOOK_DOCUMENTED_COMMANDS,
 } from "./observable-notebook-nodex-api";
+import { validateNotebookJsDependencies } from "./observable-notebook-deps-validation";
 import { runObservableNotebookTrusted } from "./observable-notebook-run-trusted";
 import {
   makeNotebookCellId,
@@ -19,6 +20,11 @@ import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 
 const mdPreviewClass =
   "mt-2 rounded border border-border bg-muted/20 p-2 text-[11px] text-foreground [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4";
+
+const NOTEBOOK_VAR_TITLE =
+  "Variable this cell defines in the notebook graph. The editor below is the expression for its value (like name x with code 42 defines x as 42).";
+const NOTEBOOK_INPUTS_TITLE =
+  "Other cell variable names this cell depends on, comma-separated (not the current cell’s name).";
 
 export type ObservableNotebookWorkspaceProps = {
   cells: NotebookCell[];
@@ -111,9 +117,16 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
     trustedDisposeRef.current = null;
     setErr(null);
 
+    const norm = normalizeNotebookCells(cells);
+    const depErr = validateNotebookJsDependencies(norm);
+    if (depErr) {
+      setErr(depErr);
+      setRunBusy(false);
+      return;
+    }
+
     runIdRef.current += 1;
     const meta = { runId: runIdRef.current, startedAt: Date.now() };
-    const norm = normalizeNotebookCells(cells);
     const t0 = performance.now();
 
     clearPerCellOutputDom();
@@ -177,13 +190,21 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
       const norm = normalizeNotebookCells(prefix);
       if (norm.length === 0) return;
 
+      const depErr = validateNotebookJsDependencies(norm);
+      if (depErr) {
+        setErr(depErr);
+        setRunBusy(false);
+        return;
+      }
+
       const jsIds = new Set(norm.filter((c) => c.kind === "js").map((c) => c.id));
       clearTrustedSlotsForIds(jsIds);
+
+      setErr(null);
 
       runIdRef.current += 1;
       const meta = { runId: runIdRef.current, startedAt: Date.now() };
       const t0 = performance.now();
-      setErr(null);
 
       const jsCount = norm.filter((c) => c.kind === "js").length;
       setRunBusy(true);
@@ -352,9 +373,16 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
       <div className="min-h-0 flex-1 overflow-auto p-3">
         <p className="mb-2 text-[11px] leading-relaxed opacity-70">
           JS cells use <code className="font-mono">@observablehq/runtime</code> plus stdlib builtins;{" "}
-          <code className="font-mono">nodex</code> calls shell commands.{" "}
-          <kbd className="rounded border border-border px-0.5 font-mono">Mod+Enter</kbd> runs the focused JS cell
-          (from the top through that cell).
+          <code className="font-mono">nodex</code> mirrors <code className="font-mono">window.Nodex</code> (notes,
+          WPN, assets, plugins, …) plus <code className="font-mono">nodex.shell</code> /{" "}
+          <code className="font-mono">nodex.commands.run</code>. Use Observable output helpers (
+          <code className="font-mono">html</code>, <code className="font-mono">svg</code>, …) instead of DOM / layout
+          APIs (<code className="font-mono">document</code>, <code className="font-mono">addEventListener</code>,{" "}
+          <code className="font-mono">getComputedStyle</code>, …), which are blocked on{" "}
+          <code className="font-mono">globalThis</code> / <code className="font-mono">window</code>. The variable field
+          names this cell; the editor is its value;
+          deps are other cell names. <kbd className="rounded border border-border px-0.5 font-mono">Mod+Enter</kbd>{" "}
+          runs from the top through the focused JS cell.
         </p>
         <details className="mb-3 text-[10px] opacity-70">
           <summary className="cursor-pointer select-none">Documented command ids</summary>
@@ -376,7 +404,8 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
                 <span className="text-[10px] uppercase opacity-50">{c.kind === "md" ? "md" : "js"}</span>
                 <input
                   className="w-40 rounded border border-border px-2 py-1 font-mono text-[11px]"
-                  placeholder="name"
+                  placeholder="variable"
+                  title={NOTEBOOK_VAR_TITLE}
                   value={c.name}
                   onChange={(e) =>
                     onCellsChange(
@@ -386,7 +415,8 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
                 />
                 <input
                   className="w-52 rounded border border-border px-2 py-1 font-mono text-[11px]"
-                  placeholder="inputs: a, b"
+                  placeholder="other cells: foo, bar"
+                  title={NOTEBOOK_INPUTS_TITLE}
                   value={c.inputs.join(", ")}
                   onChange={(e) =>
                     onCellsChange(
@@ -482,9 +512,11 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
                         if (el) m.set(c.id, el);
                         else m.delete(c.id);
                       }}
-                      className="min-h-[4px] text-[11px]"
+                      className="nodex-notebook-output-root min-h-[4px] text-[11px]"
                     />
-                    <p className="mt-1.5 text-[10px] opacity-45">Run this cell or Run all to show results here.</p>
+                    <p className="nodex-notebook-output-hint mt-1.5 text-[10px] opacity-45">
+                      Run this cell or Run all to show results here.
+                    </p>
                   </div>
                 </>
               )}

@@ -2,12 +2,12 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
 import type { ShellKeyBinding } from "../../../registries/ShellKeymapRegistry";
-import { DOCS_BC } from "./documentationConstants";
-import { DocumentationPluginAuthoringSection } from "./DocumentationPluginAuthoringSection";
+import { BUNDLED_DOC_NOTE_IDS, DOCS_BC } from "./documentationConstants";
+import { DocumentationBundledMarkdownPanel } from "./DocumentationBundledMarkdownPanel";
 
 export function DocumentationSettingsPanelView(_props: ShellViewComponentProps): React.ReactElement {
   const { keymap } = useShellRegistries();
-  const [tab, setTab] = useState<1 | 2 | 3 | 4>(1);
+  const [tab, setTab] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [keys, setKeys] = useState<ShellKeyBinding[]>([]);
   const [apiText, setApiText] = useState<string>("");
   const [miniOnly, setMiniOnly] = useState(true);
@@ -118,6 +118,13 @@ export function DocumentationSettingsPanelView(_props: ShellViewComponentProps):
           className={`rounded border px-2.5 py-1 text-[11px] ${tab === 4 ? "border-border bg-muted/50" : "border-border/60"}`}
           onClick={() => setTab(4)}
         >
+          User guide
+        </button>
+        <button
+          type="button"
+          className={`rounded border px-2.5 py-1 text-[11px] ${tab === 5 ? "border-border bg-muted/50" : "border-border/60"}`}
+          onClick={() => setTab(5)}
+        >
           Plugin authoring
         </button>
       </div>
@@ -165,19 +172,32 @@ export function DocumentationSettingsPanelView(_props: ShellViewComponentProps):
               and <code className="font-mono">doc</code> on registered commands.
             </p>
             <p>
-              For step-by-step plugin development and wiring, open the{" "}
+              For how to use the app, open the{" "}
               <button
                 type="button"
                 className="text-primary underline underline-offset-2 hover:opacity-90"
                 onClick={() => setTab(4)}
               >
-                Plugin authoring
+                User guide
               </button>{" "}
-              tab.
+              tab. For extending the shell with plugins, open{" "}
+              <button
+                type="button"
+                className="text-primary underline underline-offset-2 hover:opacity-90"
+                onClick={() => setTab(5)}
+              >
+                Plugin authoring
+              </button>
+              .
             </p>
           </div>
         ) : null}
-        {tab === 4 ? <DocumentationPluginAuthoringSection /> : null}
+        {tab === 4 ? (
+          <DocumentationBundledMarkdownPanel logicalId={BUNDLED_DOC_NOTE_IDS.companionUserGuide} />
+        ) : null}
+        {tab === 5 ? (
+          <DocumentationBundledMarkdownPanel logicalId={BUNDLED_DOC_NOTE_IDS.companionPluginAuthoring} />
+        ) : null}
       </div>
     </div>
   );

@@ -30,6 +30,8 @@ import {
   wpnPgDeleteNotes,
   wpnPgGetExplorerExpanded,
   wpnPgGetNoteById,
+  wpnPgListAllNotesWithContext,
+  wpnPgListBacklinksToNote,
   wpnPgListNotesFlat,
   wpnPgDuplicateNoteSubtree,
   wpnPgMoveNote,
@@ -48,6 +50,8 @@ import {
   wpnSqliteDeleteNotes,
   wpnSqliteGetExplorerExpanded,
   wpnSqliteGetNoteById,
+  wpnSqliteListAllNotesWithContext,
+  wpnSqliteListBacklinksToNote,
   wpnSqliteListNotesFlat,
   wpnSqliteDuplicateNoteSubtree,
   wpnSqliteMoveNote,
@@ -272,6 +276,35 @@ export function createWpnRouter(): Router {
           ? await wpnPgListNotesFlat(b.pool, ownerId, projectId)
           : wpnSqliteListNotesFlat(b.db, ownerId, projectId);
       res.json({ notes });
+    } catch (e) {
+      sendErr(res, 503, e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  wpn.get("/notes-with-context", async (_req: Request, res: Response) => {
+    try {
+      const ownerId = (_req as AuthedRequest).user!.id;
+      const b = await resolveBackend();
+      const notes =
+        b.kind === "postgres"
+          ? await wpnPgListAllNotesWithContext(b.pool, ownerId)
+          : wpnSqliteListAllNotesWithContext(b.db, ownerId);
+      res.json({ notes });
+    } catch (e) {
+      sendErr(res, 503, e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  wpn.get("/backlinks/:noteId", async (req: Request, res: Response) => {
+    try {
+      const ownerId = (req as AuthedRequest).user!.id;
+      const { noteId } = req.params;
+      const b = await resolveBackend();
+      const sources =
+        b.kind === "postgres"
+          ? await wpnPgListBacklinksToNote(b.pool, ownerId, noteId)
+          : wpnSqliteListBacklinksToNote(b.db, ownerId, noteId);
+      res.json({ sources });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
     }

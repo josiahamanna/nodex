@@ -23,7 +23,7 @@ Repository architecture notes: `claude-docs/architecture/modular-plugins-archite
 
 ### 2.1 What you can contribute
 
-- **Shell views** — React components in regions such as `mainArea`, `primarySidebar`, `secondaryArea`.
+- **Shell views** — React components in regions such as `mainArea`, `primarySidebar`, `companion`.
 - **Tab types** — Associate a tab with a main-column `viewId` (and optional sidebar companions via tab metadata).
 - **Menu rail** — Activity bar entries that open tabs and optional side panels.
 - **App menu** — Extra menu entries (see existing plugins for patterns).

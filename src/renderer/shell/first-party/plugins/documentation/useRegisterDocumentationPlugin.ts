@@ -33,7 +33,7 @@ export function useRegisterDocumentationPlugin(): void {
       views.registerView({
         id: VIEW_DOCS_SETTINGS,
         title: "Docs — settings",
-        defaultRegion: "secondaryArea",
+        defaultRegion: "companion",
         component: DocumentationSettingsPanelView,
         capabilities: { allowedCommands: "allShellCommands", readContext: false },
       }),
@@ -76,7 +76,7 @@ export function useRegisterDocumentationPlugin(): void {
         title: "Docs: Open documentation",
         category: "Docs",
         sourcePluginId: DOCS_PLUGIN_ID,
-        doc: "Opens Documentation: search in sidebar panel, settings in secondary area.",
+        doc: "Opens Documentation: search in sidebar panel, settings in companion column.",
         api: {
           summary: "Open the Documentation workspace (new Docs tab, sidebar search, secondary settings).",
           args: [],

@@ -20,7 +20,7 @@ Plugins may contribute React components to:
 1. **Rail menu** — activity rail entries (icon + command / open view).
 2. **Side panel** — combined chrome: menu strip + body (primary sidebar region).
 3. **Primary area** — main editor region (tabbed).
-4. **Secondary area** — right/auxiliary column.
+4. **Companion** — right/auxiliary column.
 
 Registration flows through **`ShellViewRegistry`** (`src/renderer/shell/views/ShellViewRegistry.tsx`): each view has an id, title, default region, and **`component`** (React). The workbench renders **`ShellViewHost`**, which mounts the component in a normal DOM subtree (no iframe).
 

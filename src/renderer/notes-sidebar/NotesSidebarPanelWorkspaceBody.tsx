@@ -16,6 +16,7 @@ import {
 } from "../../shared/sidebar-asset-dnd";
 import { noteTypeInitials } from "../utils/note-type-initials";
 import ProjectAssetsInline from "../components/ProjectAssetsInline";
+import { InlineSingleLineEditable } from "../components/InlineSingleLineEditable";
 import { useToast } from "../toast/ToastContext";
 import WorkspaceMountHeaderSurface from "../components/WorkspaceMountHeaderSurface";
 import NotesSidebarPanelWorkspaceToolbar from "./NotesSidebarPanelWorkspaceToolbar";
@@ -315,22 +316,14 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                     plainHeader
                     folderLabel={
                       editingLabelRoot === sec.projectRoot ? (
-                        <input
-                          autoFocus
+                        <InlineSingleLineEditable
+                          key={sec.projectRoot}
                           className="min-w-0 flex-1 rounded border border-sidebar-border bg-background px-1.5 py-0.5 font-mono text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+                          aria-label="Workspace folder label"
                           value={labelDraft}
-                          onChange={(e) => setLabelDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              void submitLabelEdit();
-                            }
-                            if (e.key === "Escape") {
-                              e.preventDefault();
-                              cancelEditLabel();
-                            }
-                          }}
-                          onBlur={() => void submitLabelEdit()}
+                          onChange={setLabelDraft}
+                          onCommit={() => void submitLabelEdit()}
+                          onCancel={cancelEditLabel}
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : (
@@ -380,22 +373,14 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                     title={sec.projectRoot}
                   >
                     {editingLabelRoot === sec.projectRoot ? (
-                      <input
-                        autoFocus
+                      <InlineSingleLineEditable
+                        key={sec.projectRoot}
                         className="min-w-0 flex-1 rounded border border-sidebar-border bg-background px-1.5 py-0.5 font-mono text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+                        aria-label="Workspace folder label"
                         value={labelDraft}
-                        onChange={(e) => setLabelDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            void submitLabelEdit();
-                          }
-                          if (e.key === "Escape") {
-                            e.preventDefault();
-                            cancelEditLabel();
-                          }
-                        }}
-                        onBlur={() => void submitLabelEdit()}
+                        onChange={setLabelDraft}
+                        onCommit={() => void submitLabelEdit()}
+                        onCancel={cancelEditLabel}
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (

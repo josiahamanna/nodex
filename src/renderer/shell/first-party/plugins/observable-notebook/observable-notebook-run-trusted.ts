@@ -2,6 +2,7 @@ import DOMPurify from "dompurify";
 import { Inspector } from "@observablehq/inspector";
 import { Runtime } from "@observablehq/runtime";
 import { Library } from "@observablehq/stdlib";
+import { createNotebookCellGlobalThisProxy } from "./observable-notebook-cell-globals";
 import type { NormalizedNotebookCell } from "./observable-notebook-types";
 
 function isHtmlPayload(value: unknown): value is { html: string } {
@@ -55,7 +56,13 @@ export function runObservableNotebookTrusted(opts: {
   const { cells, getOutputSlot, nodexFactory, signal, meta, onCellFinished } = opts;
 
   const lib = new Library();
-  const builtins: Record<string, unknown> = { ...lib, nodex: nodexFactory };
+  const cellGlobalThis = createNotebookCellGlobalThisProxy();
+  const builtins: Record<string, unknown> = {
+    ...lib,
+    nodex: nodexFactory,
+    /** Shadowed into each cell so `globalThis`/`window` omit `document` (see cell wrapper). */
+    __nb_global: cellGlobalThis,
+  };
   const runtime = new Runtime(builtins as never);
   const mod = runtime.module();
 
@@ -82,21 +89,23 @@ export function runObservableNotebookTrusted(opts: {
     const t0 = performance.now();
     mod.variable(wrappedObserver).define(
       c.name,
-      [...c.inputs, "nodex"],
+      [...c.inputs, "nodex", "__nb_global"],
       (...args: unknown[]) => {
         if (signal?.aborted) {
           const e = new DOMException("Aborted", "AbortError");
           onCellFinished?.(c.id, performance.now() - t0, e.message);
           throw e;
         }
-        const nodexVal = args[args.length - 1];
-        const inArgs = args.slice(0, -1);
+        const nbGlobalVal = args[args.length - 1];
+        const nodexVal = args[args.length - 2];
+        const inArgs = args.slice(0, -2);
         let fn: (...a: unknown[]) => unknown;
         try {
           fn = new Function(
             ...c.inputs,
             "nodex",
-            `"use strict"; return (async () => { return (${c.body}); })();`,
+            "__nb_global",
+            `"use strict"; return (async () => { const globalThis = __nb_global; const window = __nb_global; return (${c.body}); })();`,
           ) as (...a: unknown[]) => unknown;
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
@@ -106,7 +115,7 @@ export function runObservableNotebookTrusted(opts: {
           throw e;
         }
         return Promise.resolve()
-          .then(() => fn(...inArgs, nodexVal))
+          .then(() => fn(...inArgs, nodexVal, nbGlobalVal))
           .then(
             (v) => {
               onCellFinished?.(c.id, performance.now() - t0);

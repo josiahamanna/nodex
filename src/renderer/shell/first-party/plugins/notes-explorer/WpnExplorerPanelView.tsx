@@ -1,11 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSelector } from "react-redux";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import type {
   CreateNoteRelation,
   NoteMovePlacement,
 } from "@nodex/ui-types";
 import type { WpnNoteListItem, WpnProjectRow, WpnWorkspaceRow } from "../../../../../shared/wpn-v2-types";
-import type { RootState } from "../../../../store";
+import type { AppDispatch, RootState } from "../../../../store";
+import { fetchNote } from "../../../../store/notesSlice";
 import {
   fetchHeadlessWpnSession,
   isElectronUserAgent,
@@ -16,26 +17,14 @@ import { closeShellTabsForNoteIds } from "../../../shellTabClose";
 import { useShellNavigation } from "../../../useShellNavigation";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import { NODEX_SHELL_NOTE_TAB_CLOSED_EVENT } from "../../../shellTabUrlSync";
+import { SHELL_TAB_NOTE } from "../../shellWorkspaceIds";
+import { InlineSingleLineEditable } from "../../../../components/InlineSingleLineEditable";
+import { dropAllowedOne, placementFromPointer } from "../../../../notes-sidebar/notes-sidebar-panel-dnd";
 
 type ShellViewComponentProps = {
   viewId: string;
   title: string;
 };
-
-const WPN_COLOR_TOKENS = [
-  "c01",
-  "c02",
-  "c03",
-  "c04",
-  "c05",
-  "c06",
-  "c07",
-  "c08",
-  "c09",
-  "c10",
-  "c11",
-  "c12",
-];
 
 const DND_NOTE_MIME = "application/nodex-wpn-note";
 
@@ -94,6 +83,43 @@ function rootIdsInPreorder(notes: WpnNoteListItem[]): string[] {
   return out;
 }
 
+/** Parent folder ids that must be expanded for `noteId` to be visible in the tree. */
+function collectAncestorNoteIds(noteId: string, parentMap: Map<string, string | null>): string[] {
+  const out: string[] = [];
+  let cur = parentMap.get(noteId) ?? null;
+  const seen = new Set<string>();
+  while (cur) {
+    if (seen.has(cur)) break;
+    seen.add(cur);
+    out.push(cur);
+    cur = parentMap.get(cur) ?? null;
+  }
+  return out;
+}
+
+/** Short badge for explorer rows: two letters, e.g. markdown → md, foo-bar → fb. */
+function noteTypeExplorerAbbrev(type: string): string {
+  const key = type.toLowerCase().trim();
+  if (!key) return "??";
+
+  const overrides: Record<string, string> = {
+    // "md" is the usual shorthand; first two letters would be "ma".
+    markdown: "md",
+  };
+  const fromOverride = overrides[key];
+  if (fromOverride) return fromOverride;
+
+  const parts = key.split(/[-_]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const a = parts[0]![0] ?? "?";
+    const b = parts[1]![0] ?? "?";
+    return `${a}${b}`;
+  }
+  const word = parts[0] ?? key;
+  if (word.length >= 2) return word.slice(0, 2);
+  return (word[0] ?? "?").repeat(2);
+}
+
 type NoteClipboard = { op: "cut" | "copy"; projectId: string; noteId: string };
 
 type MenuState =
@@ -126,6 +152,7 @@ type RenamingState =
   | null;
 
 export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.ReactElement {
+  const dispatch = useDispatch<AppDispatch>();
   const { tabs } = useShellRegistries();
   const { openNoteById } = useShellNavigation();
   const { workspaceRoots, rootPath, mountKind } = useShellProjectWorkspace();
@@ -153,8 +180,11 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const [typePicker, setTypePicker] = useState<TypePickerState>(null);
   const [renaming, setRenaming] = useState<RenamingState>(null);
   const noteClipboardRef = useRef<NoteClipboard | null>(null);
+  const explorerNoteDragRef = useRef<{ projectId: string; noteId: string } | null>(null);
   const noteOpenTimerRef = useRef<number | null>(null);
   const pendingOpenNoteIdRef = useRef<string | null>(null);
+  const explorerScrollRef = useRef<HTMLDivElement | null>(null);
+  const lastExplorerRevealForNoteIdRef = useRef<string | null>(null);
   const [, bumpClip] = useState(0);
 
   const projectOpen = workspaceRoots.length > 0;
@@ -165,11 +195,16 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     try {
       const { workspaces: ws } = await window.Nodex.wpnListWorkspaces();
       setWorkspaces(ws);
+      const entries = await Promise.all(
+        ws.map(async (w) => {
+          const { projects } = await window.Nodex.wpnListProjects(w.id);
+          // Bundled plugin docs live in a dedicated project; browse them from Documentation, not Notes explorer.
+          return [w.id, projects.filter((p) => p.name !== "Documentation")] as const;
+        }),
+      );
       const nextProj: Record<string, WpnProjectRow[]> = {};
-      for (const w of ws) {
-        const { projects } = await window.Nodex.wpnListProjects(w.id);
-        // Bundled plugin docs live in a dedicated project; browse them from Documentation, not Notes explorer.
-        nextProj[w.id] = projects.filter((p) => p.name !== "Documentation");
+      for (const [id, projects] of entries) {
+        nextProj[id] = projects;
       }
       setProjectsByWs(nextProj);
       setSelectedProjectId((prev) => {
@@ -234,13 +269,15 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       window.Nodex.wpnListNotes(projectId),
       window.Nodex.wpnGetExplorerState(projectId),
     ]);
+    if (selectedProjectIdRef.current !== projectId) return;
     setNotes(n);
     setExpandedNoteParents(new Set(expanded_ids));
-    setSelectedProjectId(projectId);
   }, []);
 
   useEffect(() => {
     if (!selectedProjectId || !projectOpen) return;
+    setNotes([]);
+    setExpandedNoteParents(new Set());
     void loadProjectTree(selectedProjectId);
   }, [selectedProjectId, projectOpen, loadProjectTree]);
 
@@ -248,6 +285,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     if (noteRenameEpoch === 0 || !projectOpen) return;
     const projectId = selectedProjectIdRef.current;
     if (!projectId) return;
+    lastExplorerRevealForNoteIdRef.current = null;
     void loadProjectTree(projectId);
   }, [noteRenameEpoch, projectOpen, loadProjectTree]);
 
@@ -288,11 +326,92 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     [],
   );
 
+  useEffect(() => {
+    lastExplorerRevealForNoteIdRef.current = null;
+  }, [currentNoteId]);
+
+  useEffect(() => {
+    if (!currentNoteId || !projectOpen) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await window.Nodex.wpnGetNote(currentNoteId);
+        if (cancelled || !r?.note) return;
+        const pid = r.note.project_id;
+        const visible = Object.values(projectsByWs).some((arr) => arr.some((p) => p.id === pid));
+        if (!visible) return;
+        let wsId: string | null = null;
+        for (const [w, arr] of Object.entries(projectsByWs)) {
+          if (arr.some((p) => p.id === pid)) {
+            wsId = w;
+            break;
+          }
+        }
+        if (!wsId) return;
+        setSearch("");
+        setSelectedProjectId(pid);
+        setExpandedProjects((prev) => new Set(prev).add(pid));
+        setExpandedWs((prev) => new Set(prev).add(wsId));
+      } catch {
+        /* wpnGetNote unavailable or network error */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentNoteId, projectOpen, projectsByWs]);
+
   const filteredNotes = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return notes;
     return notes.filter((n) => n.title.toLowerCase().includes(q) || n.type.toLowerCase().includes(q));
   }, [notes, search]);
+
+  const noteParentsMap = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const n of notes) {
+      m.set(n.id, n.parent_id ?? null);
+    }
+    return m;
+  }, [notes]);
+
+  useEffect(() => {
+    if (!currentNoteId || !selectedProjectId) return;
+    if (lastExplorerRevealForNoteIdRef.current === currentNoteId) return;
+    const row = notes.find((n) => n.id === currentNoteId && n.project_id === selectedProjectId);
+    if (!row) return;
+    const ancestors = collectAncestorNoteIds(currentNoteId, noteParentsMap);
+    const merged = new Set(expandedNoteParents);
+    let changed = false;
+    for (const id of ancestors) {
+      if (!merged.has(id)) {
+        merged.add(id);
+        changed = true;
+      }
+    }
+    lastExplorerRevealForNoteIdRef.current = currentNoteId;
+    if (changed) {
+      void persistExpandedNotes(selectedProjectId, merged);
+    }
+  }, [
+    currentNoteId,
+    selectedProjectId,
+    notes,
+    noteParentsMap,
+    expandedNoteParents,
+    persistExpandedNotes,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!currentNoteId) return;
+    const root = explorerScrollRef.current;
+    if (!root) return;
+    const el = root.querySelector("[data-wpn-explorer-active-note]");
+    if (!(el instanceof HTMLElement)) return;
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+  }, [currentNoteId, selectedProjectId, expandedNoteParents, filteredNotes, search]);
 
   const noteHasVisibleChildren = useCallback(
     (id: string) => filteredNotes.some((n) => n.parent_id === id),
@@ -357,25 +476,6 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       setNotes([]);
     }
     await loadWorkspaces();
-    closeAllMenus();
-  };
-
-  const onSetColor = async (
-    kind: "ws" | "project",
-    id: string,
-    token: string | null,
-    workspaceId?: string,
-  ) => {
-    if (kind === "ws") {
-      await window.Nodex.wpnUpdateWorkspace(id, { color_token: token });
-    } else {
-      await window.Nodex.wpnUpdateProject(id, { color_token: token });
-    }
-    await loadWorkspaces();
-    if (workspaceId && selectedProjectId) {
-      const p = (projectsByWs[workspaceId] ?? []).find((x) => x.id === selectedProjectId);
-      if (p) void loadProjectTree(selectedProjectId);
-    }
     closeAllMenus();
   };
 
@@ -534,13 +634,21 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         await window.Nodex.wpnUpdateProject(renaming.id, { name: name || "Project" });
         await loadWorkspaces();
       } else if (renaming.kind === "note" && renaming.projectId) {
-        await window.Nodex.wpnPatchNote(renaming.id, { title: name || "Untitled" });
+        const title = name || "Untitled";
+        await window.Nodex.wpnPatchNote(renaming.id, { title });
         await loadProjectTree(renaming.projectId);
+        const tabInst = tabs.findNoteTabByNoteId(renaming.id, SHELL_TAB_NOTE);
+        if (tabInst) {
+          tabs.updateTabPresentation(tabInst.instanceId, { title });
+        }
+        if (currentNoteId === renaming.id) {
+          void dispatch(fetchNote(renaming.id));
+        }
       }
     } finally {
       setRenaming(null);
     }
-  }, [renaming, loadWorkspaces, loadProjectTree]);
+  }, [renaming, loadWorkspaces, loadProjectTree, tabs, currentNoteId, dispatch]);
 
   const scheduleOpenNote = useCallback(
     (id: string) => {
@@ -564,8 +672,13 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   }, []);
 
   const onDragStartNote = (e: React.DragEvent, projectId: string, noteId: string) => {
+    explorerNoteDragRef.current = { projectId, noteId };
     e.dataTransfer.setData(DND_NOTE_MIME, JSON.stringify({ projectId, noteId }));
     e.dataTransfer.effectAllowed = "move";
+  };
+
+  const onDragEndNote = () => {
+    explorerNoteDragRef.current = null;
   };
 
   const onDropOnNote = async (
@@ -574,6 +687,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     targetId: string,
   ) => {
     e.preventDefault();
+    explorerNoteDragRef.current = null;
     const raw = e.dataTransfer.getData(DND_NOTE_MIME);
     if (!raw) return;
     let parsed: { projectId: string; noteId: string };
@@ -584,9 +698,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     }
     if (parsed.projectId !== projectId || parsed.noteId === targetId) return;
     const el = e.currentTarget as HTMLElement;
-    const rect = el.getBoundingClientRect();
-    const mid = rect.top + rect.height / 2;
-    const placement: NoteMovePlacement = e.clientY < mid ? "before" : "after";
+    const placement = placementFromPointer(e, el);
+    if (placement === "into" && isStrictDescendantOf(notes, parsed.noteId, targetId)) {
+      window.alert("Cannot move into a descendant of the selection.");
+      return;
+    }
+    if (!dropAllowedOne(parsed.noteId, targetId, placement, noteParentsMap)) {
+      return;
+    }
     await window.Nodex.wpnMoveNote({
       projectId,
       draggedId: parsed.noteId,
@@ -645,11 +764,41 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       rows.push(
         <div
           key={n.id}
-          className={`group flex min-h-7 items-center gap-0.5 border-b border-border/30 text-[11px] ${
+          data-wpn-explorer-active-note={currentNoteId === n.id ? "" : undefined}
+          className={`group flex min-h-7 w-full items-center gap-0.5 border-b border-border/30 text-[11px] ${
             currentNoteId === n.id ? "bg-muted/50" : "hover:bg-muted/25"
           }`}
           style={{ paddingLeft: pad }}
-          onDragOver={(e) => e.preventDefault()}
+          onClick={(e) => {
+            if (isRenamingNote) return;
+            const el = e.target as HTMLElement;
+            if (el.closest("[data-wpn-note-drag-handle]") || el.closest("[data-wpn-tree-chevron]")) return;
+            scheduleOpenNote(n.id);
+          }}
+          onDoubleClick={(e) => {
+            if (isRenamingNote) return;
+            const el = e.target as HTMLElement;
+            if (el.closest("[data-wpn-note-drag-handle]") || el.closest("[data-wpn-tree-chevron]")) return;
+            e.preventDefault();
+            cancelScheduledOpen();
+            setRenaming({ kind: "note", id: n.id, projectId, draft: n.title });
+          }}
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes(DND_NOTE_MIME)) {
+              return;
+            }
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            const drag = explorerNoteDragRef.current;
+            if (!drag || drag.projectId !== projectId) {
+              e.dataTransfer.dropEffect = "none";
+              return;
+            }
+            const placement = placementFromPointer(e, e.currentTarget as HTMLElement);
+            if (!dropAllowedOne(drag.noteId, n.id, placement, noteParentsMap)) {
+              e.dataTransfer.dropEffect = "none";
+            }
+          }}
           onDrop={(e) => void onDropOnNote(e, projectId, n.id)}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -665,11 +814,13 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
           }}
         >
           <span
+            data-wpn-note-drag-handle
             className="w-4 shrink-0 cursor-grab text-muted-foreground opacity-60"
             draggable
             onDragStart={(e) => onDragStartNote(e, projectId, n.id)}
+            onDragEnd={onDragEndNote}
             onContextMenu={(e) => e.stopPropagation()}
-            title="Drag to move among siblings"
+            title="Drag to reorder (top/bottom of row) or nest (drop on middle of row)"
           >
             ⣿
           </span>
@@ -692,30 +843,27 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
             <span className="w-4 shrink-0" />
           )}
           {isRenamingNote ? (
-            <input
-              className="min-w-0 flex-1 rounded border border-border bg-background px-1 py-0 text-[11px]"
-              value={renaming.draft}
-              autoFocus
-              onChange={(e) => setRenaming({ ...renaming, draft: e.target.value })}
-              onBlur={() => void commitRename()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void commitRename();
-                if (e.key === "Escape") setRenaming(null);
-              }}
-            />
+            <div className="flex min-w-0 flex-1 items-center gap-1">
+              <span className="shrink-0 text-muted-foreground" title={n.type}>
+                [{noteTypeExplorerAbbrev(n.type)}]
+              </span>
+              <InlineSingleLineEditable
+                key={`note-${n.id}`}
+                className="min-w-0 flex-1 rounded border border-border bg-background px-1 py-0 text-[11px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                aria-label="Note title"
+                value={renaming.draft}
+                onChange={(draft) => setRenaming({ ...renaming, draft })}
+                onCommit={() => void commitRename()}
+                onCancel={() => setRenaming(null)}
+              />
+            </div>
           ) : (
-            <button
-              type="button"
-              className="min-w-0 flex-1 truncate text-left"
-              onClick={() => scheduleOpenNote(n.id)}
-              onDoubleClick={(e) => {
-                e.preventDefault();
-                cancelScheduledOpen();
-                setRenaming({ kind: "note", id: n.id, projectId, draft: n.title });
-              }}
-            >
-              <span className="text-muted-foreground">[{n.type}]</span> {n.title}
-            </button>
+            <span className="min-w-0 flex-1 truncate text-left">
+              <span className="text-muted-foreground" title={n.type}>
+                [{noteTypeExplorerAbbrev(n.type)}]
+              </span>{" "}
+              {n.title}
+            </span>
           )}
         </div>,
       );
@@ -825,10 +973,11 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       </div>
 
       <div
+        ref={explorerScrollRef}
         className="min-h-0 flex-1 overflow-y-auto text-[11px]"
         onContextMenu={(e) => {
           const t = e.target as HTMLElement;
-          if (t.closest("button,input,textarea,a,[draggable=true]")) return;
+          if (t.closest('button,input,textarea,a,[draggable="true"],[contenteditable="true"]')) return;
           e.preventDefault();
           setTypePicker(null);
           setMenu({ x: e.clientX, y: e.clientY, kind: "panel_empty", id: "" });
@@ -844,7 +993,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
             return (
               <div key={w.id} className="border-b border-border/40">
                 <div
-                  className="flex items-center gap-1 bg-muted/15 px-1 py-0.5"
+                  className="flex w-full min-w-0 items-center gap-1 bg-muted/15 px-1 py-0.5"
                   onContextMenu={(e) => {
                     if ((e.target as HTMLElement).closest("[data-wpn-tree-chevron]")) return;
                     e.preventDefault();
@@ -868,20 +1017,19 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                     {expandedWs.has(w.id) ? "▼" : "▶"}
                   </button>
                   {isRenamingWs ? (
-                    <input
-                      className="min-w-0 flex-1 rounded border border-border bg-background px-1 py-0 text-[11px]"
+                    <InlineSingleLineEditable
+                      key={`ws-${w.id}`}
+                      className="min-w-0 flex-1 rounded border border-border bg-background px-1 py-0 text-[11px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      aria-label="Workspace name"
                       value={renaming.draft}
-                      autoFocus
-                      onChange={(e) => setRenaming({ ...renaming, draft: e.target.value })}
-                      onBlur={() => void commitRename()}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void commitRename();
-                        if (e.key === "Escape") setRenaming(null);
-                      }}
+                      onChange={(draft) => setRenaming({ ...renaming, draft })}
+                      onCommit={() => void commitRename()}
+                      onCancel={() => setRenaming(null)}
                     />
                   ) : (
-                    <span
-                      className="flex-1 truncate font-medium"
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[11px] font-medium shadow-none outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       onDoubleClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -889,11 +1037,12 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                       }}
                     >
                       {w.name}
-                    </span>
+                    </button>
                   )}
                   <button
                     type="button"
-                    className="text-[10px] text-muted-foreground"
+                    data-wpn-workspace-add-project
+                    className="shrink-0 text-[10px] text-muted-foreground"
                     onClick={(e) => {
                       e.stopPropagation();
                       void onCreateProject(w.id);
@@ -909,7 +1058,18 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                       return (
                         <div key={p.id}>
                           <div
-                            className="flex items-center gap-1 py-0.5"
+                            className="flex w-full items-center gap-1 py-0.5"
+                            onClick={(e) => {
+                              if (isRenamingProj) return;
+                              if ((e.target as HTMLElement).closest("[data-wpn-tree-chevron]")) return;
+                              setSelectedProjectId(p.id);
+                            }}
+                            onDoubleClick={(e) => {
+                              if (isRenamingProj) return;
+                              if ((e.target as HTMLElement).closest("[data-wpn-tree-chevron]")) return;
+                              e.preventDefault();
+                              setRenaming({ kind: "project", id: p.id, workspaceId: w.id, draft: p.name });
+                            }}
                             onContextMenu={(e) => {
                               if ((e.target as HTMLElement).closest("[data-wpn-tree-chevron]")) return;
                               e.preventDefault();
@@ -932,39 +1092,33 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                               onClick={() => {
                                 const n = new Set(expandedProjects);
                                 if (n.has(p.id)) n.delete(p.id);
-                                else n.add(p.id);
+                                else {
+                                  n.add(p.id);
+                                  setSelectedProjectId(p.id);
+                                }
                                 setExpandedProjects(n);
                               }}
                             >
                               {expandedProjects.has(p.id) ? "▼" : "▶"}
                             </button>
                             {isRenamingProj ? (
-                              <input
-                                className="min-w-0 flex-1 rounded border border-border bg-background px-1 py-0 text-[11px]"
+                              <InlineSingleLineEditable
+                                key={`project-${p.id}`}
+                                className="min-w-0 flex-1 rounded border border-border bg-background px-1 py-0 text-[11px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                aria-label="Project name"
                                 value={renaming.draft}
-                                autoFocus
-                                onChange={(e) => setRenaming({ ...renaming, draft: e.target.value })}
-                                onBlur={() => void commitRename()}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") void commitRename();
-                                  if (e.key === "Escape") setRenaming(null);
-                                }}
+                                onChange={(draft) => setRenaming({ ...renaming, draft })}
+                                onCommit={() => void commitRename()}
+                                onCancel={() => setRenaming(null)}
                               />
                             ) : (
-                              <button
-                                type="button"
+                              <span
                                 className={`min-w-0 flex-1 truncate text-left ${
                                   selectedProjectId === p.id ? "font-semibold text-foreground" : ""
                                 }`}
-                                onClick={() => void loadProjectTree(p.id)}
-                                onDoubleClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setRenaming({ kind: "project", id: p.id, workspaceId: w.id, draft: p.name });
-                                }}
                               >
                                 {p.name}
-                              </button>
+                              </span>
                             )}
                           </div>
                           {expandedProjects.has(p.id) && selectedProjectId === p.id ? (
@@ -1061,28 +1215,6 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
               >
                 Delete workspace
               </button>
-              <div className="my-1 border-t border-border" />
-              <div className="px-2 py-1 text-[10px] text-muted-foreground">Workspace color</div>
-              <div className="flex flex-wrap gap-1 px-1 pb-1">
-                <button
-                  type="button"
-                  className="rounded border px-1 text-[10px]"
-                  onClick={() => void onSetColor("ws", menu.id, null)}
-                >
-                  Clear
-                </button>
-                {WPN_COLOR_TOKENS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className="h-5 w-5 rounded border text-[8px]"
-                    title={c}
-                    onClick={() => void onSetColor("ws", menu.id, c)}
-                  >
-                    {c.slice(1)}
-                  </button>
-                ))}
-              </div>
             </>
           ) : null}
           {menu.kind === "project" && menu.workspaceId ? (
@@ -1175,28 +1307,6 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
               >
                 Delete project
               </button>
-              <div className="my-1 border-t border-border" />
-              <div className="px-2 py-1 text-[10px] text-muted-foreground">Project color</div>
-              <div className="flex flex-wrap gap-1 px-1 pb-1">
-                <button
-                  type="button"
-                  className="rounded border px-1 text-[10px]"
-                  onClick={() => void onSetColor("project", menu.id, null, menu.workspaceId)}
-                >
-                  Clear
-                </button>
-                {WPN_COLOR_TOKENS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className="h-5 w-5 rounded border text-[8px]"
-                    title={c}
-                    onClick={() => void onSetColor("project", menu.id, c, menu.workspaceId)}
-                  >
-                    {c.slice(1)}
-                  </button>
-                ))}
-              </div>
             </>
           ) : null}
           {menu.kind === "projectBody" && menu.projectId ? (

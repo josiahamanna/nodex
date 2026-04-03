@@ -252,6 +252,9 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       req("DELETE", `/wpn/projects/${encodeURIComponent(id)}`),
     wpnListNotes: (projectId) =>
       req("GET", `/wpn/projects/${encodeURIComponent(projectId)}/notes`),
+    wpnListAllNotesWithContext: () => req("GET", "/wpn/notes-with-context"),
+    wpnListBacklinksToNote: (targetNoteId) =>
+      req("GET", `/wpn/backlinks/${encodeURIComponent(targetNoteId)}`),
     wpnGetNote: (noteId) =>
       req("GET", `/wpn/notes/${encodeURIComponent(noteId)}`),
     wpnGetExplorerState: (projectId) =>
@@ -735,6 +738,16 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       );
     },
     wpnListNotes: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnListAllNotesWithContext: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnListBacklinksToNote: async () => {
       throw new Error(
         "Not available in plain browser — use Electron or ?web=1&api=…",
       );

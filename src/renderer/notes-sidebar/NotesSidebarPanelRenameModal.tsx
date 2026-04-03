@@ -1,5 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
+import { InlineSingleLineEditable } from "../components/InlineSingleLineEditable";
 
 export interface NotesSidebarPanelRenameModalProps {
   renameTarget: { id: string; title: string } | null;
@@ -37,21 +38,15 @@ const NotesSidebarPanelRenameModal: React.FC<
     >
       <div className="w-full max-w-sm rounded-lg border border-border bg-background p-4 shadow-lg">
         <p className="text-[13px] font-medium text-foreground">Rename note</p>
-        <input
-          type="text"
-          value={renameDraft}
-          onChange={(e) => setRenameDraft(e.target.value)}
+        <InlineSingleLineEditable
+          key={renameTarget.id}
           className="mt-3 w-full rounded-md border border-input bg-background px-3 py-2 text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          autoFocus
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void submitRename();
-            }
-            if (e.key === "Escape") {
-              setRenameTarget(null);
-            }
-          }}
+          aria-label="New note title"
+          value={renameDraft}
+          onChange={setRenameDraft}
+          onCommit={() => void submitRename()}
+          onCancel={() => setRenameTarget(null)}
+          commitOnBlur={false}
         />
         <div className="mt-4 flex justify-end gap-2">
           <button

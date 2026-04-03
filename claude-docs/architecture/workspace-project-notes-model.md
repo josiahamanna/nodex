@@ -32,6 +32,14 @@ Hash routes (static-export friendly), aligned with shell work:
 - `#/p/<projectId>`
 - `#/n/<noteId>`
 
+### Internal links in markdown notes
+
+- **Syntax:** `[link text](#/n/<noteId>)` in markdown content (same hash form as the shell).
+- **Stable reference:** The **`noteId`** is the canonical target. Workspace, project, and note titles may change; the link keeps working as long as that note row exists.
+- **Authoring:** The markdown editor’s **Link to note** action loads all WPN notes (every workspace and project, including Documentation), shows each row as **title** with a path line **`Workspace / Project / Title`** for disambiguation, and inserts the markdown link at the cursor (link text is selected so it can be edited).
+- **Inline trigger:** Typing **`[[`** opens an autocomplete list under the editor (same data as the link picker). Characters after `[[` filter the list until `]` is typed or the segment is completed. **Enter** inserts `[text](#/n/<id>)`; **Escape** hides the list (the `[[` text stays; type more to filter again and reopen suggestions). Arrow keys move the selection. **M-x / minibuffer:** run **`nodex.notes.markdown.insertNoteLinkAtPoint`** to open the full link picker for the **current** markdown (or root) note; the link is inserted at the **last caret** in that editor (caret is saved when focus leaves the textarea, e.g. for the minibuffer).
+- **Preview:** Rendered note links use the same `#/n/<noteId>` target; clicking opens the note via shell hash navigation.
+
 **Preview vs pinned note tabs** (VS Code–style): one **preview** tab (`reuseKey` e.g. `note:preview`) until the user **double-clicks** the tab title (or explicit “Keep open”) to pin a dedicated tab per note.
 
 ## HTTP API (shared contract)

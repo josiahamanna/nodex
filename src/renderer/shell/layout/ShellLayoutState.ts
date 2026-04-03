@@ -2,7 +2,7 @@ export type ShellRegionId =
   | "menuRail"
   | "sidebarPanel"
   | "mainArea"
-  | "secondaryArea"
+  | "companion"
   | "bottomArea"
   | "miniBar"
   | "modeLine";
@@ -32,8 +32,8 @@ export function defaultShellLayoutState(): ShellLayoutState {
       menuRail: true,
       sidebarPanel: true,
       mainArea: true,
-      secondaryArea: true,
-      bottomArea: true,
+      companion: true,
+      bottomArea: false,
       miniBar: true,
       modeLine: true,
     },
@@ -69,13 +69,20 @@ export function coerceShellLayoutState(raw: unknown): ShellLayoutState {
   const num = (v: unknown, fallback: number) =>
     typeof v === "number" && Number.isFinite(v) ? v : fallback;
 
+  const companionVisible =
+    typeof vis.companion === "boolean"
+      ? vis.companion
+      : typeof vis.secondaryArea === "boolean"
+        ? vis.secondaryArea
+        : d.visible.companion;
+
   return {
     version: 1,
     visible: {
       menuRail: bool(vis.menuRail, d.visible.menuRail),
       sidebarPanel: bool(vis.sidebarPanel, d.visible.sidebarPanel),
       mainArea: bool(vis.mainArea, d.visible.mainArea),
-      secondaryArea: bool(vis.secondaryArea, d.visible.secondaryArea),
+      companion: companionVisible,
       bottomArea: bool(vis.bottomArea, d.visible.bottomArea),
       miniBar: bool(vis.miniBar, d.visible.miniBar),
       modeLine: bool(vis.modeLine, d.visible.modeLine),

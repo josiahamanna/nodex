@@ -5,8 +5,19 @@ import { bracketMatching, foldGutter, indentOnInput } from "@codemirror/language
 import { type Extension, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 
+function nodexBridgeCompletions(): Completion[] {
+  if (typeof window === "undefined") return [];
+  const nx = (window as unknown as { Nodex?: Record<string, unknown> }).Nodex;
+  if (!nx) return [];
+  return Object.keys(nx).map((k) => ({
+    label: `nodex.${k}`,
+    type: (typeof nx[k] === "function" ? "function" : "variable") as "function" | "variable",
+    detail: "window.Nodex",
+  }));
+}
+
 const STATIC_COMPLETIONS: Completion[] = [
-  { label: "nodex", type: "namespace", detail: "Shell API" },
+  { label: "nodex", type: "namespace", detail: "window.Nodex + shell helpers" },
   { label: "nodex.commands.run", type: "function", detail: "Run command id" },
   { label: "nodex.openNote", type: "function" },
   { label: "nodex.openPalette", type: "function" },
@@ -27,7 +38,7 @@ function notebookCompletionSource(cellNames: string[]) {
     type: "variable" as const,
     detail: "Cell",
   }));
-  const all = [...STATIC_COMPLETIONS, ...nameOpts];
+  const all = [...STATIC_COMPLETIONS, ...nodexBridgeCompletions(), ...nameOpts];
 
   return (context: CompletionContext) => {
     const before = context.matchBefore(/[\w.]*$/);

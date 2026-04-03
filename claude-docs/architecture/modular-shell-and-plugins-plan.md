@@ -19,7 +19,7 @@ Regions (shell-defined “studs”):
 - `sidebarPanel` (panel menu + panel body)
 - `primaryTabs` (tab strip)
 - `primaryArea` (tab content)
-- `secondaryArea` (context-bound view)
+- `companion` (context-bound view)
 - `bottomDock` (output/terminal/notebook)
 - `miniBar`
 - `modeLine`
@@ -30,7 +30,7 @@ flowchart TB
   menuRail --> sidebarPanel
   sidebarPanel --> primaryArea
   primaryTabs --> primaryArea
-  primaryArea --> secondaryArea
+  primaryArea --> companion
   primaryArea --> bottomDock
   bottomDock --> miniBar
   miniBar --> modeLine
@@ -67,7 +67,7 @@ Introduce `TabDescriptor` + `TabInstance`:
 Define a shell-owned `ActiveContext` object:
 
 - `activePrimaryTab: { tabTypeId, instanceId, noteType?, noteId?, metadata? }`
-- Secondary area receives this context via:
+- Companion column receives this context via:
   - `postMessage` to iframe views, or
   - a shell “context API” callable from sandbox.
 
@@ -113,7 +113,7 @@ Implement registries as shell-owned, pluggable catalogs.
 The shell must render **explicit open/close indicators** for:
 
 - `sidebarPanel` (and optionally `menuRail` as a unit)
-- `secondaryArea`
+- `companion`
 - `bottomDock` (output/terminal/notebook container)
 
 Each affordance must have:
@@ -125,7 +125,7 @@ Each affordance must have:
 Proposed commands:
 
 - `nodex.shell.toggle.sidebarPanel`
-- `nodex.shell.toggle.secondaryArea`
+- `nodex.shell.toggle.companion`
 - `nodex.shell.toggle.bottomDock`
 - (optional) `nodex.shell.toggle.menuRail`
 - `nodex.shell.toggle.miniBar`
@@ -229,7 +229,7 @@ If `window.nodex.shell` is kept minimal for production, these still must exist a
 1. **Define all registries + lifecycle**: `appMenu`, `menuRail`, `panelMenu`, `views`, `tabs`, `bottomDock`, `modeLine`.
 2. **Chrome UI**: render your sketch layout with:
    - top-left `appMenu` button (N menu)
-   - open/close indicators for `sidebarPanel`, `secondaryArea`, `bottomDock`
+   - open/close indicators for `sidebarPanel`, `companion`, `bottomDock`
    - slots for rail/panel/tabs/views
 3. **Shell commands + keymap**: implement command-driven toggles and focus.
 4. **Iframe view host + RPC**: enforce capability gating + context propagation.

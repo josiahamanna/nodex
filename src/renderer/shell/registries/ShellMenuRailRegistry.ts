@@ -23,7 +23,7 @@ export type ShellMenuRailItem = {
   expandChrome?: {
     menuRail?: boolean;
     sidebarPanel?: boolean;
-    secondaryArea?: boolean;
+    companion?: boolean;
   };
   sidebarViewId?: string;
   secondaryViewId?: string;

@@ -6,7 +6,7 @@ export type ShellTabType = {
   viewId: string;
   /** When set, opening this tab activates this view in the primary sidebar. When omitted, sidebar is cleared and collapsed. */
   primarySidebarViewId?: string;
-  /** When set, opening this tab activates this view in the secondary area. When omitted, secondary is cleared and collapsed. */
+  /** When set, opening this tab activates this view in the companion column. When omitted, the companion is cleared and collapsed. */
   secondaryViewId?: string;
 };
 

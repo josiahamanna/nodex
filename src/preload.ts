@@ -453,6 +453,10 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.WPN_DELETE_PROJECT, id),
   wpnListNotes: (projectId) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_LIST_NOTES, projectId),
+  wpnListAllNotesWithContext: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_LIST_ALL_NOTES_WITH_CONTEXT),
+  wpnListBacklinksToNote: (targetNoteId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_LIST_BACKLINKS_TO_NOTE, targetNoteId),
   wpnGetNote: (noteId) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_GET_NOTE, noteId),
   wpnGetExplorerState: (projectId) =>

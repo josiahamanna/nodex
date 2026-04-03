@@ -1,4 +1,4 @@
-export type ShellPanelRegionId = "primarySidebar" | "mainArea" | "secondaryArea" | "bottomArea";
+export type ShellPanelRegionId = "primarySidebar" | "mainArea" | "companion" | "bottomArea";
 
 export type ShellPanelMenuItem = {
   id: string;

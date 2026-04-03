@@ -5,7 +5,7 @@ export type ShellWidgetSlotId =
   | "rail"
   | "primarySidebarChrome"
   | "mainAreaChrome"
-  | "secondaryAreaChrome"
+  | "companionChrome"
   | "bottomAreaChrome"
   | "noteEditorChrome";
 

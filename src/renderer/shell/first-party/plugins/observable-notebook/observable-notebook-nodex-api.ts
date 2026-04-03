@@ -1,9 +1,9 @@
+import type { NodexRendererApi } from "../../../../../shared/nodex-renderer-api";
 import type { ShellLayoutStore } from "../../../layout/ShellLayoutStore";
 import type { ShellRegistries } from "../../../registries/ShellRegistriesContext";
 import type { ShellRegionId } from "../../../layout/ShellLayoutState";
 
-/** Injected as the `nodex` builtin in trusted notebook runs. */
-export interface NodexNotebookHost {
+type NodexNotebookShellAugment = {
   /** Proxy/parity surface roughly matching `window.nodex.shell` for notebook cells. */
   shell: {
     tabs: {
@@ -29,9 +29,9 @@ export interface NodexNotebookHost {
 
   /** Convenience alias: `nodex.devtools.*` maps to the same underlying shell surface. */
   devtools: {
-    tabs: NodexNotebookHost["shell"]["tabs"];
-    commands: NodexNotebookHost["shell"]["commands"];
-    layout: NodexNotebookHost["shell"]["layout"];
+    tabs: NodexNotebookShellAugment["shell"]["tabs"];
+    commands: NodexNotebookShellAugment["shell"]["commands"];
+    layout: NodexNotebookShellAugment["shell"]["layout"];
   };
 
   /** Back-compat helpers used in docs/examples. */
@@ -42,7 +42,10 @@ export interface NodexNotebookHost {
   openPalette(): void | Promise<void>;
   openMiniBar(prefill?: string): void | Promise<void>;
   openObservableScratch(): void | Promise<void>;
-}
+};
+
+/** Injected as the `nodex` builtin: full `window.Nodex` API plus shell helpers. */
+export type NodexNotebookHost = NodexRendererApi & NodexNotebookShellAugment;
 
 /** Command ids exposed to notebooks (allowlist documentation). */
 export const NODEX_NOTEBOOK_DOCUMENTED_COMMANDS = [
@@ -53,7 +56,7 @@ export const NODEX_NOTEBOOK_DOCUMENTED_COMMANDS = [
   "nodex.script.repl.toggle",
   "nodex.shell.toggle.menuRail",
   "nodex.shell.toggle.sidebarPanel",
-  "nodex.shell.toggle.secondaryArea",
+  "nodex.shell.toggle.companion",
   "nodex.shell.toggle.bottomDock",
   "nodex.shell.toggle.miniBar",
   "nodex.shell.toggle.modeLine",
@@ -70,7 +73,7 @@ export function createNotebookNodexHost(
 ): NodexNotebookHost {
   const { invoke, registries, layout } = opts;
 
-  const shell: NodexNotebookHost["shell"] = {
+  const shell: NodexNotebookShellAugment["shell"] = {
     tabs: {
       listOpen: () => registries.tabs.listOpenTabs(),
       getActive: () => registries.tabs.getActiveTab(),
@@ -92,7 +95,7 @@ export function createNotebookNodexHost(
     },
   };
 
-  return {
+  const thin: NodexNotebookShellAugment = {
     shell,
     devtools: {
       tabs: shell.tabs,
@@ -108,4 +111,11 @@ export function createNotebookNodexHost(
       invoke("nodex.shell.openMiniBar", prefill != null && prefill !== "" ? { prefill: String(prefill) } : {}),
     openObservableScratch: () => invoke("nodex.observableNotebook.open"),
   };
+
+  const fromBridge =
+    typeof globalThis !== "undefined" && (globalThis as unknown as { Nodex?: NodexRendererApi }).Nodex
+      ? (globalThis as unknown as { Nodex: NodexRendererApi }).Nodex
+      : ({} as Partial<NodexRendererApi>);
+
+  return Object.assign({}, fromBridge, thin) as NodexNotebookHost;
 }

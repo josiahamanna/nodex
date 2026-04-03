@@ -4,9 +4,21 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import type { Note } from "@nodex/ui-types";
 import { baseSlug } from "../../utils/markdown-heading-slugs";
+import {
+  markdownInternalNoteHref,
+  parseInternalMarkdownNoteLink,
+} from "../../utils/markdown-internal-note-href";
+
+/** Fragment only, matches heading `id`s from this renderer (`baseSlug` + optional `-n`). */
+const SAME_PAGE_HEADING_HASH = /^#([a-z0-9-]+)$/;
 
 interface MarkdownRendererProps {
   note: Note;
+  /**
+   * When set, `#heading-id` links call this instead of relying on the browser (e.g. Documentation hub
+   * updates shell tab hash). Modifier clicks keep default navigation.
+   */
+  onSamePageHeadingClick?: (slug: string) => void;
 }
 
 type MarkdownHeading = "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
@@ -42,12 +54,12 @@ const markdownShellClass =
   "[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-[12px] " +
   "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground";
 
-const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note }) => {
+const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note, onSamePageHeadingClick }) => {
   // Reset each render so heading ids match a fresh slug sequence (TOC / scroll-to-heading).
   const slugCountsRef = useRef<Map<string, number>>(new Map());
   slugCountsRef.current = new Map();
 
-  const headingComponents = useMemo(() => {
+  const markdownComponents = useMemo(() => {
     const make =
       (Tag: MarkdownHeading) =>
       ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement> & { children?: React.ReactNode }) => {
@@ -64,6 +76,61 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note }) => {
           </Tag>
         );
       };
+
+    const InternalOrExternalLink = ({
+      href,
+      children,
+      ...rest
+    }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+      const internal = typeof href === "string" ? parseInternalMarkdownNoteLink(href) : null;
+      if (internal) {
+        const canonical = markdownInternalNoteHref(internal.noteId, internal.markdownHeadingSlug);
+        return (
+          <a
+            {...rest}
+            href={canonical}
+            onClick={(e) => {
+              if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+                return;
+              }
+              e.preventDefault();
+              if (typeof window !== "undefined" && window.location.hash !== canonical) {
+                window.location.hash = canonical;
+              }
+            }}
+          >
+            {children}
+          </a>
+        );
+      }
+      if (typeof href === "string" && onSamePageHeadingClick) {
+        const hm = href.match(SAME_PAGE_HEADING_HASH);
+        if (hm?.[1]) {
+          const slug = hm[1];
+          return (
+            <a
+              {...rest}
+              href={href}
+              onClick={(e) => {
+                if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+                  return;
+                }
+                e.preventDefault();
+                onSamePageHeadingClick(slug);
+              }}
+            >
+              {children}
+            </a>
+          );
+        }
+      }
+      return (
+        <a href={href} {...rest}>
+          {children}
+        </a>
+      );
+    };
+
     return {
       h1: make("h1"),
       h2: make("h2"),
@@ -71,15 +138,16 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note }) => {
       h4: make("h4"),
       h5: make("h5"),
       h6: make("h6"),
+      a: InternalOrExternalLink,
     };
-  }, []);
+  }, [onSamePageHeadingClick]);
 
   return (
     <div className={`p-4 nodex-typography max-w-none min-w-0 ${markdownShellClass}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[[rehypeSanitize, defaultSchema]]}
-        components={headingComponents}
+        components={markdownComponents}
       >
         {note.content}
       </ReactMarkdown>

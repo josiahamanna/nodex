@@ -1,8 +1,14 @@
 import * as crypto from "crypto";
 import type { Pool } from "pg";
 import type { NoteMovePlacement } from "../../shared/nodex-renderer-api";
+import { collectReferencedNoteIdsFromMarkdown } from "../../shared/markdown-internal-note-href";
 import { wpnComputeChildMapAfterMove } from "./wpn-note-move";
-import type { WpnNoteDetail, WpnNoteListItem } from "../../shared/wpn-v2-types";
+import type {
+  WpnBacklinkSourceItem,
+  WpnNoteDetail,
+  WpnNoteListItem,
+  WpnNoteWithContextListItem,
+} from "../../shared/wpn-v2-types";
 import { wpnPgProjectOwnedBy } from "./wpn-pg-service";
 import type { WpnNoteRow } from "./wpn-types";
 
@@ -421,4 +427,56 @@ export async function wpnPgSetExplorerExpanded(
      ON CONFLICT (project_id) DO UPDATE SET expanded_ids_json = EXCLUDED.expanded_ids_json`,
     [projectId, json],
   );
+}
+
+export async function wpnPgListAllNotesWithContext(
+  pool: Pool,
+  ownerId: string,
+): Promise<WpnNoteWithContextListItem[]> {
+  const { rows } = await pool.query(
+    `SELECT n.id, n.type, n.title, n.project_id,
+            p.name AS project_name, p.workspace_id, w.name AS workspace_name
+     FROM wpn_note n
+     INNER JOIN wpn_project p ON p.id = n.project_id
+     INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+     WHERE w.owner_id = $1`,
+    [ownerId],
+  );
+  return (rows as Record<string, unknown>[]).map((r) => ({
+    id: String(r.id),
+    type: String(r.type),
+    title: String(r.title),
+    project_id: String(r.project_id),
+    project_name: String(r.project_name),
+    workspace_id: String(r.workspace_id),
+    workspace_name: String(r.workspace_name),
+  }));
+}
+
+export async function wpnPgListBacklinksToNote(
+  pool: Pool,
+  ownerId: string,
+  targetNoteId: string,
+): Promise<WpnBacklinkSourceItem[]> {
+  const { rows } = await pool.query(
+    `SELECT n.id, n.title, n.content, n.project_id
+     FROM wpn_note n
+     INNER JOIN wpn_project p ON p.id = n.project_id
+     INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+     WHERE w.owner_id = $1 AND n.id != $2`,
+    [ownerId, targetNoteId],
+  );
+  const out: WpnBacklinkSourceItem[] = [];
+  for (const row of rows as Record<string, unknown>[]) {
+    const content = String(row.content ?? "");
+    const refs = collectReferencedNoteIdsFromMarkdown(content);
+    if (refs.has(targetNoteId)) {
+      out.push({
+        id: String(row.id),
+        title: String(row.title),
+        project_id: String(row.project_id),
+      });
+    }
+  }
+  return out;
 }

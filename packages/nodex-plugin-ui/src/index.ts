@@ -12,7 +12,7 @@ export type ShellSlotId =
   | "rail"
   | "primarySidebarChrome"
   | "mainAreaChrome"
-  | "secondaryAreaChrome"
+  | "companionChrome"
   | "bottomAreaChrome"
   | "noteEditorChrome";
 

@@ -1,29 +1,76 @@
 {
-  "version": 2,
+  "version": 4,
   "folder": {
     "id": "nodex-bundled-docs",
-    "title": "Nodex — Plugin authoring (bundled)"
+    "title": "Nodex — Documentation (bundled)"
   },
+  "hubPlaceholder": {
+    "id": "nodex-docs-hub-overview",
+    "file": "documentation-hub-overview.md",
+    "title": "Documentation — overview"
+  },
+  "companionPanels": [
+    {
+      "id": "nodex-companion-user-guide",
+      "file": "companion-user-guide.md",
+      "title": "User guide (companion)",
+      "slot": "user-guide"
+    },
+    {
+      "id": "nodex-companion-plugin-authoring",
+      "file": "companion-plugin-authoring.md",
+      "title": "Plugin authoring (companion)",
+      "slot": "plugin-authoring"
+    }
+  ],
   "pages": [
+    {
+      "id": "nodex-user-guide-layout",
+      "file": "user-01-layout-and-shell.md",
+      "title": "User guide — Layout and shell regions",
+      "section": "User guide"
+    },
+    {
+      "id": "nodex-user-guide-wpn",
+      "file": "user-02-workspaces-projects-notes.md",
+      "title": "User guide — Workspaces, projects, and notes",
+      "section": "User guide"
+    },
+    {
+      "id": "nodex-user-guide-commands",
+      "file": "user-03-commands-tabs-and-views.md",
+      "title": "User guide — Mini bar, palette, and tabs",
+      "section": "User guide"
+    },
+    {
+      "id": "nodex-user-guide-features",
+      "file": "user-04-explorer-observable-documentation.md",
+      "title": "User guide — Explorer, Observable, and Documentation",
+      "section": "User guide"
+    },
     {
       "id": "nodex-bundled-plugin-overview",
       "file": "01-overview.md",
-      "title": "Overview"
+      "title": "Plugin authoring — Overview",
+      "section": "Plugin authoring"
     },
     {
       "id": "nodex-bundled-plugin-shell",
       "file": "02-shell-and-commands.md",
-      "title": "Shell registration and commands"
+      "title": "Plugin authoring — Shell registration and commands",
+      "section": "Plugin authoring"
     },
     {
       "id": "nodex-bundled-plugin-example",
       "file": "03-minimal-example.md",
-      "title": "Minimal code example"
+      "title": "Plugin authoring — Minimal code example",
+      "section": "Plugin authoring"
     },
     {
       "id": "nodex-bundled-plugin-complete-guide",
       "file": "04-plugin-authoring-complete-guide.md",
-      "title": "Plugin authoring — complete guide"
+      "title": "Plugin authoring — Complete guide",
+      "section": "Plugin authoring"
     }
   ]
 }

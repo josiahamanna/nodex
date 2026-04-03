@@ -10,7 +10,10 @@ import type { ShellMenuRailItem } from "./registries/ShellMenuRailRegistry";
 export function useShellNavigation(): {
   deps: ShellNavigationDeps;
   openFromRailItem: (item: ShellMenuRailItem) => void;
-  openNoteById: (noteId: string) => void;
+  openNoteById: (
+    noteId: string,
+    opts?: { markdownHeadingSlug?: string },
+  ) => void;
   invokeCommand: (commandId: string, args?: Record<string, unknown>) => unknown;
 } {
   const regs = useShellRegistries();
@@ -19,8 +22,8 @@ export function useShellNavigation(): {
   const contrib = useNodexContributionRegistry();
 
   const deps = useMemo<ShellNavigationDeps>(
-    () => ({ tabs: regs.tabs, views, layout }),
-    [regs.tabs, views, layout],
+    () => ({ tabs: regs.tabs, views, layout, menuRail: regs.menuRail }),
+    [regs.tabs, views, layout, regs.menuRail],
   );
 
   const invokeCommand = useCallback(
@@ -37,8 +40,8 @@ export function useShellNavigation(): {
   );
 
   const openNoteById = useCallback(
-    (noteId: string) => {
-      openNoteInShell(noteId, deps);
+    (noteId: string, opts?: { markdownHeadingSlug?: string }) => {
+      openNoteInShell(noteId, deps, opts);
     },
     [deps],
   );

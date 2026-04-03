@@ -1,7 +1,13 @@
 import type { Database } from "better-sqlite3";
 import * as crypto from "crypto";
 import type { NoteMovePlacement } from "../../shared/nodex-renderer-api";
-import type { WpnNoteDetail, WpnNoteListItem } from "../../shared/wpn-v2-types";
+import { collectReferencedNoteIdsFromMarkdown } from "../../shared/markdown-internal-note-href";
+import type {
+  WpnBacklinkSourceItem,
+  WpnNoteDetail,
+  WpnNoteListItem,
+  WpnNoteWithContextListItem,
+} from "../../shared/wpn-v2-types";
 import { wpnComputeChildMapAfterMove } from "./wpn-note-move";
 import { wpnSqliteProjectOwnedBy } from "./wpn-sqlite-service";
 import type { WpnNoteRow } from "./wpn-types";
@@ -414,4 +420,63 @@ export function wpnSqliteSetExplorerExpanded(
      VALUES (?, ?)
      ON CONFLICT(project_id) DO UPDATE SET expanded_ids_json = excluded.expanded_ids_json`,
   ).run(projectId, json);
+}
+
+/** All notes for the owner with workspace/project names (unordered). */
+export function wpnSqliteListAllNotesWithContext(
+  db: Database,
+  ownerId: string,
+): WpnNoteWithContextListItem[] {
+  const rows = db
+    .prepare(
+      `SELECT n.id AS id, n.type AS type, n.title AS title, n.project_id AS project_id,
+              p.name AS project_name, p.workspace_id AS workspace_id, w.name AS workspace_name
+       FROM wpn_note n
+       INNER JOIN wpn_project p ON p.id = n.project_id
+       INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+       WHERE w.owner_id = ?`,
+    )
+    .all(ownerId) as {
+    id: string;
+    type: string;
+    title: string;
+    project_id: string;
+    project_name: string;
+    workspace_id: string;
+    workspace_name: string;
+  }[];
+  return rows.map((r) => ({
+    id: r.id,
+    type: r.type,
+    title: r.title,
+    project_id: r.project_id,
+    project_name: r.project_name,
+    workspace_id: r.workspace_id,
+    workspace_name: r.workspace_name,
+  }));
+}
+
+export function wpnSqliteListBacklinksToNote(
+  db: Database,
+  ownerId: string,
+  targetNoteId: string,
+): WpnBacklinkSourceItem[] {
+  const rows = db
+    .prepare(
+      `SELECT n.id AS id, n.title AS title, n.content AS content, n.project_id AS project_id
+       FROM wpn_note n
+       INNER JOIN wpn_project p ON p.id = n.project_id
+       INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+       WHERE w.owner_id = ? AND n.id != ?`,
+    )
+    .all(ownerId, targetNoteId) as { id: string; title: string; content: string; project_id: string }[];
+
+  const out: WpnBacklinkSourceItem[] = [];
+  for (const r of rows) {
+    const refs = collectReferencedNoteIdsFromMarkdown(r.content ?? "");
+    if (refs.has(targetNoteId)) {
+      out.push({ id: r.id, title: r.title, project_id: r.project_id });
+    }
+  }
+  return out;
 }

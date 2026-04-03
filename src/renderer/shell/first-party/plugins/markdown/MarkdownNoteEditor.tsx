@@ -1,3 +1,5 @@
+import CodeMirror from "@uiw/react-codemirror";
+import type { EditorView } from "@codemirror/view";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch } from "react-redux";
 import type { Note } from "@nodex/ui-types";
@@ -5,11 +7,28 @@ import type { AppDispatch } from "../../../../store";
 import { patchNoteMetadata, saveNoteContent } from "../../../../store/notesSlice";
 import MarkdownRenderer from "../../../../components/renderers/MarkdownRenderer";
 import { useAuth } from "../../../../auth/AuthContext";
+import { useTheme } from "../../../../theme/ThemeContext";
+import { markdownInternalNoteHref } from "../../../../utils/markdown-internal-note-href";
+import { MarkdownNoteLinkPickerModal } from "./MarkdownNoteLinkPickerModal";
+import { MarkdownNoteLinkAutocompletePopover } from "./MarkdownNoteLinkAutocompletePopover";
+import { NODEX_MARKDOWN_OPEN_NOTE_LINK_PICKER_EVENT } from "./markdownNoteLinkEvents";
+import { findActiveWikiLinkTrigger } from "./markdownWikiLinkTrigger";
+import {
+  markdownNoteEditorExtensions,
+  type MarkdownNoteOnBlurRef,
+  type MarkdownNoteSelectionSyncRef,
+  type MarkdownNoteWikiKeymapState,
+} from "./markdown-note-editor-codemirror";
+import { useShellActiveMainTab } from "../../../ShellActiveTabContext";
+import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
+import { SHELL_TAB_NOTE } from "../../shellWorkspaceIds";
+import type { ShellNoteTabState } from "../../../shellTabUrlSync";
+import { fetchWpnNoteLinkIndex, filterWpnNoteLinkRows, type WpnNoteLinkRow } from "./wpnNoteLinkIndex";
 
 type MarkdownViewMode = "editor" | "preview" | "both";
 
 /**
- * System markdown note editor (plain textarea).
+ * System markdown note editor (CodeMirror 6 + debounced react-markdown preview).
  * Persists via batched writes: one save per animation frame while typing, plus immediate flush on blur and when leaving the note.
  */
 export function MarkdownNoteEditor({
@@ -21,12 +40,43 @@ export function MarkdownNoteEditor({
 }): React.ReactElement {
   const dispatch = useDispatch<AppDispatch>();
   const auth = useAuth();
+  const { resolvedDark } = useTheme();
+  const shellActiveMainTab = useShellActiveMainTab();
+  const { tabs: shellTabs } = useShellRegistries();
   const [value, setValue] = useState(note.content ?? "");
+  const [previewContent, setPreviewContent] = useState(note.content ?? "");
+  const [caretHead, setCaretHead] = useState(0);
   const latestRef = useRef(note.content ?? "");
   const rafRef = useRef(0);
   const persistRef = useRef(persist);
   const noteIdRef = useRef(note.id);
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
+  const cmHostRef = useRef<HTMLDivElement | null>(null);
+  const cmViewRef = useRef<EditorView | null>(null);
+  const cmResizeRafRef = useRef(0);
+  const lastCaretRef = useRef({ start: 0, end: 0 });
+  const wikiIndexCacheRef = useRef<WpnNoteLinkRow[] | null>(null);
+  const wikiKeymapRef = useRef<MarkdownNoteWikiKeymapState>({
+    readOnly: false,
+    active: false,
+    rowCount: 0,
+    onArrowDown: () => {},
+    onArrowUp: () => {},
+    onEnter: () => {},
+    onEscape: () => {},
+  });
+  const selectionSyncRef: MarkdownNoteSelectionSyncRef = useRef(null);
+  const onBlurRef: MarkdownNoteOnBlurRef = useRef(null);
+
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false);
+  const [sel, setSel] = useState({ start: 0, end: 0 });
+  const [wikiDismissed, setWikiDismissed] = useState(false);
+  const [wikiRows, setWikiRows] = useState<WpnNoteLinkRow[]>([]);
+  const [wikiLoading, setWikiLoading] = useState(false);
+  const [wikiError, setWikiError] = useState<string | null>(null);
+  const [wikiSelected, setWikiSelected] = useState(0);
+  const [wikiAnchor, setWikiAnchor] = useState<DOMRect | null>(null);
+
   const meta = (note.metadata ?? {}) as Record<string, unknown>;
   const isAdmin = auth.state.status === "authed" && auth.state.user.isAdmin === true;
   const readOnly =
@@ -45,10 +95,101 @@ export function MarkdownNoteEditor({
   persistRef.current = persist;
   noteIdRef.current = note.id;
 
+  const pendingHeadingSlug =
+    shellActiveMainTab?.tabTypeId === SHELL_TAB_NOTE &&
+    (shellActiveMainTab.state as ShellNoteTabState | undefined)?.noteId === note.id
+      ? (shellActiveMainTab.state as ShellNoteTabState | undefined)?.markdownHeadingSlug
+      : undefined;
+
+  const wikiTrig = useMemo(
+    () => (!readOnly ? findActiveWikiLinkTrigger(value, caretHead) : null),
+    [readOnly, value, caretHead],
+  );
+
+  const showWiki = Boolean(wikiTrig) && !wikiDismissed;
+
+  const prevWikiTrigRef = useRef<ReturnType<typeof findActiveWikiLinkTrigger>>(null);
+  useEffect(() => {
+    if (wikiTrig === null && prevWikiTrigRef.current !== null) {
+      setWikiDismissed(false);
+    }
+    prevWikiTrigRef.current = wikiTrig;
+  }, [wikiTrig]);
+
+  useEffect(() => {
+    setWikiSelected(0);
+    setWikiDismissed(false);
+  }, [wikiTrig?.filter]);
+
+  useEffect(() => {
+    wikiIndexCacheRef.current = null;
+    setWikiRows([]);
+    setWikiError(null);
+    setWikiDismissed(false);
+  }, [note.id]);
+
+  useEffect(() => {
+    if (!showWiki) return;
+    if (wikiIndexCacheRef.current) {
+      setWikiRows(wikiIndexCacheRef.current);
+      return;
+    }
+    let cancelled = false;
+    setWikiLoading(true);
+    setWikiError(null);
+    void fetchWpnNoteLinkIndex()
+      .then((list) => {
+        if (cancelled) return;
+        wikiIndexCacheRef.current = list;
+        setWikiRows(list);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setWikiError("Could not load notes.");
+        setWikiRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setWikiLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showWiki]);
+
+  useEffect(() => {
+    if (!showWiki) return;
+    const sync = (): void => {
+      const view = cmViewRef.current;
+      if (!view) return;
+      const pos = view.state.selection.main.head;
+      const coords = view.coordsAtPos(pos);
+      if (coords) {
+        const w = Math.max(coords.right - coords.left, 8);
+        const h = Math.max(coords.bottom - coords.top, 14);
+        setWikiAnchor(new DOMRect(coords.left, coords.top, w, h));
+      } else {
+        setWikiAnchor(view.dom.getBoundingClientRect());
+      }
+    };
+    sync();
+    window.addEventListener("scroll", sync, true);
+    window.addEventListener("resize", sync);
+    return () => {
+      window.removeEventListener("scroll", sync, true);
+      window.removeEventListener("resize", sync);
+    };
+  }, [showWiki, value, viewMode, caretHead]);
+
   useEffect(() => {
     setValue(note.content ?? "");
     latestRef.current = note.content ?? "";
+    setPreviewContent(note.content ?? "");
   }, [note.id, note.content]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setPreviewContent(value), 160);
+    return () => clearTimeout(id);
+  }, [value]);
 
   useEffect(() => {
     const raw =
@@ -59,6 +200,20 @@ export function MarkdownNoteEditor({
       raw === "editor" || raw === "preview" || raw === "both" ? raw : "both";
     setViewMode(readOnly ? "preview" : next);
   }, [note.id, note.metadata]);
+
+  useEffect(() => {
+    const onOpenPicker = (e: Event): void => {
+      const d = (e as CustomEvent<{ noteId?: unknown }>).detail;
+      const id = typeof d?.noteId === "string" ? d.noteId : "";
+      if (!id || id !== noteIdRef.current) return;
+      if (readOnly) return;
+      setLinkPickerOpen(true);
+    };
+    window.addEventListener(NODEX_MARKDOWN_OPEN_NOTE_LINK_PICKER_EVENT, onOpenPicker as EventListener);
+    return () => {
+      window.removeEventListener(NODEX_MARKDOWN_OPEN_NOTE_LINK_PICKER_EVENT, onOpenPicker as EventListener);
+    };
+  }, [note.id, readOnly]);
 
   const setAndPersistViewMode = useCallback(
     (next: MarkdownViewMode) => {
@@ -107,15 +262,71 @@ export function MarkdownNoteEditor({
     };
   }, [setAndPersistViewMode, viewMode]);
 
+  const headingScrollDoneRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (readOnly || !pendingHeadingSlug) {
+      headingScrollDoneRef.current = null;
+      return;
+    }
+    const tab = shellActiveMainTab;
+    if (!tab?.instanceId || tab.tabTypeId !== SHELL_TAB_NOTE) return;
+    const slug = pendingHeadingSlug;
+    if (headingScrollDoneRef.current === slug) return;
+
+    if (viewMode === "editor") {
+      setAndPersistViewMode("both");
+    }
+
+    let alive = true;
+    const deadline = performance.now() + 900;
+    const instId = tab.instanceId;
+    const clearSlugOnTab = (): void => {
+      shellTabs.updateTabPresentation(instId, { state: { noteId: note.id } });
+    };
+
+    const tryScroll = (): void => {
+      if (!alive) return;
+      const root = previewScrollRef.current;
+      if (root) {
+        const target = root.querySelector<HTMLElement>(`#${CSS.escape(slug)}`);
+        if (target) {
+          target.scrollIntoView({ block: "start", behavior: "smooth" });
+          headingScrollDoneRef.current = slug;
+          clearSlugOnTab();
+          return;
+        }
+      }
+      if (performance.now() < deadline) {
+        requestAnimationFrame(tryScroll);
+      } else {
+        headingScrollDoneRef.current = slug;
+        clearSlugOnTab();
+      }
+    };
+    requestAnimationFrame(tryScroll);
+    return () => {
+      alive = false;
+    };
+  }, [
+    note.id,
+    pendingHeadingSlug,
+    previewContent,
+    readOnly,
+    setAndPersistViewMode,
+    shellActiveMainTab,
+    shellTabs,
+    viewMode,
+  ]);
+
   const previewNote = useMemo<Note>(
     () => ({
       id: note.id,
       type: "markdown",
       title: note.title ?? "Markdown",
-      content: value,
+      content: previewContent,
       metadata: note.metadata,
     }),
-    [note.id, note.metadata, note.title, value],
+    [note.id, note.metadata, note.title, previewContent],
   );
 
   const flushNow = useCallback(() => {
@@ -157,6 +368,158 @@ export function MarkdownNoteEditor({
     };
   }, [note.id, dispatch]);
 
+  const insertMarkdownNoteLink = useCallback(
+    (row: WpnNoteLinkRow, replaceRange?: { start: number; end: number }) => {
+      const label = row.title.trim() || "Untitled";
+      const href = markdownInternalNoteHref(row.noteId);
+      const md = `[${label}](${href})`;
+      const view = cmViewRef.current;
+      const text = latestRef.current;
+
+      let start: number;
+      let end: number;
+      if (replaceRange) {
+        start = replaceRange.start;
+        end = replaceRange.end;
+      } else if (view?.hasFocus) {
+        const m = view.state.selection.main;
+        start = m.from;
+        end = m.to;
+      } else {
+        start = lastCaretRef.current.start;
+        end = lastCaretRef.current.end;
+      }
+
+      const labelStart = start + 1;
+      const labelEnd = labelStart + label.length;
+
+      if (view && !readOnly) {
+        view.dispatch({
+          changes: { from: start, to: end, insert: md },
+          selection: { anchor: labelStart, head: labelEnd },
+        });
+        const next = view.state.doc.toString();
+        setValue(next);
+        latestRef.current = next;
+        setCaretHead(labelEnd);
+        lastCaretRef.current = { start: labelStart, end: labelEnd };
+        setSel({ start: labelStart, end: labelEnd });
+        scheduleBatchedFlush();
+        requestAnimationFrame(() => view.focus());
+      } else {
+        const next = text.slice(0, start) + md + text.slice(end);
+        setValue(next);
+        latestRef.current = next;
+        setCaretHead(labelEnd);
+        lastCaretRef.current = { start: labelStart, end: labelEnd };
+        setSel({ start: labelStart, end: labelEnd });
+        scheduleBatchedFlush();
+        requestAnimationFrame(() => {
+          cmViewRef.current?.focus();
+        });
+      }
+    },
+    [readOnly, scheduleBatchedFlush],
+  );
+
+  const filteredWikiRows = useMemo(() => {
+    const ex = note.id.trim();
+    const base = ex ? wikiRows.filter((r) => r.noteId !== ex) : wikiRows;
+    return filterWpnNoteLinkRows(base, wikiTrig?.filter ?? "");
+  }, [wikiRows, wikiTrig?.filter, note.id]);
+
+  const wikiSelectedClamped = Math.min(
+    wikiSelected,
+    Math.max(0, filteredWikiRows.length - 1),
+  );
+
+  const completeWikiLink = useCallback(
+    (row: WpnNoteLinkRow) => {
+      if (!wikiTrig) return;
+      const view = cmViewRef.current;
+      const end = view?.state.selection.main.head ?? sel.end;
+      insertMarkdownNoteLink(row, { start: wikiTrig.start, end });
+      setWikiDismissed(false);
+    },
+    [insertMarkdownNoteLink, sel.end, wikiTrig],
+  );
+
+  const cmExtensions = useMemo(
+    () =>
+      markdownNoteEditorExtensions({
+        dark: resolvedDark,
+        readOnly,
+        wikiKeymapRef,
+        selectionSyncRef,
+        onBlurRef,
+      }),
+    [readOnly, resolvedDark],
+  );
+
+  useEffect(() => {
+    const host = cmHostRef.current;
+    if (!host) return;
+    if (typeof ResizeObserver === "undefined") return;
+
+    const ro = new ResizeObserver(() => {
+      if (cmResizeRafRef.current) cancelAnimationFrame(cmResizeRafRef.current);
+      cmResizeRafRef.current = requestAnimationFrame(() => {
+        cmResizeRafRef.current = 0;
+        cmViewRef.current?.requestMeasure();
+      });
+    });
+    ro.observe(host);
+    return () => {
+      ro.disconnect();
+      if (cmResizeRafRef.current) {
+        cancelAnimationFrame(cmResizeRafRef.current);
+        cmResizeRafRef.current = 0;
+      }
+    };
+  }, [readOnly, viewMode]);
+
+  useEffect(() => {
+    if (readOnly || (viewMode !== "editor" && viewMode !== "both")) {
+      cmViewRef.current = null;
+    }
+  }, [readOnly, viewMode]);
+
+  selectionSyncRef.current = (from, to, head) => {
+    lastCaretRef.current = { start: from, end: to };
+    setSel({ start: from, end: to });
+    setCaretHead(head);
+  };
+
+  onBlurRef.current = () => {
+    const view = cmViewRef.current;
+    if (view) {
+      const m = view.state.selection.main;
+      lastCaretRef.current = { start: m.from, end: m.to };
+    }
+    flushNow();
+  };
+
+  wikiKeymapRef.current.readOnly = readOnly;
+  wikiKeymapRef.current.active = showWiki;
+  wikiKeymapRef.current.rowCount = filteredWikiRows.length;
+  wikiKeymapRef.current.onArrowDown = () => {
+    const n = wikiKeymapRef.current.rowCount;
+    if (n === 0) return;
+    setWikiSelected((s) => Math.min(n - 1, s + 1));
+  };
+  wikiKeymapRef.current.onArrowUp = () => {
+    const n = wikiKeymapRef.current.rowCount;
+    if (n === 0) return;
+    setWikiSelected((s) => Math.max(0, s - 1));
+  };
+  wikiKeymapRef.current.onEnter = () => {
+    const row = filteredWikiRows[wikiSelectedClamped];
+    if (row) completeWikiLink(row);
+  };
+  wikiKeymapRef.current.onEscape = () => {
+    setWikiDismissed(true);
+  };
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       {!readOnly ? (
@@ -184,7 +547,16 @@ export function MarkdownNoteEditor({
               </button>
             ))}
           </div>
-          <div className="text-[11px] text-muted-foreground">Markdown</div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted/40"
+              onClick={() => setLinkPickerOpen(true)}
+            >
+              Link to note
+            </button>
+            <div className="text-[11px] text-muted-foreground">Markdown</div>
+          </div>
         </div>
       ) : (
         <div className="flex shrink-0 items-center justify-between gap-2 pb-3">
@@ -195,24 +567,30 @@ export function MarkdownNoteEditor({
 
       <div className="flex h-full min-h-0 w-full flex-col gap-3 md:flex-row">
         {!readOnly && (viewMode === "editor" || viewMode === "both") ? (
-          <div className="flex min-h-[240px] min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-background">
+          <div className="relative flex min-h-[240px] min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-background">
             <div className="border-b border-border px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               Editor
             </div>
-            <textarea
-              className="h-full min-h-[240px] w-full flex-1 resize-none bg-transparent p-3 font-mono text-[13px] outline-none"
-              spellCheck={false}
-              value={value}
-              onChange={(e) => {
-                const v = e.target.value;
-                setValue(v);
-                latestRef.current = v;
-                scheduleBatchedFlush();
-              }}
-              onBlur={() => {
-                flushNow();
-              }}
-            />
+            <div ref={cmHostRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <CodeMirror
+                value={value}
+                height="100%"
+                theme="none"
+                basicSetup={false}
+                className="nodex-md-cm h-full min-h-0 overflow-hidden text-[13px] [&_.cm-editor]:flex [&_.cm-editor]:h-full [&_.cm-editor]:min-h-0 [&_.cm-editor]:flex-col [&_.cm-scroller]:min-h-0 [&_.cm-scroller]:flex-1"
+                extensions={cmExtensions}
+                editable={!readOnly}
+                onCreateEditor={(view) => {
+                  cmViewRef.current = view;
+                  view.requestMeasure();
+                }}
+                onChange={(v) => {
+                  setValue(v);
+                  latestRef.current = v;
+                  scheduleBatchedFlush();
+                }}
+              />
+            </div>
           </div>
         ) : null}
 
@@ -231,6 +609,23 @@ export function MarkdownNoteEditor({
           </div>
         ) : null}
       </div>
+
+      <MarkdownNoteLinkPickerModal
+        open={linkPickerOpen}
+        onClose={() => setLinkPickerOpen(false)}
+        excludeNoteId={note.id}
+        onPick={(row) => insertMarkdownNoteLink(row)}
+      />
+
+      <MarkdownNoteLinkAutocompletePopover
+        open={showWiki}
+        anchorRect={wikiAnchor}
+        loading={wikiLoading}
+        error={wikiError}
+        rows={filteredWikiRows}
+        selectedIndex={wikiSelectedClamped}
+        onSelect={(row) => completeWikiLink(row)}
+      />
     </div>
   );
 }

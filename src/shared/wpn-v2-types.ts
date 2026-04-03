@@ -56,6 +56,24 @@ export type WpnNoteDetail = {
   updated_at_ms: number;
 };
 
+/** Flat row for cross-project note listing (link picker, bulk load). */
+export type WpnNoteWithContextListItem = {
+  id: string;
+  title: string;
+  type: string;
+  project_id: string;
+  project_name: string;
+  workspace_id: string;
+  workspace_name: string;
+};
+
+/** Note that links to the target note id in markdown content. */
+export type WpnBacklinkSourceItem = {
+  id: string;
+  title: string;
+  project_id: string;
+};
+
 export const WPN_SCHEMA_VERSION = 1;
 
 export type WpnWorkspacePatch = {

@@ -3,7 +3,7 @@ import React from "react";
 export type ShellRegionId =
   | "primarySidebar"
   | "mainArea"
-  | "secondaryArea"
+  | "companion"
   | "bottomArea";
 
 export type ShellViewComponentProps = {

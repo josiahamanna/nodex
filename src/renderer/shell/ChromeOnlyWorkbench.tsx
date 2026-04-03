@@ -37,13 +37,15 @@ import {
   hashForActiveTab,
   parseShellHash,
   replaceWindowHash,
+  type ShellNoteTabState,
 } from "./shellTabUrlSync";
+import { applyShellTabFromUrlHash } from "./shellRailNavigation";
 import { useShellNavigation } from "./useShellNavigation";
 import { ShellViewHost } from "./views/ShellViewHost";
 import { useShellViewRegistry } from "./views/ShellViewContext";
 import { useShellRegistries } from "./registries/ShellRegistriesContext";
 import type { ShellAppMenuItem } from "./registries/ShellAppMenuRegistry";
-import type { ShellTabInstance } from "./registries/ShellTabsRegistry";
+import type { ShellTabInstance, ShellTabsRegistry } from "./registries/ShellTabsRegistry";
 import { SHELL_TAB_NOTE } from "./first-party/shellWorkspaceIds";
 import {
   SHELL_ACTIVITY_BAR_WIDTH_PX,
@@ -216,13 +218,41 @@ function SortableTabRow({
   );
 }
 
+function applyShellHashNoteTarget(
+  tabs: ShellTabsRegistry,
+  openNoteById: (id: string, opts?: { markdownHeadingSlug?: string }) => void,
+  parsed: { kind: "note"; noteId: string; markdownHeadingSlug?: string },
+): void {
+  const active = tabs.getActiveTab();
+  const st = active?.state as ShellNoteTabState | undefined;
+  const slug = parsed.markdownHeadingSlug;
+  if (active?.tabTypeId === SHELL_TAB_NOTE && st?.noteId === parsed.noteId) {
+    if (slug) {
+      tabs.updateTabPresentation(active.instanceId, {
+        state: { noteId: parsed.noteId, markdownHeadingSlug: slug },
+      });
+      window.dispatchEvent(
+        new CustomEvent("nodex:markdown-scroll-to-heading", {
+          detail: { noteId: parsed.noteId, slug },
+        }),
+      );
+    } else {
+      tabs.updateTabPresentation(active.instanceId, {
+        state: { noteId: parsed.noteId },
+      });
+    }
+    return;
+  }
+  openNoteById(parsed.noteId, slug ? { markdownHeadingSlug: slug } : undefined);
+}
+
 export function ChromeOnlyWorkbench(): React.ReactElement {
   const auth = useAuth();
   const layout = useShellLayoutState();
   const store = useShellLayoutStore();
   const views = useShellViewRegistry();
   const { menuRail, appMenu, panelMenu, tabs, widgetSlots } = useShellRegistries();
-  const { openFromRailItem, openNoteById, invokeCommand } = useShellNavigation();
+  const { openFromRailItem, openNoteById, invokeCommand, deps: shellNavDeps } = useShellNavigation();
   const [panelMenuOpen, setPanelMenuOpen] = useState(false);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
   const appMenuWrapRef = useRef<HTMLDivElement>(null);
@@ -231,7 +261,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
 
   const primaryRef = React.useRef<ImperativePanelHandle>(null);
   const mainPanelRef = React.useRef<ImperativePanelHandle>(null);
-  const secondaryRef = React.useRef<ImperativePanelHandle>(null);
+  const companionRef = React.useRef<ImperativePanelHandle>(null);
   const bottomRef = React.useRef<ImperativePanelHandle>(null);
   const horizontalWorkspaceRef = useRef<HTMLDivElement>(null);
   const lastViewportWidthRef = useRef(0);
@@ -259,25 +289,25 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const showMenuRail = layout.visible.menuRail;
   const showSidebarPanel = layout.visible.sidebarPanel;
   const showLeft = showMenuRail || showSidebarPanel;
-  const showSecondary = layout.visible.secondaryArea;
+  const showCompanion = layout.visible.companion;
   const showBottom = layout.visible.bottomArea;
 
   const minCompanionPct = useMemo(() => {
-    if (!showSecondary || workspaceWidthPx <= 0) return 0;
+    if (!showCompanion || workspaceWidthPx <= 0) return 0;
     return Math.min(
       99,
       Math.max(1, Math.ceil((SHELL_COMPANION_MIN_EXPANDED_PX / workspaceWidthPx) * 100)),
     );
-  }, [showSecondary, workspaceWidthPx]);
+  }, [showCompanion, workspaceWidthPx]);
 
   const primaryViewId = views.getOpenViewId("primarySidebar");
   const mainViewId = views.getOpenViewId("mainArea");
-  const secondaryViewId = views.getOpenViewId("secondaryArea");
+  const companionViewId = views.getOpenViewId("companion");
   const bottomViewId = views.getOpenViewId("bottomArea");
 
   const primaryView = primaryViewId ? views.getView(primaryViewId) : undefined;
   const mainView = mainViewId ? views.getView(mainViewId) : undefined;
-  const secondaryView = secondaryViewId ? views.getView(secondaryViewId) : undefined;
+  const companionView = companionViewId ? views.getView(companionViewId) : undefined;
   const bottomView = bottomViewId ? views.getView(bottomViewId) : undefined;
 
   const railItems = menuRail.list();
@@ -329,22 +359,22 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     views.openView(viewId, "mainArea");
   }, [activeTab?.instanceId, tabs, views]);
 
-  /** Sync primary sidebar + secondary to active tab type; omit companion ids → close region + collapse chrome. */
+  /** Sync primary sidebar + companion to active tab type; omit companion ids → close region + collapse chrome. */
   useEffect(() => {
     const tabTypeId = activeTab?.tabTypeId ?? null;
     if (!tabTypeId) {
       views.closeRegion("primarySidebar");
-      views.closeRegion("secondaryArea");
+      views.closeRegion("companion");
       store.setVisible("sidebarPanel", false);
-      store.setVisible("secondaryArea", false);
+      store.setVisible("companion", false);
       return;
     }
     const t = tabs.getTabType(tabTypeId);
     if (!t) {
       views.closeRegion("primarySidebar");
-      views.closeRegion("secondaryArea");
+      views.closeRegion("companion");
       store.setVisible("sidebarPanel", false);
-      store.setVisible("secondaryArea", false);
+      store.setVisible("companion", false);
       return;
     }
     if (t.primarySidebarViewId) {
@@ -355,11 +385,11 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       store.setVisible("sidebarPanel", false);
     }
     if (t.secondaryViewId) {
-      views.openView(t.secondaryViewId, "secondaryArea");
-      store.setVisible("secondaryArea", true);
+      views.openView(t.secondaryViewId, "companion");
+      store.setVisible("companion", true);
     } else {
-      views.closeRegion("secondaryArea");
-      store.setVisible("secondaryArea", false);
+      views.closeRegion("companion");
+      store.setVisible("companion", false);
     }
   }, [activeTab?.tabTypeId, activeTab?.instanceId, tabs, views, store]);
 
@@ -369,16 +399,16 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       initialHashApplied.current = true;
       const parsed = parseShellHash();
       if (parsed?.kind === "note") {
-        openNoteById(parsed.noteId);
+        applyShellHashNoteTarget(tabs, openNoteById, parsed);
       } else if (parsed?.kind === "tab") {
-        const inst = tabs.listOpenTabs().find((i) => i.instanceId === parsed.instanceId);
-        if (inst) {
-          tabs.setActiveTab(inst.instanceId);
+        applyShellTabFromUrlHash(parsed.instanceId, shellNavDeps, invokeCommand, parsed.documentationSegments);
+        if (tabs.listOpenTabs().length === 0) {
+          tabs.openOrReuseTab("shell.tab.welcome", { title: "Welcome", reuseKey: "shell:welcome" });
         }
       }
     }, 50);
     return () => window.clearTimeout(id);
-  }, [openNoteById, tabs]);
+  }, [invokeCommand, openNoteById, shellNavDeps, tabs]);
 
   useEffect(() => {
     if (!appMenuOpen) return;
@@ -417,17 +447,17 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     const onHash = (): void => {
       const parsed = parseShellHash();
       if (parsed?.kind === "note") {
-        openNoteById(parsed.noteId);
+        applyShellHashNoteTarget(tabs, openNoteById, parsed);
       } else if (parsed?.kind === "tab") {
-        const inst = tabs.listOpenTabs().find((i) => i.instanceId === parsed.instanceId);
-        if (inst) {
-          tabs.setActiveTab(inst.instanceId);
+        applyShellTabFromUrlHash(parsed.instanceId, shellNavDeps, invokeCommand, parsed.documentationSegments);
+        if (tabs.listOpenTabs().length === 0) {
+          tabs.openOrReuseTab("shell.tab.welcome", { title: "Welcome", reuseKey: "shell:welcome" });
         }
       }
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, [openNoteById, tabs]);
+  }, [invokeCommand, openNoteById, shellNavDeps, tabs]);
 
   const renderSash = (key: string) => (
     <PanelResizeHandle
@@ -498,19 +528,19 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
 
   /** Collapse/expand companion `Panel` so toggles match store (panel stays mounted). */
   useLayoutEffect(() => {
-    if (!showSecondary) {
-      secondaryRef.current?.collapse();
+    if (!showCompanion) {
+      companionRef.current?.collapse();
       return;
     }
     const id = window.requestAnimationFrame(() => {
       try {
-        secondaryRef.current?.expand(Math.max(12, hSizes[2]));
+        companionRef.current?.expand(Math.max(12, hSizes[2]));
       } catch {
         /* refs not ready */
       }
     });
     return () => window.cancelAnimationFrame(id);
-  }, [showSecondary, hSizes[2]]);
+  }, [showCompanion, hSizes[2]]);
 
   /** Keep bottom dock expanded size in sync when `bottomArea` is visible (e.g. after sash collapse + toolbar toggle). */
   useLayoutEffect(() => {
@@ -543,8 +573,8 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       const total = Math.max(1, p + m + s);
       const rightPx = (W * s) / total;
 
-      if (showSecondary && rightPx < SHELL_COMPANION_MIN_EXPANDED_PX) {
-        secondaryRef.current?.collapse();
+      if (showCompanion && rightPx < SHELL_COMPANION_MIN_EXPANDED_PX) {
+        companionRef.current?.collapse();
       }
     };
     const schedule = (): void => {
@@ -561,7 +591,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [layout.sizes, showSecondary]);
+  }, [layout.sizes, showCompanion]);
 
   return (
     <div className="nodex-app-pad box-border flex min-h-0 flex-1 flex-col bg-muted/45 text-foreground dark:bg-muted/25">
@@ -669,9 +699,9 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
             <button
               type="button"
               className={`flex h-8 w-8 items-center justify-center rounded-md border border-border/60 bg-background hover:bg-muted/30 ${
-                showSecondary ? "border-border text-foreground" : "text-muted-foreground"
+                showCompanion ? "border-border text-foreground" : "text-muted-foreground"
               }`}
-              onClick={() => store.toggle("secondaryArea")}
+              onClick={() => store.toggle("companion")}
               title="Toggle companion"
               aria-label="Toggle companion"
             >
@@ -682,7 +712,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
 
         {/*
           Horizontal workbench: activity bar (fixed px) | sidebar (resizable, collapsible) | center (main ± bottom dock) | companion (resizable, collapsible).
-          primaryRef = sidebar panel; secondaryRef = companion; bottom dock sits only under the main editor column.
+          primaryRef = sidebar panel; companionRef = companion column; bottom dock sits only under the main editor column.
         */}
         <div
           ref={horizontalWorkspaceRef}
@@ -852,20 +882,20 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 </div>
               )}
             </Panel>
-            {renderSash("sash-secondary")}
+            {renderSash("sash-companion")}
             <Panel
-              ref={secondaryRef}
+              ref={companionRef}
               defaultSize={hSizes[2]}
               minSize={minCompanionPct}
               collapsible
               collapsedSize={0}
-              onCollapse={() => store.setVisible("secondaryArea", false)}
-              onExpand={() => store.setVisible("secondaryArea", true)}
+              onCollapse={() => store.setVisible("companion", false)}
+              onExpand={() => store.setVisible("companion", true)}
               className="min-w-0"
             >
               <div className="h-full min-h-0 min-w-0 w-full bg-background">
-                {secondaryView ? (
-                  <ShellViewHost view={secondaryView} activeMainTab={activeTab} />
+                {companionView ? (
+                  <ShellViewHost view={companionView} activeMainTab={activeTab} />
                 ) : null}
               </div>
             </Panel>

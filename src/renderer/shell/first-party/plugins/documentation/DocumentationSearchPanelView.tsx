@@ -25,6 +25,62 @@ function bundledDocOrder(item: NoteListItem): number {
   return typeof o === "number" ? o : 9999;
 }
 
+/** Matches seed metadata `bundledDocSection` (User guide / Plugin authoring / Reference). */
+const GUIDE_SECTION_ORDER = ["User guide", "Plugin authoring", "Reference"] as const;
+
+function bundledDocSectionLabel(item: NoteListItem): string {
+  const m = item.metadata as Record<string, unknown> | undefined;
+  const s = m?.bundledDocSection;
+  return typeof s === "string" && s.trim() ? s : "Guides";
+}
+
+function sectionSortKey(name: string): number {
+  const i = (GUIDE_SECTION_ORDER as readonly string[]).indexOf(name);
+  return i >= 0 ? i : 100;
+}
+
+function groupGuidesBySection(items: NoteListItem[]): Array<{ section: string; items: NoteListItem[] }> {
+  const by = new Map<string, NoteListItem[]>();
+  for (const it of items) {
+    const sec = bundledDocSectionLabel(it);
+    const arr = by.get(sec);
+    if (arr) arr.push(it);
+    else by.set(sec, [it]);
+  }
+  return [...by.entries()]
+    .sort((a, b) => {
+      const d = sectionSortKey(a[0]) - sectionSortKey(b[0]);
+      if (d !== 0) return d;
+      return a[0].localeCompare(b[0]);
+    })
+    .map(([section, rows]) => ({
+      section,
+      items: rows.sort((a, b) => {
+        const ao = bundledDocOrder(a);
+        const bo = bundledDocOrder(b);
+        if (ao !== bo) return ao - bo;
+        return String(a.title).localeCompare(String(b.title));
+      }),
+    }));
+}
+
+const GUIDE_LIST_CAP = 200;
+
+function capGroupedGuides(
+  grouped: Array<{ section: string; items: NoteListItem[] }>,
+  cap: number,
+): Array<{ section: string; items: NoteListItem[] }> {
+  let n = 0;
+  const out: Array<{ section: string; items: NoteListItem[] }> = [];
+  for (const g of grouped) {
+    const take = Math.min(g.items.length, cap - n);
+    if (take <= 0) break;
+    out.push({ section: g.section, items: g.items.slice(0, take) });
+    n += take;
+  }
+  return out;
+}
+
 type SidebarMode = "guides" | "commands";
 
 export function DocumentationSearchPanelView(_props: ShellViewComponentProps): React.ReactElement {
@@ -37,7 +93,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
   const [miniOnly, setMiniOnly] = useState(true);
   const [selectedCommandId, setSelectedCommandId] = useState<string | null>(null);
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
-  const [wpnGuides, setWpnGuides] = useState<Array<{ id: string; title: string }>>([]);
+  const [wpnGuides, setWpnGuides] = useState<Array<{ id: string; title: string; section: string }>>([]);
   const [wpnGuidesError, setWpnGuidesError] = useState<string | null>(null);
 
   const postBc = useCallback((msg: DocsBcMessage) => {
@@ -92,8 +148,12 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
         const pages = details
           .filter((n): n is NonNullable<typeof n> => !!n)
           .filter((n) => n.metadata?.bundledDoc === true && n.metadata?.bundledDocRole === "page")
-          .map((n) => ({ id: n.id, title: n.title }));
-        // Stable ordering using bundledDocOrder when present.
+          .map((n) => {
+            const meta = n.metadata as Record<string, unknown> | undefined;
+            const sec = meta?.bundledDocSection;
+            const section = typeof sec === "string" && sec.trim() ? sec : "Guides";
+            return { id: n.id, title: n.title, section };
+          });
         pages.sort((a, b) => {
           const ao = (details.find((x) => x?.id === a.id)?.metadata as Record<string, unknown> | undefined)
             ?.bundledDocOrder;
@@ -141,7 +201,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
         type: "markdown",
         parentId: null,
         depth: 0,
-        metadata: { bundledDoc: true, bundledDocRole: "page" },
+        metadata: { bundledDoc: true, bundledDocRole: "page", bundledDocSection: g.section },
       })) as NoteListItem[];
     }
     return notesList
@@ -177,12 +237,17 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
 
   const filteredGuides = guideRows.filter((g) => {
     if (!norm(q)) return true;
-    const h = norm(`${g.id} ${g.title}`);
+    const h = norm(`${g.id} ${g.title} ${bundledDocSectionLabel(g)}`);
     return norm(q)
       .split(/\s+/)
       .filter(Boolean)
       .every((p) => h.includes(p));
   });
+
+  const groupedFilteredGuides = useMemo(
+    () => capGroupedGuides(groupGuidesBySection(filteredGuides), GUIDE_LIST_CAP),
+    [filteredGuides],
+  );
 
   const selectedCommand = selectedCommandId ? commands.find((x) => x.id === selectedCommandId) : null;
 
@@ -236,7 +301,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
               Refresh panels
             </button>
           </div>
-          <div className="min-h-0 flex-1 space-y-1 overflow-auto px-2 pb-2">
+          <div className="min-h-0 flex-1 space-y-3 overflow-auto px-2 pb-2">
             {guideRows.length === 0 ? (
               <p className="px-1 py-2 text-[11px] text-muted-foreground">
                 {mountKind === "wpn-postgres"
@@ -246,19 +311,26 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
                   : "No bundled guides in the notes database yet. Open a workspace so bundled docs can seed, then switch back here."}
               </p>
             ) : (
-              filteredGuides.slice(0, 200).map((g) => (
-                <button
-                  key={g.id}
-                  type="button"
-                  className="w-full border border-border/80 bg-muted/10 px-2 py-1.5 text-left hover:bg-muted/40"
-                  onClick={() => {
-                    setSelectedGuideId(g.id);
-                    postBc({ type: "docs.showBundledDoc", noteId: g.id });
-                  }}
-                >
-                  <div className="text-[11px] font-medium text-foreground">{esc(g.title)}</div>
-                  <div className="font-mono text-[10px] opacity-70">{esc(g.id)}</div>
-                </button>
+              groupedFilteredGuides.map(({ section, items }) => (
+                <div key={section} className="space-y-1">
+                  <div className="px-1 pt-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                    {esc(section)}
+                  </div>
+                  {items.map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      className="w-full border border-border/80 bg-muted/10 px-2 py-1.5 text-left hover:bg-muted/40"
+                      onClick={() => {
+                        setSelectedGuideId(g.id);
+                        postBc({ type: "docs.showBundledDoc", noteId: g.id });
+                      }}
+                    >
+                      <div className="text-[11px] font-medium text-foreground">{esc(g.title)}</div>
+                      <div className="font-mono text-[10px] opacity-70">{esc(g.id)}</div>
+                    </button>
+                  ))}
+                </div>
               ))
             )}
           </div>

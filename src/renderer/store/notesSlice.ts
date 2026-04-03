@@ -8,6 +8,20 @@ import {
 } from "@nodex/ui-types";
 import { PLUGIN_UI_METADATA_KEY } from "../../shared/plugin-state-protocol";
 
+/** Per-note monotonic save generation (dispatch order). Not in Redux so thunks can read it synchronously. */
+const nextContentSaveSeqByNoteId = new Map<string, number>();
+
+function takeNextContentSaveSeq(noteId: string): number {
+  const n = (nextContentSaveSeqByNoteId.get(noteId) ?? 0) + 1;
+  nextContentSaveSeqByNoteId.set(noteId, n);
+  return n;
+}
+
+/** After loading note from server, ignore completions of older in-flight saves for that id. */
+function bumpContentSaveSeqAfterExternalLoad(noteId: string): number {
+  return takeNextContentSaveSeq(noteId);
+}
+
 interface NotesState {
   currentNote: Note | null;
   notesList: NoteListItem[];
@@ -21,6 +35,11 @@ interface NotesState {
    * and refetches the open project tree so titles stay in sync with the editor header.
    */
   noteRenameEpoch: number;
+  /**
+   * Last applied `saveNoteContent` generation per note. Prevents out-of-order async
+   * completions from clobbering newer editor state in Redux (and controlled editors).
+   */
+  noteContentSaveAppliedSeq: Record<string, number>;
 }
 
 const initialState: NotesState = {
@@ -30,6 +49,7 @@ const initialState: NotesState = {
   detailLoading: false,
   error: null,
   noteRenameEpoch: 0,
+  noteContentSaveAppliedSeq: {},
 };
 
 export const fetchNote = createAsyncThunk(
@@ -122,8 +142,9 @@ export const saveNotePluginUiState = createAsyncThunk(
 export const saveNoteContent = createAsyncThunk(
   "notes/saveNoteContent",
   async ({ noteId, content }: { noteId: string; content: string }) => {
+    const saveSeq = takeNextContentSaveSeq(noteId);
     await window.Nodex.saveNoteContent(noteId, content);
-    return { noteId, content };
+    return { noteId, content, saveSeq };
   },
 );
 
@@ -158,7 +179,12 @@ const notesSlice = createSlice({
       })
       .addCase(fetchNote.fulfilled, (state, action) => {
         state.detailLoading = false;
-        state.currentNote = action.payload ?? null;
+        const note = action.payload ?? null;
+        state.currentNote = note;
+        if (note?.id) {
+          const bar = bumpContentSaveSeqAfterExternalLoad(note.id);
+          state.noteContentSaveAppliedSeq[note.id] = bar;
+        }
       })
       .addCase(fetchNote.rejected, (state, action) => {
         state.detailLoading = false;
@@ -224,7 +250,10 @@ const notesSlice = createSlice({
           action.error.message || "Failed to save plugin UI state";
       })
       .addCase(saveNoteContent.fulfilled, (state, action) => {
-        const { noteId, content } = action.payload;
+        const { noteId, content, saveSeq } = action.payload;
+        const last = state.noteContentSaveAppliedSeq[noteId] ?? 0;
+        if (saveSeq < last) return;
+        state.noteContentSaveAppliedSeq[noteId] = saveSeq;
         if (state.currentNote?.id === noteId) {
           state.currentNote = { ...state.currentNote, content };
         }

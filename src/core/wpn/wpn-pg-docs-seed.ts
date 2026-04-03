@@ -6,8 +6,33 @@ import * as crypto from "crypto";
 type Manifest = {
   version: number;
   folder: { id: string; title: string };
-  pages: Array<{ id: string; file: string; title: string }>;
+  hubPlaceholder?: { id: string; file: string; title: string };
+  companionPanels?: Array<{ id: string; file: string; title: string; slot: string }>;
+  pages: Array<{ id: string; file: string; title: string; section?: string }>;
 };
+
+function isHub(h: unknown): h is NonNullable<Manifest["hubPlaceholder"]> {
+  return (
+    !!h &&
+    typeof h === "object" &&
+    typeof (h as { id?: unknown }).id === "string" &&
+    typeof (h as { file?: unknown }).file === "string" &&
+    typeof (h as { title?: unknown }).title === "string"
+  );
+}
+
+function isCompanionPanels(a: unknown): a is NonNullable<Manifest["companionPanels"]> {
+  if (!Array.isArray(a)) return false;
+  return a.every(
+    (p) =>
+      p &&
+      typeof p === "object" &&
+      typeof (p as { id?: unknown }).id === "string" &&
+      typeof (p as { file?: unknown }).file === "string" &&
+      typeof (p as { title?: unknown }).title === "string" &&
+      typeof (p as { slot?: unknown }).slot === "string",
+  );
+}
 
 const DEFAULT_RELATIVE_DIR = path.join("docs", "bundled-plugin-authoring");
 
@@ -29,7 +54,17 @@ function readManifest(dir: string): Manifest | null {
       j.folder &&
       typeof j.folder.id === "string" &&
       typeof j.folder.title === "string" &&
-      Array.isArray(j.pages)
+      (j.hubPlaceholder === undefined || isHub(j.hubPlaceholder)) &&
+      (j.companionPanels === undefined || isCompanionPanels(j.companionPanels)) &&
+      Array.isArray(j.pages) &&
+      j.pages.every(
+        (p) =>
+          p &&
+          typeof p.id === "string" &&
+          typeof p.file === "string" &&
+          typeof p.title === "string" &&
+          (p.section === undefined || typeof p.section === "string"),
+      )
     ) {
       return j;
     }
@@ -158,7 +193,7 @@ export async function wpnPgEnsureBundledDocsSeeded(
     null,
     0,
     manifest.folder.title,
-    "# Documentation\n\nOpen a child note for plugin-authoring guides shipped with this server.",
+    "# Documentation\n\nBundled read-only guides: **User guide** and **Plugin authoring**. Open a child page or use Documentation → Guides in the app.",
     { ...metaBase, bundledDocRole: "folder" },
   );
 
@@ -177,7 +212,48 @@ export async function wpnPgEnsureBundledDocsSeeded(
       ...metaBase,
       bundledDocRole: "page",
       bundledDocOrder: i,
+      bundledDocSection: page.section ?? "Plugin authoring",
       sourceFile: page.file,
+    });
+  }
+
+  const hub = manifest.hubPlaceholder;
+  if (hub) {
+    const fp = path.join(dir, hub.file);
+    if (fs.existsSync(fp)) {
+      try {
+        const content = fs.readFileSync(fp, "utf8");
+        const id = docsNoteId(workspaceId, hub.id);
+        await upsertDocNote(pool, projectId, id, folderId, 1000, hub.title, content, {
+          ...metaBase,
+          bundledDocRole: "hub",
+          bundledDocOrder: -5,
+          sourceFile: hub.file,
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  const companions = manifest.companionPanels ?? [];
+  for (let i = 0; i < companions.length; i++) {
+    const cp = companions[i]!;
+    const fp = path.join(dir, cp.file);
+    if (!fs.existsSync(fp)) continue;
+    let content = "";
+    try {
+      content = fs.readFileSync(fp, "utf8");
+    } catch {
+      continue;
+    }
+    const id = docsNoteId(workspaceId, cp.id);
+    await upsertDocNote(pool, projectId, id, folderId, 1001 + i, cp.title, content, {
+      ...metaBase,
+      bundledDocRole: "companion",
+      bundledDocCompanionSlot: cp.slot,
+      bundledDocOrder: 5000 + i,
+      sourceFile: cp.file,
     });
   }
 

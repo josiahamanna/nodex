@@ -49,7 +49,7 @@
     "build:plugins-release": "npm run build:plugins",
     "install:linux": "node scripts/install-linux-deb.js",
     "lint": "eslint --ext .ts,.tsx .",
-    "test": "node --experimental-strip-types --test src/main/parse-asset-ipc-payload.test.ts src/renderer/notes-sidebar/notes-sidebar-utils.test.ts"
+    "test": "node --experimental-strip-types --test src/main/parse-asset-ipc-payload.test.ts src/renderer/notes-sidebar/notes-sidebar-utils.test.ts src/renderer/shell/first-party/plugins/markdown/markdownWikiLinkTrigger.test.ts src/renderer/shell/shellTabUrlSync.test.ts src/renderer/shell/first-party/plugins/documentation/documentationShellHash.test.ts"
   },
   "keywords": [
     "electron",
@@ -100,6 +100,7 @@
     "@codemirror/autocomplete": "^6.20.1",
     "@codemirror/commands": "^6.10.3",
     "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-markdown": "^6.5.0",
     "@codemirror/language": "^6.12.3",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.0",

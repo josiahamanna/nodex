@@ -1,6 +1,21 @@
 import React, { useEffect } from "react";
 import { useNodexContributionRegistry } from "../NodexContributionContext";
 import { useShellViewRegistry } from "./ShellViewContext";
+import type { ShellRegionId } from "./ShellViewRegistry";
+
+/** Accepts legacy `secondaryArea` from saved command args / older docs. */
+function normalizeShellRegionId(raw: string): ShellRegionId | undefined {
+  if (raw === "secondaryArea") return "companion";
+  if (
+    raw === "primarySidebar" ||
+    raw === "mainArea" ||
+    raw === "companion" ||
+    raw === "bottomArea"
+  ) {
+    return raw;
+  }
+  return undefined;
+}
 
 /**
  * Registers shell view commands that need access to the view registry.
@@ -56,7 +71,7 @@ export function ShellViewCommandContributions(): null {
               description: "Target region; omit to use the view's defaultRegion.",
               schema: {
                 type: "string",
-                enum: ["primarySidebar", "mainArea", "secondaryArea", "bottomArea"],
+                enum: ["primarySidebar", "mainArea", "companion", "bottomArea"],
               },
             },
           ],
@@ -69,13 +84,7 @@ export function ShellViewCommandContributions(): null {
           if (!viewId) {
             throw new Error("Missing args.viewId");
           }
-          const regionId =
-            regionIdRaw === "primarySidebar" ||
-            regionIdRaw === "mainArea" ||
-            regionIdRaw === "secondaryArea" ||
-            regionIdRaw === "bottomArea"
-              ? regionIdRaw
-              : undefined;
+          const regionId = normalizeShellRegionId(regionIdRaw);
           views.openView(viewId, regionId);
         },
       }),
@@ -97,24 +106,20 @@ export function ShellViewCommandContributions(): null {
               description: "Which region to clear.",
               schema: {
                 type: "string",
-                enum: ["primarySidebar", "mainArea", "secondaryArea", "bottomArea"],
+                enum: ["primarySidebar", "mainArea", "companion", "bottomArea"],
               },
             },
           ],
-          exampleInvoke: { regionId: "secondaryArea" },
+          exampleInvoke: { regionId: "companion" },
           returns: { type: "void", description: "Removes region entry from ShellViewRegistry." },
         },
         handler: (args) => {
           const regionIdRaw = String(args?.regionId ?? "").trim();
-          if (
-            regionIdRaw !== "primarySidebar" &&
-            regionIdRaw !== "mainArea" &&
-            regionIdRaw !== "secondaryArea" &&
-            regionIdRaw !== "bottomArea"
-          ) {
+          const regionId = normalizeShellRegionId(regionIdRaw);
+          if (!regionId) {
             throw new Error("Invalid args.regionId");
           }
-          views.closeRegion(regionIdRaw);
+          views.closeRegion(regionId);
         },
       }),
     );

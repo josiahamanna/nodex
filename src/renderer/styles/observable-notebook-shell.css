@@ -1,0 +1,4 @@
+/* Observable notebook workspace: hide idle hint once output is mounted. */
+.nodex-notebook-output-root:not(:empty) + .nodex-notebook-output-hint {
+  display: none;
+}

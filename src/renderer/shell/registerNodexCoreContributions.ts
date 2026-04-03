@@ -290,7 +290,7 @@ export function registerNodexCoreContributions(
   disposers.push(
     toggle("nodex.shell.toggle.menuRail", "Shell: Toggle activity bar", "menuRail"),
     toggle("nodex.shell.toggle.sidebarPanel", "Shell: Toggle side panel", "sidebarPanel"),
-    toggle("nodex.shell.toggle.secondaryArea", "Shell: Toggle companion", "secondaryArea"),
+    toggle("nodex.shell.toggle.companion", "Shell: Toggle companion", "companion"),
     toggle("nodex.shell.toggle.bottomDock", "Shell: Toggle bottom dock", "bottomArea"),
     toggle("nodex.shell.toggle.miniBar", "Shell: Toggle mini bar", "miniBar"),
     toggle("nodex.shell.toggle.modeLine", "Shell: Toggle mode line", "modeLine"),

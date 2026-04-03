@@ -19,12 +19,54 @@ export type BundledDocsManifest = {
     id: string;
     title: string;
   };
+  /** Main Documentation hub when no guide/command is selected (optional). */
+  hubPlaceholder?: {
+    id: string;
+    file: string;
+    title: string;
+  };
+  /** Short panels for Docs — settings tabs; not listed under Guides. */
+  companionPanels?: Array<{
+    id: string;
+    file: string;
+    title: string;
+    slot: string;
+  }>;
   pages: Array<{
     id: string;
     file: string;
     title: string;
+    /** Sidebar grouping label in Documentation → Guides (e.g. User guide / Plugin authoring). */
+    section?: string;
   }>;
 };
+
+function isValidHubPlaceholder(
+  h: unknown,
+): h is NonNullable<BundledDocsManifest["hubPlaceholder"]> {
+  return (
+    !!h &&
+    typeof h === "object" &&
+    typeof (h as { id?: unknown }).id === "string" &&
+    typeof (h as { file?: unknown }).file === "string" &&
+    typeof (h as { title?: unknown }).title === "string"
+  );
+}
+
+function isValidCompanionPanels(
+  arr: unknown,
+): arr is NonNullable<BundledDocsManifest["companionPanels"]> {
+  if (!Array.isArray(arr)) return false;
+  return arr.every(
+    (p) =>
+      p &&
+      typeof p === "object" &&
+      typeof (p as { id?: unknown }).id === "string" &&
+      typeof (p as { file?: unknown }).file === "string" &&
+      typeof (p as { title?: unknown }).title === "string" &&
+      typeof (p as { slot?: unknown }).slot === "string",
+  );
+}
 
 function resolveDocsDir(): string {
   const env = process.env.NODEX_BUNDLED_DOCS_DIR?.trim();
@@ -42,13 +84,26 @@ function readManifest(dir: string): BundledDocsManifest | null {
   try {
     const raw = fs.readFileSync(p, "utf8");
     const j = JSON.parse(raw) as BundledDocsManifest;
+    const hubOk = j.hubPlaceholder === undefined || isValidHubPlaceholder(j.hubPlaceholder);
+    const companionOk =
+      j.companionPanels === undefined || isValidCompanionPanels(j.companionPanels);
     if (
       j &&
       typeof j.version === "number" &&
       j.folder &&
       typeof j.folder.id === "string" &&
       typeof j.folder.title === "string" &&
-      Array.isArray(j.pages)
+      hubOk &&
+      companionOk &&
+      Array.isArray(j.pages) &&
+      j.pages.every(
+        (p) =>
+          p &&
+          typeof p.id === "string" &&
+          typeof p.file === "string" &&
+          typeof p.title === "string" &&
+          (p.section === undefined || typeof p.section === "string"),
+      )
     ) {
       return j;
     }
@@ -116,7 +171,7 @@ export function seedBundledDocumentationNotesFromDir(): boolean {
     type: "markdown",
     title: manifest.folder.title,
     content:
-      "# Documentation\n\nOpen a child note for plugin-authoring guides shipped with this repository.",
+      "# Documentation\n\nBundled read-only guides: **User guide** (using the app) and **Plugin authoring** (extending the shell). Open a page below or use Documentation → Guides in the sidebar.",
     metadata: { ...metaBase, bundledDocRole: "folder" },
   };
 
@@ -156,6 +211,7 @@ export function seedBundledDocumentationNotesFromDir(): boolean {
         ...metaBase,
         bundledDocRole: "page",
         bundledDocOrder: i,
+        bundledDocSection: page.section ?? "Plugin authoring",
         sourceFile: page.file,
       },
     };
@@ -163,13 +219,70 @@ export function seedBundledDocumentationNotesFromDir(): boolean {
     const prevPage = notes.get(page.id);
     upsertNote(rec);
     ensureChildOf(manifest.folder.id, page.id);
+    const nextSection = page.section ?? "Plugin authoring";
     if (
       !prevPage ||
       prevPage.content !== content ||
-      prevPage.title !== page.title
+      prevPage.title !== page.title ||
+      (prevPage.metadata as { bundledDocSection?: string } | undefined)?.bundledDocSection !== nextSection
     ) {
       modified = true;
     }
+  }
+
+  const seedExtraPage = (
+    id: string,
+    title: string,
+    filePath: string,
+    metadata: NoteRecord["metadata"],
+  ): void => {
+    if (!fs.existsSync(filePath)) {
+      // eslint-disable-next-line no-console
+      console.warn(`[Nodex] bundled docs: missing file ${path.basename(filePath)}`);
+      return;
+    }
+    let content: string;
+    try {
+      content = fs.readFileSync(filePath, "utf8");
+    } catch {
+      return;
+    }
+    const rec: NoteRecord = {
+      id,
+      parentId: manifest.folder.id,
+      type: "markdown",
+      title,
+      content,
+      metadata: metadata ? { ...metadata } : undefined,
+    };
+    const prev = notes.get(id);
+    upsertNote(rec);
+    ensureChildOf(manifest.folder.id, id);
+    if (!prev || prev.content !== content || prev.title !== title) {
+      modified = true;
+    }
+  };
+
+  const hub = manifest.hubPlaceholder;
+  if (hub) {
+    seedExtraPage(hub.id, hub.title, path.join(dir, hub.file), {
+      ...metaBase,
+      bundledDocRole: "hub",
+      bundledDocOrder: -5,
+      sourceFile: hub.file,
+    });
+  }
+
+  const companions = manifest.companionPanels ?? [];
+  for (let i = 0; i < companions.length; i++) {
+    const cp = companions[i]!;
+    seedExtraPage(cp.id, cp.title, path.join(dir, cp.file), {
+      ...metaBase,
+      bundledDocRole: "companion",
+      bundledDocCompanionSlot: cp.slot,
+      bundledDocOrder: 5000 + i,
+      sourceFile: cp.file,
+    });
   }
 
   // Extra bundled docs that aren't part of the plugin-authoring manifest.
@@ -188,6 +301,7 @@ export function seedBundledDocumentationNotesFromDir(): boolean {
           ...metaBase,
           bundledDocRole: "page",
           bundledDocOrder: -10,
+          bundledDocSection: "Reference",
           sourceFile: path.basename(ABOUT_NODEX_RELATIVE_FILE),
         },
       };
