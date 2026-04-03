@@ -33,6 +33,13 @@ Compose uses fixed `container_name` values (see [`docker-compose.yml`](../../doc
 
 Optional overrides (same as local deploy): `NODEX_PG_PASSWORD`, `NODEX_PG_DATABASE_URL`, `NODEX_WPN_DEFAULT_OWNER`, etc. Set them on the job or via an **Inject environment variables** / **Credentials** binding.
 
+## Docker build: `npm error network read ECONNRESET`
+
+The web image runs `npm ci` inside [`Dockerfile.web`](../../Dockerfile.web). If the build fails with **ECONNRESET** or similar, the Jenkins host or Docker’s network path to the npm registry dropped mid-download — not an application bug.
+
+- Images set **npm fetch retries** (see `Dockerfile.web` / `Dockerfile`) to ride out brief blips.
+- If it keeps failing: check outbound HTTPS from the agent, corporate **proxy** (set `HTTP_PROXY` / `HTTPS_PROXY` as Docker **build args** or daemon config), registry mirrors, or re-run the job.
+
 ## Optional `npm ci`
 
 The git-server hook runs **`npm ci`** before deploy. On the Jenkins agent, a full **`npm ci` runs root `postinstall` (Electron rebuild)** and often fails or is slow without a desktop/Electron toolchain. The pipeline exposes a parameter **`RUN_NPM_CI`**, which runs **`npm ci --ignore-scripts`** only when enabled — enough to validate the lockfile and install most deps without Electron rebuild.

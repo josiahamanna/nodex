@@ -11,6 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Transient npm registry failures during image build (common on CI).
+ENV npm_config_fetch_retries=5 \
+    npm_config_fetch_retry_mintimeout=20000 \
+    npm_config_fetch_retry_maxtimeout=120000
+
 COPY package.json package-lock.json ./
 
 # postinstall runs electron-rebuild — skip (no Electron in container), then compile sqlite for Node.

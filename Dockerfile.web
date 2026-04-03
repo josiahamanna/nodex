@@ -10,6 +10,11 @@ WORKDIR /app
 ARG NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1
 ENV NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=${NEXT_PUBLIC_NODEX_API_SAME_ORIGIN}
 
+# CI/agents often see transient registry errors (e.g. ECONNRESET); npm retries reduce flake.
+ENV npm_config_fetch_retries=5 \
+    npm_config_fetch_retry_mintimeout=20000 \
+    npm_config_fetch_retry_maxtimeout=120000
+
 COPY package.json package-lock.json ./
 COPY apps ./apps
 COPY src ./src
