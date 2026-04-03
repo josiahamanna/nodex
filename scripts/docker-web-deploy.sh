@@ -91,7 +91,7 @@ if docker container inspect "$target_container" &>/dev/null; then
 fi
 
 echo "[nodex] Starting ${target_container} on network ${NETWORK}..."
-docker run -d \
+if ! docker run -d \
   --name "$target_container" \
   --network "$NETWORK" \
   -e NODE_ENV=production \
@@ -100,24 +100,53 @@ docker run -d \
   --health-timeout=5s \
   --health-retries=5 \
   --health-start-period=60s \
-  "$IMAGE" >/dev/null
+  "$IMAGE" >/dev/null; then
+  echo "[nodex] docker run failed for ${target_container}." >&2
+  exit 1
+fi
+
+sleep 2
+state="$(docker container inspect -f '{{.State.Status}}' "$target_container" 2>/dev/null || echo missing)"
+if [[ "$state" == "exited" || "$state" == "dead" ]]; then
+  echo "[nodex] ${target_container} exited immediately (status=${state}). Container logs:" >&2
+  docker logs --tail 200 "$target_container" 2>&1 || true
+  exit 1
+fi
 
 echo "[nodex] Waiting for ${target_container} to become healthy..."
+healthy=false
 for _ in $(seq 1 90); do
-  status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$target_container" 2>/dev/null || echo missing)"
+  if ! docker container inspect "$target_container" &>/dev/null; then
+    echo "[nodex] ${target_container} no longer exists." >&2
+    exit 1
+  fi
+  state="$(docker container inspect -f '{{.State.Status}}' "$target_container" 2>/dev/null || echo missing)"
+  if [[ "$state" == "exited" || "$state" == "dead" ]]; then
+    echo "[nodex] ${target_container} stopped while waiting (status=${state}). Container logs:" >&2
+    docker logs --tail 200 "$target_container" 2>&1 || true
+    exit 1
+  fi
+  if [[ "$state" != "running" ]]; then
+    sleep 2
+    continue
+  fi
+  status="$(docker container inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$target_container" 2>/dev/null || echo none)"
   if [[ "$status" == "healthy" ]]; then
+    healthy=true
     break
   fi
   if [[ "$status" == "unhealthy" ]]; then
-    echo "[nodex] ${target_container} is unhealthy." >&2
+    echo "[nodex] ${target_container} is unhealthy. Container logs:" >&2
+    docker logs --tail 200 "$target_container" 2>&1 || true
     exit 1
   fi
   sleep 2
 done
 
-status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$target_container" 2>/dev/null || echo missing)"
-if [[ "$status" != "healthy" ]]; then
-  echo "[nodex] Timed out waiting for ${target_container} to become healthy (last: ${status})." >&2
+if [[ "$healthy" != "true" ]]; then
+  status="$(docker container inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$target_container" 2>/dev/null || echo none)"
+  echo "[nodex] Timed out waiting for ${target_container} to become healthy (state=$(docker container inspect -f '{{.State.Status}}' "$target_container" 2>/dev/null || echo ?), health=${status}). Recent logs:" >&2
+  docker logs --tail 200 "$target_container" 2>&1 || true
   exit 1
 fi
 

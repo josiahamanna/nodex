@@ -33,6 +33,10 @@ Compose uses fixed `container_name` values (see [`docker-compose.yml`](../../doc
 
 Optional overrides (same as local deploy): `NODEX_PG_PASSWORD`, `NODEX_PG_DATABASE_URL`, `NODEX_WPN_DEFAULT_OWNER`, etc. Set them on the job or via an **Inject environment variables** / **Credentials** binding.
 
+## Web container exits before healthy
+
+If deploy fails after `Building web image` with **`container ... is not running`** or a timeout while waiting for health, the **`nodex-web-blue` / `nodex-web-green`** process exited inside the image. [`scripts/docker-web-deploy.sh`](../../scripts/docker-web-deploy.sh) prints **recent `docker logs`** in that case. Typical causes: **out-of-memory** on the agent (raise Docker memory or JVM/agent limits), a **runtime error** in Next (see logs), or a bad **build** layer — fix the logged error and re-run.
+
 ## Docker build: `npm error network read ECONNRESET`
 
 The web image runs `npm ci` inside [`Dockerfile.web`](../../Dockerfile.web). If the build fails with **ECONNRESET** or similar, the Jenkins host or Docker’s network path to the npm registry dropped mid-download — not an application bug.
