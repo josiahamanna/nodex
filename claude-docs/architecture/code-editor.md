@@ -7,7 +7,7 @@
 - **Dependencies** strip is always visible (not collapsed behind `<details>`). Primary actions are **icon-first** with `title` / `aria-label` (typecheck, npm install). Checkboxes keep text labels (devDependency, typecheck on save, **format on save**, reload on save).
 - **Keyboard shortcuts** for the editor are documented under **Settings → Keyboard shortcuts**, not in the IDE header.
 
-## Prettier (format on save)
+## Prettier (format on save) 
 
 - Toggle **Format on save (Prettier)** in the dependencies strip; preference is stored in `localStorage`.
 - On save (active file and save-all), the IDE reads **`.prettierrc.json`** or **`.prettierrc`** from the active plugin workspace via `readPluginSourceFile` and merges with parser/plugins for the file extension. Unsupported or failed format paths log via `clientLog` and save the original content.
