@@ -11,6 +11,14 @@ Confirm the machine or container that runs the job has:
 3. **Docker CLI and Compose v2** — same daemon that should run the stack; the `jenkins` user must be able to run `docker` and `docker compose` (group membership or equivalent socket access).
 4. **Repository root as `WORKSPACE`** — the job must check out this repo so `package.json` and `scripts/` are at the top level of the workspace (use **Checkout** to the default workspace or set `subdir` consistently).
 
+## Docker: `nodex-postgres` name already in use
+
+Compose uses fixed `container_name` values (see [`docker-compose.yml`](../../docker-compose.yml)). Docker allows each name only once per daemon.
+
+- **Stopped leftover** — [`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh) removes a **stopped** `nodex-postgres` before `compose up` so compose can recreate it; the **`nodex-pg-data` volume** keeps database files.
+- **Jenkins workspace name** — Compose’s default project name is the checkout directory basename. Different job or branch checkouts can produce different project names while still wanting the same `container_name`, which triggers a create conflict. The [`Jenkinsfile`](../../Jenkinsfile) sets **`COMPOSE_PROJECT_NAME=nodex`** so every deploy on that agent targets one consistent project.
+- **Still failing with a running container** — Another process or an old manual run may own `nodex-postgres`. Inspect with `docker inspect nodex-postgres` and align on one stack (or stop/remove only if you accept downtime and understand data is in the named volume).
+
 ## Why a naive `sh` + hard-coded NVM path fails
 
 - Jenkins `sh` often runs **dash**, not bash; **NVM is not reliable** under dash.

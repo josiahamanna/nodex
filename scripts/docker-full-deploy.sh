@@ -41,10 +41,20 @@ mkdir -p .nodex-docker-workspace
 # Orphan from an old compose service name (e.g. nodex-web) — safe to drop.
 docker rm -f nodex-web 2>/dev/null || true
 
+# Stopped nodex-postgres still holds container_name; compose errors on "Creating". Volume
+# nodex-pg-data is unchanged. Do not remove a running DB.
+if docker container inspect nodex-postgres &>/dev/null; then
+  pg_running="$(docker container inspect -f '{{.State.Running}}' nodex-postgres 2>/dev/null || echo false)"
+  if [[ "$pg_running" != "true" ]]; then
+    echo "[nodex] Removing stopped nodex-postgres (frees fixed container name for compose; data volume retained)."
+    docker rm -f nodex-postgres >/dev/null 2>&1 || true
+  fi
+fi
+
 # Stopped nodex-web-blue / nodex-web-green still hold fixed container_name values; compose then
 # errors with "already in use". Remove only slots that are not serving traffic: always remove if
 # stopped; if running, remove only when not the active upstream in deploy/nginx-active-web.upstream.conf
-# (same source the gateway uses). Never touches postgres, nodex-api, or nodex-gateway.
+# (same source the gateway uses). Does not remove running postgres, nodex-api, or nodex-gateway.
 ACTIVE_FILE="${REPO_ROOT}/deploy/nginx-active-web.upstream.conf"
 active_line=""
 if [[ -f "$ACTIVE_FILE" ]]; then

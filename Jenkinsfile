@@ -16,11 +16,14 @@ pipeline {
         )
     }
 
-    // Uncomment after creating credentials in Jenkins (see deploy/jenkins/README.md):
-    // environment {
-    //     NODEX_AUTH_JWT_SECRET = credentials('nodex-auth-jwt-secret')
-    //     NODEX_PG_PASSWORD = credentials('nodex-pg-password')
-    // }
+    environment {
+        // Fixed project name so fixed container_name values (e.g. nodex-postgres) are not duplicated
+        // when Jenkins WORKSPACE basename differs between jobs or multibranch branches.
+        COMPOSE_PROJECT_NAME = 'nodex'
+        // Uncomment after creating credentials (see deploy/jenkins/README.md):
+        // NODEX_AUTH_JWT_SECRET = credentials('nodex-auth-jwt-secret')
+        // NODEX_PG_PASSWORD = credentials('nodex-pg-password')
+    }
 
     stages {
         stage('Checkout') {
