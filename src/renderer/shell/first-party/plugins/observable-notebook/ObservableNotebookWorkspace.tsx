@@ -15,8 +15,10 @@ import {
   normalizeNotebookCells,
 } from "./observable-notebook-types";
 import { useTheme } from "../../../../theme/ThemeContext";
+import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import { useShellLayoutStore } from "../../../layout/ShellLayoutContext";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
+import { useShellViewRegistry } from "../../../views/ShellViewContext";
 
 const mdPreviewClass =
   "mt-2 rounded border border-border bg-muted/20 p-2 text-[11px] text-foreground [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4";
@@ -52,8 +54,10 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
     executeWhenKeyChanges,
   } = props;
   const { resolvedDark } = useTheme();
+  const registry = useNodexContributionRegistry();
   const registries = useShellRegistries();
   const layout = useShellLayoutStore();
+  const views = useShellViewRegistry();
 
   const [err, setErr] = useState<string | null>(null);
   const [autoRun, setAutoRun] = useState(false);
@@ -70,10 +74,12 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
     () =>
       createNotebookNodexHost({
         invoke: invokeCommand,
+        registry,
         registries,
         layout,
+        views,
       }),
-    [invokeCommand, registries, layout],
+    [invokeCommand, registry, registries, layout, views],
   );
 
   const clearPerCellOutputDom = useCallback(() => {
@@ -373,8 +379,9 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
       <div className="min-h-0 flex-1 overflow-auto p-3">
         <p className="mb-2 text-[11px] leading-relaxed opacity-70">
           JS cells use <code className="font-mono">@observablehq/runtime</code> plus stdlib builtins;{" "}
-          <code className="font-mono">nodex</code> mirrors <code className="font-mono">window.Nodex</code> (notes,
-          WPN, assets, plugins, …) plus <code className="font-mono">nodex.shell</code> /{" "}
+          <code className="font-mono">nodex</code> merges <code className="font-mono">window.Nodex</code>,{" "}
+          <code className="font-mono">window.nodex</code> (same <code className="font-mono">shell</code> as DevTools:
+          tabs, commands, layout, views, keymap, …), and helpers like{" "}
           <code className="font-mono">nodex.commands.run</code>. Use Observable output helpers (
           <code className="font-mono">html</code>, <code className="font-mono">svg</code>, …) instead of DOM / layout
           APIs (<code className="font-mono">document</code>, <code className="font-mono">addEventListener</code>,{" "}

@@ -10,7 +10,7 @@ Nodex is a note-centric workbench: you organize content in **workspaces** and **
 
 ### Commands without the mouse
 
-The **mini bar** accepts command ids with inline completion; the **command palette** lists every registered command with search. The **Keyboard** tab in Docs — settings scrapes current keybindings.
+The **mini bar** accepts command ids with inline completion; the **command palette** lists every registered command with search. In Documentation, open the sidebar **Settings** tab to scrape current keybindings (Keyboard).
 
 ---
 

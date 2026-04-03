@@ -134,13 +134,22 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
         setHeadingSlug(undefined);
         setBundledNoteId(d.noteId);
       }
+      if (d?.type === "docs.showBundledLogical" && typeof d.logicalId === "string") {
+        setCommandId(null);
+        setHeadingSlug(undefined);
+        void fetchBundledDocumentationNote(d.logicalId, mountKind)
+          .then((n) => {
+            setBundledNoteId(n.id);
+          })
+          .catch(() => {});
+      }
     };
     bc.addEventListener("message", onMsg);
     return () => {
       bc.removeEventListener("message", onMsg);
       bc.close();
     };
-  }, []);
+  }, [mountKind]);
 
   useEffect(() => {
     if (!bundledNoteId) {
@@ -214,6 +223,17 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     const el = root?.querySelector(`#${CSS.escape(slug)}`) ?? document.getElementById(slug);
     el?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, []);
+
+  useEffect(() => {
+    const onEv = (ev: Event) => {
+      const slug = (ev as CustomEvent<{ slug?: string }>).detail?.slug;
+      if (typeof slug === "string" && slug) {
+        queueMicrotask(() => scrollDocHeadingIntoView(slug));
+      }
+    };
+    window.addEventListener("nodex:documentation-scroll-to-heading", onEv);
+    return () => window.removeEventListener("nodex:documentation-scroll-to-heading", onEv);
+  }, [scrollDocHeadingIntoView]);
 
   /** TOC / in-doc `#slug` links: update shell hash and scroll (re-click same slug still scrolls). */
   const onDocHeadingLinkClick = useCallback(

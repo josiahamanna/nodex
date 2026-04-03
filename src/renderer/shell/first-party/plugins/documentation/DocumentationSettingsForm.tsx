@@ -1,16 +1,19 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
-import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
 import type { ShellKeyBinding } from "../../../registries/ShellKeymapRegistry";
 import { BUNDLED_DOC_NOTE_IDS, DOCS_BC } from "./documentationConstants";
-import { DocumentationBundledMarkdownPanel } from "./DocumentationBundledMarkdownPanel";
 
-export function DocumentationSettingsPanelView(_props: ShellViewComponentProps): React.ReactElement {
+type DocumentationSettingsFormProps = {
+  miniOnly: boolean;
+  onToggleMiniOnly: () => void;
+};
+
+export function DocumentationSettingsForm(props: DocumentationSettingsFormProps): React.ReactElement {
+  const { miniOnly, onToggleMiniOnly } = props;
   const { keymap } = useShellRegistries();
-  const [tab, setTab] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [tab, setTab] = useState<1 | 2 | 3>(1);
   const [keys, setKeys] = useState<ShellKeyBinding[]>([]);
   const [apiText, setApiText] = useState<string>("");
-  const [miniOnly, setMiniOnly] = useState(true);
 
   const refreshKeys = useCallback(() => {
     setKeys(keymap.list());
@@ -60,12 +63,6 @@ export function DocumentationSettingsPanelView(_props: ShellViewComponentProps):
     bc.close();
   };
 
-  const toggleMini = () => {
-    const next = !miniOnly;
-    setMiniOnly(next);
-    postBc({ type: "docs.setMiniOnly", miniOnly: next });
-  };
-
   return (
     <div className="flex h-full min-h-0 flex-col text-[12px]">
       <div className="shrink-0 border-b border-border px-3 py-2.5 text-[12px] font-extrabold opacity-85">
@@ -75,7 +72,7 @@ export function DocumentationSettingsPanelView(_props: ShellViewComponentProps):
         <button
           type="button"
           className="rounded border border-border bg-muted/20 px-2.5 py-1.5 text-[11px]"
-          onClick={toggleMini}
+          onClick={onToggleMiniOnly}
         >
           Minibuffer-only: {miniOnly ? "on" : "off"}
         </button>
@@ -112,20 +109,6 @@ export function DocumentationSettingsPanelView(_props: ShellViewComponentProps):
           onClick={() => setTab(3)}
         >
           About
-        </button>
-        <button
-          type="button"
-          className={`rounded border px-2.5 py-1 text-[11px] ${tab === 4 ? "border-border bg-muted/50" : "border-border/60"}`}
-          onClick={() => setTab(4)}
-        >
-          User guide
-        </button>
-        <button
-          type="button"
-          className={`rounded border px-2.5 py-1 text-[11px] ${tab === 5 ? "border-border bg-muted/50" : "border-border/60"}`}
-          onClick={() => setTab(5)}
-        >
-          Plugin authoring
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-3">
@@ -165,38 +148,35 @@ export function DocumentationSettingsPanelView(_props: ShellViewComponentProps):
           </div>
         ) : null}
         {tab === 3 ? (
-          <div className="space-y-2 text-[11px] leading-relaxed opacity-80">
+          <div className="space-y-3 text-[11px] leading-relaxed opacity-80">
             <p>
               <code className="font-mono">plugin.documentation</code> scrapes the shell at runtime (commands,
               keymap, API introspection). Plugins should set <code className="font-mono">sourcePluginId</code>{" "}
               and <code className="font-mono">doc</code> on registered commands.
             </p>
-            <p>
-              For how to use the app, open the{" "}
+            <p>Mini guides (read-only Markdown) open in this tab’s main area:</p>
+            <div className="flex flex-col gap-2">
               <button
                 type="button"
-                className="text-primary underline underline-offset-2 hover:opacity-90"
-                onClick={() => setTab(4)}
+                className="w-full rounded border border-border bg-muted/15 px-2.5 py-2 text-left text-[11px] hover:bg-muted/35"
+                onClick={() => postBc({ type: "docs.showBundledLogical", logicalId: BUNDLED_DOC_NOTE_IDS.companionUserGuide })}
               >
-                User guide
-              </button>{" "}
-              tab. For extending the shell with plugins, open{" "}
-              <button
-                type="button"
-                className="text-primary underline underline-offset-2 hover:opacity-90"
-                onClick={() => setTab(5)}
-              >
-                Plugin authoring
+                User guide (short)
               </button>
-              .
+              <button
+                type="button"
+                className="w-full rounded border border-border bg-muted/15 px-2.5 py-2 text-left text-[11px] hover:bg-muted/35"
+                onClick={() =>
+                  postBc({ type: "docs.showBundledLogical", logicalId: BUNDLED_DOC_NOTE_IDS.companionPluginAuthoring })
+                }
+              >
+                Plugin authoring (short)
+              </button>
+            </div>
+            <p className="text-muted-foreground">
+              Full chapters: use <span className="font-medium text-foreground">Guides</span> in this sidebar.
             </p>
           </div>
-        ) : null}
-        {tab === 4 ? (
-          <DocumentationBundledMarkdownPanel logicalId={BUNDLED_DOC_NOTE_IDS.companionUserGuide} />
-        ) : null}
-        {tab === 5 ? (
-          <DocumentationBundledMarkdownPanel logicalId={BUNDLED_DOC_NOTE_IDS.companionPluginAuthoring} />
         ) : null}
       </div>
     </div>

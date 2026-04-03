@@ -6,10 +6,10 @@ import { useShellViewRegistry } from "../../../views/ShellViewContext";
 import { DOCS_PLUGIN_ID } from "./documentationConstants";
 import { DocumentationHubView } from "./DocumentationHubView";
 import { DocumentationSearchPanelView } from "./DocumentationSearchPanelView";
-import { DocumentationSettingsPanelView } from "./DocumentationSettingsPanelView";
+import { DocumentationTocPanelView } from "./DocumentationTocPanelView";
 
 const VIEW_DOCS_SEARCH = "plugin.documentation.search";
-const VIEW_DOCS_SETTINGS = "plugin.documentation.settings";
+const VIEW_DOCS_TOC = "plugin.documentation.toc";
 const VIEW_DOCS_HUB = "plugin.documentation.hub";
 const TAB_DOCS = "plugin.documentation.tab";
 
@@ -31,10 +31,10 @@ export function useRegisterDocumentationPlugin(): void {
         capabilities: { allowedCommands: "allShellCommands", readContext: false },
       }),
       views.registerView({
-        id: VIEW_DOCS_SETTINGS,
-        title: "Docs — settings",
+        id: VIEW_DOCS_TOC,
+        title: "Docs — outline",
         defaultRegion: "companion",
-        component: DocumentationSettingsPanelView,
+        component: DocumentationTocPanelView,
         capabilities: { allowedCommands: "allShellCommands", readContext: false },
       }),
       views.registerView({
@@ -55,7 +55,7 @@ export function useRegisterDocumentationPlugin(): void {
         tabTypeId: TAB_DOCS,
         tabReuseKey: "plugin.documentation",
         sidebarViewId: VIEW_DOCS_SEARCH,
-        secondaryViewId: VIEW_DOCS_SETTINGS,
+        secondaryViewId: VIEW_DOCS_TOC,
       }),
     );
 
@@ -66,7 +66,7 @@ export function useRegisterDocumentationPlugin(): void {
         order: 20,
         viewId: VIEW_DOCS_HUB,
         primarySidebarViewId: VIEW_DOCS_SEARCH,
-        secondaryViewId: VIEW_DOCS_SETTINGS,
+        secondaryViewId: VIEW_DOCS_TOC,
       }),
     );
 
@@ -76,9 +76,9 @@ export function useRegisterDocumentationPlugin(): void {
         title: "Docs: Open documentation",
         category: "Docs",
         sourcePluginId: DOCS_PLUGIN_ID,
-        doc: "Opens Documentation: search in sidebar panel, settings in companion column.",
+        doc: "Opens Documentation: guides and settings in the sidebar, outline in the companion column.",
         api: {
-          summary: "Open the Documentation workspace (new Docs tab, sidebar search, secondary settings).",
+          summary: "Open the Documentation workspace (sidebar search/settings, companion outline).",
           args: [],
           exampleInvoke: {},
           returns: { type: "void", description: "Updates tabs and ShellViewRegistry regions." },
@@ -96,7 +96,7 @@ export function useRegisterDocumentationPlugin(): void {
         title: "Docs: What is Documentation?",
         category: "Docs",
         sourcePluginId: DOCS_PLUGIN_ID,
-        doc: "Opens the Documentation layout (search + settings).",
+        doc: "Opens the Documentation layout (sidebar + companion outline).",
         api: {
           summary: "Same layout as nodex.docs.open; alias for discoverability.",
           args: [],

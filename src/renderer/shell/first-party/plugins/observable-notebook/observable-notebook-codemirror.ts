@@ -16,8 +16,34 @@ function nodexBridgeCompletions(): Completion[] {
   }));
 }
 
+/** `window.nodex` top-level keys and `nodex.shell.*` groups (matches DevTools shell API). */
+function nodexWindowCompletions(): Completion[] {
+  if (typeof window === "undefined") return [];
+  const wn = (window as unknown as { nodex?: Record<string, unknown> }).nodex;
+  if (!wn) return [];
+  const out: Completion[] = [];
+  for (const k of Object.keys(wn)) {
+    const v = wn[k];
+    out.push({
+      label: `nodex.${k}`,
+      type: (typeof v === "function" ? "function" : "variable") as "function" | "variable",
+      detail: "window.nodex",
+    });
+    if (k === "shell" && v && typeof v === "object") {
+      for (const sk of Object.keys(v as object)) {
+        out.push({
+          label: `nodex.shell.${sk}`,
+          type: "variable",
+          detail: "window.nodex.shell",
+        });
+      }
+    }
+  }
+  return out;
+}
+
 const STATIC_COMPLETIONS: Completion[] = [
-  { label: "nodex", type: "namespace", detail: "window.Nodex + shell helpers" },
+  { label: "nodex", type: "namespace", detail: "window.Nodex + window.nodex + helpers" },
   { label: "nodex.commands.run", type: "function", detail: "Run command id" },
   { label: "nodex.openNote", type: "function" },
   { label: "nodex.openPalette", type: "function" },
@@ -38,7 +64,12 @@ function notebookCompletionSource(cellNames: string[]) {
     type: "variable" as const,
     detail: "Cell",
   }));
-  const all = [...STATIC_COMPLETIONS, ...nodexBridgeCompletions(), ...nameOpts];
+    const all = [
+      ...STATIC_COMPLETIONS,
+      ...nodexBridgeCompletions(),
+      ...nodexWindowCompletions(),
+      ...nameOpts,
+    ];
 
   return (context: CompletionContext) => {
     const before = context.matchBefore(/[\w.]*$/);

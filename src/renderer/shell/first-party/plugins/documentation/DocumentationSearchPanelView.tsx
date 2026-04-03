@@ -7,6 +7,7 @@ import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
 import type { AppDispatch, RootState } from "../../../../store";
 import { fetchAllNotes } from "../../../../store/notesSlice";
 import { DOCS_BC, type DocsBcMessage } from "./documentationConstants";
+import { DocumentationSettingsForm } from "./DocumentationSettingsForm";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 
 function esc(s: string): string {
@@ -81,7 +82,7 @@ function capGroupedGuides(
   return out;
 }
 
-type SidebarMode = "guides" | "commands";
+type SidebarMode = "guides" | "commands" | "settings";
 
 export function DocumentationSearchPanelView(_props: ShellViewComponentProps): React.ReactElement {
   const dispatch = useDispatch<AppDispatch>();
@@ -102,6 +103,12 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
     bc.postMessage(msg);
     bc.close();
   }, []);
+
+  const toggleMiniOnly = useCallback(() => {
+    const next = !miniOnly;
+    setMiniOnly(next);
+    postBc({ type: "docs.setMiniOnly", miniOnly: next });
+  }, [miniOnly, postBc]);
 
   useEffect(() => {
     // Legacy notes list (folder-backed / bundled docs in SQLite notes tree)
@@ -278,9 +285,25 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
         >
           Commands
         </button>
+        <button
+          type="button"
+          className={`flex-1 px-2 py-2 text-center text-[11px] font-semibold ${
+            sidebarMode === "settings" ? "bg-muted/40 text-foreground" : "text-muted-foreground hover:bg-muted/20"
+          }`}
+          onClick={() => {
+            setSidebarMode("settings");
+            setQ("");
+          }}
+        >
+          Settings
+        </button>
       </div>
 
-      {sidebarMode === "guides" ? (
+      {sidebarMode === "settings" ? (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <DocumentationSettingsForm miniOnly={miniOnly} onToggleMiniOnly={toggleMiniOnly} />
+        </div>
+      ) : sidebarMode === "guides" ? (
         <>
           <div className="shrink-0 border-b border-border px-2.5 py-2 text-[12px] font-bold opacity-85">
             Bundled documentation
@@ -346,7 +369,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
             </div>
           )}
         </>
-      ) : (
+      ) : sidebarMode === "commands" ? (
         <>
           <div className="shrink-0 border-b border-border px-2.5 py-2 text-[12px] font-bold opacity-85">
             Search commands
@@ -395,7 +418,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
             </div>
           )}
         </>
-      )}
+      ) : null}
     </div>
   );
 }

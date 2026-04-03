@@ -29,7 +29,7 @@ Only one main view is focused at a time per tab stack; switching tabs swaps the 
 
 ## Companion column
 
-The **companion** is the optional column on the right (for example **Outline** next to a Markdown note, or **Docs — settings** next to the Documentation hub).
+The **companion** is the optional column on the right (for example **Outline** next to a Markdown note, or **Docs — outline** next to the Documentation hub).
 
 Tab types can declare a **secondary view** so the companion opens or closes when you switch tabs. Use it for metadata, settings, or contextual tools that should stay visible beside the editor.
 
@@ -42,6 +42,6 @@ Some layouts also support a **bottom** dock region for panels that attach under 
 1. Pick a feature from the **activity bar**.
 2. The shell opens the right **tab** and usually the matching **sidebar**.
 3. The **main area** shows the editor or hub for that feature.
-4. If the tab defines one, the **companion** shows a secondary tool (outline, docs settings, and so on).
+4. If the tab defines one, the **companion** shows a secondary tool (outline, docs TOC, and so on).
 
 The next guides cover **workspaces and notes**, **commands and tabs**, and **Notes / Observable / Documentation** in more detail.

@@ -2,55 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import type { WpnBacklinkSourceItem } from "../../../shared/wpn-v2-types";
 import type { RootState } from "../../store";
-import { baseSlug, stripInlineMarkdownHeadingSource } from "../../utils/markdown-heading-slugs";
+import { parseMarkdownHeadingsForToc } from "../../utils/markdown-heading-slugs";
 import { useShellActiveMainTab } from "../ShellActiveTabContext";
 import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import type { ShellViewComponentProps } from "../views/ShellViewRegistry";
 import { useShellNavigation } from "../useShellNavigation";
 import { SHELL_TAB_NOTE } from "./shellWorkspaceIds";
 import type { ShellNoteTabState } from "../shellTabUrlSync";
-
-type TocRow = { level: number; text: string; slug: string };
-
-function parseHeadings(md: string): TocRow[] {
-  const out: TocRow[] = [];
-  const counts = new Map<string, number>();
-  const lines = md.split(/\r?\n/);
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i] ?? "";
-
-    const atx = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
-    if (atx) {
-      const level = atx[1]!.length;
-      const text = atx[2]!.trim();
-      if (!text) continue;
-      const slugBase = baseSlug(stripInlineMarkdownHeadingSource(text));
-      const prev = counts.get(slugBase) ?? 0;
-      const n = prev + 1;
-      counts.set(slugBase, n);
-      const slug = n === 1 ? slugBase : `${slugBase}-${n}`;
-      out.push({ level, text, slug });
-      continue;
-    }
-
-    const next = lines[i + 1] ?? "";
-    const setext = /^(=+|-+)\s*$/.exec(next);
-    if (setext && line.trim().length > 0) {
-      const level = setext[1]!.startsWith("=") ? 1 : 2;
-      const text = line.trim();
-      const slugBase = baseSlug(stripInlineMarkdownHeadingSource(text));
-      const prev = counts.get(slugBase) ?? 0;
-      const n = prev + 1;
-      counts.set(slugBase, n);
-      const slug = n === 1 ? slugBase : `${slugBase}-${n}`;
-      out.push({ level, text, slug });
-      i += 1;
-    }
-  }
-
-  return out;
-}
 
 export function MarkdownTocShellView(_props: ShellViewComponentProps): React.ReactElement {
   const tab = useShellActiveMainTab();
@@ -70,7 +28,7 @@ export function MarkdownTocShellView(_props: ShellViewComponentProps): React.Rea
 
   const rows = useMemo(() => {
     if (!isMarkdown) return [];
-    return parseHeadings(currentNote?.content ?? "");
+    return parseMarkdownHeadingsForToc(currentNote?.content ?? "");
   }, [currentNote?.content, isMarkdown]);
 
   const [backlinks, setBacklinks] = useState<WpnBacklinkSourceItem[]>([]);

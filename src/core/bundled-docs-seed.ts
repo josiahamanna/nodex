@@ -25,7 +25,7 @@ export type BundledDocsManifest = {
     file: string;
     title: string;
   };
-  /** Short panels for Docs — settings tabs; not listed under Guides. */
+  /** Short companion Markdown notes (opened from Documentation sidebar Settings); not listed under Guides. */
   companionPanels?: Array<{
     id: string;
     file: string;

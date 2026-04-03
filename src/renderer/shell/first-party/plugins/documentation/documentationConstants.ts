@@ -16,4 +16,5 @@ export type DocsBcMessage =
   | { type: "docs.setMiniOnly"; miniOnly: boolean }
   | { type: "docs.refreshCommands" }
   | { type: "docs.showCommand"; commandId: string }
-  | { type: "docs.showBundledDoc"; noteId: string };
+  | { type: "docs.showBundledDoc"; noteId: string }
+  | { type: "docs.showBundledLogical"; logicalId: string };

@@ -14,28 +14,26 @@ function isHtmlPayload(value: unknown): value is { html: string } {
   );
 }
 
-function wrapInspectorForHtml(slot: HTMLElement, makeObserver: () => Inspector) {
-  return () => {
-    const inspector = makeObserver();
-    return {
-      pending() {
-        inspector.pending();
-      },
-      fulfilled(value: unknown, name?: string) {
-        if (isHtmlPayload(value)) {
-          while (slot.firstChild) slot.removeChild(slot.firstChild);
-          const wrap = document.createElement("div");
-          wrap.className = "nodex-notebook-html";
-          wrap.innerHTML = DOMPurify.sanitize(value.html);
-          slot.appendChild(wrap);
-          return;
-        }
-        return inspector.fulfilled(value, name);
-      },
-      rejected(error: unknown, name?: string) {
-        return inspector.rejected(error, name);
-      },
-    };
+/** `module.variable()` needs an observer object; `Inspector.into()` returns a factory for `runtime.module(define, factory)` only. */
+function wrapInspectorForHtml(slot: HTMLElement, inspector: InstanceType<typeof Inspector>) {
+  return {
+    pending() {
+      inspector.pending();
+    },
+    fulfilled(value: unknown, name?: string) {
+      if (isHtmlPayload(value)) {
+        while (slot.firstChild) slot.removeChild(slot.firstChild);
+        const wrap = document.createElement("div");
+        wrap.className = "nodex-notebook-html";
+        wrap.innerHTML = DOMPurify.sanitize(value.html);
+        slot.appendChild(wrap);
+        return;
+      }
+      return inspector.fulfilled(value, name);
+    },
+    rejected(error: unknown, name?: string) {
+      return inspector.rejected(error, name);
+    },
   };
 }
 
@@ -83,8 +81,8 @@ export function runObservableNotebookTrusted(opts: {
       root.appendChild(block);
     }
 
-    const makeObserver = Inspector.into(slot);
-    const wrappedObserver = wrapInspectorForHtml(slot, makeObserver);
+    const inspector = Inspector.into(slot)();
+    const wrappedObserver = wrapInspectorForHtml(slot, inspector);
 
     const t0 = performance.now();
     mod.variable(wrappedObserver).define(

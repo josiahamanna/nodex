@@ -9,21 +9,21 @@ declare global {
   interface Window {
     nodex?: {
       shell?: unknown;
+      [key: string]: unknown;
     };
   }
 }
 
-export function exposeDevtoolsShellApi(opts: {
+/** Same object assigned to `window.nodex.shell` and injected as `nodex.shell` in Observable notebooks. */
+export function buildNodexShellApi(opts: {
   registry: NodexContributionRegistry;
   layout: ShellLayoutStore;
   views?: ShellViewRegistry;
   registries?: ShellRegistries;
-}): void {
-  if (typeof window === "undefined") return;
+}) {
   const { registry, layout } = opts;
 
-  window.nodex = window.nodex ?? {};
-  window.nodex.shell = {
+  return {
     layout: {
       get: () => layout.get(),
       setVisible: (regionId: ShellRegionId, visible: boolean) =>
@@ -92,10 +92,25 @@ export function exposeDevtoolsShellApi(opts: {
           reorder: (fromIndex: number, toIndex: number) =>
             opts.registries!.tabs.reorderTabs(fromIndex, toIndex),
           listOpen: () => opts.registries!.tabs.listOpenTabs(),
+          getActive: () => opts.registries!.tabs.getActiveTab(),
           setActive: (instanceId: string) => opts.registries!.tabs.setActiveTab(String(instanceId)),
           close: (instanceId: string) => opts.registries!.tabs.closeTab(String(instanceId)),
         }
       : undefined,
   };
+}
+
+export type NodexDevtoolsShellApi = ReturnType<typeof buildNodexShellApi>;
+
+export function exposeDevtoolsShellApi(opts: {
+  registry: NodexContributionRegistry;
+  layout: ShellLayoutStore;
+  views?: ShellViewRegistry;
+  registries?: ShellRegistries;
+}): void {
+  if (typeof window === "undefined") return;
+
+  window.nodex = window.nodex ?? {};
+  window.nodex.shell = buildNodexShellApi(opts);
 }
 

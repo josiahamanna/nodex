@@ -10,7 +10,7 @@ The **mini bar** is the compact input usually shown near the top or bottom of th
 - **Execute** the highlighted command to run it.
 - Some commands take **arguments**; the host may prompt or use the typed remainder of the line.
 
-In **Documentation → Docs — settings** (companion column), the **Minibuffer-only** toggle filters the **Commands** list in the sidebar to commands that opt into the mini bar (`miniBar !== false`). Turn it off to browse every registered command while searching.
+In **Documentation → sidebar → Settings**, the **Minibuffer-only** toggle filters the **Commands** list to commands that opt into the mini bar (`miniBar !== false`). Turn it off to browse every registered command while searching.
 
 ## Command palette
 
@@ -37,7 +37,7 @@ Use the palette when you do not remember the exact id; use the mini bar when you
 ## Practical flow
 
 1. **Notes**: open the **Notes** rail item → **Notes** tab + explorer sidebar → pick a note.
-2. **Docs**: open **Documentation** → **Docs** tab + **Docs — search** sidebar + **Docs — settings** companion → pick a guide or command.
+2. **Docs**: open **Documentation** → **Docs** tab + **Docs — search** sidebar + **Docs — outline** companion → pick a guide or command (or use **Settings** in the sidebar).
 3. **Commands**: open the palette → run **Notes: Open explorer** or **Docs: Open documentation** without touching the rail.
 
 The following guide compares **Notes (explorer)**, **Observable**, and **Documentation** as products of those tabs and sidebars.

@@ -1,38 +1,15 @@
 import type { NodexRendererApi } from "../../../../../shared/nodex-renderer-api";
+import type { NodexContributionRegistry } from "../../../nodex-contribution-registry";
 import type { ShellLayoutStore } from "../../../layout/ShellLayoutStore";
 import type { ShellRegistries } from "../../../registries/ShellRegistriesContext";
-import type { ShellRegionId } from "../../../layout/ShellLayoutState";
+import type { ShellViewRegistry } from "../../../views/ShellViewRegistry";
+import { buildNodexShellApi, type NodexDevtoolsShellApi } from "../../../devtoolsShellExpose";
 
 type NodexNotebookShellAugment = {
-  /** Proxy/parity surface roughly matching `window.nodex.shell` for notebook cells. */
-  shell: {
-    tabs: {
-      listOpen(): ReturnType<ShellRegistries["tabs"]["listOpenTabs"]>;
-      getActive(): ReturnType<ShellRegistries["tabs"]["getActiveTab"]>;
-      setActive(instanceId: string): void;
-      close(instanceId: string): void;
-      openOrReuse(
-        tabTypeId: string,
-        o?: { title?: string; state?: unknown; reuseKey?: string },
-      ): unknown;
-    };
-    commands: {
-      invoke(commandId: string, args?: Record<string, unknown>): void | Promise<void>;
-    };
-    layout: {
-      get(): ReturnType<ShellLayoutStore["get"]>;
-      setVisible(regionId: ShellRegionId, visible: boolean): void;
-      toggle(regionId: ShellRegionId): void;
-      apply(patch: Partial<ReturnType<ShellLayoutStore["get"]>>): void;
-    };
-  };
-
-  /** Convenience alias: `nodex.devtools.*` maps to the same underlying shell surface. */
-  devtools: {
-    tabs: NodexNotebookShellAugment["shell"]["tabs"];
-    commands: NodexNotebookShellAugment["shell"]["commands"];
-    layout: NodexNotebookShellAugment["shell"]["layout"];
-  };
+  /** Same as `window.nodex.shell` (layout, commands, views, tabs, keymap, …). */
+  shell: NodexDevtoolsShellApi;
+  /** Alias for `nodex.shell` (parity with older notebook docs). */
+  devtools: NodexDevtoolsShellApi;
 
   /** Back-compat helpers used in docs/examples. */
   commands: {
@@ -44,8 +21,8 @@ type NodexNotebookShellAugment = {
   openObservableScratch(): void | Promise<void>;
 };
 
-/** Injected as the `nodex` builtin: full `window.Nodex` API plus shell helpers. */
-export type NodexNotebookHost = NodexRendererApi & NodexNotebookShellAugment;
+/** Injected as the `nodex` builtin: `window.Nodex`, `window.nodex.*`, and notebook helpers. */
+export type NodexNotebookHost = NodexRendererApi & NodexNotebookShellAugment & Record<string, unknown>;
 
 /** Command ids exposed to notebooks (allowlist documentation). */
 export const NODEX_NOTEBOOK_DOCUMENTED_COMMANDS = [
@@ -64,44 +41,31 @@ export const NODEX_NOTEBOOK_DOCUMENTED_COMMANDS = [
   "nodex.docs.open",
 ] as const;
 
-export function createNotebookNodexHost(
-  opts: {
-    invoke: (id: string, args?: Record<string, unknown>) => void | Promise<void>;
-    registries: ShellRegistries;
-    layout: ShellLayoutStore;
-  },
-): NodexNotebookHost {
-  const { invoke, registries, layout } = opts;
+export function createNotebookNodexHost(opts: {
+  invoke: (id: string, args?: Record<string, unknown>) => void | Promise<void>;
+  registry: NodexContributionRegistry;
+  registries: ShellRegistries;
+  layout: ShellLayoutStore;
+  views: ShellViewRegistry;
+}): NodexNotebookHost {
+  const { invoke, registry, registries, layout, views } = opts;
 
-  const shell: NodexNotebookShellAugment["shell"] = {
-    tabs: {
-      listOpen: () => registries.tabs.listOpenTabs(),
-      getActive: () => registries.tabs.getActiveTab(),
-      setActive: (instanceId: string) => registries.tabs.setActiveTab(String(instanceId)),
-      close: (instanceId: string) => registries.tabs.closeTab(String(instanceId)),
-      openOrReuse: (tabTypeId: string, o?: { title?: string; state?: unknown; reuseKey?: string }) =>
-        registries.tabs.openOrReuseTab(String(tabTypeId), o),
-    },
-    commands: {
-      invoke: (commandId: string, args?: Record<string, unknown>) => invoke(commandId, args),
-    },
-    layout: {
-      get: () => layout.get(),
-      setVisible: (regionId: ShellRegionId, visible: boolean) =>
-        layout.setVisible(regionId, Boolean(visible)),
-      toggle: (regionId: ShellRegionId) => layout.toggle(regionId),
-      apply: (patch: Partial<ReturnType<ShellLayoutStore["get"]>>) =>
-        layout.patch((cur) => ({ ...cur, ...(patch as object) })),
-    },
-  };
+  const shell = buildNodexShellApi({ registry, layout, views, registries });
+
+  const fromBridge =
+    typeof globalThis !== "undefined" && (globalThis as unknown as { Nodex?: NodexRendererApi }).Nodex
+      ? (globalThis as unknown as { Nodex: NodexRendererApi }).Nodex
+      : ({} as Partial<NodexRendererApi>);
+
+  const nodexWin: Record<string, unknown> =
+    typeof window !== "undefined" && window.nodex && typeof window.nodex === "object"
+      ? { ...(window.nodex as object) }
+      : {};
+  delete nodexWin.shell;
 
   const thin: NodexNotebookShellAugment = {
     shell,
-    devtools: {
-      tabs: shell.tabs,
-      commands: shell.commands,
-      layout: shell.layout,
-    },
+    devtools: shell,
     commands: {
       run: (commandId, args) => invoke(commandId, args),
     },
@@ -112,10 +76,5 @@ export function createNotebookNodexHost(
     openObservableScratch: () => invoke("nodex.observableNotebook.open"),
   };
 
-  const fromBridge =
-    typeof globalThis !== "undefined" && (globalThis as unknown as { Nodex?: NodexRendererApi }).Nodex
-      ? (globalThis as unknown as { Nodex: NodexRendererApi }).Nodex
-      : ({} as Partial<NodexRendererApi>);
-
-  return Object.assign({}, fromBridge, thin) as NodexNotebookHost;
+  return Object.assign({}, fromBridge, nodexWin, thin) as NodexNotebookHost;
 }

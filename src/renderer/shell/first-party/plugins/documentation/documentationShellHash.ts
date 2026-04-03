@@ -145,3 +145,35 @@ export function mergeDocumentationIntoTabState(
   else delete merged.documentation;
   tabs.updateTabPresentation(instanceId, { state: merged });
 }
+
+/** Next persisted docs state for the same page with an updated heading (hub overview when `cur` is null). */
+export function documentationStateWithHeading(
+  cur: DocumentationShellTabState | null,
+  slug: string,
+): DocumentationShellTabState {
+  if (cur?.view === "command" && cur.commandId) {
+    return { view: "command", commandId: cur.commandId, headingSlug: slug };
+  }
+  if (cur?.view === "bundled" && cur.noteId) {
+    return { view: "bundled", noteId: cur.noteId, headingSlug: slug };
+  }
+  return { view: "hub", headingSlug: slug };
+}
+
+/**
+ * Updates the active documentation tab’s heading slug for in-page navigation.
+ * @returns whether the slug was unchanged (re-click same TOC row) so callers can force scroll.
+ */
+export function mergeDocumentationHeadingSlug(
+  tabs: ShellTabsRegistry,
+  instanceId: string,
+  slug: string,
+): { unchanged: boolean } {
+  const inst = tabs.listOpenTabs().find((t) => t.instanceId === instanceId);
+  if (!inst || inst.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return { unchanged: false };
+  const cur = readDocumentationStateFromTab(inst);
+  const unchanged = cur?.headingSlug === slug;
+  const next = documentationStateWithHeading(cur, slug);
+  mergeDocumentationIntoTabState(tabs, instanceId, next);
+  return { unchanged };
+}

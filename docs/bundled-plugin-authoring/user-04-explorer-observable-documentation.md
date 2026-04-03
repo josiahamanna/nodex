@@ -41,7 +41,8 @@ The editor integrates code editing (including shortcuts such as run cell) and tr
 - **Sidebar:** **Docs — search** with two modes:
   - **Guides:** bundled documentation pages (User guide + Plugin authoring sections).
   - **Commands:** searchable list of commands; selecting one shows structured API text in the **main** hub.
-- **Companion:** **Docs — settings** — keyboard listing, `window.nodex.shell` shape, short **About**, plus in-app **User guide** and **Plugin authoring** summaries.
+- **Companion:** **Docs — outline** — table of contents for the documentation page in the main area.
+- **Sidebar → Settings:** keyboard listing, `window.nodex.shell` shape, **About**, and buttons to open short **User guide** / **Plugin authoring** Markdown in the main area.
 
 **Typical tasks**
 
