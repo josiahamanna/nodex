@@ -25,6 +25,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Match docker compose project isolation (default: checkout directory basename). Jenkins sets
+# COMPOSE_PROJECT_NAME=nodex so jobs under varying workspace paths reuse one stack; containers
+# from another project name would otherwise block fixed container_name values.
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$REPO_ROOT")}"
+
 export NODEX_PG_PASSWORD="${NODEX_PG_PASSWORD:-nodex}"
 export NODEX_PG_DATABASE_URL="${NODEX_PG_DATABASE_URL:-postgresql://nodex:${NODEX_PG_PASSWORD}@postgres:5432/nodex}"
 export NODEX_WPN_DEFAULT_OWNER="${NODEX_WPN_DEFAULT_OWNER:-jehu}"
@@ -41,6 +46,30 @@ mkdir -p .nodex-docker-workspace
 # Orphan from an old compose service name (e.g. nodex-web) — safe to drop.
 docker rm -f nodex-web 2>/dev/null || true
 
+remove_if_not_this_compose_project() {
+  local cname="$1"
+  if ! docker container inspect "$cname" &>/dev/null; then
+    return 0
+  fi
+  local proj
+  proj="$(docker container inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$cname" 2>/dev/null || true)"
+  if [[ "$proj" == "$COMPOSE_PROJECT_NAME" ]]; then
+    return 0
+  fi
+  echo "[nodex] Removing ${cname} (compose project '${proj:-none}' != this run '${COMPOSE_PROJECT_NAME}'; named volumes unchanged)."
+  docker rm -f "$cname" >/dev/null 2>&1 || true
+}
+
+clear_foreign_compose_containers() {
+  remove_if_not_this_compose_project nodex-postgres
+  remove_if_not_this_compose_project nodex-gateway
+  remove_if_not_this_compose_project nodex-api
+  remove_if_not_this_compose_project nodex-web-blue
+  remove_if_not_this_compose_project nodex-web-green
+}
+
+clear_foreign_compose_containers
+
 # Stopped nodex-postgres still holds container_name; compose errors on "Creating". Volume
 # nodex-pg-data is unchanged. Do not remove a running DB.
 if docker container inspect nodex-postgres &>/dev/null; then
@@ -54,7 +83,8 @@ fi
 # Stopped nodex-web-blue / nodex-web-green still hold fixed container_name values; compose then
 # errors with "already in use". Remove only slots that are not serving traffic: always remove if
 # stopped; if running, remove only when not the active upstream in deploy/nginx-active-web.upstream.conf
-# (same source the gateway uses). Does not remove running postgres, nodex-api, or nodex-gateway.
+# (same source the gateway uses). Running postgres/api/gateway are only removed above when their
+# compose project differs from COMPOSE_PROJECT_NAME.
 ACTIVE_FILE="${REPO_ROOT}/deploy/nginx-active-web.upstream.conf"
 active_line=""
 if [[ -f "$ACTIVE_FILE" ]]; then
@@ -123,11 +153,18 @@ compose_up() {
 }
 
 if ! compose_up; then
-  echo "[nodex] Compose failed — clearing stale web slots again and retrying once..."
+  echo "[nodex] Compose failed — clearing foreign-project / stale slots and retrying once..."
+  clear_foreign_compose_containers
   remove_stale_web_slot nodex-web-blue
   remove_stale_web_slot nodex-web-green
   remove_docker_run_web_slot nodex-web-blue
   remove_docker_run_web_slot nodex-web-green
+  if docker container inspect nodex-postgres &>/dev/null; then
+    pg_running="$(docker container inspect -f '{{.State.Running}}' nodex-postgres 2>/dev/null || echo false)"
+    if [[ "$pg_running" != "true" ]]; then
+      docker rm -f nodex-postgres >/dev/null 2>&1 || true
+    fi
+  fi
   compose_up
 fi
 

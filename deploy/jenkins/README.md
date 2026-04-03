@@ -11,13 +11,13 @@ Confirm the machine or container that runs the job has:
 3. **Docker CLI and Compose v2** — same daemon that should run the stack; the `jenkins` user must be able to run `docker` and `docker compose` (group membership or equivalent socket access).
 4. **Repository root as `WORKSPACE`** — the job must check out this repo so `package.json` and `scripts/` are at the top level of the workspace (use **Checkout** to the default workspace or set `subdir` consistently).
 
-## Docker: `nodex-postgres` name already in use
+## Docker: `nodex-postgres` / `nodex-gateway` name already in use
 
 Compose uses fixed `container_name` values (see [`docker-compose.yml`](../../docker-compose.yml)). Docker allows each name only once per daemon.
 
-- **Stopped leftover** — [`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh) removes a **stopped** `nodex-postgres` before `compose up` so compose can recreate it; the **`nodex-pg-data` volume** keeps database files.
-- **Jenkins workspace name** — Compose’s default project name is the checkout directory basename. Different job or branch checkouts can produce different project names while still wanting the same `container_name`, which triggers a create conflict. The [`Jenkinsfile`](../../Jenkinsfile) sets **`COMPOSE_PROJECT_NAME=nodex`** so every deploy on that agent targets one consistent project.
-- **Still failing with a running container** — Another process or an old manual run may own `nodex-postgres`. Inspect with `docker inspect nodex-postgres` and align on one stack (or stop/remove only if you accept downtime and understand data is in the named volume).
+- **Stopped leftover** — [`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh) removes a **stopped** `nodex-postgres` before `compose up`; the **`nodex-pg-data` volume** keeps database files.
+- **Wrong Compose project** — Compose labels each container with `com.docker.compose.project` (default: checkout directory basename, e.g. `nodex-studio`). If the [`Jenkinsfile`](../../Jenkinsfile) sets **`COMPOSE_PROJECT_NAME=nodex`** but old containers still belong to `nodex-studio`, Compose tries to **create** new containers and hits a name conflict. The deploy script **removes** postgres, gateway, API, and web slots whose project label **does not** match the current `COMPOSE_PROJECT_NAME`, then recreates them under the correct project (named volumes are unchanged; expect a short DB/API blip).
+- **Local dev** — If you do not set `COMPOSE_PROJECT_NAME`, the script defaults it to the repo directory basename, matching Compose’s usual behavior.
 
 ## Why a naive `sh` + hard-coded NVM path fails
 
@@ -29,7 +29,7 @@ Compose uses fixed `container_name` values (see [`docker-compose.yml`](../../doc
 [`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh) generates a random **`NODEX_AUTH_JWT_SECRET`** when unset, which **invalidates existing sessions** on each deploy. For production, bind a stable secret in Jenkins:
 
 1. Add a **Secret text** credential (for example ID `nodex-auth-jwt-secret`).
-2. In the `Jenkinsfile`, uncomment the `environment { ... }` block and match the credential IDs to what you created.
+2. In the `Jenkinsfile`, uncomment the `NODEX_*` credential lines inside `environment { }` and match the credential IDs to what you created.
 
 Optional overrides (same as local deploy): `NODEX_PG_PASSWORD`, `NODEX_PG_DATABASE_URL`, `NODEX_WPN_DEFAULT_OWNER`, etc. Set them on the job or via an **Inject environment variables** / **Credentials** binding.
 
