@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import type { Note } from "@nodex/ui-types";
 import MarkdownRenderer from "../../../../components/renderers/MarkdownRenderer";
+import type { InternalMarkdownNoteLink } from "../../../../utils/markdown-internal-note-href";
 import { resolveCommandApiDoc } from "../../../command-api-metadata";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
@@ -21,6 +22,7 @@ import {
   buildDocumentationStateFromUi,
   mergeDocumentationIntoTabState,
   readDocumentationStateFromTab,
+  type DocumentationShellTabState,
 } from "./documentationShellHash";
 
 function esc(s: string): string {
@@ -249,6 +251,20 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     [scrollDocHeadingIntoView],
   );
 
+  const onInternalNoteNavigate = useCallback(
+    (link: InternalMarkdownNoteLink) => {
+      const t = regs.tabs.getActiveTab();
+      if (!t || t.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
+      const next: DocumentationShellTabState = {
+        view: "bundled",
+        noteId: link.noteId,
+        headingSlug: link.markdownHeadingSlug,
+      };
+      mergeDocumentationIntoTabState(regs.tabs, t.instanceId, next);
+    },
+    [regs.tabs],
+  );
+
   const docHubDismissBtn =
     "shrink-0 rounded-md border border-border/60 bg-background px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted/40";
 
@@ -326,7 +342,11 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
           </div>
         </div>
         <div ref={scrollRootRef} className="min-h-0 flex-1 overflow-auto">
-          <MarkdownRenderer note={bundledNote} onSamePageHeadingClick={onDocHeadingLinkClick} />
+          <MarkdownRenderer
+            note={bundledNote}
+            onSamePageHeadingClick={onDocHeadingLinkClick}
+            onInternalNoteNavigate={onInternalNoteNavigate}
+          />
         </div>
       </div>
     );
@@ -346,7 +366,11 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
           <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Bundled overview (read-only)
           </div>
-          <MarkdownRenderer note={hubNote} onSamePageHeadingClick={onDocHeadingLinkClick} />
+          <MarkdownRenderer
+            note={hubNote}
+            onSamePageHeadingClick={onDocHeadingLinkClick}
+            onInternalNoteNavigate={onInternalNoteNavigate}
+          />
         </div>
       );
     }
@@ -368,7 +392,11 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
         </button>
       </div>
       <div ref={scrollRootRef} className="min-h-0 flex-1 overflow-auto">
-        <MarkdownRenderer note={commandMarkdownNote} onSamePageHeadingClick={onDocHeadingLinkClick} />
+        <MarkdownRenderer
+          note={commandMarkdownNote}
+          onSamePageHeadingClick={onDocHeadingLinkClick}
+          onInternalNoteNavigate={onInternalNoteNavigate}
+        />
       </div>
     </div>
   );

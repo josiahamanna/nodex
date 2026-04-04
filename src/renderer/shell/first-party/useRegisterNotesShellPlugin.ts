@@ -5,6 +5,7 @@ import { openNoteInShell } from "../openNoteInShell";
 import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../views/ShellViewContext";
 import { store } from "../../store";
+import { createNote, fetchAllNotes } from "../../store/notesSlice";
 import { NoteEditorShellView } from "./NoteEditorShellView";
 import { MarkdownTocShellView } from "./MarkdownTocShellView";
 import { NODEX_MARKDOWN_OPEN_NOTE_LINK_PICKER_EVENT } from "./plugins/markdown/markdownNoteLinkEvents";
@@ -84,6 +85,44 @@ export function useRegisterNotesShellPlugin(): void {
             layout,
             menuRail: regs.menuRail,
           });
+        },
+      }),
+    );
+
+    disposers.push(
+      contrib.registerCommand({
+        id: "nodex.notes.newScratchMarkdown",
+        title: "Notes: New scratch markdown",
+        category: "Notes",
+        sourcePluginId: NOTES_SHELL_PLUGIN_ID,
+        doc: "Creates a new root markdown note titled “Scratch” and opens it in a new editor tab.",
+        api: {
+          summary: "Create a root markdown note and open it with a fresh tab.",
+          args: [],
+          exampleInvoke: {},
+          returns: { type: "void", description: "No-op if the workspace cannot create notes." },
+        },
+        handler: async () => {
+          try {
+            const { id } = await store
+              .dispatch(
+                createNote({
+                  relation: "root",
+                  type: "markdown",
+                  title: "Scratch",
+                  content: "",
+                }),
+              )
+              .unwrap();
+            await store.dispatch(fetchAllNotes()).unwrap();
+            openNoteInShell(
+              id,
+              { tabs: regs.tabs, views, layout, menuRail: regs.menuRail },
+              { newTab: true },
+            );
+          } catch {
+            /* invalid type, no project, etc. */
+          }
         },
       }),
     );

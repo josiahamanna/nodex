@@ -7,10 +7,14 @@ import { baseSlug } from "../../utils/markdown-heading-slugs";
 import {
   markdownInternalNoteHref,
   parseInternalMarkdownNoteLink,
+  type InternalMarkdownNoteLink,
 } from "../../utils/markdown-internal-note-href";
 
 /** Fragment only, matches heading `id`s from this renderer (`baseSlug` + optional `-n`). */
 const SAME_PAGE_HEADING_HASH = /^#([a-z0-9-]+)$/;
+
+/** Shell command links in markdown, e.g. `[Open](nodex-cmd:nodex.docs.open)` (allowed by sanitize when callback is set). */
+const NODEX_CMD_HREF = /^nodex-cmd:([\w.]+)$/;
 
 interface MarkdownRendererProps {
   note: Note;
@@ -19,6 +23,13 @@ interface MarkdownRendererProps {
    * updates shell tab hash). Modifier clicks keep default navigation.
    */
   onSamePageHeadingClick?: (slug: string) => void;
+  /**
+   * When set, internal `#/n/...` links invoke this instead of `window.location.hash` (e.g. Documentation
+   * hub keeps routes under `#/t/<docsTab>/n/...`). Modifier clicks keep default navigation.
+   */
+  onInternalNoteNavigate?: (link: InternalMarkdownNoteLink) => void;
+  /** When set, `nodex-cmd:<commandId>` links invoke the contribution registry command (modifier clicks unchanged). */
+  onNodexCmdLink?: (commandId: string) => void;
 }
 
 type MarkdownHeading = "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
@@ -54,10 +65,27 @@ const markdownShellClass =
   "[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-[12px] " +
   "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground";
 
-const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note, onSamePageHeadingClick }) => {
+const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
+  note,
+  onSamePageHeadingClick,
+  onInternalNoteNavigate,
+  onNodexCmdLink,
+}) => {
   // Reset each render so heading ids match a fresh slug sequence (TOC / scroll-to-heading).
   const slugCountsRef = useRef<Map<string, number>>(new Map());
   slugCountsRef.current = new Map();
+
+  const rehypeSanitizeSchema = useMemo(() => {
+    if (!onNodexCmdLink) return defaultSchema;
+    const hrefProtocols = [...(defaultSchema.protocols?.href ?? []), "nodex-cmd"];
+    return {
+      ...defaultSchema,
+      protocols: {
+        ...defaultSchema.protocols,
+        href: hrefProtocols,
+      },
+    };
+  }, [onNodexCmdLink]);
 
   const markdownComponents = useMemo(() => {
     const make =
@@ -82,6 +110,27 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note, onSamePageHea
       children,
       ...rest
     }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+      if (typeof href === "string" && onNodexCmdLink) {
+        const cmd = href.match(NODEX_CMD_HREF);
+        if (cmd?.[1]) {
+          const commandId = cmd[1];
+          return (
+            <a
+              {...rest}
+              href={href}
+              onClick={(e) => {
+                if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+                  return;
+                }
+                e.preventDefault();
+                onNodexCmdLink(commandId);
+              }}
+            >
+              {children}
+            </a>
+          );
+        }
+      }
       const internal = typeof href === "string" ? parseInternalMarkdownNoteLink(href) : null;
       if (internal) {
         const canonical = markdownInternalNoteHref(internal.noteId, internal.markdownHeadingSlug);
@@ -94,6 +143,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note, onSamePageHea
                 return;
               }
               e.preventDefault();
+              if (onInternalNoteNavigate) {
+                onInternalNoteNavigate(internal);
+                return;
+              }
               if (typeof window !== "undefined" && window.location.hash !== canonical) {
                 window.location.hash = canonical;
               }
@@ -140,13 +193,13 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ note, onSamePageHea
       h6: make("h6"),
       a: InternalOrExternalLink,
     };
-  }, [onSamePageHeadingClick]);
+  }, [onInternalNoteNavigate, onNodexCmdLink, onSamePageHeadingClick]);
 
   return (
     <div className={`p-4 nodex-typography max-w-none min-w-0 ${markdownShellClass}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeSanitize, defaultSchema]]}
+        rehypePlugins={[[rehypeSanitize, rehypeSanitizeSchema]]}
         components={markdownComponents}
       >
         {note.content}

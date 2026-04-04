@@ -40,3 +40,31 @@ test("hashDocumentationPathFromState round-trips command id with encoding", () =
   const parsed = documentationStateFromPathSegments(segs);
   assert.deepEqual(parsed, st);
 });
+
+test("hashDocumentationPathFromState round-trips bundled note with heading slug", () => {
+  const st = {
+    view: "bundled" as const,
+    noteId: "nodex-bundled-plugin-complete-guide",
+    headingSlug: "3-packaged-plugins-zip-marketplace",
+  };
+  const path = hashDocumentationPathFromState(st);
+  assert.equal(path, "/n/nodex-bundled-plugin-complete-guide/3-packaged-plugins-zip-marketplace");
+  const segs = path.split("/").filter(Boolean);
+  const parsed = documentationStateFromPathSegments(segs);
+  assert.deepEqual(parsed, st);
+});
+
+/** Matches `hashForActiveTab` for documentation tabs (see shellTabUrlSync); kept here to avoid importing that module in node:test (ESM path resolution). */
+test("documentation tab shell hash prefixes bundled deep link with instance id", () => {
+  const instanceId = "plugin.documentation.tab:1775282179238:d01c6b6af71c18";
+  const st = {
+    view: "bundled" as const,
+    noteId: "nodex-bundled-plugin-complete-guide",
+    headingSlug: "3-packaged-plugins-zip-marketplace",
+  };
+  const tail = hashDocumentationPathFromState(st);
+  assert.equal(
+    `#/t/${instanceId}${tail}`,
+    "#/t/plugin.documentation.tab:1775282179238:d01c6b6af71c18/n/nodex-bundled-plugin-complete-guide/3-packaged-plugins-zip-marketplace",
+  );
+});

@@ -13,11 +13,26 @@ function commandLabel(c: { title: string; category?: string | null }): string {
   return cat ? `${cat}: ${c.title}` : c.title;
 }
 
+function restoreFocusOutsideMinibar(lastOutside: React.MutableRefObject<HTMLElement | null>): void {
+  const el = lastOutside.current;
+  if (el && document.contains(el)) {
+    try {
+      el.focus();
+      if (document.activeElement === el) return;
+    } catch {
+      /* ignore */
+    }
+  }
+  const main = document.querySelector("[data-nodex-main-surface]") as HTMLElement | null;
+  main?.focus();
+}
+
 export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement | null {
   const { miniBarText, setMiniBarText, runFromMiniBarText, commands } = vm;
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const activeItemRef = useRef<HTMLButtonElement | null>(null);
+  const lastFocusOutsideMinibarRef = useRef<HTMLElement | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const [inputFocused, setInputFocused] = useState(false);
@@ -60,7 +75,15 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
       if (!root) return;
       const t = e.target as Node | null;
       if (t && root.contains(t)) return;
-      inputRef.current?.blur();
+      if (document.activeElement === inputRef.current) {
+        inputRef.current?.blur();
+        window.setTimeout(() => {
+          const ae = document.activeElement;
+          if (ae === document.body || ae === document.documentElement) {
+            restoreFocusOutsideMinibar(lastFocusOutsideMinibarRef);
+          }
+        }, 0);
+      }
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
@@ -68,6 +91,13 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
 
   useEffect(() => {
     const onFocusRequest = (e: Event) => {
+      const ae = document.activeElement;
+      if (ae instanceof HTMLElement) {
+        const root = rootRef.current;
+        if (!root || !root.contains(ae)) {
+          lastFocusOutsideMinibarRef.current = ae;
+        }
+      }
       const detail = (e as CustomEvent<{ prefill?: string } | undefined>).detail;
       if (detail?.prefill != null) {
         setMiniBarText(String(detail.prefill));
@@ -85,6 +115,14 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
     <div
       ref={rootRef}
       className="nodex-minibar-host shrink-0 border-t border-border bg-background"
+      onPointerDownCapture={(e) => {
+        const root = rootRef.current;
+        if (!root || !root.contains(e.target as Node)) return;
+        const ae = document.activeElement;
+        if (ae instanceof HTMLElement && !root.contains(ae)) {
+          lastFocusOutsideMinibarRef.current = ae;
+        }
+      }}
     >
       <div className="flex w-full items-center gap-2 px-3 py-2">
         <span className="shrink-0 border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">
@@ -110,15 +148,15 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
                 e.preventDefault();
                 e.stopPropagation();
                 setErr(null);
-                escSeqRef.current += 1;
-                setMiniBarText("");
-                setActiveIdx(0);
-                if (escSeqRef.current >= 3) {
+                if (miniBarText.trim() !== "") {
                   escSeqRef.current = 0;
-                  inputRef.current?.blur();
-                  const main = document.querySelector("[data-nodex-main-surface]") as HTMLElement | null;
-                  main?.focus();
+                  setMiniBarText("");
+                  setActiveIdx(0);
+                  return;
                 }
+                escSeqRef.current = 0;
+                inputRef.current?.blur();
+                restoreFocusOutsideMinibar(lastFocusOutsideMinibarRef);
                 return;
               }
               if (showSuggestionPanel) {
