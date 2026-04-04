@@ -12,6 +12,7 @@ import { runObservableNotebookTrusted } from "./observable-notebook-run-trusted"
 import {
   makeNotebookCellId,
   type NotebookCell,
+  type NotebookCellsUpdate,
   normalizeNotebookCells,
 } from "./observable-notebook-types";
 import { useTheme } from "../../../../theme/ThemeContext";
@@ -31,7 +32,7 @@ const NOTEBOOK_INPUTS_TITLE =
 
 export type ObservableNotebookWorkspaceProps = {
   cells: NotebookCell[];
-  onCellsChange: (next: NotebookCell[]) => void;
+  onCellsChange: (next: NotebookCellsUpdate) => void;
   invokeCommand: (commandId: string, args?: Record<string, unknown>) => void | Promise<void>;
   /** Scopes mode-line contributions (note id, scratch key, etc.). */
   modeLineScopeId: string;
@@ -317,24 +318,24 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
   }, [executeWhenKeyChanges, run]);
 
   const addJsCell = useCallback(() => {
-    onCellsChange([
-      ...cells,
-      { id: makeNotebookCellId(), name: `cell${cells.length + 1}`, inputs: [], body: "0", kind: "js" },
+    onCellsChange((prev) => [
+      ...prev,
+      { id: makeNotebookCellId(), name: `cell${prev.length + 1}`, inputs: [], body: "0", kind: "js" },
     ]);
-  }, [cells, onCellsChange]);
+  }, [onCellsChange]);
 
   const addMdCell = useCallback(() => {
-    onCellsChange([
-      ...cells,
+    onCellsChange((prev) => [
+      ...prev,
       {
         id: makeNotebookCellId(),
-        name: `md${cells.length + 1}`,
+        name: `md${prev.length + 1}`,
         inputs: [],
         body: "## Markdown\n\nNarrative cell (not executed).",
         kind: "md",
       },
     ]);
-  }, [cells, onCellsChange]);
+  }, [onCellsChange]);
 
   return (
     <div className="flex h-full min-h-0 flex-col text-[12px]">
@@ -439,8 +440,8 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
                   title={NOTEBOOK_VAR_TITLE}
                   value={c.name}
                   onChange={(e) =>
-                    onCellsChange(
-                      cells.map((x) => (x.id === c.id ? { ...x, name: e.target.value } : x)),
+                    onCellsChange((prev) =>
+                      prev.map((x) => (x.id === c.id ? { ...x, name: e.target.value } : x)),
                     )
                   }
                 />
@@ -450,8 +451,8 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
                   title={NOTEBOOK_INPUTS_TITLE}
                   value={c.inputs.join(", ")}
                   onChange={(e) =>
-                    onCellsChange(
-                      cells.map((x) =>
+                    onCellsChange((prev) =>
+                      prev.map((x) =>
                         x.id === c.id
                           ? {
                               ...x,
@@ -469,8 +470,8 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
                   type="button"
                   className="rounded border border-border px-2 py-1 text-[10px]"
                   onClick={() =>
-                    onCellsChange(
-                      cells.map((x) =>
+                    onCellsChange((prev) =>
+                      prev.map((x) =>
                         x.id === c.id ? { ...x, kind: x.kind === "md" ? "js" : "md" } : x,
                       ),
                     )
@@ -481,7 +482,7 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
                 <button
                   type="button"
                   className="rounded border border-border px-2 py-1 text-[11px]"
-                  onClick={() => onCellsChange(cells.filter((x) => x.id !== c.id))}
+                  onClick={() => onCellsChange((prev) => prev.filter((x) => x.id !== c.id))}
                 >
                   Del
                 </button>
@@ -513,8 +514,8 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
                     spellCheck={false}
                     value={c.body}
                     onChange={(e) =>
-                      onCellsChange(
-                        cells.map((x) => (x.id === c.id ? { ...x, body: e.target.value } : x)),
+                      onCellsChange((prev) =>
+                        prev.map((x) => (x.id === c.id ? { ...x, body: e.target.value } : x)),
                       )
                     }
                   />
@@ -529,7 +530,7 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
                   <NotebookCellEditor
                     value={c.body}
                     onChange={(body) =>
-                      onCellsChange(cells.map((x) => (x.id === c.id ? { ...x, body } : x)))
+                      onCellsChange((prev) => prev.map((x) => (x.id === c.id ? { ...x, body } : x)))
                     }
                     completionCellNames={completionNames}
                     dark={resolvedDark}

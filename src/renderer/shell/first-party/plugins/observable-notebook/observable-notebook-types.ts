@@ -13,6 +13,9 @@ export type NotebookCell = {
   kind?: NotebookCellKind;
 };
 
+/** Prefer the function form when updating from inputs so fast typing never reads stale `cells`. */
+export type NotebookCellsUpdate = NotebookCell[] | ((prev: NotebookCell[]) => NotebookCell[]);
+
 export type NormalizedNotebookCell = {
   id: string;
   name: string;

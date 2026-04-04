@@ -5,7 +5,7 @@ import { saveNoteContent } from "../../../../store/notesSlice";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import type { NoteTypeReactEditorProps } from "../../../nodex-contribution-registry";
 import { ObservableNotebookWorkspace } from "./ObservableNotebookWorkspace";
-import { makeNotebookCellId, type NotebookCell } from "./observable-notebook-types";
+import { makeNotebookCellId, type NotebookCell, type NotebookCellsUpdate } from "./observable-notebook-types";
 
 function defaultCells(): NotebookCell[] {
   return [
@@ -50,11 +50,14 @@ export function ObservableNoteEditor({
   persistRef.current = persist;
   noteIdRef.current = note.id;
 
+  // Reset only when switching notes. Same issue as markdown: `saveNoteContent.fulfilled`
+  // can apply an older payload while the user keeps typing, and syncing from `note.content`
+  // would replace `cells` and clobber CodeMirror cell bodies.
   useEffect(() => {
     const next = parseCellsFromContent(note.content);
     setCells(next);
     latestJsonRef.current = cellsToJson(next);
-  }, [note.id, note.content]);
+  }, [note.id]);
 
   const flushNow = useCallback(() => {
     if (rafRef.current !== 0) {
@@ -95,10 +98,12 @@ export function ObservableNoteEditor({
   }, [note.id, dispatch]);
 
   const persistCells = useCallback(
-    (next: NotebookCell[]) => {
-      setCells(next);
-      const j = cellsToJson(next);
-      latestJsonRef.current = j;
+    (nextOrUpdater: NotebookCellsUpdate) => {
+      setCells((prev) => {
+        const next = typeof nextOrUpdater === "function" ? nextOrUpdater(prev) : nextOrUpdater;
+        latestJsonRef.current = cellsToJson(next);
+        return next;
+      });
       scheduleBatchedFlush();
     },
     [scheduleBatchedFlush],

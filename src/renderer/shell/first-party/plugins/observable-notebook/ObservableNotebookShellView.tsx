@@ -2,7 +2,7 @@ import React, { useCallback, useState } from "react";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
 import { ObservableNotebookWorkspace } from "./ObservableNotebookWorkspace";
-import { makeNotebookCellId, type NotebookCell } from "./observable-notebook-types";
+import { makeNotebookCellId, type NotebookCell, type NotebookCellsUpdate } from "./observable-notebook-types";
 
 const LS_KEY = "nodex.observableNotebook.cells.v1";
 
@@ -31,13 +31,16 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
     return parsed.length ? parsed : defaults();
   });
 
-  const persist = useCallback((next: NotebookCell[]) => {
-    setCells(next);
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(next));
-    } catch {
-      /* ignore */
-    }
+  const persist = useCallback((nextOrUpdater: NotebookCellsUpdate) => {
+    setCells((prev) => {
+      const next = typeof nextOrUpdater === "function" ? nextOrUpdater(prev) : nextOrUpdater;
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
   }, []);
 
   const invokeCommand = useCallback(
