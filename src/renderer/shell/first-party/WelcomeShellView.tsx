@@ -1,7 +1,11 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import type { Note } from "@nodex/ui-types";
 import MarkdownRenderer from "../../components/renderers/MarkdownRenderer";
+import { applyShellWelcomeHash } from "../shellRailNavigation";
+import { replaceWindowHash } from "../shellTabUrlSync";
+import { useShellNavigation } from "../useShellNavigation";
 import type { ShellViewComponentProps } from "../views/ShellViewRegistry";
+import type { WelcomeShellUrlSegment } from "../shellWelcomeUrlRoutes";
 
 const WELCOME_MARKDOWN = `## Welcome
 
@@ -21,6 +25,16 @@ Tip: append \`#/n/<noteId>\` to the URL to open or focus that note (synced with 
 `;
 
 export function WelcomeShellView(_props: ShellViewComponentProps): React.ReactElement {
+  const { invokeCommand, deps: shellNavDeps } = useShellNavigation();
+
+  const onWelcomeShellSegmentClick = useCallback(
+    (segment: "" | WelcomeShellUrlSegment) => {
+      replaceWindowHash(segment ? `#/welcome/${segment}` : "#/welcome");
+      applyShellWelcomeHash(segment, shellNavDeps, invokeCommand);
+    },
+    [invokeCommand, shellNavDeps],
+  );
+
   const welcomeNote = useMemo<Note>(
     () => ({
       id: "shell.welcome",
@@ -31,5 +45,7 @@ export function WelcomeShellView(_props: ShellViewComponentProps): React.ReactEl
     [],
   );
 
-  return <MarkdownRenderer note={welcomeNote} />;
+  return (
+    <MarkdownRenderer note={welcomeNote} onWelcomeShellSegmentClick={onWelcomeShellSegmentClick} />
+  );
 }

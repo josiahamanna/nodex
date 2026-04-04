@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { tryParseWelcomeShellHash } from "./shellWelcomeUrlRoutes.ts";
+import { parseMarkdownWelcomeShellHref, tryParseWelcomeShellHash } from "./shellWelcomeUrlRoutes.ts";
+
+test("parseMarkdownWelcomeShellHref reads fragment only", () => {
+  assert.deepEqual(parseMarkdownWelcomeShellHref("#/welcome/scratch-markdown"), {
+    kind: "welcome",
+    segment: "scratch-markdown",
+  });
+  assert.deepEqual(parseMarkdownWelcomeShellHref("https://x.test/app#/welcome/documentation"), {
+    kind: "welcome",
+    segment: "documentation",
+  });
+  assert.equal(parseMarkdownWelcomeShellHref("/no-hash/welcome"), undefined);
+});
 
 test("tryParseWelcomeShellHash base and segments", () => {
   assert.deepEqual(tryParseWelcomeShellHash("welcome"), { kind: "welcome", segment: "" });

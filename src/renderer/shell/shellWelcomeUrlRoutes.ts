@@ -21,6 +21,21 @@ export type ShellWelcomeTabState = {
 export type ParsedWelcomeShellHash = { kind: "welcome"; segment: "" | WelcomeShellUrlSegment };
 
 /**
+ * Parse a markdown link `href` that targets the welcome shell routes (`#/welcome`, `#/welcome/...`).
+ * Only considers the URL fragment (requires `#` in `href`).
+ */
+export function parseMarkdownWelcomeShellHref(href: string): ParsedWelcomeShellHash | null | undefined {
+  const t = href.trim();
+  if (t.length === 0) return undefined;
+  const hashIdx = t.indexOf("#");
+  if (hashIdx < 0) return undefined;
+  const frag = t.slice(hashIdx + 1).trim();
+  if (frag.length === 0) return undefined;
+  const normalized = frag.startsWith("/") ? frag : `/${frag}`;
+  return tryParseWelcomeShellHash(normalized);
+}
+
+/**
  * Parse the hash body (no leading `#`) for welcome routes.
  * @returns parsed welcome hash, `null` if the path is under `/welcome/` but invalid, or `undefined` if not a welcome route.
  */

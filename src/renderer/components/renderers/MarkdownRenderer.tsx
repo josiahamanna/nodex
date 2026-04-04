@@ -5,6 +5,10 @@ import remarkGfm from "remark-gfm";
 import type { Note } from "@nodex/ui-types";
 import { baseSlug } from "../../utils/markdown-heading-slugs";
 import {
+  parseMarkdownWelcomeShellHref,
+  type WelcomeShellUrlSegment,
+} from "../../shell/shellWelcomeUrlRoutes";
+import {
   markdownInternalNoteHref,
   parseInternalMarkdownNoteLink,
   type InternalMarkdownNoteLink,
@@ -30,6 +34,11 @@ interface MarkdownRendererProps {
   onInternalNoteNavigate?: (link: InternalMarkdownNoteLink) => void;
   /** When set, `nodex-cmd:<commandId>` links invoke the contribution registry command (modifier clicks unchanged). */
   onNodexCmdLink?: (commandId: string) => void;
+  /**
+   * When set, `#/welcome` / `#/welcome/<segment>` links invoke this (updates hash + shell) so clicks do not rely
+   * solely on `hashchange`. Modifier clicks keep default navigation.
+   */
+  onWelcomeShellSegmentClick?: (segment: "" | WelcomeShellUrlSegment) => void;
 }
 
 type MarkdownHeading = "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
@@ -70,6 +79,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   onSamePageHeadingClick,
   onInternalNoteNavigate,
   onNodexCmdLink,
+  onWelcomeShellSegmentClick,
 }) => {
   // Reset each render so heading ids match a fresh slug sequence (TOC / scroll-to-heading).
   const slugCountsRef = useRef<Map<string, number>>(new Map());
@@ -124,6 +134,27 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
                 }
                 e.preventDefault();
                 onNodexCmdLink(commandId);
+              }}
+            >
+              {children}
+            </a>
+          );
+        }
+      }
+      if (typeof href === "string" && onWelcomeShellSegmentClick) {
+        const welcome = parseMarkdownWelcomeShellHref(href);
+        if (welcome !== undefined && welcome !== null) {
+          const segment = welcome.segment;
+          return (
+            <a
+              {...rest}
+              href={href}
+              onClick={(e) => {
+                if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+                  return;
+                }
+                e.preventDefault();
+                onWelcomeShellSegmentClick(segment);
               }}
             >
               {children}
@@ -193,7 +224,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       h6: make("h6"),
       a: InternalOrExternalLink,
     };
-  }, [onInternalNoteNavigate, onNodexCmdLink, onSamePageHeadingClick]);
+  }, [onInternalNoteNavigate, onNodexCmdLink, onSamePageHeadingClick, onWelcomeShellSegmentClick]);
 
   return (
     <div className={`p-4 nodex-typography max-w-none min-w-0 ${markdownShellClass}`}>
