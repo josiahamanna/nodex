@@ -485,13 +485,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     type: string,
     anchorId?: string,
   ) => {
-    await window.Nodex.wpnCreateNoteInProject(projectId, {
+    const { id } = await window.Nodex.wpnCreateNoteInProject(projectId, {
       relation,
       type,
       anchorId,
     });
     await loadProjectTree(projectId);
     closeAllMenus();
+    openNoteById(id, { newTab: true });
   };
 
   const onDeleteNotes = async (projectId: string, ids: string[]) => {
