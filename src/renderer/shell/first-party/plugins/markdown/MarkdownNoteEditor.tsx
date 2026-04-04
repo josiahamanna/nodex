@@ -226,11 +226,15 @@ export function MarkdownNoteEditor({
     };
   }, [showWiki, value, viewMode, caretHead]);
 
+  // Reset editor only when switching notes. Do not depend on `note.content`: each
+  // `saveNoteContent.fulfilled` updates Redux with the payload from that in-flight save,
+  // which can lag behind keystrokes; syncing here would clobber the CodeMirror value.
   useEffect(() => {
-    setValue(note.content ?? "");
-    latestRef.current = note.content ?? "";
-    setPreviewContent(note.content ?? "");
-  }, [note.id, note.content]);
+    const c = note.content ?? "";
+    setValue(c);
+    latestRef.current = c;
+    setPreviewContent(c);
+  }, [note.id]);
 
   useEffect(() => {
     const id = window.setTimeout(() => setPreviewContent(value), 160);

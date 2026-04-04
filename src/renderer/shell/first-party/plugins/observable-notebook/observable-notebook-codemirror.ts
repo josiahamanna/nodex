@@ -76,6 +76,8 @@ function notebookCompletionSource(cellNames: string[]) {
     if (!before && !context.explicit) return null;
     const from = before ? before.from : context.pos;
     const q = (before?.text ?? "").toLowerCase();
+    // `[\w.]*$` matches "" after `;`, `)`, etc.; empty q + activateOnTyping would list everything.
+    if (!context.explicit && q.length === 0) return null;
     const options = all.filter(
       (o) =>
         context.explicit ||
