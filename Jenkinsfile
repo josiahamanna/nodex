@@ -1,5 +1,10 @@
-// Release deploy: checkout → optional npm ci (ignore-scripts) → docker full deploy.
+// Release deploy: checkout → optional npm ci → full or targeted Docker deploy.
 // Prerequisites: deploy/jenkins/README.md (Docker, Node 22 or NVM, bash).
+//
+// FULL_DEPLOY runs scripts/docker-full-deploy.sh (Postgres + API + gateway + web blue/green).
+// Targeted stages run in order: Postgres → API → gateway → web (deploy:web-only).
+// Cold / first-time: prefer FULL_DEPLOY, or enable all four targets. Gateway-only can fail if
+// deploy/nginx-active-web.upstream.conf points at a missing web container (see deploy/jenkins/README.md).
 
 pipeline {
     agent any
@@ -9,6 +14,31 @@ pipeline {
     }
 
     parameters {
+        booleanParam(
+            name: 'FULL_DEPLOY',
+            defaultValue: true,
+            description: 'Run full stack deploy (npm run deploy -- --stop-old). When enabled, the four checkboxes below are ignored.'
+        )
+        booleanParam(
+            name: 'DEPLOY_POSTGRES',
+            defaultValue: false,
+            description: 'docker compose --profile wpn-pg up -d postgres'
+        )
+        booleanParam(
+            name: 'DEPLOY_API',
+            defaultValue: false,
+            description: 'Rebuild/restart nodex-api (WPN: ensure Postgres is up first or select it in the same build)'
+        )
+        booleanParam(
+            name: 'DEPLOY_GATEWAY',
+            defaultValue: false,
+            description: 'Rebuild/restart nodex-gateway (--no-deps). Requires API + web upstream resolvable (see nginx-active-web.upstream.conf)'
+        )
+        booleanParam(
+            name: 'DEPLOY_WEB',
+            defaultValue: false,
+            description: 'Frontend blue/green only (npm run deploy:web-only). Requires gateway and compose network already up'
+        )
         booleanParam(
             name: 'RUN_NPM_CI',
             defaultValue: false,
@@ -41,14 +71,93 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
+        stage('Validate deploy selection') {
+            when {
+                expression { return !params.FULL_DEPLOY }
+            }
+            steps {
+                script {
+                    def any = params.DEPLOY_POSTGRES || params.DEPLOY_API || params.DEPLOY_GATEWAY || params.DEPLOY_WEB
+                    if (!any) {
+                        error('Uncheck FULL_DEPLOY only when at least one of DEPLOY_POSTGRES, DEPLOY_API, DEPLOY_GATEWAY, DEPLOY_WEB is enabled.')
+                    }
+                }
+            }
+        }
+
+        stage('Deploy (full stack)') {
+            when {
+                expression { return params.FULL_DEPLOY }
+            }
             steps {
                 sh 'bash scripts/jenkins-with-node22.sh npm run deploy -- --stop-old'
             }
         }
 
-        // Same agent as Deploy — confirms Docker on Jenkins actually has the stack (no SSH needed).
+        stage('Deploy Postgres') {
+            when {
+                allOf {
+                    expression { return !params.FULL_DEPLOY }
+                    expression { return params.DEPLOY_POSTGRES }
+                }
+            }
+            steps {
+                sh '''#!/usr/bin/env bash
+set -euo pipefail
+docker compose --profile wpn-pg up -d postgres
+'''
+            }
+        }
+
+        stage('Deploy API') {
+            when {
+                allOf {
+                    expression { return !params.FULL_DEPLOY }
+                    expression { return params.DEPLOY_API }
+                }
+            }
+            steps {
+                sh '''#!/usr/bin/env bash
+set -euo pipefail
+docker compose --profile wpn-pg up -d --build --remove-orphans nodex-api
+'''
+            }
+        }
+
+        stage('Deploy gateway') {
+            when {
+                allOf {
+                    expression { return !params.FULL_DEPLOY }
+                    expression { return params.DEPLOY_GATEWAY }
+                }
+            }
+            steps {
+                sh '''#!/usr/bin/env bash
+set -euo pipefail
+docker compose --profile wpn-pg up -d --build --remove-orphans --no-deps nodex-gateway
+'''
+            }
+        }
+
+        stage('Deploy web (blue/green)') {
+            when {
+                allOf {
+                    expression { return !params.FULL_DEPLOY }
+                    expression { return params.DEPLOY_WEB }
+                }
+            }
+            steps {
+                sh 'bash scripts/jenkins-with-node22.sh npm run deploy:web-only -- --stop-old'
+            }
+        }
+
+        // Same agent as deploy — confirms Docker on Jenkins actually has the stack (no SSH needed).
         stage('Verify') {
+            when {
+                expression {
+                    return params.FULL_DEPLOY || params.DEPLOY_GATEWAY || params.DEPLOY_WEB
+                }
+            }
             steps {
                 sh '''#!/usr/bin/env bash
 set -euo pipefail

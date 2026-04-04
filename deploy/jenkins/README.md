@@ -1,6 +1,6 @@
 # Jenkins release / deploy
 
-The root [`Jenkinsfile`](../../Jenkinsfile) runs `npm run deploy -- --stop-old` from a clean checkout. That script drives Docker Compose and the UI blue/green flow ([`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh)). A **`Verify`** stage prints **`docker ps`** for `nodex-*` on **the Jenkins agent** and checks **`nodex-gateway`** — use **Console Output** if you do not have SSH to the server.
+The root [`Jenkinsfile`](../../Jenkinsfile) defaults to **`FULL_DEPLOY`**: `npm run deploy -- --stop-old` from a clean checkout, which drives Docker Compose and the UI blue/green flow ([`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh)). Uncheck **`FULL_DEPLOY`** to use **four optional targets** (run in order when enabled): **Postgres** → **API** → **gateway** → **web** (`deploy:web-only`). For cold starts or simplicity, keep **`FULL_DEPLOY`** or enable all four. **`Verify`** runs after full deploy, gateway-only, or web-only builds; it prints **`docker ps`** for `nodex-*` on **the Jenkins agent** and checks **`nodex-gateway`**. Gateway-only can fail if [`deploy/nginx-active-web.upstream.conf`](../../deploy/nginx-active-web.upstream.conf) names a web container that is not on the Docker network yet — align the active color with a running `nodex-web-blue` / `nodex-web-green`, or use **`FULL_DEPLOY`**. Use **Console Output** if you do not have SSH to the server.
 
 ## No SSH to the agent
 
