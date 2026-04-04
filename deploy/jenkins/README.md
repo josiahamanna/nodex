@@ -33,9 +33,11 @@ Compose uses fixed `container_name` values (see [`docker-compose.yml`](../../doc
 
 Optional overrides (same as local deploy): `NODEX_PG_PASSWORD`, `NODEX_PG_DATABASE_URL`, `NODEX_WPN_DEFAULT_OWNER`, etc. Set them on the job or via an **Inject environment variables** / **Credentials** binding.
 
-## Web container exits before healthy
+## Web deploy: `container ... is not running` during UI wait
 
-If deploy fails after `Building web image` with **`container ... is not running`** or a timeout while waiting for health, the **`nodex-web-blue` / `nodex-web-green`** process exited inside the image. [`scripts/docker-web-deploy.sh`](../../scripts/docker-web-deploy.sh) prints **recent `docker logs`** in that case. Typical causes: **out-of-memory** on the agent (raise Docker memory or JVM/agent limits), a **runtime error** in Next (see logs), or a bad **build** layer — fix the logged error and re-run.
+Docker’s **HEALTHCHECK** runs **`docker exec`** into the UI container on a timer. If the Next.js process **dies**, the daemon keeps trying and can log **`Error response from daemon: container … is not running`**, which Jenkins may show even though the real issue is **why the app exited**.
+
+[`scripts/docker-web-deploy.sh`](../../scripts/docker-web-deploy.sh) **does not** set `HEALTHCHECK` on `docker run` UI slots; it waits for **HTTP :3000** using a one-shot probe from **`nodex-api`** on `nodex_default`. If deploy still fails, the script prints **`docker logs`** for the web container (OOM, missing env, etc.).
 
 ## Docker build: `npm error network read ECONNRESET`
 

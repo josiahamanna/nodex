@@ -9,7 +9,8 @@
 #   - Detects current active color from deploy/nginx-active-web.upstream.conf
 #   - Builds the web image (Dockerfile.web -> nodex-web:local)
 #   - Recreates the *inactive* color container on the nodex_default network
-#   - Waits for it to be healthy
+#   - Waits until the UI responds on :3000 (HTTP probe from nodex-api; no Docker HEALTHCHECK on
+#     docker-run slots — avoids daemon "container is not running" noise when the app exits)
 #   - Switches nginx upstream and reloads the gateway
 #
 # Notes:
@@ -23,6 +24,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ACTIVE_FILE="${REPO_ROOT}/deploy/nginx-active-web.upstream.conf"
 GATEWAY="${NODEX_GATEWAY_CONTAINER:-nodex-gateway}"
+API_CONTAINER="${NODEX_API_CONTAINER:-nodex-api}"
 NETWORK="${NODEX_DOCKER_NETWORK:-nodex_default}"
 IMAGE="${NODEX_WEB_IMAGE:-nodex-web:local}"
 
@@ -61,6 +63,15 @@ if ! docker network inspect "$NETWORK" &>/dev/null; then
   exit 1
 fi
 
+if ! docker container inspect "$API_CONTAINER" &>/dev/null; then
+  echo "Error: container '$API_CONTAINER' does not exist (needed to probe the web container on ${NETWORK})." >&2
+  exit 1
+fi
+if [[ "$(docker container inspect -f '{{.State.Running}}' "$API_CONTAINER" 2>/dev/null)" != "true" ]]; then
+  echo "Error: container '$API_CONTAINER' is not running." >&2
+  exit 1
+fi
+
 line="$(grep -oE 'nodex-web-(blue|green)' "$ACTIVE_FILE" | head -1 || true)"
 case "$line" in
   nodex-web-blue) current="blue" ;;
@@ -91,15 +102,12 @@ if docker container inspect "$target_container" &>/dev/null; then
 fi
 
 echo "[nodex] Starting ${target_container} on network ${NETWORK}..."
+# No --health-* here: Docker would keep exec'ing into the container; if the app exits, dockerd
+# logs "container ... is not running" and some CI setups surface that as a false-looking failure.
 if ! docker run -d \
   --name "$target_container" \
   --network "$NETWORK" \
   -e NODE_ENV=production \
-  --health-cmd="node -e \"require('http').get('http://127.0.0.1:3000/',(r)=>{r.on('data',()=>{});r.on('end',()=>process.exit(r.statusCode&&r.statusCode<500?0:1));}).on('error',()=>process.exit(1));\"" \
-  --health-interval=10s \
-  --health-timeout=5s \
-  --health-retries=5 \
-  --health-start-period=60s \
   "$IMAGE" >/dev/null; then
   echo "[nodex] docker run failed for ${target_container}." >&2
   exit 1
@@ -113,7 +121,7 @@ if [[ "$state" == "exited" || "$state" == "dead" ]]; then
   exit 1
 fi
 
-echo "[nodex] Waiting for ${target_container} to become healthy..."
+echo "[nodex] Waiting for ${target_container} to respond on :3000 (via ${API_CONTAINER})..."
 healthy=false
 for _ in $(seq 1 90); do
   if ! docker container inspect "$target_container" &>/dev/null; then
@@ -130,22 +138,16 @@ for _ in $(seq 1 90); do
     sleep 2
     continue
   fi
-  status="$(docker container inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$target_container" 2>/dev/null || echo none)"
-  if [[ "$status" == "healthy" ]]; then
+  if docker exec "$API_CONTAINER" node -e "require('http').get('http://${target_container}:3000/',(r)=>{r.resume();r.on('end',()=>process.exit(r.statusCode&&r.statusCode<500?0:1));}).on('error',()=>process.exit(1)));" &>/dev/null; then
     healthy=true
     break
-  fi
-  if [[ "$status" == "unhealthy" ]]; then
-    echo "[nodex] ${target_container} is unhealthy. Container logs:" >&2
-    docker logs --tail 200 "$target_container" 2>&1 || true
-    exit 1
   fi
   sleep 2
 done
 
 if [[ "$healthy" != "true" ]]; then
-  status="$(docker container inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$target_container" 2>/dev/null || echo none)"
-  echo "[nodex] Timed out waiting for ${target_container} to become healthy (state=$(docker container inspect -f '{{.State.Status}}' "$target_container" 2>/dev/null || echo ?), health=${status}). Recent logs:" >&2
+  state="$(docker container inspect -f '{{.State.Status}}' "$target_container" 2>/dev/null || echo ?)"
+  echo "[nodex] Timed out waiting for ${target_container} on :3000 (state=${state}). Recent logs:" >&2
   docker logs --tail 200 "$target_container" 2>&1 || true
   exit 1
 fi
