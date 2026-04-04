@@ -1,6 +1,12 @@
 # Jenkins release / deploy
 
-The root [`Jenkinsfile`](../../Jenkinsfile) runs `npm run deploy -- --stop-old` from a clean checkout. That script drives Docker Compose and the UI blue/green flow ([`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh)).
+The root [`Jenkinsfile`](../../Jenkinsfile) runs `npm run deploy -- --stop-old` from a clean checkout. That script drives Docker Compose and the UI blue/green flow ([`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh)). A **`Verify`** stage prints **`docker ps`** for `nodex-*` on **the Jenkins agent** and checks **`nodex-gateway`** — use **Console Output** if you do not have SSH to the server.
+
+## No SSH to the agent
+
+- **Containers live on the machine that runs the job** (the Jenkins agent), not on your laptop. Running `docker ps` on your PC will **not** show `nodex-gateway` from a Jenkins deploy.
+- Open the build in Jenkins → **Console Output**. After a green build, **Verify** lists Nodex containers and confirms the gateway; the printed URL (`http://127.0.0.1:8080/`) is reachable **only from that agent** (or via **cloudflared** / a reverse proxy you configure there).
+- To reach the app from the internet, run **cloudflared** (or similar) **on the same host as the agent**, or use a **remote SSH** / **VPN** setup an admin provides. Set `NODEX_GATEWAY_PORT` in the Jenkins job if it is not **8080**.
 
 ## Agent checklist
 

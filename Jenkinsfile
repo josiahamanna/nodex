@@ -46,5 +46,33 @@ pipeline {
                 sh 'bash scripts/jenkins-with-node22.sh npm run deploy -- --stop-old'
             }
         }
+
+        // Same agent as Deploy — confirms Docker on Jenkins actually has the stack (no SSH needed).
+        stage('Verify') {
+            steps {
+                sh '''#!/usr/bin/env bash
+set -euo pipefail
+: "${NODEX_GATEWAY_PORT:=8080}"
+echo "=== Nodex containers on this Jenkins agent ==="
+docker ps -a --filter name=nodex --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' || true
+if ! docker container inspect nodex-gateway &>/dev/null; then
+  echo "ERROR: nodex-gateway not found on this agent. Deploy should create it (see scripts/docker-full-deploy.sh)." >&2
+  exit 1
+fi
+if [[ "$(docker container inspect -f '{{.State.Running}}' nodex-gateway 2>/dev/null)" != "true" ]]; then
+  echo "ERROR: nodex-gateway is not running." >&2
+  docker logs --tail 80 nodex-gateway 2>&1 || true
+  exit 1
+fi
+if ! docker port nodex-gateway 80 &>/dev/null; then
+  echo "ERROR: nodex-gateway has no host port mapping for container :80." >&2
+  exit 1
+fi
+echo "Gateway port mapping:"
+docker port nodex-gateway 80
+echo "Verify OK: nodex-gateway is up (open the URL on the agent host, e.g. http://127.0.0.1:${NODEX_GATEWAY_PORT}/)."
+'''
+            }
+        }
     }
 }
