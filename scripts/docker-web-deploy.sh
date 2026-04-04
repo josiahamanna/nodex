@@ -146,10 +146,8 @@ if [[ "$healthy" != "true" ]]; then
 fi
 
 cat >"$ACTIVE_FILE" <<EOF
-# Full upstream block for UI — managed by scripts/docker-web-deploy.sh
-upstream nodex_web {
-    server ${target_container}:3000;
-}
+# Active web backend host:port — managed by scripts/docker-web-deploy.sh
+set \$nodex_web_backend "${target_container}:3000";
 EOF
 
 if ! docker exec "$GATEWAY" nginx -t >/dev/null; then

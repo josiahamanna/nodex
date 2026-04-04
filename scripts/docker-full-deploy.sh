@@ -87,10 +87,50 @@ fi
 # (same source the gateway uses). Running postgres/api/gateway are only removed above when their
 # compose project differs from COMPOSE_PROJECT_NAME.
 ACTIVE_FILE="${REPO_ROOT}/deploy/nginx-active-web.upstream.conf"
+
+# Checkout resets this file to git (usually blue) while the live slot may still be green from the
+# last deploy — do not remove the only running web container based on the file alone.
+reconcile_active_web_container() {
+  local hint="$1"
+  local blue_run=false green_run=false
+  if docker container inspect nodex-web-blue &>/dev/null \
+    && [[ "$(docker inspect -f '{{.State.Running}}' nodex-web-blue 2>/dev/null)" == "true" ]]; then
+    blue_run=true
+  fi
+  if docker container inspect nodex-web-green &>/dev/null \
+    && [[ "$(docker inspect -f '{{.State.Running}}' nodex-web-green 2>/dev/null)" == "true" ]]; then
+    green_run=true
+  fi
+  if [[ "$blue_run" == "true" && "$green_run" != "true" ]]; then
+    echo "nodex-web-blue"
+  elif [[ "$green_run" == "true" && "$blue_run" != "true" ]]; then
+    echo "nodex-web-green"
+  else
+    echo "${hint}"
+  fi
+}
+
 active_line=""
+file_line=""
 if [[ -f "$ACTIVE_FILE" ]]; then
-  active_line="$(grep -oE 'nodex-web-(blue|green)' "$ACTIVE_FILE" | head -1 || true)"
+  file_line="$(grep -oE 'nodex-web-(blue|green)' "$ACTIVE_FILE" | head -1 || true)"
+  active_line="$(reconcile_active_web_container "${file_line:-}")"
+  if [[ -n "$active_line" && "$active_line" != "${file_line:-}" ]]; then
+    echo "[nodex] Aligning ${ACTIVE_FILE} with running UI (${active_line}; file implied ${file_line:-none})."
+    cat >"$ACTIVE_FILE" <<EOF
+# Active web backend host:port — aligned with the running web container (e.g. after git checkout)
+set \$nodex_web_backend "${active_line}:3000";
+EOF
+  fi
 fi
+
+running_web_slots=0
+for c in nodex-web-blue nodex-web-green; do
+  if docker container inspect "$c" &>/dev/null \
+    && [[ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" == "true" ]]; then
+    running_web_slots=$((running_web_slots + 1))
+  fi
+done
 
 remove_stale_web_slot() {
   local name="$1"
@@ -102,6 +142,10 @@ remove_stale_web_slot() {
   if [[ "$running" != "true" ]]; then
     echo "[nodex] Removing stopped ${name} (frees fixed container name for compose)."
     docker rm -f "$name" >/dev/null 2>&1 || true
+    return 0
+  fi
+  # Blue and green may both be up during a handoff; git/ACTIVE_FILE can still say "blue".
+  if [[ "$running_web_slots" -ge 2 ]]; then
     return 0
   fi
   if [[ -n "$active_line" && "$name" != "$active_line" ]]; then
@@ -118,6 +162,11 @@ remove_stale_web_slot nodex-web-green
 remove_docker_run_web_slot() {
   local name="$1"
   if ! docker container inspect "$name" &>/dev/null; then
+    return 0
+  fi
+  local running
+  running="$(docker container inspect -f '{{.State.Running}}' "$name" 2>/dev/null || echo false)"
+  if [[ "$running" == "true" && "$running_web_slots" -ge 2 ]]; then
     return 0
   fi
   # Never remove the active UI slot — that would cause avoidable downtime.

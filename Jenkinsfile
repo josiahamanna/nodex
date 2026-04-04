@@ -179,6 +179,10 @@ if ! docker port nodex-gateway 80 &>/dev/null; then
 fi
 echo "Gateway port mapping:"
 docker port nodex-gateway 80
+if ! docker exec nodex-gateway nginx -t 2>&1; then
+  echo "ERROR: nginx -t failed inside nodex-gateway (see logs above)." >&2
+  exit 1
+fi
 echo "Verify OK: nodex-gateway is up (open the URL on the agent host, e.g. http://127.0.0.1:${NODEX_GATEWAY_PORT}/)."
 '''
             }

@@ -76,10 +76,8 @@ write_upstream() {
     host="nodex-web-green:3000"
   fi
   cat >"$ACTIVE_FILE" <<EOF
-# Full upstream block for UI — managed by scripts/docker-web-swap.sh
-upstream nodex_web {
-    server ${host};
-}
+# Active web backend host:port — managed by scripts/docker-web-swap.sh
+set \$nodex_web_backend "${host}";
 EOF
 }
 
