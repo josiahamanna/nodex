@@ -6,6 +6,7 @@ import {
   readProjectPrefs,
   type ActivateProjectResult,
 } from "../core/project-session";
+import { registerBuiltinMarkdownNoteRenderer } from "../core/register-builtin-markdown-note-type";
 import { registerBuiltinObservableNoteRenderer } from "../core/register-builtin-observable-note-type";
 import {
   getHeadlessSessionRegistry,
@@ -37,6 +38,7 @@ export function initHeadlessFromEnv(): ActivateProjectResult {
   if (r.ok && r.workspaceRoots.length > 0) {
     loadPersistedHeadlessSessionPlugins(userDataPath);
     registerBuiltinObservableNoteRenderer(getHeadlessSessionRegistry());
+    registerBuiltinMarkdownNoteRenderer(getHeadlessSessionRegistry());
   }
   if (r.ok && r.workspaceRoots.length === 0) {
     return {
@@ -122,4 +124,5 @@ export function initHeadlessPgOnlyFromEnv(): void {
     path.join(os.tmpdir(), "nodex-headless-pg-only");
   loadPersistedHeadlessSessionPlugins(userDataPath);
   registerBuiltinObservableNoteRenderer(getHeadlessSessionRegistry());
+  registerBuiltinMarkdownNoteRenderer(getHeadlessSessionRegistry());
 }
