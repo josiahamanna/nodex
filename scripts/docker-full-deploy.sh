@@ -12,6 +12,7 @@
 #   2. Ensures ./.nodex-docker-workspace exists (default API workspace bind).
 #   3. Brings up postgres (wpn-pg profile), nodex-api, nodex-web-blue, nodex-gateway with
 #      NODEX_PG_DATABASE_URL defaulted for the compose network (WPN data in Postgres; default owner jehu).
+#      Then always runs `compose up --no-deps nodex-gateway` so :8080 is listening after partial stacks.
 #   4. Runs scripts/docker-web-deploy.sh to build the web image, blue/green swap, and prune dangling images.
 #
 # Bundled Documentation (Guides): docs/bundled-plugin-authoring/ is copied into the nodex-api image
@@ -167,6 +168,12 @@ if ! compose_up; then
   fi
   compose_up
 fi
+
+# Idempotent: compose_up usually starts the gateway, but partial `docker compose up` or a stopped
+# gateway leaves the stack without :8080. --no-deps avoids recreating nodex-web-blue when it is a
+# docker-run slot (blue/green) rather than a compose-managed container.
+echo "[nodex] Ensuring nodex-gateway is up (host port ${NODEX_GATEWAY_PORT:-8080})..."
+docker compose --profile wpn-pg up -d --build --remove-orphans --no-deps nodex-gateway
 
 echo "[nodex] Waiting for nodex-gateway to be running..."
 for _ in $(seq 1 60); do
