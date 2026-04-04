@@ -31,6 +31,8 @@
     "hooks:install": "git config core.hooksPath .githooks && chmod +x .githooks/post-commit && echo \"core.hooksPath=.githooks (post-commit deploy only if NODEX_POST_COMMIT_DEPLOY=1)\"",
     "deploy": "bash scripts/docker-full-deploy.sh",
     "deploy:web-only": "bash scripts/docker-web-deploy.sh",
+    "docker:stack:boot": "bash scripts/docker-stack-boot.sh",
+    "docker:stack:ensure": "bash scripts/docker-stack-boot.sh",
     "gateway:nginx": "nginx -t -c ./deploy/nginx-gateway.host.conf && nginx -c ./deploy/nginx-gateway.host.conf",
     "gateway:nginx:stop": "nginx -s quit -c ./deploy/nginx-gateway.host.conf",
     "gateway:nginx:test": "nginx -t -c ./deploy/nginx-gateway.host.conf",
@@ -54,7 +56,7 @@
     "build:plugins-release": "npm run build:plugins",
     "install:linux": "node scripts/install-linux-deb.js",
     "lint": "eslint --ext .ts,.tsx .",
-    "test": "node --experimental-strip-types --test src/main/parse-asset-ipc-payload.test.ts src/renderer/notes-sidebar/notes-sidebar-utils.test.ts src/renderer/shell/first-party/plugins/markdown/markdownWikiLinkTrigger.test.ts src/renderer/shell/shellTabUrlSync.test.ts src/renderer/shell/first-party/plugins/documentation/documentationShellHash.test.ts"
+    "test": "node --experimental-strip-types --test src/main/parse-asset-ipc-payload.test.ts src/renderer/notes-sidebar/notes-sidebar-utils.test.ts src/renderer/shell/first-party/plugins/markdown/markdownWikiLinkTrigger.test.ts src/renderer/shell/shellTabUrlSync.test.ts src/renderer/shell/shellWelcomeUrlRoutes.test.ts src/renderer/shell/first-party/plugins/documentation/documentationShellHash.test.ts"
   },
   "keywords": [
     "electron",

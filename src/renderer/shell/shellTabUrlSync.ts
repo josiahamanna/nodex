@@ -1,10 +1,17 @@
 import type { ShellTabInstance } from "./registries/ShellTabsRegistry";
-import { SHELL_TAB_NOTE } from "./first-party/shellWorkspaceIds";
+import { SHELL_TAB_NOTE, SHELL_TAB_WELCOME_TYPE_ID } from "./first-party/shellWorkspaceIds";
 import {
   DOCUMENTATION_SHELL_TAB_TYPE_ID,
   hashDocumentationPathFromState,
   type DocumentationShellTabState,
 } from "./first-party/plugins/documentation/documentationShellHash";
+import {
+  type ShellWelcomeTabState,
+  tryParseWelcomeShellHash,
+  type WelcomeShellUrlSegment,
+} from "./shellWelcomeUrlRoutes";
+
+export type { ShellWelcomeTabState, WelcomeShellUrlSegment } from "./shellWelcomeUrlRoutes";
 
 /** State stored on shell note tabs (`SHELL_TAB_NOTE`). */
 export type ShellNoteTabState = {
@@ -15,6 +22,7 @@ export type ShellNoteTabState = {
 
 export type ParsedShellHash =
   | { kind: "note"; noteId: string; markdownHeadingSlug?: string }
+  | { kind: "welcome"; segment: "" | WelcomeShellUrlSegment }
   | { kind: "tab"; instanceId: string; documentationSegments: string[] };
 
 function parseNoteHashPath(pathAfterN: string): { noteId: string; markdownHeadingSlug?: string } | null {
@@ -49,6 +57,9 @@ export function parseShellHash(): ParsedShellHash | null {
     const parsed = parseNoteHashPath(raw.slice("note/".length));
     if (parsed) return { kind: "note", ...parsed };
   }
+  const welcome = tryParseWelcomeShellHash(raw);
+  if (welcome === null) return null;
+  if (welcome) return welcome;
   const tabPart = raw.startsWith("/") ? raw.slice(1) : raw;
   if (tabPart.startsWith("t/")) {
     const afterT = tabPart.slice("t/".length);
@@ -73,6 +84,11 @@ export function hashForActiveTab(tab: ShellTabInstance | null): string {
   if (tab.tabTypeId === SHELL_TAB_NOTE && st?.noteId) {
     const slug = st.markdownHeadingSlug;
     return slug ? `#/n/${st.noteId}/${slug}` : `#/n/${st.noteId}`;
+  }
+  if (tab.tabTypeId === SHELL_TAB_WELCOME_TYPE_ID) {
+    const w = tab.state as ShellWelcomeTabState | undefined;
+    const seg = w?.welcomeHashSegment;
+    return seg ? `#/welcome/${seg}` : "#/welcome";
   }
   if (tab.tabTypeId === DOCUMENTATION_SHELL_TAB_TYPE_ID) {
     const doc = (tab.state as { documentation?: DocumentationShellTabState } | undefined)?.documentation;

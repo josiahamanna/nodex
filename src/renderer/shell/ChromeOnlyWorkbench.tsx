@@ -39,14 +39,14 @@ import {
   replaceWindowHash,
   type ShellNoteTabState,
 } from "./shellTabUrlSync";
-import { applyShellTabFromUrlHash } from "./shellRailNavigation";
+import { applyShellTabFromUrlHash, applyShellWelcomeHash } from "./shellRailNavigation";
 import { useShellNavigation } from "./useShellNavigation";
 import { ShellViewHost } from "./views/ShellViewHost";
 import { useShellViewRegistry } from "./views/ShellViewContext";
 import { useShellRegistries } from "./registries/ShellRegistriesContext";
 import type { ShellAppMenuItem } from "./registries/ShellAppMenuRegistry";
 import type { ShellTabInstance, ShellTabsRegistry } from "./registries/ShellTabsRegistry";
-import { SHELL_TAB_NOTE } from "./first-party/shellWorkspaceIds";
+import { SHELL_TAB_NOTE, SHELL_TAB_WELCOME_TYPE_ID } from "./first-party/shellWorkspaceIds";
 import {
   SHELL_ACTIVITY_BAR_WIDTH_PX,
   SHELL_COMPANION_MIN_EXPANDED_PX,
@@ -400,10 +400,12 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       const parsed = parseShellHash();
       if (parsed?.kind === "note") {
         applyShellHashNoteTarget(tabs, openNoteById, parsed);
+      } else if (parsed?.kind === "welcome") {
+        applyShellWelcomeHash(parsed.segment, shellNavDeps, invokeCommand);
       } else if (parsed?.kind === "tab") {
         applyShellTabFromUrlHash(parsed.instanceId, shellNavDeps, invokeCommand, parsed.documentationSegments);
         if (tabs.listOpenTabs().length === 0) {
-          tabs.openOrReuseTab("shell.tab.welcome", { title: "Welcome", reuseKey: "shell:welcome" });
+          tabs.openOrReuseTab(SHELL_TAB_WELCOME_TYPE_ID, { title: "Welcome", reuseKey: "shell:welcome" });
         }
       }
     }, 50);
@@ -448,10 +450,12 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       const parsed = parseShellHash();
       if (parsed?.kind === "note") {
         applyShellHashNoteTarget(tabs, openNoteById, parsed);
+      } else if (parsed?.kind === "welcome") {
+        applyShellWelcomeHash(parsed.segment, shellNavDeps, invokeCommand);
       } else if (parsed?.kind === "tab") {
         applyShellTabFromUrlHash(parsed.instanceId, shellNavDeps, invokeCommand, parsed.documentationSegments);
         if (tabs.listOpenTabs().length === 0) {
-          tabs.openOrReuseTab("shell.tab.welcome", { title: "Welcome", reuseKey: "shell:welcome" });
+          tabs.openOrReuseTab(SHELL_TAB_WELCOME_TYPE_ID, { title: "Welcome", reuseKey: "shell:welcome" });
         }
       }
     };
@@ -631,7 +635,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                   className="block w-full px-3 py-2 text-left text-[11px] text-foreground hover:bg-muted/40"
                   onClick={() => {
                     setAppMenuOpen(false);
-                    tabs.openOrReuseTab("shell.tab.welcome", {
+                    tabs.openOrReuseTab(SHELL_TAB_WELCOME_TYPE_ID, {
                       title: "Welcome",
                       reuseKey: "shell:welcome",
                     });

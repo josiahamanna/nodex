@@ -1,8 +1,14 @@
 import {
   applyDocumentationDeepLinkToTab,
 } from "./first-party/plugins/documentation/documentationShellHash";
+import { SHELL_TAB_WELCOME_TYPE_ID } from "./first-party/shellWorkspaceIds";
 import type { ShellMenuRailItem, ShellMenuRailRegistry } from "./registries/ShellMenuRailRegistry";
 import type { ShellTabsRegistry } from "./registries/ShellTabsRegistry";
+import {
+  WELCOME_SHELL_URL_COMMANDS,
+  type ShellWelcomeTabState,
+  type WelcomeShellUrlSegment,
+} from "./shellWelcomeUrlRoutes";
 import { parseEphemeralShellTabInstanceId } from "./shellTabInstanceParse";
 import type { ShellViewRegistry } from "./views/ShellViewRegistry";
 import type { ShellLayoutStore } from "./layout/ShellLayoutStore";
@@ -61,6 +67,39 @@ export function runShellMenuRailAction(
  * Focus or open a tab type from a URL hash (exact instance id, ephemeral id, or bare `tabTypeId`).
  * Uses the menu rail item when present so `reuseKey` and sidebar/companion match a rail click.
  */
+/**
+ * Apply `#/welcome` or `#/welcome/<segment>`: focus welcome tab, optionally run the mapped command.
+ * Keeps `#/welcome/notes-explorer` in sync when that command leaves the welcome tab active.
+ */
+export function applyShellWelcomeHash(
+  segment: "" | WelcomeShellUrlSegment,
+  deps: ShellNavigationDeps,
+  invokeCommand: (commandId: string, args?: Record<string, unknown>) => unknown,
+): void {
+  const inst = deps.tabs.openOrReuseTab(SHELL_TAB_WELCOME_TYPE_ID, {
+    title: "Welcome",
+    reuseKey: "shell:welcome",
+  });
+  const prev = (inst.state ?? {}) as ShellWelcomeTabState & Record<string, unknown>;
+  const next: ShellWelcomeTabState & Record<string, unknown> = { ...prev };
+  if (segment === "notes-explorer") {
+    next.welcomeHashSegment = "notes-explorer";
+  } else {
+    delete next.welcomeHashSegment;
+  }
+  deps.tabs.updateTabPresentation(inst.instanceId, { state: next });
+  deps.tabs.setActiveTab(inst.instanceId);
+  const mainViewId = deps.tabs.resolveViewForInstance(inst.instanceId);
+  if (mainViewId) {
+    deps.views.openView(mainViewId, "mainArea");
+  }
+  if (!segment) return;
+  const commandId = WELCOME_SHELL_URL_COMMANDS[segment];
+  void Promise.resolve(invokeCommand(commandId)).catch(() => {
+    /* unknown command or handler error */
+  });
+}
+
 export function openShellTabTypeForDeepLink(
   tabTypeId: string,
   deps: ShellNavigationDeps,

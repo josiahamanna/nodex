@@ -3,7 +3,7 @@ import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../views/ShellViewContext";
 import { parseShellHash } from "../shellTabUrlSync";
 import { WelcomeShellView } from "./WelcomeShellView";
-import { NOTES_EXPLORER_VIEW_SIDEBAR } from "./shellWorkspaceIds";
+import { NOTES_EXPLORER_VIEW_SIDEBAR, SHELL_TAB_WELCOME_TYPE_ID } from "./shellWorkspaceIds";
 
 /**
  * Minimal first-party shell blocks (React views, no iframes).
@@ -31,23 +31,24 @@ export function useRegisterShellCoreBlocks(): void {
         title: "Welcome",
         icon: "N",
         order: 0,
-        tabTypeId: "shell.tab.welcome",
+        tabTypeId: SHELL_TAB_WELCOME_TYPE_ID,
         tabReuseKey: "shell:welcome",
       }),
     );
 
     disposers.push(
       regs.tabs.registerTabType({
-        id: "shell.tab.welcome",
+        id: SHELL_TAB_WELCOME_TYPE_ID,
         title: "Welcome",
         order: 0,
         viewId: "shell.welcome",
         primarySidebarViewId: NOTES_EXPLORER_VIEW_SIDEBAR,
       }),
     );
-    const skipDefaultWelcome = typeof window !== "undefined" && parseShellHash()?.kind === "tab";
+    const initialHash = typeof window !== "undefined" ? parseShellHash() : null;
+    const skipDefaultWelcome = initialHash?.kind === "tab" || initialHash?.kind === "welcome";
     if (!skipDefaultWelcome) {
-      regs.tabs.openOrReuseTab("shell.tab.welcome", {
+      regs.tabs.openOrReuseTab(SHELL_TAB_WELCOME_TYPE_ID, {
         title: "Welcome",
         reuseKey: "shell:welcome",
       });
