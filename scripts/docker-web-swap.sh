@@ -102,7 +102,8 @@ if ! docker exec "$GATEWAY" nginx -t; then
   exit 1
 fi
 
-docker exec "$GATEWAY" nginx -s reload
+# Same as docker-web-deploy.sh: avoid nginx -s reload when pid file is empty under daemon off.
+docker kill --signal=HUP "$GATEWAY" >/dev/null
 echo "Active UI upstream: nodex-web-${TARGET} (gateway reloaded)."
 
 if [[ "$STOP_OLD" == "true" ]]; then

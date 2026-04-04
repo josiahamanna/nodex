@@ -152,8 +152,13 @@ upstream nodex_web {
 }
 EOF
 
-docker exec "$GATEWAY" nginx -t >/dev/null
-docker exec "$GATEWAY" nginx -s reload
+if ! docker exec "$GATEWAY" nginx -t >/dev/null; then
+  echo "[nodex] nginx -t failed in ${GATEWAY}; upstream file was updated but gateway not reloaded." >&2
+  exit 1
+fi
+# Official nginx image uses `daemon off;` (master is PID 1). `nginx -s reload` reads /var/run/nginx.pid,
+# which is often empty in that setup — use SIGHUP to PID 1 instead (same graceful reload).
+docker kill --signal=HUP "$GATEWAY" >/dev/null
 
 echo "[nodex] Switched UI: ${current} -> ${next}"
 
