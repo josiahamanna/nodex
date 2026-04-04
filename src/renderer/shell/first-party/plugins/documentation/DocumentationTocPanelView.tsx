@@ -8,8 +8,11 @@ import { parseMarkdownHeadingsForToc } from "../../../../utils/markdown-heading-
 import { BUNDLED_DOC_NOTE_IDS } from "./documentationConstants";
 import { fetchBundledDocumentationNote } from "./documentationFetchBundledNote";
 import { resolvedCommandDocToMarkdown } from "./documentationCommandMarkdown";
+import { DocumentationLinkContextMenu, type DocumentationLinkMenuModel } from "./DocumentationLinkContextMenu";
 import {
   DOCUMENTATION_SHELL_TAB_TYPE_ID,
+  documentationShareAbsoluteUrl,
+  documentationStateWithHeading,
   mergeDocumentationHeadingSlug,
   readDocumentationStateFromTab,
 } from "./documentationShellHash";
@@ -51,6 +54,7 @@ export function DocumentationTocPanelView(_props: ShellViewComponentProps): Reac
   const [markdown, setMarkdown] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [docLinkMenu, setDocLinkMenu] = useState<DocumentationLinkMenuModel | null>(null);
 
   useEffect(() => {
     const t = regs.tabs.getActiveTab();
@@ -148,10 +152,13 @@ export function DocumentationTocPanelView(_props: ShellViewComponentProps): Reac
     );
   }
 
+  const tabForToc = regs.tabs.getActiveTab();
+  const tabDocForShare = readDocumentationStateFromTab(tabForToc);
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden p-2">
       <div className="px-1.5 py-1 text-[11px] font-medium text-muted-foreground">Documentation outline</div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto" data-nodex-own-contextmenu>
         {rows.length === 0 ? (
           <div className="px-2 py-1 text-[12px] text-muted-foreground">No headings found.</div>
         ) : (
@@ -164,7 +171,7 @@ export function DocumentationTocPanelView(_props: ShellViewComponentProps): Reac
                     type="button"
                     className="w-full truncate rounded-md px-2 py-1.5 text-left text-[12px] text-foreground outline-none hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring"
                     style={{ paddingLeft: 8 + pad }}
-                    title={r.text}
+                    title={`${r.text} — right-click to copy a link to this heading`}
                     onClick={() => {
                       const tab = regs.tabs.getActiveTab();
                       if (!tab || tab.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
@@ -175,6 +182,16 @@ export function DocumentationTocPanelView(_props: ShellViewComponentProps): Reac
                         );
                       }
                     }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const next = documentationStateWithHeading(tabDocForShare, r.slug);
+                      setDocLinkMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        url: documentationShareAbsoluteUrl(next),
+                      });
+                    }}
                   >
                     {r.text}
                   </button>
@@ -184,6 +201,7 @@ export function DocumentationTocPanelView(_props: ShellViewComponentProps): Reac
           </ul>
         )}
       </div>
+      <DocumentationLinkContextMenu open={docLinkMenu} onClose={() => setDocLinkMenu(null)} />
     </div>
   );
 }

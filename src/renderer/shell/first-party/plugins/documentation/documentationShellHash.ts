@@ -198,3 +198,20 @@ export function mergeDocumentationHeadingSlug(
   mergeDocumentationIntoTabState(tabs, instanceId, next);
   return { unchanged };
 }
+
+/**
+ * Hash-only fragment for sharing Documentation routes. Uses bare `plugin.documentation.tab` so links work
+ * across sessions (`applyShellTabFromUrlHash` accepts the tab type id without an instance suffix).
+ */
+export function documentationShareHashFragment(doc: DocumentationShellTabState | null): string {
+  const tail = hashDocumentationPathFromState(doc);
+  return `#/t/${DOCUMENTATION_SHELL_TAB_TYPE_ID}${tail}`;
+}
+
+/** Full URL (origin + path + query + documentation hash) for clipboard / external sharing. */
+export function documentationShareAbsoluteUrl(doc: DocumentationShellTabState | null): string {
+  if (typeof window === "undefined") {
+    return documentationShareHashFragment(doc);
+  }
+  return `${window.location.origin}${window.location.pathname}${window.location.search}${documentationShareHashFragment(doc)}`;
+}

@@ -7,7 +7,9 @@ import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
 import type { AppDispatch, RootState } from "../../../../store";
 import { fetchAllNotes } from "../../../../store/notesSlice";
 import { DOCS_BC, type DocsBcMessage } from "./documentationConstants";
+import { DocumentationLinkContextMenu, type DocumentationLinkMenuModel } from "./DocumentationLinkContextMenu";
 import { DocumentationSettingsForm } from "./DocumentationSettingsForm";
+import { documentationShareAbsoluteUrl } from "./documentationShellHash";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 
 function esc(s: string): string {
@@ -96,6 +98,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
   const [wpnGuides, setWpnGuides] = useState<Array<{ id: string; title: string; section: string }>>([]);
   const [wpnGuidesError, setWpnGuidesError] = useState<string | null>(null);
+  const [docLinkMenu, setDocLinkMenu] = useState<DocumentationLinkMenuModel | null>(null);
 
   const postBc = useCallback((msg: DocsBcMessage) => {
     if (typeof BroadcastChannel === "undefined") return;
@@ -324,7 +327,10 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
               Refresh panels
             </button>
           </div>
-          <div className="min-h-0 flex-1 space-y-3 overflow-auto px-2 pb-2">
+          <div
+            className="min-h-0 flex-1 space-y-3 overflow-auto px-2 pb-2"
+            data-nodex-own-contextmenu
+          >
             {guideRows.length === 0 ? (
               <p className="px-1 py-2 text-[11px] text-muted-foreground">
                 {mountKind === "wpn-postgres"
@@ -344,9 +350,19 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
                       key={g.id}
                       type="button"
                       className="w-full border border-border/80 bg-muted/10 px-2 py-1.5 text-left hover:bg-muted/40"
+                      title="Right-click to copy a shareable link to this guide"
                       onClick={() => {
                         setSelectedGuideId(g.id);
                         postBc({ type: "docs.showBundledDoc", noteId: g.id });
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDocLinkMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          url: documentationShareAbsoluteUrl({ view: "bundled", noteId: g.id }),
+                        });
                       }}
                     >
                       <div className="text-[11px] font-medium text-foreground">{esc(g.title)}</div>
@@ -390,15 +406,25 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
               Refresh other panels
             </button>
           </div>
-          <div className="min-h-0 flex-1 space-y-1 overflow-auto px-2 pb-2">
+          <div className="min-h-0 flex-1 space-y-1 overflow-auto px-2 pb-2" data-nodex-own-contextmenu>
             {filteredCommands.slice(0, 300).map((c) => (
               <button
                 key={c.id}
                 type="button"
                 className="w-full border border-border/80 bg-muted/10 px-2 py-1.5 text-left hover:bg-muted/40"
+                title="Right-click to copy a shareable link to this command’s API doc"
                 onClick={() => {
                   setSelectedCommandId(c.id);
                   postBc({ type: "docs.showCommand", commandId: c.id });
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDocLinkMenu({
+                    x: e.clientX,
+                    y: e.clientY,
+                    url: documentationShareAbsoluteUrl({ view: "command", commandId: c.id }),
+                  });
                 }}
               >
                 <div className="font-mono text-[10px]">{esc(c.id)}</div>
@@ -419,6 +445,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
           )}
         </>
       ) : null}
+      <DocumentationLinkContextMenu open={docLinkMenu} onClose={() => setDocLinkMenu(null)} />
     </div>
   );
 }

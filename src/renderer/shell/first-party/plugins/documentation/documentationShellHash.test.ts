@@ -3,6 +3,7 @@ import test from "node:test";
 import type { ShellTabInstance } from "../../registries/ShellTabsRegistry";
 import {
   DOCUMENTATION_SHELL_TAB_TYPE_ID,
+  documentationShareHashFragment,
   documentationStateFromPathSegments,
   hashDocumentationPathFromState,
   readDocumentationStateFromTab,
@@ -67,6 +68,25 @@ test("hashDocumentationPathFromState round-trips bundled note with heading slug"
 });
 
 /** Matches `hashForActiveTab` for documentation tabs (see shellTabUrlSync); kept here to avoid importing that module in node:test (ESM path resolution). */
+test("documentationShareHashFragment uses bare tab type id for portable deep links", () => {
+  assert.equal(
+    documentationShareHashFragment({ view: "bundled", noteId: "nodex-user-guide-layout" }),
+    "#/t/plugin.documentation.tab/n/nodex-user-guide-layout",
+  );
+  assert.equal(
+    documentationShareHashFragment({
+      view: "bundled",
+      noteId: "nodex-bundled-plugin-complete-guide",
+      headingSlug: "3-packaged-plugins-zip-marketplace",
+    }),
+    "#/t/plugin.documentation.tab/n/nodex-bundled-plugin-complete-guide/3-packaged-plugins-zip-marketplace",
+  );
+  assert.equal(
+    documentationShareHashFragment({ view: "command", commandId: "nodex.docs.open" }),
+    "#/t/plugin.documentation.tab/c/nodex.docs.open",
+  );
+});
+
 test("readDocumentationStateFromTab ignores invalid documentation payloads", () => {
   assert.equal(readDocumentationStateFromTab(null), null);
   assert.equal(readDocumentationStateFromTab(docsTab({})), null);
