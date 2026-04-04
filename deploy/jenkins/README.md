@@ -37,7 +37,7 @@ Optional overrides (same as local deploy): `NODEX_PG_PASSWORD`, `NODEX_PG_DATABA
 
 Docker’s **HEALTHCHECK** runs **`docker exec`** into the UI container on a timer. If the Next.js process **dies**, the daemon keeps trying and can log **`Error response from daemon: container … is not running`**, which Jenkins may show even though the real issue is **why the app exited**.
 
-[`scripts/docker-web-deploy.sh`](../../scripts/docker-web-deploy.sh) **does not** set `HEALTHCHECK` on `docker run` UI slots; it waits for **HTTP :3000** using a one-shot probe from **`nodex-api`** on `nodex_default`. If deploy still fails, the script prints **`docker logs`** for the web container (OOM, missing env, etc.).
+[`scripts/docker-web-deploy.sh`](../../scripts/docker-web-deploy.sh) **does not** set `HEALTHCHECK` on `docker run` UI slots; it waits for **HTTP :3000** via **`docker exec` into the web container** hitting `127.0.0.1` (avoids cross-container DNS/IPv6 quirks). If deploy still fails, the script prints **`docker logs`** for the web container.
 
 ## Docker build: `npm error network read ECONNRESET`
 

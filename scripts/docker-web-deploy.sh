@@ -9,8 +9,9 @@
 #   - Detects current active color from deploy/nginx-active-web.upstream.conf
 #   - Builds the web image (Dockerfile.web -> nodex-web:local)
 #   - Recreates the *inactive* color container on the nodex_default network
-#   - Waits until the UI responds on :3000 (HTTP probe from nodex-api; no Docker HEALTHCHECK on
-#     docker-run slots — avoids daemon "container is not running" noise when the app exits)
+#   - Waits until the UI responds on :3000 (HTTP GET to 127.0.0.1 inside the web container via
+#     docker exec — avoids cross-container DNS/IPv6 issues; no Docker HEALTHCHECK on docker-run
+#     slots so dockerd does not spam exec errors if the app exits)
 #   - Switches nginx upstream and reloads the gateway
 #
 # Notes:
@@ -24,7 +25,6 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ACTIVE_FILE="${REPO_ROOT}/deploy/nginx-active-web.upstream.conf"
 GATEWAY="${NODEX_GATEWAY_CONTAINER:-nodex-gateway}"
-API_CONTAINER="${NODEX_API_CONTAINER:-nodex-api}"
 NETWORK="${NODEX_DOCKER_NETWORK:-nodex_default}"
 IMAGE="${NODEX_WEB_IMAGE:-nodex-web:local}"
 
@@ -60,15 +60,6 @@ fi
 if ! docker network inspect "$NETWORK" &>/dev/null; then
   echo "Error: docker network '$NETWORK' not found." >&2
   echo "Bring the stack up once so the compose network exists: npm run docker:api:up:detached" >&2
-  exit 1
-fi
-
-if ! docker container inspect "$API_CONTAINER" &>/dev/null; then
-  echo "Error: container '$API_CONTAINER' does not exist (needed to probe the web container on ${NETWORK})." >&2
-  exit 1
-fi
-if [[ "$(docker container inspect -f '{{.State.Running}}' "$API_CONTAINER" 2>/dev/null)" != "true" ]]; then
-  echo "Error: container '$API_CONTAINER' is not running." >&2
   exit 1
 fi
 
@@ -121,7 +112,7 @@ if [[ "$state" == "exited" || "$state" == "dead" ]]; then
   exit 1
 fi
 
-echo "[nodex] Waiting for ${target_container} to respond on :3000 (via ${API_CONTAINER})..."
+echo "[nodex] Waiting for ${target_container} to respond on :3000 (localhost inside container)..."
 healthy=false
 for _ in $(seq 1 90); do
   if ! docker container inspect "$target_container" &>/dev/null; then
@@ -138,7 +129,9 @@ for _ in $(seq 1 90); do
     sleep 2
     continue
   fi
-  if docker exec "$API_CONTAINER" node -e "require('http').get('http://${target_container}:3000/',(r)=>{r.resume();r.on('end',()=>process.exit(r.statusCode&&r.statusCode<500?0:1));}).on('error',()=>process.exit(1)));" &>/dev/null; then
+  # Probes 127.0.0.1 from inside the web container. HTTP from nodex-api to the container hostname
+  # often fails (embedded DNS / IPv6) even when Next is bound to 0.0.0.0:3000.
+  if docker exec "$target_container" node -e 'const http=require("http");const r=http.get("http://127.0.0.1:3000/",(res)=>{res.resume();res.on("end",()=>process.exit(res.statusCode>=200&&res.statusCode<500?0:1));});r.on("error",()=>process.exit(1));r.setTimeout(8000,()=>{r.destroy();process.exit(1);});' &>/dev/null; then
     healthy=true
     break
   fi
