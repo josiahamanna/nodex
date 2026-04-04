@@ -175,12 +175,12 @@ export function DocumentationTocPanelView(_props: ShellViewComponentProps): Reac
                     onClick={() => {
                       const tab = regs.tabs.getActiveTab();
                       if (!tab || tab.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
-                      const { unchanged } = mergeDocumentationHeadingSlug(regs.tabs, tab.instanceId, r.slug);
-                      if (unchanged) {
+                      mergeDocumentationHeadingSlug(regs.tabs, tab.instanceId, r.slug);
+                      queueMicrotask(() => {
                         window.dispatchEvent(
                           new CustomEvent("nodex:documentation-scroll-to-heading", { detail: { slug: r.slug } }),
                         );
-                      }
+                      });
                     }}
                     onContextMenu={(e) => {
                       e.preventDefault();

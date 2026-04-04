@@ -169,27 +169,50 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     };
   }, [bundledNoteId, commandId, mountKind]);
 
+  const scrollDocHeadingIntoView = useCallback((slug: string) => {
+    const deadline = performance.now() + 900;
+    const tryOnce = () => {
+      const root = scrollRootRef.current;
+      const el = root?.querySelector(`#${CSS.escape(slug)}`) ?? document.getElementById(slug);
+      if (el) {
+        el.scrollIntoView({ block: "start", behavior: "smooth" });
+        return;
+      }
+      if (performance.now() < deadline) {
+        requestAnimationFrame(tryOnce);
+      }
+    };
+    requestAnimationFrame(tryOnce);
+  }, []);
+
   useEffect(() => {
     if (!headingSlug) return;
-    const id = window.setTimeout(() => {
+    let alive = true;
+    const slug = headingSlug;
+    const deadline = performance.now() + 900;
+    const tryOnce = () => {
+      if (!alive) return;
       const root = scrollRootRef.current;
-      const el = root?.querySelector(`#${CSS.escape(headingSlug)}`) ?? document.getElementById(headingSlug);
-      el?.scrollIntoView({ block: "start", behavior: "smooth" });
-    }, 160);
-    return () => window.clearTimeout(id);
+      const el = root?.querySelector(`#${CSS.escape(slug)}`) ?? document.getElementById(slug);
+      if (el) {
+        el.scrollIntoView({ block: "start", behavior: "smooth" });
+        return;
+      }
+      if (performance.now() < deadline) {
+        requestAnimationFrame(tryOnce);
+      }
+    };
+    requestAnimationFrame(tryOnce);
+    return () => {
+      alive = false;
+    };
   }, [headingSlug, commandId, bundledNoteId, hubNote?.id, bundledNote?.id, commandMarkdownNote?.id]);
-
-  const scrollDocHeadingIntoView = useCallback((slug: string) => {
-    const root = scrollRootRef.current;
-    const el = root?.querySelector(`#${CSS.escape(slug)}`) ?? document.getElementById(slug);
-    el?.scrollIntoView({ block: "start", behavior: "smooth" });
-  }, []);
 
   useEffect(() => {
     const onEv = (ev: Event) => {
       const slug = (ev as CustomEvent<{ slug?: string }>).detail?.slug;
       if (typeof slug === "string" && slug) {
-        queueMicrotask(() => scrollDocHeadingIntoView(slug));
+        scrollDocHeadingIntoView(slug);
       }
     };
     window.addEventListener("nodex:documentation-scroll-to-heading", onEv);
@@ -201,10 +224,8 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     (slug: string) => {
       const t = regs.tabs.getActiveTab();
       if (!t || t.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
-      const { unchanged } = mergeDocumentationHeadingSlug(regs.tabs, t.instanceId, slug);
-      if (unchanged) {
-        queueMicrotask(() => scrollDocHeadingIntoView(slug));
-      }
+      mergeDocumentationHeadingSlug(regs.tabs, t.instanceId, slug);
+      scrollDocHeadingIntoView(slug);
     },
     [regs.tabs, scrollDocHeadingIntoView],
   );

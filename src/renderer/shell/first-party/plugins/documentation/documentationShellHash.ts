@@ -183,7 +183,7 @@ export function documentationStateWithHeading(
 
 /**
  * Updates the active documentation tab’s heading slug for in-page navigation.
- * @returns whether the slug was unchanged (re-click same TOC row) so callers can force scroll.
+ * @returns whether the slug was already active (no tab state write beyond deduping).
  */
 export function mergeDocumentationHeadingSlug(
   tabs: ShellTabsRegistry,
