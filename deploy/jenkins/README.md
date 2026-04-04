@@ -8,6 +8,33 @@ The root [`Jenkinsfile`](../../Jenkinsfile) runs `npm run deploy -- --stop-old` 
 - Open the build in Jenkins → **Console Output**. After a green build, **Verify** lists Nodex containers and confirms the gateway; the printed URL (`http://127.0.0.1:8080/`) is reachable **only from that agent** (or via **cloudflared** / a reverse proxy you configure there).
 - To reach the app from the internet, run **cloudflared** (or similar) **on the same host as the agent**, or use a **remote SSH** / **VPN** setup an admin provides. Set `NODEX_GATEWAY_PORT` in the Jenkins job if it is not **8080**.
 
+## Cloudflare Tunnel on the Jenkins agent (public URL)
+
+`cloudflared` must run on the **Jenkins agent host** — the same machine where `docker ps` shows `nodex-gateway`. It does **not** run inside the Jenkins job container unless your agent *is* Docker-in-Docker (then use the parent host’s loopback or service name).
+
+1. **Install** [`cloudflared`](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/) on that host.
+2. **Authenticate** once (as the OS user that will run the tunnel), e.g. `cloudflared tunnel login`, then create a tunnel in the Cloudflare dashboard and download credentials.
+3. **Ingress** must target the **gateway**, not the web container directly. Default Compose maps the gateway to host **`127.0.0.1:8080`** (not `:808` — use **8080** unless you changed `NODEX_GATEWAY_PORT` in the nodex repo `.env` on the agent).
+
+   Example fragment (full file: [cloudflared-config.example.yml](cloudflared-config.example.yml)):
+
+   ```yaml
+   tunnel: YOUR_TUNNEL_UUID
+   credentials-file: /path/to/YOUR_TUNNEL_UUID.json
+   ingress:
+     - hostname: nodex.example.com
+       service: http://127.0.0.1:8080
+     - service: http_status:404
+   ```
+
+   Same-origin `/api/v1` through the browser depends on this: the UI is built with `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1` and expects the **hostname** users open to match the gateway (see [`deploy/ZERO-DOWNTIME.md`](../ZERO-DOWNTIME.md)).
+
+4. **Run as a service** so it survives reboot — copy and edit [`deploy/systemd/cloudflared.service.example`](../systemd/cloudflared.service.example), then `sudo systemctl enable --now cloudflared`. Set `User=` to the account that owns `~/.cloudflared` (often `root` or a dedicated user; the `jenkins` user is only needed if credentials live in its home).
+
+### Reverse proxy instead of Cloudflare
+
+Any proxy on the agent (Caddy, Traefik, host nginx) can **`proxy_pass http://127.0.0.1:8080`** (or your `NODEX_GATEWAY_PORT`). Terminate TLS on the proxy; the gateway stays HTTP on the Docker bridge.
+
 ## Agent checklist
 
 Confirm the machine or container that runs the job has:
