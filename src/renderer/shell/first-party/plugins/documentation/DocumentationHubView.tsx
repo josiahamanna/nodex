@@ -1,12 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Note } from "@nodex/ui-types";
 import MarkdownRenderer from "../../../../components/renderers/MarkdownRenderer";
 import type { InternalMarkdownNoteLink } from "../../../../utils/markdown-internal-note-href";
@@ -19,7 +11,7 @@ import { resolvedCommandDocToMarkdown } from "./documentationCommandMarkdown";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import {
   DOCUMENTATION_SHELL_TAB_TYPE_ID,
-  buildDocumentationStateFromUi,
+  mergeDocumentationHeadingSlug,
   mergeDocumentationIntoTabState,
   readDocumentationStateFromTab,
   type DocumentationShellTabState,
@@ -40,9 +32,16 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
   const registry = useNodexContributionRegistry();
   const regs = useShellRegistries();
   const { mountKind } = useShellProjectWorkspace();
-  const [commandId, setCommandId] = useState<string | null>(null);
-  const [bundledNoteId, setBundledNoteId] = useState<string | null>(null);
-  const [headingSlug, setHeadingSlug] = useState<string | undefined>(undefined);
+  const activeTab = regs.tabs.getActiveTab();
+  const docState =
+    activeTab?.tabTypeId === DOCUMENTATION_SHELL_TAB_TYPE_ID
+      ? readDocumentationStateFromTab(activeTab)
+      : null;
+  const commandId =
+    docState?.view === "command" && docState.commandId ? docState.commandId : null;
+  const bundledNoteId =
+    docState?.view === "bundled" && docState.noteId ? docState.noteId : null;
+  const headingSlug = docState?.headingSlug;
   const [bundledNote, setBundledNote] = useState<Note | null>(null);
   const [bundledLoading, setBundledLoading] = useState(false);
   const [bundledError, setBundledError] = useState<string | null>(null);
@@ -50,53 +49,6 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
   const [hubLoading, setHubLoading] = useState(false);
   const [hubError, setHubError] = useState<string | null>(null);
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
-
-  const tabDocSig = useSyncExternalStore(
-    (cb) => regs.tabs.subscribe(cb),
-    () => {
-      const t = regs.tabs.getActiveTab();
-      const d = readDocumentationStateFromTab(t);
-      return `${t?.instanceId ?? ""}|${d?.view ?? ""}|${d?.commandId ?? ""}|${d?.noteId ?? ""}|${d?.headingSlug ?? ""}`;
-    },
-    () => "",
-  );
-  void tabDocSig;
-
-  useLayoutEffect(() => {
-    const t = regs.tabs.getActiveTab();
-    if (!t || t.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
-    const doc = readDocumentationStateFromTab(t);
-    if (!doc) {
-      setCommandId(null);
-      setBundledNoteId(null);
-      setHeadingSlug(undefined);
-      return;
-    }
-    if (doc.view === "command" && doc.commandId) {
-      setCommandId(doc.commandId);
-      setBundledNoteId(null);
-      setHeadingSlug(doc.headingSlug);
-      return;
-    }
-    if (doc.view === "bundled" && doc.noteId) {
-      setCommandId(null);
-      setBundledNoteId(doc.noteId);
-      setHeadingSlug(doc.headingSlug);
-      return;
-    }
-    if (doc.view === "hub") {
-      setCommandId(null);
-      setBundledNoteId(null);
-      setHeadingSlug(doc.headingSlug);
-    }
-  }, [regs.tabs, tabDocSig]);
-
-  useEffect(() => {
-    const t = regs.tabs.getActiveTab();
-    if (!t || t.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
-    const next = buildDocumentationStateFromUi(commandId, bundledNoteId, headingSlug);
-    mergeDocumentationIntoTabState(regs.tabs, t.instanceId, next);
-  }, [bundledNoteId, commandId, headingSlug, regs.tabs]);
 
   const registryRev = useSyncExternalStore(
     (onChange) => registry.subscribe(onChange),
@@ -126,22 +78,29 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     if (!bc) return () => {};
     const onMsg = (ev: MessageEvent<DocsBcMessage>) => {
       const d = ev.data;
+      const t = regs.tabs.getActiveTab();
+      if (!t || t.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
       if (d?.type === "docs.showCommand" && typeof d.commandId === "string") {
-        setBundledNoteId(null);
-        setHeadingSlug(undefined);
-        setCommandId(d.commandId);
+        mergeDocumentationIntoTabState(regs.tabs, t.instanceId, {
+          view: "command",
+          commandId: d.commandId,
+        });
       }
       if (d?.type === "docs.showBundledDoc" && typeof d.noteId === "string") {
-        setCommandId(null);
-        setHeadingSlug(undefined);
-        setBundledNoteId(d.noteId);
+        mergeDocumentationIntoTabState(regs.tabs, t.instanceId, {
+          view: "bundled",
+          noteId: d.noteId,
+        });
       }
       if (d?.type === "docs.showBundledLogical" && typeof d.logicalId === "string") {
-        setCommandId(null);
-        setHeadingSlug(undefined);
         void fetchBundledDocumentationNote(d.logicalId, mountKind)
           .then((n) => {
-            setBundledNoteId(n.id);
+            const cur = regs.tabs.getActiveTab();
+            if (!cur || cur.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
+            mergeDocumentationIntoTabState(regs.tabs, cur.instanceId, {
+              view: "bundled",
+              noteId: n.id,
+            });
           })
           .catch(() => {});
       }
@@ -151,7 +110,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
       bc.removeEventListener("message", onMsg);
       bc.close();
     };
-  }, [mountKind]);
+  }, [mountKind, regs.tabs]);
 
   useEffect(() => {
     if (!bundledNoteId) {
@@ -240,15 +199,14 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
   /** TOC / in-doc `#slug` links: update shell hash and scroll (re-click same slug still scrolls). */
   const onDocHeadingLinkClick = useCallback(
     (slug: string) => {
-      setHeadingSlug((prev) => {
-        if (prev === slug) {
-          queueMicrotask(() => scrollDocHeadingIntoView(slug));
-          return prev;
-        }
-        return slug;
-      });
+      const t = regs.tabs.getActiveTab();
+      if (!t || t.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
+      const { unchanged } = mergeDocumentationHeadingSlug(regs.tabs, t.instanceId, slug);
+      if (unchanged) {
+        queueMicrotask(() => scrollDocHeadingIntoView(slug));
+      }
     },
-    [scrollDocHeadingIntoView],
+    [regs.tabs, scrollDocHeadingIntoView],
   );
 
   const onInternalNoteNavigate = useCallback(
@@ -269,13 +227,15 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     "shrink-0 rounded-md border border-border/60 bg-background px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted/40";
 
   const closeBundled = () => {
-    setBundledNoteId(null);
-    setHeadingSlug(undefined);
+    const t = regs.tabs.getActiveTab();
+    if (!t || t.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
+    mergeDocumentationIntoTabState(regs.tabs, t.instanceId, null);
   };
 
   const backToHubOverview = () => {
-    setCommandId(null);
-    setHeadingSlug(undefined);
+    const t = regs.tabs.getActiveTab();
+    if (!t || t.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
+    mergeDocumentationIntoTabState(regs.tabs, t.instanceId, null);
   };
 
   if (bundledNoteId) {

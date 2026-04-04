@@ -1,9 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { ShellTabInstance } from "../../registries/ShellTabsRegistry";
 import {
+  DOCUMENTATION_SHELL_TAB_TYPE_ID,
   documentationStateFromPathSegments,
   hashDocumentationPathFromState,
+  readDocumentationStateFromTab,
 } from "./documentationShellHash.ts";
+
+function docsTab(state: unknown): ShellTabInstance {
+  return {
+    instanceId: "i1",
+    tabTypeId: DOCUMENTATION_SHELL_TAB_TYPE_ID,
+    title: "Docs",
+    state,
+  };
+}
 
 test("documentationStateFromPathSegments parses hub heading", () => {
   assert.deepEqual(documentationStateFromPathSegments(["h", "overview"]), {
@@ -55,6 +67,17 @@ test("hashDocumentationPathFromState round-trips bundled note with heading slug"
 });
 
 /** Matches `hashForActiveTab` for documentation tabs (see shellTabUrlSync); kept here to avoid importing that module in node:test (ESM path resolution). */
+test("readDocumentationStateFromTab ignores invalid documentation payloads", () => {
+  assert.equal(readDocumentationStateFromTab(null), null);
+  assert.equal(readDocumentationStateFromTab(docsTab({})), null);
+  assert.equal(readDocumentationStateFromTab(docsTab({ documentation: {} })), null);
+  assert.equal(readDocumentationStateFromTab(docsTab({ documentation: { view: "hub" } })), null);
+  assert.deepEqual(
+    readDocumentationStateFromTab(docsTab({ documentation: { view: "bundled", noteId: "n1" } })),
+    { view: "bundled", noteId: "n1" },
+  );
+});
+
 test("documentation tab shell hash prefixes bundled deep link with instance id", () => {
   const instanceId = "plugin.documentation.tab:1775282179238:d01c6b6af71c18";
   const st = {

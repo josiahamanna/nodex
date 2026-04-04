@@ -74,18 +74,39 @@ export function hashDocumentationPathFromState(doc: DocumentationShellTabState |
 
 export function readDocumentationStateFromTab(tab: ShellTabInstance | null): DocumentationShellTabState | null {
   if (!tab || tab.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return null;
-  const d = (tab.state as { documentation?: DocumentationShellTabState } | undefined)?.documentation;
-  return d ?? null;
+  const raw = (tab.state as { documentation?: unknown } | undefined)?.documentation;
+  if (raw == null) return null;
+  if (typeof raw !== "object") return null;
+  const d = raw as Record<string, unknown>;
+  const view = d.view;
+  const headingSlug =
+    typeof d.headingSlug === "string" && d.headingSlug.length > 0 ? d.headingSlug : undefined;
+  if (view === "command") {
+    const commandId = typeof d.commandId === "string" ? d.commandId : "";
+    if (!commandId) return null;
+    return headingSlug ? { view: "command", commandId, headingSlug } : { view: "command", commandId };
+  }
+  if (view === "bundled") {
+    const noteId = typeof d.noteId === "string" ? d.noteId : "";
+    if (!noteId) return null;
+    return headingSlug ? { view: "bundled", noteId, headingSlug } : { view: "bundled", noteId };
+  }
+  if (view === "hub") {
+    if (!headingSlug) return null;
+    return { view: "hub", headingSlug };
+  }
+  return null;
 }
 
 function docStateEqual(a: DocumentationShellTabState | null, b: DocumentationShellTabState | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
+  const slug = (s: string | undefined | null) => (s == null || s === "" ? undefined : s);
   return (
     a.view === b.view &&
     a.commandId === b.commandId &&
     a.noteId === b.noteId &&
-    a.headingSlug === b.headingSlug
+    slug(a.headingSlug) === slug(b.headingSlug)
   );
 }
 
