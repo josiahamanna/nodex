@@ -8,7 +8,7 @@ import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import { useShellActiveMainTab } from "../ShellActiveTabContext";
 import { useShellProjectWorkspace } from "../useShellProjectWorkspace";
 import type { ShellViewComponentProps } from "../views/ShellViewRegistry";
-import { SHELL_TAB_NOTE } from "./shellWorkspaceIds";
+import { SHELL_TAB_NOTE, SHELL_TAB_SCRATCH_MARKDOWN } from "./shellWorkspaceIds";
 
 type NoteTabState = { noteId?: string };
 
@@ -71,7 +71,9 @@ export function NoteEditorShellView(_props: ShellViewComponentProps): React.Reac
             const id = currentNote.id;
             await dispatch(renameNote({ id, title })).unwrap();
             await dispatch(fetchAllNotes());
-            const tabInst = tabs.findNoteTabByNoteId(id, SHELL_TAB_NOTE);
+            const tabInst =
+              tabs.findNoteTabByNoteId(id, SHELL_TAB_NOTE) ??
+              tabs.findNoteTabByNoteId(id, SHELL_TAB_SCRATCH_MARKDOWN);
             if (tabInst) {
               const label = title.replace(/\s+/g, " ").trim() || "Untitled";
               tabs.updateTabPresentation(tabInst.instanceId, { title: label });

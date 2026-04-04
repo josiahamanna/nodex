@@ -1,7 +1,7 @@
 /** Welcome tab deep links: `#/welcome` and `#/welcome/<segment>` → shell commands. */
 
 export const WELCOME_SHELL_URL_COMMANDS = {
-  "scratch-markdown": "nodex.notes.newScratchMarkdown",
+  "scratch-markdown": "nodex.notes.openScratchMarkdownTab",
   "observable-notebook": "nodex.observableNotebook.open",
   documentation: "nodex.docs.open",
   "notes-explorer": "nodex.notesExplorer.open",

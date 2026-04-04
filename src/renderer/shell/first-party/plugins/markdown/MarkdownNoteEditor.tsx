@@ -22,7 +22,7 @@ import {
 import { useNodexNoteModeLine } from "../../../useNodexNoteModeLine";
 import { useShellActiveMainTab } from "../../../ShellActiveTabContext";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
-import { SHELL_TAB_NOTE } from "../../shellWorkspaceIds";
+import { isShellNoteEditorTabType } from "../../shellWorkspaceIds";
 import type { ShellNoteTabState } from "../../../shellTabUrlSync";
 import { fetchWpnNoteLinkIndex, filterWpnNoteLinkRows, type WpnNoteLinkRow } from "./wpnNoteLinkIndex";
 
@@ -105,7 +105,8 @@ export function MarkdownNoteEditor({
   noteIdRef.current = note.id;
 
   const pendingHeadingSlug =
-    shellActiveMainTab?.tabTypeId === SHELL_TAB_NOTE &&
+    shellActiveMainTab &&
+    isShellNoteEditorTabType(shellActiveMainTab.tabTypeId) &&
     (shellActiveMainTab.state as ShellNoteTabState | undefined)?.noteId === note.id
       ? (shellActiveMainTab.state as ShellNoteTabState | undefined)?.markdownHeadingSlug
       : undefined;
@@ -314,7 +315,7 @@ export function MarkdownNoteEditor({
       return;
     }
     const tab = shellActiveMainTab;
-    if (!tab?.instanceId || tab.tabTypeId !== SHELL_TAB_NOTE) return;
+    if (!tab?.instanceId || !isShellNoteEditorTabType(tab.tabTypeId)) return;
     const slug = pendingHeadingSlug;
     if (headingScrollDoneRef.current === slug) return;
 

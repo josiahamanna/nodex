@@ -1,5 +1,8 @@
 import type { ShellTabInstance } from "./registries/ShellTabsRegistry";
-import { SHELL_TAB_NOTE, SHELL_TAB_WELCOME_TYPE_ID } from "./first-party/shellWorkspaceIds";
+import {
+  isShellNoteEditorTabType,
+  SHELL_TAB_WELCOME_TYPE_ID,
+} from "./first-party/shellWorkspaceIds";
 import {
   DOCUMENTATION_SHELL_TAB_TYPE_ID,
   hashDocumentationPathFromState,
@@ -13,7 +16,7 @@ import {
 
 export type { ShellWelcomeTabState, WelcomeShellUrlSegment } from "./shellWelcomeUrlRoutes";
 
-/** State stored on shell note tabs (`SHELL_TAB_NOTE`). */
+/** State stored on shell note tabs (standard note tab and scratch markdown tab). */
 export type ShellNoteTabState = {
   noteId: string;
   /** When set, URL hash includes `#/n/<noteId>/<slug>` and preview scrolls to heading. */
@@ -81,7 +84,7 @@ export function parseShellHash(): ParsedShellHash | null {
 export function hashForActiveTab(tab: ShellTabInstance | null): string {
   if (!tab) return "";
   const st = tab.state as ShellNoteTabState | undefined;
-  if (tab.tabTypeId === SHELL_TAB_NOTE && st?.noteId) {
+  if (isShellNoteEditorTabType(tab.tabTypeId) && st?.noteId) {
     const slug = st.markdownHeadingSlug;
     return slug ? `#/n/${st.noteId}/${slug}` : `#/n/${st.noteId}`;
   }

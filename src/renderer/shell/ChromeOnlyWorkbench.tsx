@@ -46,7 +46,10 @@ import { useShellViewRegistry } from "./views/ShellViewContext";
 import { useShellRegistries } from "./registries/ShellRegistriesContext";
 import type { ShellAppMenuItem } from "./registries/ShellAppMenuRegistry";
 import type { ShellTabInstance, ShellTabsRegistry } from "./registries/ShellTabsRegistry";
-import { SHELL_TAB_NOTE, SHELL_TAB_WELCOME_TYPE_ID } from "./first-party/shellWorkspaceIds";
+import {
+  isShellNoteEditorTabType,
+  SHELL_TAB_WELCOME_TYPE_ID,
+} from "./first-party/shellWorkspaceIds";
 import {
   SHELL_ACTIVITY_BAR_WIDTH_PX,
   SHELL_COMPANION_MIN_EXPANDED_PX,
@@ -136,14 +139,12 @@ function SortableTabRow({
   onSelect,
   onClose,
   onPinNoteTab,
-  shellTabNoteTypeId,
 }: {
   tab: ShellTabInstance;
   active: boolean;
   onSelect: () => void;
   onClose: (e: React.MouseEvent) => void;
-  onPinNoteTab?: (instanceId: string) => void;
-  shellTabNoteTypeId?: string;
+  onPinNoteTab?: (instanceId: string, tabTypeId: string) => void;
 }): React.ReactElement {
   const {
     attributes,
@@ -188,12 +189,12 @@ function SortableTabRow({
         onClick={onSelect}
         onDoubleClick={(e) => {
           e.stopPropagation();
-          if (tab.tabTypeId === shellTabNoteTypeId && onPinNoteTab) {
-            onPinNoteTab(tab.instanceId);
+          if (isShellNoteEditorTabType(tab.tabTypeId) && onPinNoteTab) {
+            onPinNoteTab(tab.instanceId, tab.tabTypeId);
           }
         }}
         title={
-          tab.tabTypeId === shellTabNoteTypeId
+          isShellNoteEditorTabType(tab.tabTypeId)
             ? "Double-click title to pin this note tab"
             : tab.instanceId
         }
@@ -226,7 +227,7 @@ function applyShellHashNoteTarget(
   const active = tabs.getActiveTab();
   const st = active?.state as ShellNoteTabState | undefined;
   const slug = parsed.markdownHeadingSlug;
-  if (active?.tabTypeId === SHELL_TAB_NOTE && st?.noteId === parsed.noteId) {
+  if (active && isShellNoteEditorTabType(active.tabTypeId) && st?.noteId === parsed.noteId) {
     if (slug) {
       tabs.updateTabPresentation(active.instanceId, {
         state: { noteId: parsed.noteId, markdownHeadingSlug: slug },
@@ -669,8 +670,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                     active={t.instanceId === activeTab?.instanceId}
                     onSelect={() => tabs.setActiveTab(t.instanceId)}
                     onClose={closeTabInstance(t.instanceId)}
-                    shellTabNoteTypeId={SHELL_TAB_NOTE}
-                    onPinNoteTab={(instanceId) => tabs.pinNoteTab(instanceId, SHELL_TAB_NOTE)}
+                    onPinNoteTab={(instanceId, tabTypeId) => tabs.pinNoteTab(instanceId, tabTypeId)}
                   />
                 ))}
               </div>

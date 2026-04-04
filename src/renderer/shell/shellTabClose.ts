@@ -1,13 +1,13 @@
 import { store } from "../store";
 import { clearCurrentNote, fetchNote } from "../store/notesSlice";
-import { SHELL_TAB_NOTE } from "./first-party/shellWorkspaceIds";
+import { isShellNoteEditorTabType } from "./first-party/shellWorkspaceIds";
 import type { ShellTabsRegistry } from "./registries/ShellTabsRegistry";
 import { dispatchShellNoteTabClosed } from "./shellTabUrlSync";
 
 function collectOpenNoteIds(tabs: ShellTabsRegistry): Set<string> {
   const ids = new Set<string>();
   for (const t of tabs.listOpenTabs()) {
-    if (t.tabTypeId !== SHELL_TAB_NOTE) continue;
+    if (!isShellNoteEditorTabType(t.tabTypeId)) continue;
     const nid = (t.state as { noteId?: string } | undefined)?.noteId;
     if (typeof nid === "string" && nid.length > 0) ids.add(nid);
   }
@@ -22,7 +22,7 @@ export function closeShellTabInstance(tabs: ShellTabsRegistry, instanceId: strin
   const normalizedInstanceId = String(instanceId).trim();
   const inst = tabs.listOpenTabs().find((t) => t.instanceId === normalizedInstanceId);
   const closedNoteId =
-    inst?.tabTypeId === SHELL_TAB_NOTE
+    inst && isShellNoteEditorTabType(inst.tabTypeId)
       ? (inst.state as { noteId?: string } | undefined)?.noteId
       : undefined;
 
@@ -48,7 +48,7 @@ export function closeShellTabInstance(tabs: ShellTabsRegistry, instanceId: strin
   }
 
   const active = tabs.getActiveTab();
-  if (active?.tabTypeId === SHELL_TAB_NOTE) {
+  if (active && isShellNoteEditorTabType(active.tabTypeId)) {
     const nid = (active.state as { noteId?: string } | undefined)?.noteId;
     if (typeof nid === "string" && nid) {
       void store.dispatch(fetchNote(nid));
@@ -70,7 +70,7 @@ export function closeShellTabsForNoteIds(tabs: ShellTabsRegistry, noteIds: reado
 
   const open = tabs.listOpenTabs();
   const toClose = open.filter((t) => {
-    if (t.tabTypeId !== SHELL_TAB_NOTE) return false;
+    if (!isShellNoteEditorTabType(t.tabTypeId)) return false;
     const nid = (t.state as { noteId?: string } | undefined)?.noteId;
     return typeof nid === "string" && idSet.has(nid);
   });
@@ -101,7 +101,7 @@ export function closeShellTabsForNoteIds(tabs: ShellTabsRegistry, noteIds: reado
   }
 
   const active = tabs.getActiveTab();
-  if (active?.tabTypeId === SHELL_TAB_NOTE) {
+  if (active && isShellNoteEditorTabType(active.tabTypeId)) {
     const nid = (active.state as { noteId?: string } | undefined)?.noteId;
     if (typeof nid === "string" && nid) {
       void store.dispatch(fetchNote(nid));

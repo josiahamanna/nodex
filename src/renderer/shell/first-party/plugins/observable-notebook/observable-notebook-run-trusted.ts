@@ -98,12 +98,13 @@ export function runObservableNotebookTrusted(opts: {
         const nodexVal = args[args.length - 2];
         const inArgs = args.slice(0, -2);
         let fn: (...a: unknown[]) => unknown;
+        const returnExpr = c.body.trim() === "" ? "undefined" : c.body;
         try {
           fn = new Function(
             ...c.inputs,
             "nodex",
             "__nb_global",
-            `"use strict"; return (async () => { const globalThis = __nb_global; const window = __nb_global; return (${c.body}); })();`,
+            `"use strict"; return (async () => { const globalThis = __nb_global; const window = __nb_global; return (${returnExpr}); })();`,
           ) as (...a: unknown[]) => unknown;
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);

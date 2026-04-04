@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNodexContributionRegistry } from "../NodexContributionContext";
 import { useShellLayoutStore } from "../layout/ShellLayoutContext";
 import { openNoteInShell } from "../openNoteInShell";
+import { openScratchMarkdownTabInShell } from "../openScratchMarkdownTabInShell";
 import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../views/ShellViewContext";
 import { store } from "../../store";
@@ -12,6 +13,7 @@ import { NODEX_MARKDOWN_OPEN_NOTE_LINK_PICKER_EVENT } from "./plugins/markdown/m
 import {
   NOTES_EXPLORER_VIEW_SIDEBAR,
   SHELL_TAB_NOTE,
+  SHELL_TAB_SCRATCH_MARKDOWN,
   SHELL_VIEW_MARKDOWN_TOC,
   SHELL_VIEW_NOTE_EDITOR,
 } from "./shellWorkspaceIds";
@@ -59,6 +61,17 @@ export function useRegisterNotesShellPlugin(): void {
     );
 
     disposers.push(
+      regs.tabs.registerTabType({
+        id: SHELL_TAB_SCRATCH_MARKDOWN,
+        title: "Scratch",
+        order: 8,
+        viewId: SHELL_VIEW_NOTE_EDITOR,
+        primarySidebarViewId: NOTES_EXPLORER_VIEW_SIDEBAR,
+        secondaryViewId: SHELL_VIEW_MARKDOWN_TOC,
+      }),
+    );
+
+    disposers.push(
       contrib.registerCommand({
         id: "nodex.notes.open",
         title: "Notes: Open note by id",
@@ -86,6 +99,40 @@ export function useRegisterNotesShellPlugin(): void {
             menuRail: regs.menuRail,
           });
         },
+      }),
+    );
+
+    disposers.push(
+      contrib.registerCommand({
+        id: "nodex.notes.openScratchMarkdownTab",
+        title: "Notes: Open scratch markdown tab",
+        category: "Notes",
+        sourcePluginId: NOTES_SHELL_PLUGIN_ID,
+        doc: "Opens or focuses the Scratch tab (one reusable root markdown note per profile, stored in localStorage).",
+        api: {
+          summary: "Ensure a scratch note exists, then open the Scratch shell tab.",
+          args: [],
+          exampleInvoke: {},
+          returns: { type: "void", description: "No-op if the workspace cannot create notes." },
+        },
+        handler: async () => {
+          await openScratchMarkdownTabInShell({
+            tabs: regs.tabs,
+            views,
+            layout,
+            menuRail: regs.menuRail,
+          });
+        },
+      }),
+    );
+
+    disposers.push(
+      regs.menuRail.registerItem({
+        id: "shell.rail.scratchMarkdown",
+        title: "Scratch",
+        icon: "M",
+        order: 17,
+        commandId: "nodex.notes.openScratchMarkdownTab",
       }),
     );
 

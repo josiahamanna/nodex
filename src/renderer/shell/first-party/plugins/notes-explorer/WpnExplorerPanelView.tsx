@@ -17,7 +17,7 @@ import { closeShellTabsForNoteIds } from "../../../shellTabClose";
 import { useShellNavigation } from "../../../useShellNavigation";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import { NODEX_SHELL_NOTE_TAB_CLOSED_EVENT } from "../../../shellTabUrlSync";
-import { SHELL_TAB_NOTE } from "../../shellWorkspaceIds";
+import { SHELL_TAB_NOTE, SHELL_TAB_SCRATCH_MARKDOWN } from "../../shellWorkspaceIds";
 import { InlineSingleLineEditable } from "../../../../components/InlineSingleLineEditable";
 import { dropAllowedOne, placementFromPointer } from "../../../../notes-sidebar/notes-sidebar-panel-dnd";
 
@@ -637,7 +637,9 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         const title = name || "Untitled";
         await window.Nodex.wpnPatchNote(renaming.id, { title });
         await loadProjectTree(renaming.projectId);
-        const tabInst = tabs.findNoteTabByNoteId(renaming.id, SHELL_TAB_NOTE);
+        const tabInst =
+          tabs.findNoteTabByNoteId(renaming.id, SHELL_TAB_NOTE) ??
+          tabs.findNoteTabByNoteId(renaming.id, SHELL_TAB_SCRATCH_MARKDOWN);
         if (tabInst) {
           tabs.updateTabPresentation(tabInst.instanceId, { title });
         }

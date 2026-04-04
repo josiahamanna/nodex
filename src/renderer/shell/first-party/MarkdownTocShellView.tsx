@@ -7,7 +7,7 @@ import { useShellActiveMainTab } from "../ShellActiveTabContext";
 import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import type { ShellViewComponentProps } from "../views/ShellViewRegistry";
 import { useShellNavigation } from "../useShellNavigation";
-import { SHELL_TAB_NOTE } from "./shellWorkspaceIds";
+import { isShellNoteEditorTabType } from "./shellWorkspaceIds";
 import type { ShellNoteTabState } from "../shellTabUrlSync";
 
 export function MarkdownTocShellView(_props: ShellViewComponentProps): React.ReactElement {
@@ -92,11 +92,7 @@ export function MarkdownTocShellView(_props: ShellViewComponentProps): React.Rea
                     style={{ paddingLeft: 8 + pad }}
                     title={r.text}
                     onClick={() => {
-                      if (
-                        tab?.instanceId &&
-                        currentNote &&
-                        tab.tabTypeId === SHELL_TAB_NOTE
-                      ) {
+                      if (tab?.instanceId && currentNote && isShellNoteEditorTabType(tab.tabTypeId)) {
                         tabs.updateTabPresentation(tab.instanceId, {
                           state: {
                             noteId: currentNote.id,
