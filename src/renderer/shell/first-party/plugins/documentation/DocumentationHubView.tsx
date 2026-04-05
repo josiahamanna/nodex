@@ -25,7 +25,7 @@ function esc(s: string): string {
 
 /**
  * **Main area** for the Documentation plugin: command API as a markdown note when the user picks a row
- * in the side panel search list (`docs.showCommand` over {@link DOCS_BC}).
+ * in the side panel (tab state merge, with {@link DOCS_BC} for other panels).
  * URL hash can target a command, bundled note, or hub heading via `state.documentation` (see `documentationShellHash`).
  */
 export function DocumentationHubView(_props: { viewId: string; title: string }): React.ReactElement {
@@ -41,6 +41,10 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     docState?.view === "command" && docState.commandId ? docState.commandId : null;
   const bundledNoteId =
     docState?.view === "bundled" && docState.noteId ? docState.noteId : null;
+  const bundledResolvingLogicalId =
+    docState?.view === "bundled" && docState.bundledResolvingLogicalId && !docState.noteId
+      ? docState.bundledResolvingLogicalId
+      : null;
   const headingSlug = docState?.headingSlug;
   const [bundledNote, setBundledNote] = useState<Note | null>(null);
   const [bundledLoading, setBundledLoading] = useState(false);
@@ -93,16 +97,12 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
         });
       }
       if (d?.type === "docs.showBundledLogical" && typeof d.logicalId === "string") {
-        void fetchBundledDocumentationNote(d.logicalId, mountKind)
-          .then((n) => {
-            const cur = regs.tabs.getActiveTab();
-            if (!cur || cur.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
-            mergeDocumentationIntoTabState(regs.tabs, cur.instanceId, {
-              view: "bundled",
-              noteId: n.id,
-            });
-          })
-          .catch(() => {});
+        mergeDocumentationIntoTabState(regs.tabs, t.instanceId, {
+          view: "bundled",
+          ...(mountKind === "wpn-postgres"
+            ? { bundledResolvingLogicalId: d.logicalId }
+            : { noteId: d.logicalId }),
+        });
       }
     };
     bc.addEventListener("message", onMsg);
@@ -113,10 +113,26 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
   }, [mountKind, regs.tabs]);
 
   useEffect(() => {
+    if (!bundledResolvingLogicalId || bundledNoteId) return;
+    let cancelled = false;
+    void fetchBundledDocumentationNote(bundledResolvingLogicalId, mountKind)
+      .then((n) => {
+        if (cancelled) return;
+        const cur = regs.tabs.getActiveTab();
+        if (!cur || cur.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
+        mergeDocumentationIntoTabState(regs.tabs, cur.instanceId, { view: "bundled", noteId: n.id });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [bundledResolvingLogicalId, bundledNoteId, mountKind, regs.tabs]);
+
+  useEffect(() => {
     if (!bundledNoteId) {
       setBundledNote(null);
       setBundledError(null);
-      setBundledLoading(false);
+      setBundledLoading(Boolean(bundledResolvingLogicalId));
       return;
     }
     setBundledLoading(true);
@@ -137,10 +153,10 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
         setBundledError(e instanceof Error ? e.message : String(e));
         setBundledLoading(false);
       });
-  }, [bundledNoteId, mountKind]);
+  }, [bundledNoteId, mountKind, bundledResolvingLogicalId]);
 
   useEffect(() => {
-    if (bundledNoteId || commandId) {
+    if (bundledNoteId || commandId || bundledResolvingLogicalId) {
       setHubNote(null);
       setHubError(null);
       setHubLoading(false);
@@ -167,7 +183,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     return () => {
       cancelled = true;
     };
-  }, [bundledNoteId, commandId, mountKind]);
+  }, [bundledNoteId, commandId, mountKind, bundledResolvingLogicalId]);
 
   const scrollDocHeadingIntoView = useCallback((slug: string) => {
     const deadline = performance.now() + 900;
@@ -206,7 +222,15 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     return () => {
       alive = false;
     };
-  }, [headingSlug, commandId, bundledNoteId, hubNote?.id, bundledNote?.id, commandMarkdownNote?.id]);
+  }, [
+    headingSlug,
+    commandId,
+    bundledNoteId,
+    bundledResolvingLogicalId,
+    hubNote?.id,
+    bundledNote?.id,
+    commandMarkdownNote?.id,
+  ]);
 
   useEffect(() => {
     const onEv = (ev: Event) => {
@@ -259,8 +283,8 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     mergeDocumentationIntoTabState(regs.tabs, t.instanceId, null);
   };
 
-  if (bundledNoteId) {
-    if (bundledLoading) {
+  if (bundledNoteId || bundledResolvingLogicalId) {
+    if (bundledResolvingLogicalId && !bundledNoteId) {
       return (
         <div className="flex h-full min-h-0 flex-col">
           <div className="flex shrink-0 justify-end border-b border-border px-3 py-2">
@@ -274,7 +298,21 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
         </div>
       );
     }
-    if (bundledError) {
+    if (bundledNoteId && bundledLoading) {
+      return (
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex shrink-0 justify-end border-b border-border px-3 py-2">
+            <button type="button" className={docHubDismissBtn} onClick={closeBundled}>
+              Close
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center p-5 text-[13px] text-muted-foreground">
+            Loading guide…
+          </div>
+        </div>
+      );
+    }
+    if (bundledNoteId && bundledError) {
       return (
         <div className="flex h-full min-h-0 flex-col">
           <div className="flex shrink-0 justify-end border-b border-border px-3 py-2">
@@ -289,7 +327,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
         </div>
       );
     }
-    if (!bundledNote) {
+    if (bundledNoteId && !bundledNote) {
       return (
         <div className="flex h-full min-h-0 flex-col">
           <div className="flex shrink-0 justify-end border-b border-border px-3 py-2">

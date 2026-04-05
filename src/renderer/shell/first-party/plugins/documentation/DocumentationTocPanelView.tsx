@@ -37,7 +37,7 @@ export function DocumentationTocPanelView(_props: ShellViewComponentProps): Reac
     () => {
       const t = regs.tabs.getActiveTab();
       const d = readDocumentationStateFromTab(t);
-      return `${t?.instanceId ?? ""}|${d?.view ?? ""}|${d?.commandId ?? ""}|${d?.noteId ?? ""}|${d?.headingSlug ?? ""}`;
+      return `${t?.instanceId ?? ""}|${d?.view ?? ""}|${d?.commandId ?? ""}|${d?.noteId ?? ""}|${d?.bundledResolvingLogicalId ?? ""}|${d?.headingSlug ?? ""}`;
     },
     () => "",
   );
@@ -96,6 +96,13 @@ export function DocumentationTocPanelView(_props: ShellViewComponentProps): Reac
           const content = typeof (note as { content?: unknown }).content === "string" ? (note as { content: string }).content : "";
           if (!cancelled) {
             setMarkdown(content);
+            setLoading(false);
+          }
+          return;
+        }
+        if (doc?.view === "bundled" && doc.bundledResolvingLogicalId && !doc.noteId) {
+          if (!cancelled) {
+            setMarkdown("");
             setLoading(false);
           }
           return;

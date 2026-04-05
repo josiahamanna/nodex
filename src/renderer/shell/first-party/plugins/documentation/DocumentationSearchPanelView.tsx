@@ -7,9 +7,13 @@ import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
 import type { AppDispatch, RootState } from "../../../../store";
 import { fetchAllNotes } from "../../../../store/notesSlice";
 import { DOCS_BC, type DocsBcMessage } from "./documentationConstants";
+import {
+  documentationShareAbsoluteUrl,
+  mergeDocumentationIntoActiveDocsTab,
+} from "./documentationShellHash";
+import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import { DocumentationLinkContextMenu, type DocumentationLinkMenuModel } from "./DocumentationLinkContextMenu";
 import { DocumentationSettingsForm } from "./DocumentationSettingsForm";
-import { documentationShareAbsoluteUrl } from "./documentationShellHash";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 
 function esc(s: string): string {
@@ -88,6 +92,7 @@ type SidebarMode = "guides" | "commands" | "settings";
 
 export function DocumentationSearchPanelView(_props: ShellViewComponentProps): React.ReactElement {
   const dispatch = useDispatch<AppDispatch>();
+  const { tabs } = useShellRegistries();
   const commands = useNodexCommands();
   const notesList = useSelector((s: RootState) => s.notes.notesList);
   const { mountKind } = useShellProjectWorkspace();
@@ -353,6 +358,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
                       title="Right-click to copy a shareable link to this guide"
                       onClick={() => {
                         setSelectedGuideId(g.id);
+                        mergeDocumentationIntoActiveDocsTab(tabs, { view: "bundled", noteId: g.id });
                         postBc({ type: "docs.showBundledDoc", noteId: g.id });
                       }}
                       onContextMenu={(e) => {
@@ -415,6 +421,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
                 title="Right-click to copy a shareable link to this command’s API doc"
                 onClick={() => {
                   setSelectedCommandId(c.id);
+                  mergeDocumentationIntoActiveDocsTab(tabs, { view: "command", commandId: c.id });
                   postBc({ type: "docs.showCommand", commandId: c.id });
                 }}
                 onContextMenu={(e) => {

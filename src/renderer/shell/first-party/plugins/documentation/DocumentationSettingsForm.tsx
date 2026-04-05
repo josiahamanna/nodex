@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import type { ShellKeyBinding } from "../../../registries/ShellKeymapRegistry";
+import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import { BUNDLED_DOC_NOTE_IDS, DOCS_BC } from "./documentationConstants";
+import { mergeDocumentationIntoActiveDocsTab } from "./documentationShellHash";
 
 type DocumentationSettingsFormProps = {
   miniOnly: boolean;
@@ -10,7 +12,8 @@ type DocumentationSettingsFormProps = {
 
 export function DocumentationSettingsForm(props: DocumentationSettingsFormProps): React.ReactElement {
   const { miniOnly, onToggleMiniOnly } = props;
-  const { keymap } = useShellRegistries();
+  const { keymap, tabs } = useShellRegistries();
+  const { mountKind } = useShellProjectWorkspace();
   const [tab, setTab] = useState<1 | 2 | 3>(1);
   const [keys, setKeys] = useState<ShellKeyBinding[]>([]);
   const [apiText, setApiText] = useState<string>("");
@@ -159,16 +162,32 @@ export function DocumentationSettingsForm(props: DocumentationSettingsFormProps)
               <button
                 type="button"
                 className="w-full rounded border border-border bg-muted/15 px-2.5 py-2 text-left text-[11px] hover:bg-muted/35"
-                onClick={() => postBc({ type: "docs.showBundledLogical", logicalId: BUNDLED_DOC_NOTE_IDS.companionUserGuide })}
+                onClick={() => {
+                  const logicalId = BUNDLED_DOC_NOTE_IDS.companionUserGuide;
+                  mergeDocumentationIntoActiveDocsTab(
+                    tabs,
+                    mountKind === "wpn-postgres"
+                      ? { view: "bundled", bundledResolvingLogicalId: logicalId }
+                      : { view: "bundled", noteId: logicalId },
+                  );
+                  postBc({ type: "docs.showBundledLogical", logicalId });
+                }}
               >
                 User guide (short)
               </button>
               <button
                 type="button"
                 className="w-full rounded border border-border bg-muted/15 px-2.5 py-2 text-left text-[11px] hover:bg-muted/35"
-                onClick={() =>
-                  postBc({ type: "docs.showBundledLogical", logicalId: BUNDLED_DOC_NOTE_IDS.companionPluginAuthoring })
-                }
+                onClick={() => {
+                  const logicalId = BUNDLED_DOC_NOTE_IDS.companionPluginAuthoring;
+                  mergeDocumentationIntoActiveDocsTab(
+                    tabs,
+                    mountKind === "wpn-postgres"
+                      ? { view: "bundled", bundledResolvingLogicalId: logicalId }
+                      : { view: "bundled", noteId: logicalId },
+                  );
+                  postBc({ type: "docs.showBundledLogical", logicalId });
+                }}
               >
                 Plugin authoring (short)
               </button>

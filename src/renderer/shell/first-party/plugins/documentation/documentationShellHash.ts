@@ -8,6 +8,11 @@ export type DocumentationShellTabState = {
   commandId?: string;
   noteId?: string;
   headingSlug?: string;
+  /**
+   * WPN Postgres: logical bundled id before `fetchBundledDocumentationNote` resolves to a concrete `noteId`.
+   * Omitted once `noteId` is set. Not encoded in the URL hash (ephemeral).
+   */
+  bundledResolvingLogicalId?: string;
 };
 
 /** Matches heading `id`s from {@link MarkdownRenderer} / `baseSlug` (lowercase). */
@@ -64,7 +69,8 @@ export function hashDocumentationPathFromState(doc: DocumentationShellTabState |
     if (doc.headingSlug && SLUG_RE.test(doc.headingSlug)) return `/c/${enc}/${doc.headingSlug}`;
     return `/c/${enc}`;
   }
-  if (doc.view === "bundled" && doc.noteId) {
+  if (doc.view === "bundled") {
+    if (!doc.noteId) return "";
     const enc = encodeURIComponent(doc.noteId);
     if (doc.headingSlug && SLUG_RE.test(doc.headingSlug)) return `/n/${enc}/${doc.headingSlug}`;
     return `/n/${enc}`;
@@ -88,8 +94,14 @@ export function readDocumentationStateFromTab(tab: ShellTabInstance | null): Doc
   }
   if (view === "bundled") {
     const noteId = typeof d.noteId === "string" ? d.noteId : "";
-    if (!noteId) return null;
-    return headingSlug ? { view: "bundled", noteId, headingSlug } : { view: "bundled", noteId };
+    const bundledResolvingLogicalId =
+      typeof d.bundledResolvingLogicalId === "string" ? d.bundledResolvingLogicalId.trim() : "";
+    if (!noteId && !bundledResolvingLogicalId) return null;
+    const base: DocumentationShellTabState = { view: "bundled" };
+    if (noteId) base.noteId = noteId;
+    if (bundledResolvingLogicalId) base.bundledResolvingLogicalId = bundledResolvingLogicalId;
+    if (headingSlug) base.headingSlug = headingSlug;
+    return base;
   }
   if (view === "hub") {
     if (!headingSlug) return null;
@@ -106,6 +118,7 @@ function docStateEqual(a: DocumentationShellTabState | null, b: DocumentationShe
     a.view === b.view &&
     a.commandId === b.commandId &&
     a.noteId === b.noteId &&
+    a.bundledResolvingLogicalId === b.bundledResolvingLogicalId &&
     slug(a.headingSlug) === slug(b.headingSlug)
   );
 }
@@ -167,6 +180,17 @@ export function mergeDocumentationIntoTabState(
   tabs.updateTabPresentation(instanceId, { state: merged });
 }
 
+/** Applies documentation navigation to the active tab when it is the Documentation shell tab. */
+export function mergeDocumentationIntoActiveDocsTab(
+  tabs: ShellTabsRegistry,
+  next: DocumentationShellTabState | null,
+): boolean {
+  const t = tabs.getActiveTab();
+  if (!t || t.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return false;
+  mergeDocumentationIntoTabState(tabs, t.instanceId, next);
+  return true;
+}
+
 /** Next persisted docs state for the same page with an updated heading (hub overview when `cur` is null). */
 export function documentationStateWithHeading(
   cur: DocumentationShellTabState | null,
@@ -177,6 +201,9 @@ export function documentationStateWithHeading(
   }
   if (cur?.view === "bundled" && cur.noteId) {
     return { view: "bundled", noteId: cur.noteId, headingSlug: slug };
+  }
+  if (cur?.view === "bundled" && cur.bundledResolvingLogicalId) {
+    return { view: "bundled", bundledResolvingLogicalId: cur.bundledResolvingLogicalId, headingSlug: slug };
   }
   return { view: "hub", headingSlug: slug };
 }

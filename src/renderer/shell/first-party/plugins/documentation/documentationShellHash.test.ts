@@ -96,6 +96,22 @@ test("readDocumentationStateFromTab ignores invalid documentation payloads", () 
     readDocumentationStateFromTab(docsTab({ documentation: { view: "bundled", noteId: "n1" } })),
     { view: "bundled", noteId: "n1" },
   );
+  assert.deepEqual(
+    readDocumentationStateFromTab(
+      docsTab({ documentation: { view: "bundled", bundledResolvingLogicalId: "nodex-companion-user-guide" } }),
+    ),
+    { view: "bundled", bundledResolvingLogicalId: "nodex-companion-user-guide" },
+  );
+});
+
+test("hashDocumentationPathFromState omits ephemeral bundled resolving state from URL", () => {
+  assert.equal(
+    hashDocumentationPathFromState({
+      view: "bundled",
+      bundledResolvingLogicalId: "nodex-companion-user-guide",
+    }),
+    "",
+  );
 });
 
 test("documentation tab shell hash prefixes bundled deep link with instance id", () => {
