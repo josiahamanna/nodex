@@ -1,6 +1,6 @@
-import { parseInternalMarkdownNoteLink } from "./markdown-internal-note-href.ts";
-import { canonicalVfsPathFromLinkRow, markdownVfsNoteHref } from "./note-vfs-path.ts";
-import type { WpnNoteWithContextListItem } from "./wpn-v2-types.ts";
+import { parseInternalMarkdownNoteLink } from "./markdown-internal-note-href";
+import { canonicalVfsPathFromLinkRow, markdownVfsNoteHref } from "./note-vfs-path";
+import type { WpnNoteWithContextListItem } from "./wpn-v2-types";
 
 /**
  * When a note title changes, its canonical VFS path `Workspace/Project/Title` changes.
