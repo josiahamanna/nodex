@@ -96,8 +96,9 @@ export function MarkdownNoteLinkPickerModal({
         <div className="border-b border-border px-3 py-2.5">
           <p className="text-[13px] font-medium text-foreground">Link to note</p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Search by title, path, or note id. Inserts{" "}
-            <span className="font-mono text-[10px]">[text](#/n/&lt;id&gt;)</span>.
+            Search by title or path. Markdown inserts{" "}
+            <span className="font-mono text-[10px]">[text](#/n/&lt;id&gt;)</span>; MDX uses{" "}
+            <span className="font-mono text-[10px]">#/w/Workspace/Project/Title</span>.
           </p>
           <input
             ref={inputRef}

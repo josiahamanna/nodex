@@ -1,12 +1,15 @@
-export type InternalMarkdownNoteLink = {
-  noteId: string;
-  /** Single path segment; matches heading `id` in preview (no `/`). */
-  markdownHeadingSlug?: string;
-};
+import {
+  markdownVfsNoteHref,
+  parseVfsNoteHashPath,
+} from "./note-vfs-path";
+
+export type InternalMarkdownNoteLink =
+  | { kind: "noteId"; noteId: string; markdownHeadingSlug?: string }
+  | { kind: "vfs"; vfsPath: string; markdownHeadingSlug?: string };
 
 /**
  * Parses a markdown link `href` that targets another note via shell hash routes.
- * Accepts `#/n/<id>`, `#/n/<id>/<slug>`, `/n/<id>`, `n/<id>`, and absolute URLs whose hash is `#/n/...`.
+ * Supports `#/n/<id>[/slug]`, `#/w/<vfs path>[/slug]`, `/n/…`, `n/…`, `w/…`, and absolute URLs whose hash uses those forms.
  */
 export function parseInternalMarkdownNoteLink(href: string): InternalMarkdownNoteLink | null {
   const raw = href.trim();
@@ -19,26 +22,41 @@ export function parseInternalMarkdownNoteLink(href: string): InternalMarkdownNot
   }
 
   path = path.replace(/^\/+/, "");
-  if (!path.startsWith("n/")) {
-    return null;
+
+  if (path.startsWith("w/")) {
+    const rest = path.slice("w/".length);
+    const parsed = parseVfsNoteHashPath(rest);
+    if (!parsed?.vfsPath) return null;
+    return {
+      kind: "vfs",
+      vfsPath: parsed.vfsPath,
+      markdownHeadingSlug: parsed.markdownHeadingSlug,
+    };
   }
 
-  const rest = path.slice("n/".length);
-  const parts = rest
-    .split("/")
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
-  const noteId = parts[0];
-  if (!noteId) return null;
-  const slug = parts[1];
-  if (slug && !/^[a-z0-9-]+$/i.test(slug)) {
-    return { noteId };
+  if (path.startsWith("n/")) {
+    const rest = path.slice("n/".length);
+    const parts = rest
+      .split("/")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    const noteId = parts[0];
+    if (!noteId) return null;
+    const slug = parts[1];
+    if (slug && !/^[a-z0-9-]+$/i.test(slug)) {
+      return { kind: "noteId", noteId };
+    }
+    return slug
+      ? { kind: "noteId", noteId, markdownHeadingSlug: slug }
+      : { kind: "noteId", noteId };
   }
-  return slug ? { noteId, markdownHeadingSlug: slug } : { noteId };
+
+  return null;
 }
 
 export function parseNoteIdFromInternalMarkdownHref(href: string): string | null {
-  return parseInternalMarkdownNoteLink(href)?.noteId ?? null;
+  const p = parseInternalMarkdownNoteLink(href);
+  return p?.kind === "noteId" ? p.noteId : null;
 }
 
 export function markdownInternalNoteHref(noteId: string, markdownHeadingSlug?: string): string {
@@ -47,7 +65,9 @@ export function markdownInternalNoteHref(noteId: string, markdownHeadingSlug?: s
     : `#/n/${noteId}`;
 }
 
-/** Markdown `(...)` destinations only; used for backlink indexing. */
+export { markdownVfsNoteHref };
+
+/** Markdown `(...)` destinations only; used for backlink indexing (note ids only). */
 export function collectReferencedNoteIdsFromMarkdown(text: string): Set<string> {
   const out = new Set<string>();
   const re = /\[([^\]]*)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;

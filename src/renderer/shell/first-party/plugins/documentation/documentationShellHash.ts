@@ -13,6 +13,8 @@ export type DocumentationShellTabState = {
    * Omitted once `noteId` is set. Not encoded in the URL hash (ephemeral).
    */
   bundledResolvingLogicalId?: string;
+  /** Explorer VFS path `Workspace/Project/Title`; resolved to `noteId` in the Documentation hub. */
+  bundledVfsPath?: string;
 };
 
 /** Matches heading `id`s from {@link MarkdownRenderer} / `baseSlug` (lowercase). */
@@ -28,7 +30,8 @@ function safeDecode(s: string): string {
 
 /**
  * Path after tab instance: `h`, `h/<slug>`, `c/<commandId>`, `c/<commandId>/<slug>`,
- * `n/<noteId>`, `n/<noteId>/<slug>` (note id segment is URI-encoded).
+ * `n/<noteId>`, `n/<noteId>/<slug>` (note id segment is URI-encoded),
+ * `p/<vfsSegment>/…` optional trailing heading slug.
  */
 export function documentationStateFromPathSegments(segments: string[]): DocumentationShellTabState | null {
   if (segments.length === 0) return null;
@@ -55,6 +58,18 @@ export function documentationStateFromPathSegments(segments: string[]): Document
     }
     return { view: "bundled", noteId };
   }
+  if (a === "p" && segments.length >= 2) {
+    const decoded = segments.slice(1).map(safeDecode);
+    const last = decoded[decoded.length - 1]!;
+    if (decoded.length >= 2 && SLUG_RE.test(last)) {
+      return {
+        view: "bundled",
+        bundledVfsPath: decoded.slice(0, -1).join("/"),
+        headingSlug: last,
+      };
+    }
+    return { view: "bundled", bundledVfsPath: decoded.join("/") };
+  }
   return null;
 }
 
@@ -70,10 +85,21 @@ export function hashDocumentationPathFromState(doc: DocumentationShellTabState |
     return `/c/${enc}`;
   }
   if (doc.view === "bundled") {
-    if (!doc.noteId) return "";
-    const enc = encodeURIComponent(doc.noteId);
-    if (doc.headingSlug && SLUG_RE.test(doc.headingSlug)) return `/n/${enc}/${doc.headingSlug}`;
-    return `/n/${enc}`;
+    if (doc.noteId) {
+      const enc = encodeURIComponent(doc.noteId);
+      if (doc.headingSlug && SLUG_RE.test(doc.headingSlug)) return `/n/${enc}/${doc.headingSlug}`;
+      return `/n/${enc}`;
+    }
+    if (doc.bundledVfsPath) {
+      const enc = doc.bundledVfsPath
+        .split("/")
+        .filter((p) => p.length > 0)
+        .map((p) => encodeURIComponent(p))
+        .join("/");
+      if (doc.headingSlug && SLUG_RE.test(doc.headingSlug)) return `/p/${enc}/${doc.headingSlug}`;
+      return `/p/${enc}`;
+    }
+    return "";
   }
   return "";
 }
@@ -96,10 +122,13 @@ export function readDocumentationStateFromTab(tab: ShellTabInstance | null): Doc
     const noteId = typeof d.noteId === "string" ? d.noteId : "";
     const bundledResolvingLogicalId =
       typeof d.bundledResolvingLogicalId === "string" ? d.bundledResolvingLogicalId.trim() : "";
-    if (!noteId && !bundledResolvingLogicalId) return null;
+    const bundledVfsPath =
+      typeof d.bundledVfsPath === "string" ? d.bundledVfsPath.trim() : "";
+    if (!noteId && !bundledResolvingLogicalId && !bundledVfsPath) return null;
     const base: DocumentationShellTabState = { view: "bundled" };
     if (noteId) base.noteId = noteId;
     if (bundledResolvingLogicalId) base.bundledResolvingLogicalId = bundledResolvingLogicalId;
+    if (bundledVfsPath) base.bundledVfsPath = bundledVfsPath;
     if (headingSlug) base.headingSlug = headingSlug;
     return base;
   }
@@ -119,6 +148,7 @@ function docStateEqual(a: DocumentationShellTabState | null, b: DocumentationShe
     a.commandId === b.commandId &&
     a.noteId === b.noteId &&
     a.bundledResolvingLogicalId === b.bundledResolvingLogicalId &&
+    a.bundledVfsPath === b.bundledVfsPath &&
     slug(a.headingSlug) === slug(b.headingSlug)
   );
 }
@@ -204,6 +234,9 @@ export function documentationStateWithHeading(
   }
   if (cur?.view === "bundled" && cur.bundledResolvingLogicalId) {
     return { view: "bundled", bundledResolvingLogicalId: cur.bundledResolvingLogicalId, headingSlug: slug };
+  }
+  if (cur?.view === "bundled" && cur.bundledVfsPath && !cur.noteId) {
+    return { view: "bundled", bundledVfsPath: cur.bundledVfsPath, headingSlug: slug };
   }
   return { view: "hub", headingSlug: slug };
 }

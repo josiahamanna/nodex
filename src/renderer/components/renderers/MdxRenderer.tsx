@@ -6,6 +6,8 @@ import remarkGfm from "remark-gfm";
 import remarkMdx from "remark-mdx";
 import type { Note } from "@nodex/ui-types";
 import { isMdxBundledTrust } from "../../utils/note-mdx-format";
+import { getNodexMdxFacadeComponentMap } from "../../nodex-mdx-facades/component-map";
+import { remarkNodexMdxFacadeImports } from "../../utils/remark-nodex-mdx-facade-imports";
 import { remarkNodexMdxTrust } from "../../utils/remark-nodex-mdx-trust";
 import {
   DocLink,
@@ -128,9 +130,10 @@ export function MdxRenderer({
 }: MdxRendererProps): React.ReactElement {
   const trustMode = isMdxBundledTrust(note) ? "bundled" : "user";
   const trustRemarkPlugin = useMemo(() => remarkNodexMdxTrust(trustMode), [trustMode]);
+  const facadeImportsRemark = useMemo(() => remarkNodexMdxFacadeImports(), []);
   const remarkPlugins = useMemo(
-    () => [remarkGfm, remarkMdx, trustRemarkPlugin],
-    [trustRemarkPlugin],
+    () => [remarkGfm, remarkMdx, facadeImportsRemark, trustRemarkPlugin],
+    [facadeImportsRemark, trustRemarkPlugin],
   );
 
   const { mdxComponents: uiMdx } = useNodexMarkdownUiComponents({
@@ -142,6 +145,7 @@ export function MdxRenderer({
 
   const mdxMap = useMemo(
     () => ({
+      ...getNodexMdxFacadeComponentMap(),
       ...uiMdx,
       ObservableEmbed,
       DocLink,

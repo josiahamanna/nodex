@@ -8,6 +8,7 @@ import {
   hashDocumentationPathFromState,
   type DocumentationShellTabState,
 } from "./first-party/plugins/documentation/documentationShellHash";
+import { parseVfsNoteHashPath } from "../../shared/note-vfs-path";
 import {
   type ShellWelcomeTabState,
   tryParseWelcomeShellHash,
@@ -25,6 +26,7 @@ export type ShellNoteTabState = {
 
 export type ParsedShellHash =
   | { kind: "note"; noteId: string; markdownHeadingSlug?: string }
+  | { kind: "vfsNote"; vfsPath: string; markdownHeadingSlug?: string }
   | { kind: "welcome"; segment: "" | WelcomeShellUrlSegment }
   | { kind: "tab"; instanceId: string; documentationSegments: string[] };
 
@@ -48,6 +50,14 @@ export function parseShellHash(): ParsedShellHash | null {
   if (typeof window === "undefined") return null;
   const raw = window.location.hash.replace(/^#/, "").trim();
   if (!raw) return null;
+  if (raw.startsWith("/w/")) {
+    const parsed = parseVfsNoteHashPath(raw.slice("/w/".length));
+    if (parsed?.vfsPath) return { kind: "vfsNote", ...parsed };
+  }
+  if (raw.startsWith("w/")) {
+    const parsed = parseVfsNoteHashPath(raw.slice("w/".length));
+    if (parsed?.vfsPath) return { kind: "vfsNote", ...parsed };
+  }
   if (raw.startsWith("/n/")) {
     const parsed = parseNoteHashPath(raw.slice("/n/".length));
     if (parsed) return { kind: "note", ...parsed };

@@ -39,6 +39,7 @@ import {
   replaceWindowHash,
   type ShellNoteTabState,
 } from "./shellTabUrlSync";
+import { resolveNoteIdFromVfsPath } from "../utils/resolve-note-vfs-path";
 import { applyShellTabFromUrlHash, applyShellWelcomeHash } from "./shellRailNavigation";
 import { useShellNavigation } from "./useShellNavigation";
 import { ShellViewHost } from "./views/ShellViewHost";
@@ -217,6 +218,21 @@ function SortableTabRow({
       </button>
     </div>
   );
+}
+
+function applyShellHashVfsNoteTarget(
+  tabs: ShellTabsRegistry,
+  openNoteById: (id: string, opts?: { markdownHeadingSlug?: string }) => void,
+  parsed: { vfsPath: string; markdownHeadingSlug?: string },
+): void {
+  void resolveNoteIdFromVfsPath(parsed.vfsPath).then((id) => {
+    if (!id) return;
+    applyShellHashNoteTarget(tabs, openNoteById, {
+      kind: "note",
+      noteId: id,
+      markdownHeadingSlug: parsed.markdownHeadingSlug,
+    });
+  });
 }
 
 function applyShellHashNoteTarget(
@@ -401,6 +417,8 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       const parsed = parseShellHash();
       if (parsed?.kind === "note") {
         applyShellHashNoteTarget(tabs, openNoteById, parsed);
+      } else if (parsed?.kind === "vfsNote") {
+        applyShellHashVfsNoteTarget(tabs, openNoteById, parsed);
       } else if (parsed?.kind === "welcome") {
         applyShellWelcomeHash(parsed.segment, shellNavDeps, invokeCommand);
       } else if (parsed?.kind === "tab") {
@@ -451,6 +469,8 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       const parsed = parseShellHash();
       if (parsed?.kind === "note") {
         applyShellHashNoteTarget(tabs, openNoteById, parsed);
+      } else if (parsed?.kind === "vfsNote") {
+        applyShellHashVfsNoteTarget(tabs, openNoteById, parsed);
       } else if (parsed?.kind === "welcome") {
         applyShellWelcomeHash(parsed.segment, shellNavDeps, invokeCommand);
       } else if (parsed?.kind === "tab") {

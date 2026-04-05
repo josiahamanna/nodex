@@ -4,6 +4,7 @@ import {
   parseInternalMarkdownNoteLink,
   type InternalMarkdownNoteLink,
 } from "../../shared/markdown-internal-note-href";
+import { resolveNoteIdFromVfsPath } from "../utils/resolve-note-vfs-path";
 import { useToast } from "../toast/ToastContext";
 import { ctxBtn } from "../notes-sidebar/notes-sidebar-utils";
 import { openExternalNavigationUrl } from "./openExternalNavigationUrl";
@@ -207,9 +208,17 @@ export function GlobalContextMenuHost(): React.ReactElement | null {
               role="menuitem"
               className={ctxBtn}
               onClick={() => {
+                const internal = link.internal!;
                 close();
-                openNoteById(link.internal!.noteId, {
-                  markdownHeadingSlug: link.internal!.markdownHeadingSlug,
+                if (internal.kind === "noteId") {
+                  openNoteById(internal.noteId, {
+                    markdownHeadingSlug: internal.markdownHeadingSlug,
+                  });
+                  return;
+                }
+                void resolveNoteIdFromVfsPath(internal.vfsPath).then((id) => {
+                  if (!id) return;
+                  openNoteById(id, { markdownHeadingSlug: internal.markdownHeadingSlug });
                 });
               }}
             >
@@ -220,10 +229,21 @@ export function GlobalContextMenuHost(): React.ReactElement | null {
               role="menuitem"
               className={ctxBtn}
               onClick={() => {
+                const internal = link.internal!;
                 close();
-                openNoteById(link.internal!.noteId, {
-                  markdownHeadingSlug: link.internal!.markdownHeadingSlug,
-                  newTab: true,
+                if (internal.kind === "noteId") {
+                  openNoteById(internal.noteId, {
+                    markdownHeadingSlug: internal.markdownHeadingSlug,
+                    newTab: true,
+                  });
+                  return;
+                }
+                void resolveNoteIdFromVfsPath(internal.vfsPath).then((id) => {
+                  if (!id) return;
+                  openNoteById(id, {
+                    markdownHeadingSlug: internal.markdownHeadingSlug,
+                    newTab: true,
+                  });
                 });
               }}
             >

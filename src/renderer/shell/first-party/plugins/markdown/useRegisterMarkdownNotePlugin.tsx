@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import type { NoteTypeReactEditorProps } from "../../../nodex-contribution-registry";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import { MarkdownNoteEditor } from "./MarkdownNoteEditor";
+import { MdxNoteEditor } from "./MdxNoteEditor";
 
 /**
  * System note plugin: registers the in-app editor for `markdown`, `mdx`, and `root` note types.
@@ -19,9 +20,14 @@ export function useRegisterMarkdownNotePlugin(): void {
         />
       );
     }
+    function MdxNoteEditorHost(props: NoteTypeReactEditorProps) {
+      return (
+        <MdxNoteEditor note={props.note} persist={props.persistToNotesStore !== false} />
+      );
+    }
     const disposers = [
       contrib.registerNoteTypeReactEditor("markdown", MarkdownNoteEditorHost),
-      contrib.registerNoteTypeReactEditor("mdx", MarkdownNoteEditorHost),
+      contrib.registerNoteTypeReactEditor("mdx", MdxNoteEditorHost),
       contrib.registerNoteTypeReactEditor("root", MarkdownNoteEditorHost),
     ];
     return () => {

@@ -1,3 +1,6 @@
+/* User-authored MDX often stores class names in the DB, not in repo source files, so Tailwind
+   content globs will not see them. Prefer styling via @nodex/ui; raw utilities need an explicit
+   safelist if you expand that policy. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {

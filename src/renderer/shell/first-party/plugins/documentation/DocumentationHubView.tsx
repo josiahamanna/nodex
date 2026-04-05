@@ -9,6 +9,7 @@ import { BUNDLED_DOC_NOTE_IDS, DOCS_BC, type DocsBcMessage } from "./documentati
 import { fetchBundledDocumentationNote } from "./documentationFetchBundledNote";
 import { resolvedCommandDocToMarkdown } from "./documentationCommandMarkdown";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
+import { resolveNoteIdFromVfsPath } from "../../../../utils/resolve-note-vfs-path";
 import {
   DOCUMENTATION_SHELL_TAB_TYPE_ID,
   mergeDocumentationHeadingSlug,
@@ -44,6 +45,10 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
   const bundledResolvingLogicalId =
     docState?.view === "bundled" && docState.bundledResolvingLogicalId && !docState.noteId
       ? docState.bundledResolvingLogicalId
+      : null;
+  const bundledVfsPathResolving =
+    docState?.view === "bundled" && docState.bundledVfsPath && !docState.noteId
+      ? docState.bundledVfsPath
       : null;
   const headingSlug = docState?.headingSlug;
   const [bundledNote, setBundledNote] = useState<Note | null>(null);
@@ -129,10 +134,29 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
   }, [bundledResolvingLogicalId, bundledNoteId, mountKind, regs.tabs]);
 
   useEffect(() => {
+    if (!bundledVfsPathResolving || bundledNoteId) return;
+    let cancelled = false;
+    void resolveNoteIdFromVfsPath(bundledVfsPathResolving).then((id) => {
+      if (cancelled || !id) return;
+      const cur = regs.tabs.getActiveTab();
+      if (!cur || cur.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
+      const hs = readDocumentationStateFromTab(cur)?.headingSlug;
+      mergeDocumentationIntoTabState(regs.tabs, cur.instanceId, {
+        view: "bundled",
+        noteId: id,
+        headingSlug: hs,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bundledVfsPathResolving, bundledNoteId, regs.tabs]);
+
+  useEffect(() => {
     if (!bundledNoteId) {
       setBundledNote(null);
       setBundledError(null);
-      setBundledLoading(Boolean(bundledResolvingLogicalId));
+      setBundledLoading(Boolean(bundledResolvingLogicalId || bundledVfsPathResolving));
       return;
     }
     setBundledLoading(true);
@@ -153,10 +177,10 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
         setBundledError(e instanceof Error ? e.message : String(e));
         setBundledLoading(false);
       });
-  }, [bundledNoteId, mountKind, bundledResolvingLogicalId]);
+  }, [bundledNoteId, mountKind, bundledResolvingLogicalId, bundledVfsPathResolving]);
 
   useEffect(() => {
-    if (bundledNoteId || commandId || bundledResolvingLogicalId) {
+    if (bundledNoteId || commandId || bundledResolvingLogicalId || bundledVfsPathResolving) {
       setHubNote(null);
       setHubError(null);
       setHubLoading(false);
@@ -183,7 +207,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     return () => {
       cancelled = true;
     };
-  }, [bundledNoteId, commandId, mountKind, bundledResolvingLogicalId]);
+  }, [bundledNoteId, commandId, mountKind, bundledResolvingLogicalId, bundledVfsPathResolving]);
 
   const scrollDocHeadingIntoView = useCallback((slug: string) => {
     const deadline = performance.now() + 900;
@@ -227,6 +251,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     commandId,
     bundledNoteId,
     bundledResolvingLogicalId,
+    bundledVfsPathResolving,
     hubNote?.id,
     bundledNote?.id,
     commandMarkdownNote?.id,
@@ -258,12 +283,25 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     (link: InternalMarkdownNoteLink) => {
       const t = regs.tabs.getActiveTab();
       if (!t || t.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
-      const next: DocumentationShellTabState = {
-        view: "bundled",
-        noteId: link.noteId,
-        headingSlug: link.markdownHeadingSlug,
-      };
-      mergeDocumentationIntoTabState(regs.tabs, t.instanceId, next);
+      if (link.kind === "noteId") {
+        const next: DocumentationShellTabState = {
+          view: "bundled",
+          noteId: link.noteId,
+          headingSlug: link.markdownHeadingSlug,
+        };
+        mergeDocumentationIntoTabState(regs.tabs, t.instanceId, next);
+        return;
+      }
+      void resolveNoteIdFromVfsPath(link.vfsPath).then((id) => {
+        if (!id) return;
+        const cur = regs.tabs.getActiveTab();
+        if (!cur || cur.tabTypeId !== DOCUMENTATION_SHELL_TAB_TYPE_ID) return;
+        mergeDocumentationIntoTabState(regs.tabs, cur.instanceId, {
+          view: "bundled",
+          noteId: id,
+          headingSlug: link.markdownHeadingSlug,
+        });
+      });
     },
     [regs.tabs],
   );

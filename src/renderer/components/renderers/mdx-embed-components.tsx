@@ -1,6 +1,7 @@
 import React from "react";
 import {
   markdownInternalNoteHref,
+  markdownVfsNoteHref,
   parseInternalMarkdownNoteLink,
 } from "../../utils/markdown-internal-note-href";
 import { observableEmbedSrc } from "./observable-embed-url";
@@ -86,7 +87,12 @@ export function DocLink({
   }
   const internal = parseInternalMarkdownNoteLink(t);
   if (internal) {
-    const canonical = markdownInternalNoteHref(internal.noteId, internal.markdownHeadingSlug);
+    const canonical =
+      internal.kind === "vfs"
+        ? markdownVfsNoteHref(internal.vfsPath, internal.markdownHeadingSlug)
+        : markdownInternalNoteHref(internal.noteId, internal.markdownHeadingSlug);
+    const fallbackLabel =
+      internal.kind === "vfs" ? internal.vfsPath.split("/").pop() ?? internal.vfsPath : internal.noteId;
     return (
       <a
         href={canonical}
@@ -103,7 +109,7 @@ export function DocLink({
           }
         }}
       >
-        {children ?? internal.noteId}
+        {children ?? fallbackLabel}
       </a>
     );
   }

@@ -44,6 +44,21 @@ test("documentationStateFromPathSegments parses bundled note", () => {
   });
 });
 
+test("documentationStateFromPathSegments parses bundled vfs path and optional heading", () => {
+  assert.deepEqual(documentationStateFromPathSegments(["p", "Documentation", "Hub", "Overview"]), {
+    view: "bundled",
+    bundledVfsPath: "Documentation/Hub/Overview",
+  });
+  assert.deepEqual(
+    documentationStateFromPathSegments(["p", "Documentation", "Hub", "Overview", "section-slug"]),
+    {
+      view: "bundled",
+      bundledVfsPath: "Documentation/Hub/Overview",
+      headingSlug: "section-slug",
+    },
+  );
+});
+
 test("hashDocumentationPathFromState round-trips command id with encoding", () => {
   const st = { view: "command" as const, commandId: "a.b", headingSlug: "args" };
   const path = hashDocumentationPathFromState(st);
@@ -111,6 +126,34 @@ test("hashDocumentationPathFromState omits ephemeral bundled resolving state fro
       bundledResolvingLogicalId: "nodex-companion-user-guide",
     }),
     "",
+  );
+});
+
+test("hashDocumentationPathFromState encodes bundled vfs path", () => {
+  const st = {
+    view: "bundled" as const,
+    bundledVfsPath: "Documentation/Hub/Overview",
+    headingSlug: "intro",
+  };
+  const path = hashDocumentationPathFromState(st);
+  assert.equal(path, "/p/Documentation/Hub/Overview/intro");
+  const parsed = documentationStateFromPathSegments(path.split("/").filter(Boolean));
+  assert.deepEqual(parsed, st);
+});
+
+test("readDocumentationStateFromTab reads bundledVfsPath", () => {
+  assert.deepEqual(
+    readDocumentationStateFromTab(
+      docsTab({ documentation: { view: "bundled", bundledVfsPath: "A/B/C" } }),
+    ),
+    { view: "bundled", bundledVfsPath: "A/B/C" },
+  );
+});
+
+test("documentationShareHashFragment includes p/ for vfs-only bundled state", () => {
+  assert.equal(
+    documentationShareHashFragment({ view: "bundled", bundledVfsPath: "X/Y/Z" }),
+    "#/t/plugin.documentation.tab/p/X/Y/Z",
   );
 });
 

@@ -5,20 +5,20 @@ import { useDispatch } from "react-redux";
 import type { Note } from "@nodex/ui-types";
 import type { AppDispatch } from "../../../../store";
 import { patchNoteMetadata, saveNoteContent } from "../../../../store/notesSlice";
-import MarkdownRenderer from "../../../../components/renderers/MarkdownRenderer";
+import { MdxRenderer } from "../../../../components/renderers/MdxRenderer";
 import { useAuth } from "../../../../auth/AuthContext";
 import { useTheme } from "../../../../theme/ThemeContext";
-import { markdownInternalNoteHref } from "../../../../utils/markdown-internal-note-href";
+import { canonicalVfsPathFromLinkRow, markdownVfsNoteHref } from "../../../../../shared/note-vfs-path";
 import { MarkdownNoteLinkPickerModal } from "./MarkdownNoteLinkPickerModal";
 import { MarkdownNoteLinkAutocompletePopover } from "./MarkdownNoteLinkAutocompletePopover";
 import { NODEX_MARKDOWN_OPEN_NOTE_LINK_PICKER_EVENT } from "./markdownNoteLinkEvents";
 import { findActiveWikiLinkTrigger } from "./markdownWikiLinkTrigger";
 import {
-  markdownNoteEditorExtensions,
-  type MarkdownNoteOnBlurRef,
-  type MarkdownNoteSelectionSyncRef,
-  type MarkdownNoteWikiKeymapState,
-} from "./markdown-note-editor-codemirror";
+  mdxNoteEditorExtensions,
+  type MdxNoteOnBlurRef,
+  type MdxNoteSelectionSyncRef,
+  type MdxNoteWikiKeymapState,
+} from "./mdx-note-editor-codemirror";
 import { useNodexNoteModeLine } from "../../../useNodexNoteModeLine";
 import { useShellActiveMainTab } from "../../../ShellActiveTabContext";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
@@ -26,7 +26,7 @@ import { isShellNoteEditorTabType } from "../../shellWorkspaceIds";
 import type { ShellNoteTabState } from "../../../shellTabUrlSync";
 import { fetchWpnNoteLinkIndex, filterWpnNoteLinkRows, type WpnNoteLinkRow } from "./wpnNoteLinkIndex";
 
-type MarkdownViewMode = "editor" | "preview" | "both";
+type MdxViewMode = "editor" | "preview" | "both";
 
 function lineColAt(text: string, offset: number): { line: number; col: number } {
   const head = Math.max(0, Math.min(offset, text.length));
@@ -37,10 +37,9 @@ function lineColAt(text: string, offset: number): { line: number; col: number } 
 }
 
 /**
- * System markdown note editor (CodeMirror 6 + debounced react-markdown preview).
- * Persists via batched writes: one save per animation frame while typing, plus immediate flush on blur and when leaving the note.
+ * MDX note editor: CodeMirror + debounced live MDX preview (same React tree as the shell).
  */
-export function MarkdownNoteEditor({
+export function MdxNoteEditor({
   note,
   persist,
 }: {
@@ -65,7 +64,7 @@ export function MarkdownNoteEditor({
   const cmResizeRafRef = useRef(0);
   const lastCaretRef = useRef({ start: 0, end: 0 });
   const wikiIndexCacheRef = useRef<WpnNoteLinkRow[] | null>(null);
-  const wikiKeymapRef = useRef<MarkdownNoteWikiKeymapState>({
+  const wikiKeymapRef = useRef<MdxNoteWikiKeymapState>({
     readOnly: false,
     active: false,
     rowCount: 0,
@@ -74,8 +73,8 @@ export function MarkdownNoteEditor({
     onEnter: () => {},
     onEscape: () => {},
   });
-  const selectionSyncRef: MarkdownNoteSelectionSyncRef = useRef(null);
-  const onBlurRef: MarkdownNoteOnBlurRef = useRef(null);
+  const selectionSyncRef: MdxNoteSelectionSyncRef = useRef(null);
+  const onBlurRef: MdxNoteOnBlurRef = useRef(null);
 
   const [linkPickerOpen, setLinkPickerOpen] = useState(false);
   const [sel, setSel] = useState({ start: 0, end: 0 });
@@ -93,7 +92,7 @@ export function MarkdownNoteEditor({
     meta.readOnly === true ||
     (meta.bundledDoc === true && !isAdmin);
 
-  const [viewMode, setViewMode] = useState<MarkdownViewMode>(() => {
+  const [viewMode, setViewMode] = useState<MdxViewMode>(() => {
     const raw =
       note.metadata && typeof note.metadata === "object"
         ? (note.metadata as Record<string, unknown>).markdownViewMode
@@ -118,14 +117,14 @@ export function MarkdownNoteEditor({
 
   const showWiki = Boolean(wikiTrig) && !wikiDismissed;
 
-  const markdownModeLineLabel = useMemo(() => {
+  const mdxModeLineLabel = useMemo(() => {
     if (readOnly) return "Preview";
     if (viewMode === "both") return "Split";
     if (viewMode === "editor") return "Editor";
     return "Preview";
   }, [readOnly, viewMode]);
 
-  const markdownModeLineSecondary = useMemo(() => {
+  const mdxModeLineSecondary = useMemo(() => {
     const parts: string[] = [];
     if (wikiLoading) parts.push("Resolving wiki links…");
     if (showWiki && wikiRows.length > 0) {
@@ -147,14 +146,11 @@ export function MarkdownNoteEditor({
     wikiSelected,
   ]);
 
-  const docKind = "Markdown";
-  const docPluginId = "nodex.markdown";
-
   useNodexNoteModeLine({
     scopeId: note.id,
-    primaryLine: `${docKind} · ${markdownModeLineLabel}`,
-    secondaryLine: markdownModeLineSecondary,
-    sourcePluginId: docPluginId,
+    primaryLine: `MDX · ${mdxModeLineLabel}`,
+    secondaryLine: mdxModeLineSecondary,
+    sourcePluginId: "nodex.mdx",
   });
 
   const prevWikiTrigRef = useRef<ReturnType<typeof findActiveWikiLinkTrigger>>(null);
@@ -229,9 +225,6 @@ export function MarkdownNoteEditor({
     };
   }, [showWiki, value, viewMode, caretHead]);
 
-  // Reset editor only when switching notes. Do not depend on `note.content`: each
-  // `saveNoteContent.fulfilled` updates Redux with the payload from that in-flight save,
-  // which can lag behind keystrokes; syncing here would clobber the CodeMirror value.
   useEffect(() => {
     const c = note.content ?? "";
     setValue(c);
@@ -249,7 +242,7 @@ export function MarkdownNoteEditor({
       note.metadata && typeof note.metadata === "object"
         ? (note.metadata as Record<string, unknown>).markdownViewMode
         : undefined;
-    const next: MarkdownViewMode =
+    const next: MdxViewMode =
       raw === "editor" || raw === "preview" || raw === "both" ? raw : "both";
     setViewMode(readOnly ? "preview" : next);
   }, [note.id, note.metadata]);
@@ -269,7 +262,7 @@ export function MarkdownNoteEditor({
   }, [note.id, readOnly]);
 
   const setAndPersistViewMode = useCallback(
-    (next: MarkdownViewMode) => {
+    (next: MdxViewMode) => {
       if (readOnly) return;
       setViewMode(next);
       if (!persistRef.current) return;
@@ -374,8 +367,8 @@ export function MarkdownNoteEditor({
   const previewNote = useMemo<Note>(
     () => ({
       id: note.id,
-      type: "markdown",
-      title: note.title ?? "Markdown",
+      type: "mdx",
+      title: note.title ?? "MDX",
       content: previewContent,
       metadata: note.metadata,
     }),
@@ -405,7 +398,6 @@ export function MarkdownNoteEditor({
     });
   }, [dispatch]);
 
-  /** Flush pending edits for the note this effect was bound to, then allow sync effect to reset state. */
   useEffect(() => {
     const idWhenAttached = note.id;
     return () => {
@@ -421,10 +413,11 @@ export function MarkdownNoteEditor({
     };
   }, [note.id, dispatch]);
 
-  const insertMarkdownNoteLink = useCallback(
+  const insertMdxNoteLink = useCallback(
     (row: WpnNoteLinkRow, replaceRange?: { start: number; end: number }) => {
       const label = row.title.trim() || "Untitled";
-      const href = markdownInternalNoteHref(row.noteId);
+      const vfsPath = canonicalVfsPathFromLinkRow(row);
+      const href = markdownVfsNoteHref(vfsPath);
       const md = `[${label}](${href})`;
       const view = cmViewRef.current;
       const text = latestRef.current;
@@ -491,15 +484,15 @@ export function MarkdownNoteEditor({
       if (!wikiTrig) return;
       const view = cmViewRef.current;
       const end = view?.state.selection.main.head ?? sel.end;
-      insertMarkdownNoteLink(row, { start: wikiTrig.start, end });
+      insertMdxNoteLink(row, { start: wikiTrig.start, end });
       setWikiDismissed(false);
     },
-    [insertMarkdownNoteLink, sel.end, wikiTrig],
+    [insertMdxNoteLink, sel.end, wikiTrig],
   );
 
   const cmExtensions = useMemo(
     () =>
-      markdownNoteEditorExtensions({
+      mdxNoteEditorExtensions({
         dark: resolvedDark,
         readOnly,
         wikiKeymapRef,
@@ -606,9 +599,9 @@ export function MarkdownNoteEditor({
               className="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted/40"
               onClick={() => setLinkPickerOpen(true)}
             >
-              Link to note
+              Link to note (path)
             </button>
-            <div className="text-[11px] text-muted-foreground">Markdown</div>
+            <div className="text-[11px] text-muted-foreground">MDX</div>
           </div>
         </div>
       ) : (
@@ -622,7 +615,7 @@ export function MarkdownNoteEditor({
         {!readOnly && (viewMode === "editor" || viewMode === "both") ? (
           <div className="relative flex min-h-[240px] min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-background">
             <div className="border-b border-border px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Editor
+              Source
             </div>
             <div ref={cmHostRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <CodeMirror
@@ -657,7 +650,7 @@ export function MarkdownNoteEditor({
               ref={previewScrollRef}
               data-nodex-md-preview
             >
-              <MarkdownRenderer note={previewNote} />
+              <MdxRenderer note={previewNote} />
             </div>
           </div>
         ) : null}
@@ -667,7 +660,7 @@ export function MarkdownNoteEditor({
         open={linkPickerOpen}
         onClose={() => setLinkPickerOpen(false)}
         excludeNoteId={note.id}
-        onPick={(row) => insertMarkdownNoteLink(row)}
+        onPick={(row) => insertMdxNoteLink(row)}
       />
 
       <MarkdownNoteLinkAutocompletePopover

@@ -21,7 +21,7 @@ Shell views are React components. Use DevTools: \`window.nodex.shell\`. Register
 - [Documentation](#/welcome/documentation) — command search, keyboard reference, API shape, and plugin authoring guide
 - [Notes explorer](#/welcome/notes-explorer) — project notes tree in the sidebar; open a note to edit in the main area
 
-Tip: append \`#/n/<noteId>\` to the URL to open or focus that note (synced with the tab strip). Welcome shortcuts use \`#/welcome/…\` (shareable; runs the same actions as the links above).
+Tip: use \`#/n/<noteId>\` or a workspace path hash \`#/w/Workspace/Project/Title\` to open or focus a note. Welcome shortcuts use \`#/welcome/…\` (shareable; runs the same actions as the links above).
 `;
 
 export function WelcomeShellView(_props: ShellViewComponentProps): React.ReactElement {

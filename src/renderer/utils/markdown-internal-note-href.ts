@@ -1,6 +1,7 @@
 export {
   collectReferencedNoteIdsFromMarkdown,
   markdownInternalNoteHref,
+  markdownVfsNoteHref,
   parseInternalMarkdownNoteLink,
   parseNoteIdFromInternalMarkdownHref,
   type InternalMarkdownNoteLink,

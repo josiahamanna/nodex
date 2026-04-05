@@ -8,6 +8,7 @@ import {
 } from "../../shell/shellWelcomeUrlRoutes";
 import {
   markdownInternalNoteHref,
+  markdownVfsNoteHref,
   parseInternalMarkdownNoteLink,
   type InternalMarkdownNoteLink,
 } from "../../utils/markdown-internal-note-href";
@@ -141,7 +142,10 @@ export function useNodexMarkdownUiComponents(
       }
       const internal = typeof href === "string" ? parseInternalMarkdownNoteLink(href) : null;
       if (internal) {
-        const canonical = markdownInternalNoteHref(internal.noteId, internal.markdownHeadingSlug);
+        const canonical =
+          internal.kind === "vfs"
+            ? markdownVfsNoteHref(internal.vfsPath, internal.markdownHeadingSlug)
+            : markdownInternalNoteHref(internal.noteId, internal.markdownHeadingSlug);
         return (
           <a
             {...rest}

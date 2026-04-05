@@ -56,7 +56,7 @@
     "build:plugins-release": "npm run build:plugins",
     "install:linux": "node scripts/install-linux-deb.js",
     "lint": "eslint --ext .ts,.tsx .",
-    "test": "node --experimental-strip-types --test src/main/parse-asset-ipc-payload.test.ts src/renderer/notes-sidebar/notes-sidebar-utils.test.ts src/renderer/shell/first-party/plugins/markdown/markdownWikiLinkTrigger.test.ts src/renderer/shell/shellTabUrlSync.test.ts src/renderer/shell/shellWelcomeUrlRoutes.test.ts src/renderer/shell/first-party/plugins/documentation/documentationShellHash.test.ts src/renderer/utils/note-mdx-format.test.ts src/renderer/utils/remark-nodex-mdx-trust.test.ts src/renderer/components/renderers/observable-embed.test.ts"
+    "test": "node --experimental-strip-types --test src/main/parse-asset-ipc-payload.test.ts src/shared/note-vfs-path.test.ts src/renderer/notes-sidebar/notes-sidebar-utils.test.ts src/renderer/shell/first-party/plugins/markdown/markdownWikiLinkTrigger.test.ts src/renderer/shell/shellTabUrlSync.test.ts src/renderer/shell/shellWelcomeUrlRoutes.test.ts src/renderer/shell/first-party/plugins/documentation/documentationShellHash.test.ts src/renderer/utils/note-mdx-format.test.ts src/renderer/utils/remark-nodex-mdx-trust.test.ts src/renderer/components/renderers/observable-embed.test.ts"
   },
   "keywords": [
     "electron",
