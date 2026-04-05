@@ -1,5 +1,6 @@
 import * as crypto from "crypto";
 import type { Pool } from "pg";
+import { normalizeLegacyNoteType } from "../../shared/note-type-legacy";
 import type { NoteMovePlacement } from "../../shared/nodex-renderer-api";
 import { collectReferencedNoteIdsFromMarkdown } from "../../shared/markdown-internal-note-href";
 import { wpnComputeChildMapAfterMove } from "./wpn-note-move";
@@ -37,7 +38,7 @@ function rowToWpnNoteRow(r: Record<string, unknown>): WpnNoteRow {
     id: String(r.id),
     project_id: String(r.project_id),
     parent_id: r.parent_id == null ? null : String(r.parent_id),
-    type: String(r.type),
+    type: normalizeLegacyNoteType(String(r.type)),
     title: String(r.title),
     content: String(r.content ?? ""),
     metadata_json: r.metadata_json == null ? null : String(r.metadata_json),
@@ -177,6 +178,7 @@ export async function wpnPgCreateNote(
     payload.metadata && Object.keys(payload.metadata).length > 0
       ? JSON.stringify(payload.metadata)
       : null;
+  const noteType = normalizeLegacyNoteType(payload.type);
 
   let parent_id: string | null = null;
   let sibling_index = 0;
@@ -208,7 +210,7 @@ export async function wpnPgCreateNote(
       await pool.query(
         `INSERT INTO wpn_note (id, project_id, parent_id, type, title, content, metadata_json, sibling_index, created_at_ms, updated_at_ms)
          VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9)`,
-        [id, projectId, parent_id, payload.type, title, content, metadata_json, t, t],
+        [id, projectId, parent_id, noteType, title, content, metadata_json, t, t],
       );
       await applySiblingOrderPg(pool, projectId, orderedIds);
       return { id };
@@ -222,7 +224,7 @@ export async function wpnPgCreateNote(
       id,
       projectId,
       parent_id,
-      payload.type,
+      noteType,
       title,
       content,
       metadata_json,
@@ -249,7 +251,9 @@ export async function wpnPgUpdateNote(
   if (!cur) return null;
   const title = patch.title !== undefined ? patch.title.trim() || cur.title : cur.title;
   const content = patch.content !== undefined ? patch.content : cur.content;
-  const type = patch.type !== undefined ? patch.type : cur.type;
+  const type = normalizeLegacyNoteType(
+    patch.type !== undefined ? patch.type : cur.type,
+  );
   let metadata_json: string | null =
     cur.metadata && Object.keys(cur.metadata).length > 0
       ? JSON.stringify(cur.metadata)
@@ -444,7 +448,7 @@ export async function wpnPgListAllNotesWithContext(
   );
   return (rows as Record<string, unknown>[]).map((r) => ({
     id: String(r.id),
-    type: String(r.type),
+    type: normalizeLegacyNoteType(String(r.type)),
     title: String(r.title),
     project_id: String(r.project_id),
     project_name: String(r.project_name),

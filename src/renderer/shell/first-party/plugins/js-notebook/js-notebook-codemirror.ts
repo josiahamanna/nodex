@@ -69,8 +69,8 @@ const STATIC_COMPLETIONS: Completion[] = [
   { label: "nodex.openNote", type: "function" },
   { label: "nodex.openPalette", type: "function" },
   { label: "nodex.openMiniBar", type: "function" },
-  { label: "nodex.openObservableScratch", type: "function" },
-  { label: "Plot", type: "variable", detail: "Observable stdlib" },
+  { label: "nodex.openJsNotebookScratch", type: "function" },
+  { label: "Plot", type: "variable", detail: "@observablehq/stdlib" },
   { label: "d3", type: "variable" },
   { label: "Inputs", type: "variable" },
   { label: "md", type: "variable" },
@@ -150,7 +150,7 @@ function notebookTheme(dark: boolean): Extension {
 }
 
 /**
- * CodeMirror extensions for Observable notebook JS cells (completions, theme, Mod-Enter).
+ * CodeMirror extensions for JS notebook cells (completions, theme, Mod-Enter).
  */
 export function notebookEditorExtensions(opts: {
   cellNames: string[];

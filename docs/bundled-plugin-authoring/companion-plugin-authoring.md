@@ -24,7 +24,7 @@ Plugins extend the shell (activity bar, sidebar column, primary tabs, companion 
 
 ### 3. Register a hook from the app shell
 
-First-party plugins use a `useRegister…Plugin()` hook called once from the shell bootstrap (same pattern as Documentation and Observable). Inside `useEffect`, register views, tab types, rail items, and commands; return a cleanup that disposes all disposers.
+First-party plugins use a `useRegister…Plugin()` hook called once from the shell bootstrap (same pattern as Documentation and JS notebook). Inside `useEffect`, register views, tab types, rail items, and commands; return a cleanup that disposes all disposers.
 
 ```typescript
 // useRegisterMyFeaturePlugin.ts

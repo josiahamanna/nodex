@@ -56,7 +56,7 @@
     "build:plugins-release": "npm run build:plugins",
     "install:linux": "node scripts/install-linux-deb.js",
     "lint": "eslint --ext .ts,.tsx .",
-    "test": "node --experimental-strip-types --test src/main/parse-asset-ipc-payload.test.ts src/renderer/notes-sidebar/notes-sidebar-utils.test.ts src/renderer/shell/first-party/plugins/markdown/markdownWikiLinkTrigger.test.ts src/renderer/shell/shellTabUrlSync.test.ts src/renderer/shell/shellWelcomeUrlRoutes.test.ts src/renderer/shell/first-party/plugins/documentation/documentationShellHash.test.ts"
+    "test": "node --experimental-strip-types --test src/main/parse-asset-ipc-payload.test.ts src/renderer/notes-sidebar/notes-sidebar-utils.test.ts src/renderer/shell/first-party/plugins/markdown/markdownWikiLinkTrigger.test.ts src/renderer/shell/shellTabUrlSync.test.ts src/renderer/shell/shellWelcomeUrlRoutes.test.ts src/renderer/shell/first-party/plugins/documentation/documentationShellHash.test.ts src/renderer/utils/note-mdx-format.test.ts src/renderer/utils/remark-nodex-mdx-trust.test.ts src/renderer/components/renderers/observable-embed.test.ts"
   },
   "keywords": [
     "electron",
@@ -116,6 +116,8 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@electron/rebuild": "^4.0.3",
+    "@mdx-js/mdx": "^3.1.1",
+    "@mdx-js/react": "^3.1.1",
     "@monaco-editor/react": "^4.7.0",
     "@observablehq/inspector": "^5.0.1",
     "@observablehq/runtime": "^6.0.0",
@@ -151,9 +153,11 @@
     "react-resizable-panels": "^2.1.9",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
+    "remark-mdx": "^3.1.1",
     "rollup": "^4.60.0",
     "rollup-plugin-esbuild": "^6.2.1",
     "ses": "^1.15.0",
+    "unist-util-visit": "^5.1.0",
     "video.js": "^8.23.7"
   },
   "optionalDependencies": {

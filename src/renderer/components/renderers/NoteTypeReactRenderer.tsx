@@ -184,7 +184,7 @@ const NoteTypeReactRenderer: React.FC<NoteTypeReactRendererProps> = ({
   if (t === "text") {
     return <TextNoteEditor note={note} persist={persist} />;
   }
-  if (t === "markdown" || t === "root") {
+  if (t === "markdown" || t === "mdx" || t === "root") {
     return (
       <div className="rounded-sm border border-border bg-muted/50 p-4">
         <p className="font-medium text-foreground">Markdown editor not registered</p>

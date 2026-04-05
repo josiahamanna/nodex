@@ -3,14 +3,14 @@ import { useNodexContributionRegistry } from "../../../NodexContributionContext"
 import { useShellLayoutStore } from "../../../layout/ShellLayoutContext";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../../../views/ShellViewContext";
-import { ObservableNotebookShellView } from "./ObservableNotebookShellView";
+import { JsNotebookShellView } from "./JsNotebookShellView";
 
-export const OBSERVABLE_NOTEBOOK_PLUGIN_ID = "plugin.observable-notebook";
+export const JS_NOTEBOOK_PLUGIN_ID = "plugin.js-notebook";
 
-const VIEW_PRIMARY = "plugin.observable-notebook.primary";
-const TAB_NOTEBOOK = "plugin.observable-notebook.tab";
+const VIEW_PRIMARY = "plugin.js-notebook.primary";
+const TAB_NOTEBOOK = "plugin.js-notebook.tab";
 
-export function useRegisterObservableNotebookPlugin(): void {
+export function useRegisterJsNotebookPlugin(): void {
   const regs = useShellRegistries();
   const views = useShellViewRegistry();
   const layout = useShellLayoutStore();
@@ -22,9 +22,9 @@ export function useRegisterObservableNotebookPlugin(): void {
     disposers.push(
       views.registerView({
         id: VIEW_PRIMARY,
-        title: "Observable Notebook",
+        title: "JS notebook",
         defaultRegion: "mainArea",
-        component: ObservableNotebookShellView,
+        component: JsNotebookShellView,
         capabilities: { allowedCommands: "allShellCommands", readContext: true },
       }),
     );
@@ -32,7 +32,7 @@ export function useRegisterObservableNotebookPlugin(): void {
     disposers.push(
       regs.tabs.registerTabType({
         id: TAB_NOTEBOOK,
-        title: "Observable",
+        title: "JS notebook",
         order: 9,
         viewId: VIEW_PRIMARY,
       }),
@@ -40,37 +40,37 @@ export function useRegisterObservableNotebookPlugin(): void {
 
     disposers.push(
       regs.menuRail.registerItem({
-        id: "plugin.observable-notebook.rail",
-        title: "Observable",
+        id: "plugin.js-notebook.rail",
+        title: "JS notebook",
         icon: "◉",
         order: 18,
         tabTypeId: TAB_NOTEBOOK,
-        tabReuseKey: "plugin.observable-notebook",
+        tabReuseKey: "plugin.js-notebook",
         expandChrome: { menuRail: true },
       }),
     );
 
     disposers.push(
       contrib.registerCommand({
-        id: "nodex.observableNotebook.open",
-        title: "Observable: Open notebook",
+        id: "nodex.jsNotebook.open",
+        title: "JS notebook: Open",
         category: "Notebook",
-        sourcePluginId: OBSERVABLE_NOTEBOOK_PLUGIN_ID,
-        doc: "Open the Observable notebook tab in the primary area.",
+        sourcePluginId: JS_NOTEBOOK_PLUGIN_ID,
+        doc: "Open the JS notebook tab in the primary area.",
         api: {
-          summary: "Open a new Observable notebook tab and focus it in the main column.",
+          summary: "Open a new JS notebook tab and focus it in the main column.",
           args: [],
           exampleInvoke: {},
           returns: {
             type: "void",
-            description: "Registers a new ShellTabsRegistry instance for plugin.observable-notebook.tab.",
+            description: "Registers a new ShellTabsRegistry instance for plugin.js-notebook.tab.",
           },
         },
         handler: () => {
           layout.setVisible("menuRail", true);
           const inst = regs.tabs.openOrReuseTab(TAB_NOTEBOOK, {
-            title: "Observable",
-            reuseKey: "plugin.observable-notebook",
+            title: "JS notebook",
+            reuseKey: "plugin.js-notebook",
           });
           const vid = regs.tabs.resolveViewForInstance(inst.instanceId);
           if (vid) views.openView(vid, "mainArea");

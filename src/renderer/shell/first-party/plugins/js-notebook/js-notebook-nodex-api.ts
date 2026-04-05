@@ -18,7 +18,7 @@ type NodexNotebookShellAugment = {
   openNote(noteId: string): void | Promise<void>;
   openPalette(): void | Promise<void>;
   openMiniBar(prefill?: string): void | Promise<void>;
-  openObservableScratch(): void | Promise<void>;
+  openJsNotebookScratch(): void | Promise<void>;
 };
 
 /** Injected as the `nodex` builtin: `window.Nodex`, `window.nodex.*`, and notebook helpers. */
@@ -29,7 +29,7 @@ export const NODEX_NOTEBOOK_DOCUMENTED_COMMANDS = [
   "nodex.notes.open",
   "nodex.shell.openPalette",
   "nodex.shell.openMiniBar",
-  "nodex.observableNotebook.open",
+  "nodex.jsNotebook.open",
   "nodex.script.repl.toggle",
   "nodex.shell.toggle.menuRail",
   "nodex.shell.toggle.sidebarPanel",
@@ -73,7 +73,7 @@ export function createNotebookNodexHost(opts: {
     openPalette: () => invoke("nodex.shell.openPalette"),
     openMiniBar: (prefill) =>
       invoke("nodex.shell.openMiniBar", prefill != null && prefill !== "" ? { prefill: String(prefill) } : {}),
-    openObservableScratch: () => invoke("nodex.observableNotebook.open"),
+    openJsNotebookScratch: () => invoke("nodex.jsNotebook.open"),
   };
 
   return Object.assign({}, fromBridge, nodexWin, thin) as NodexNotebookHost;

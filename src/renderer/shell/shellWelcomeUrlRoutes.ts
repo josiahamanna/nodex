@@ -2,7 +2,7 @@
 
 export const WELCOME_SHELL_URL_COMMANDS = {
   "scratch-markdown": "nodex.notes.openScratchMarkdownTab",
-  "observable-notebook": "nodex.observableNotebook.open",
+  "js-notebook": "nodex.jsNotebook.open",
   documentation: "nodex.docs.open",
   "notes-explorer": "nodex.notesExplorer.open",
 } as const;

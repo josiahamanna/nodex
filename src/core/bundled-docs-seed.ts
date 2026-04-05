@@ -143,7 +143,7 @@ function ensureChildOf(parentId: string, childId: string): void {
 }
 
 /**
- * Upserts bundled documentation notes from local markdown files (manifest-driven).
+ * Upserts bundled documentation notes from local `.md` / `.mdx` files (manifest-driven).
  * Safe to call on every workspace bootstrap / API server start: overwrites title/body from disk.
  *
  * @returns true if the notes store was modified (caller should persist SQLite).

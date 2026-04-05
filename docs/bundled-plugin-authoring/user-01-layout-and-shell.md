@@ -23,7 +23,7 @@ The sidebar can be **resized** and **collapsed**. Which sidebar appears often fo
 
 ## Main area
 
-The **main area** is the central column. It shows the **primary view** for the active tab: a note editor, the Welcome screen, an Observable notebook surface, or the Documentation reader.
+The **main area** is the central column. It shows the **primary view** for the active tab: a note editor, the Welcome screen, a JS notebook surface, or the Documentation reader.
 
 Only one main view is focused at a time per tab stack; switching tabs swaps the main content (and may swap sidebar/companion views tied to that tab type).
 
@@ -44,4 +44,4 @@ Some layouts also support a **bottom** dock region for panels that attach under 
 3. The **main area** shows the editor or hub for that feature.
 4. If the tab defines one, the **companion** shows a secondary tool (outline, docs TOC, and so on).
 
-The next guides cover **workspaces and notes**, **commands and tabs**, and **Notes / Observable / Documentation** in more detail.
+The next guides cover **workspaces and notes**, **commands and tabs**, and **Notes / JS notebook / Documentation** in more detail.

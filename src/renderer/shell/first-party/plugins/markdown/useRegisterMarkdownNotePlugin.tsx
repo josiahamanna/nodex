@@ -4,7 +4,7 @@ import { useNodexContributionRegistry } from "../../../NodexContributionContext"
 import { MarkdownNoteEditor } from "./MarkdownNoteEditor";
 
 /**
- * System note plugin: registers the in-app editor for `markdown` and `root` note types.
+ * System note plugin: registers the in-app editor for `markdown`, `mdx`, and `root` note types.
  * No shell rail, tabs, or companion regions.
  */
 export function useRegisterMarkdownNotePlugin(): void {
@@ -21,6 +21,7 @@ export function useRegisterMarkdownNotePlugin(): void {
     }
     const disposers = [
       contrib.registerNoteTypeReactEditor("markdown", MarkdownNoteEditorHost),
+      contrib.registerNoteTypeReactEditor("mdx", MarkdownNoteEditorHost),
       contrib.registerNoteTypeReactEditor("root", MarkdownNoteEditorHost),
     ];
     return () => {

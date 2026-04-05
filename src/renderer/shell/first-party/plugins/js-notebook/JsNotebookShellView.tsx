@@ -1,10 +1,11 @@
 import React, { useCallback, useState } from "react";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
-import { ObservableNotebookWorkspace } from "./ObservableNotebookWorkspace";
-import { makeNotebookCellId, type NotebookCell, type NotebookCellsUpdate } from "./observable-notebook-types";
+import { JsNotebookWorkspace } from "./JsNotebookWorkspace";
+import { makeNotebookCellId, type NotebookCell, type NotebookCellsUpdate } from "./js-notebook-types";
 
-const LS_KEY = "nodex.observableNotebook.cells.v1";
+const LS_KEY = "nodex.jsNotebook.cells.v1";
+const LS_KEY_LEGACY = "nodex.observableNotebook.cells.v1";
 
 function safeParse(raw: string | null, fb: NotebookCell[]): NotebookCell[] {
   try {
@@ -15,6 +16,28 @@ function safeParse(raw: string | null, fb: NotebookCell[]): NotebookCell[] {
   }
 }
 
+function readCellsFromStorage(): NotebookCell[] {
+  if (typeof localStorage === "undefined") return [];
+  const rawNew = localStorage.getItem(LS_KEY);
+  if (rawNew) {
+    const parsed = safeParse(rawNew, []);
+    if (parsed.length) return parsed;
+  }
+  const rawLegacy = localStorage.getItem(LS_KEY_LEGACY);
+  if (rawLegacy) {
+    const parsed = safeParse(rawLegacy, []);
+    if (parsed.length) {
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(parsed));
+      } catch {
+        /* ignore */
+      }
+    }
+    return parsed;
+  }
+  return [];
+}
+
 function defaults(): NotebookCell[] {
   return [
     { id: makeNotebookCellId(), name: "x", inputs: [], body: "42", kind: "js" },
@@ -23,12 +46,11 @@ function defaults(): NotebookCell[] {
   ];
 }
 
-export function ObservableNotebookShellView(_props: ShellViewComponentProps): React.ReactElement {
+export function JsNotebookShellView(_props: ShellViewComponentProps): React.ReactElement {
   const contrib = useNodexContributionRegistry();
   const [cells, setCells] = useState<NotebookCell[]>(() => {
-    if (typeof localStorage === "undefined") return defaults();
-    const parsed = safeParse(localStorage.getItem(LS_KEY), []);
-    return parsed.length ? parsed : defaults();
+    const fromStore = readCellsFromStorage();
+    return fromStore.length ? fromStore : defaults();
   });
 
   const persist = useCallback((nextOrUpdater: NotebookCellsUpdate) => {
@@ -47,17 +69,17 @@ export function ObservableNotebookShellView(_props: ShellViewComponentProps): Re
     (commandId: string, args?: Record<string, unknown>) =>
       Promise.resolve(contrib.invokeCommand(commandId, args)).catch((err: unknown) => {
         // eslint-disable-next-line no-console
-        console.error("[ObservableNotebook]", commandId, err);
+        console.error("[JsNotebook]", commandId, err);
       }),
     [contrib],
   );
 
   return (
-    <ObservableNotebookWorkspace
+    <JsNotebookWorkspace
       cells={cells}
       onCellsChange={persist}
       invokeCommand={invokeCommand}
-      modeLineScopeId="nodex.shell.observable-scratch"
+      modeLineScopeId="nodex.shell.js-notebook-scratch"
       executeOnMount
       toolbarHint={<span>Scratch (not a project note)</span>}
     />

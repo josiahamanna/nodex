@@ -1,7 +1,7 @@
 import CodeMirror from "@uiw/react-codemirror";
 import type { EditorView } from "@codemirror/view";
 import React, { useEffect, useMemo, useRef } from "react";
-import { notebookEditorExtensions } from "./observable-notebook-codemirror";
+import { notebookEditorExtensions } from "./js-notebook-codemirror";
 
 export type NotebookCellEditorProps = {
   value: string;

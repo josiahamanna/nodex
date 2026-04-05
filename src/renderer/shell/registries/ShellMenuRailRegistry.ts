@@ -19,7 +19,7 @@ export type ShellMenuRailItem = {
   tabTypeId?: string;
   /** Passed to `openOrReuseTab` so repeated rail clicks focus one tab (optional). */
   tabReuseKey?: string;
-  /** Show chrome regions when opening this tab (e.g. Observable without a sidebar view id). */
+  /** Show chrome regions when opening this tab (e.g. JS notebook without a sidebar view id). */
   expandChrome?: {
     menuRail?: boolean;
     sidebarPanel?: boolean;

@@ -5,7 +5,7 @@ import type { ShellViewRegistry } from "./views/ShellViewRegistry";
 import type { ShellRegistries } from "./registries/ShellRegistriesContext";
 import type { ShellKeyBinding } from "./registries/ShellKeymapRegistry";
 
-/** Same object assigned to `window.nodex.shell` and injected as `nodex.shell` in Observable notebooks. */
+/** Same object assigned to `window.nodex.shell` and injected as `nodex.shell` in JS notebooks. */
 export function buildNodexShellApi(opts: {
   registry: NodexContributionRegistry;
   layout: ShellLayoutStore;

@@ -7,7 +7,7 @@ First-party plugins typically export `useRegisterMyPlugin()` and call it from `A
 ```tsx
 // src/renderer/App.tsx (pattern)
 useRegisterDocumentationPlugin();
-useRegisterObservableNotebookPlugin();
+useRegisterJsNotebookPlugin();
 ```
 
 Inside the hook, use `useEffect` to register views, tabs, rail items, and commands, and return a cleanup that disposes each registration.

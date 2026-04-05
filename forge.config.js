@@ -16,7 +16,7 @@ const DEV_CSP = [
   "font-src 'self' data:",
   "connect-src 'self' nodex-pdf-worker: ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:* blob:",
   "worker-src 'self' blob:",
-  "frame-src 'self' nodex-asset: blob: data: about:",
+  "frame-src 'self' nodex-asset: blob: data: about: https://observablehq.com https://*.observablehq.com",
   "object-src 'self' nodex-asset: blob: data:",
 ].join("; ");
 

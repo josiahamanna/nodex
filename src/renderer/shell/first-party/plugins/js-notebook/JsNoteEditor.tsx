@@ -4,8 +4,8 @@ import type { AppDispatch } from "../../../../store";
 import { saveNoteContent } from "../../../../store/notesSlice";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import type { NoteTypeReactEditorProps } from "../../../nodex-contribution-registry";
-import { ObservableNotebookWorkspace } from "./ObservableNotebookWorkspace";
-import { makeNotebookCellId, type NotebookCell, type NotebookCellsUpdate } from "./observable-notebook-types";
+import { JsNotebookWorkspace } from "./JsNotebookWorkspace";
+import { makeNotebookCellId, type NotebookCell, type NotebookCellsUpdate } from "./js-notebook-types";
 
 function defaultCells(): NotebookCell[] {
   return [
@@ -32,9 +32,9 @@ function cellsToJson(cells: NotebookCell[]): string {
 }
 
 /**
- * Observable notebook backed by `note.content` (JSON array of cells).
+ * JS notebook backed by `note.content` (JSON array of cells).
  */
-export function ObservableNoteEditor({
+export function JsNoteEditor({
   note,
   persistToNotesStore = true,
 }: NoteTypeReactEditorProps): React.ReactElement {
@@ -113,13 +113,13 @@ export function ObservableNoteEditor({
     (commandId: string, args?: Record<string, unknown>) =>
       Promise.resolve(contrib.invokeCommand(commandId, args)).catch((err: unknown) => {
         // eslint-disable-next-line no-console
-        console.error("[ObservableNotebook]", commandId, err);
+        console.error("[JsNotebook]", commandId, err);
       }),
     [contrib],
   );
 
   return (
-    <ObservableNotebookWorkspace
+    <JsNotebookWorkspace
       cells={cells}
       onCellsChange={persistCells}
       invokeCommand={invokeCommand}
@@ -131,6 +131,6 @@ export function ObservableNoteEditor({
   );
 }
 
-export function ObservableNoteEditorHost(props: NoteTypeReactEditorProps): React.ReactElement {
-  return <ObservableNoteEditor note={props.note} persistToNotesStore={props.persistToNotesStore} />;
+export function JsNoteEditorHost(props: NoteTypeReactEditorProps): React.ReactElement {
+  return <JsNoteEditor note={props.note} persistToNotesStore={props.persistToNotesStore} />;
 }

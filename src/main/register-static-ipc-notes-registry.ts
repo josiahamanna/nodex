@@ -24,6 +24,7 @@ import {
   PLUGIN_UI_METADATA_KEY,
   validatePluginUiStateSize,
 } from "../shared/plugin-state-protocol";
+import { normalizeLegacyNoteType } from "../shared/note-type-legacy";
 import { isValidNoteId, isValidNoteType } from "../shared/validators";
 import { ctx } from "./main-context";
 import {
@@ -107,7 +108,9 @@ ipcMain.handle(
     if (!payload || typeof payload !== "object") {
       throw new Error("Invalid payload");
     }
-    const { type } = payload;
+    const rawType = payload.type;
+    const type =
+      typeof rawType === "string" ? normalizeLegacyNoteType(rawType) : rawType;
     const selectable = registry.getSelectableNoteTypes();
     if (!isValidNoteType(type) || !selectable.includes(type)) {
       throw new Error("Invalid note type");

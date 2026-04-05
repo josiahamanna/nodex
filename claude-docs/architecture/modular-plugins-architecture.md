@@ -59,7 +59,7 @@ First-party modules replace legacy iframe shells:
 
 - Minibar, command palette (existing React hosts; remain top-level).
 - **Documentation** — registry scrape + UI as React views.
-- **Observable notebook** — `@observablehq/runtime` in a React view (no iframe).
+- **JS notebook** — `@observablehq/runtime` in a React view (no iframe).
 - **Home / Welcome** — shell welcome view as React.
 
 The **JS Notebook** shell experiment is removed in favor of the above set.

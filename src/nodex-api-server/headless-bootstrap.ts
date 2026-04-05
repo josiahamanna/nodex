@@ -7,14 +7,15 @@ import {
   type ActivateProjectResult,
 } from "../core/project-session";
 import { registerBuiltinMarkdownNoteRenderer } from "../core/register-builtin-markdown-note-type";
-import { registerBuiltinObservableNoteRenderer } from "../core/register-builtin-observable-note-type";
+import { registerBuiltinMdxNoteRenderer } from "../core/register-builtin-mdx-note-type";
+import { registerBuiltinJsNotebookNoteRenderer } from "../core/register-builtin-js-notebook-note-type";
 import {
   getHeadlessSessionRegistry,
   loadPersistedHeadlessSessionPlugins,
 } from "./headless-marketplace-session";
 
 /** Types passed to `activateWorkspace` / seeding when no Electron plugin registry is loaded. */
-const HEADLESS_REGISTERED_TYPES = ["markdown", "text", "root"];
+const HEADLESS_REGISTERED_TYPES = ["markdown", "mdx", "text", "root"];
 
 let lastResult: ActivateProjectResult | null = null;
 let userDataPath = "";
@@ -37,8 +38,9 @@ export function initHeadlessFromEnv(): ActivateProjectResult {
   lastResult = r;
   if (r.ok && r.workspaceRoots.length > 0) {
     loadPersistedHeadlessSessionPlugins(userDataPath);
-    registerBuiltinObservableNoteRenderer(getHeadlessSessionRegistry());
+    registerBuiltinJsNotebookNoteRenderer(getHeadlessSessionRegistry());
     registerBuiltinMarkdownNoteRenderer(getHeadlessSessionRegistry());
+    registerBuiltinMdxNoteRenderer(getHeadlessSessionRegistry());
   }
   if (r.ok && r.workspaceRoots.length === 0) {
     return {
@@ -123,6 +125,7 @@ export function initHeadlessPgOnlyFromEnv(): void {
     process.env.NODEX_USER_DATA_DIR?.trim() ||
     path.join(os.tmpdir(), "nodex-headless-pg-only");
   loadPersistedHeadlessSessionPlugins(userDataPath);
-  registerBuiltinObservableNoteRenderer(getHeadlessSessionRegistry());
+  registerBuiltinJsNotebookNoteRenderer(getHeadlessSessionRegistry());
   registerBuiltinMarkdownNoteRenderer(getHeadlessSessionRegistry());
+  registerBuiltinMdxNoteRenderer(getHeadlessSessionRegistry());
 }

@@ -21,6 +21,7 @@ import { saveNotesState } from "../core/notes-persistence";
 import { nodexRedo, nodexUndo, pushNotesUndoSnapshot } from "../core/nodex-undo";
 import type { Note } from "../shared/nodex-renderer-api";
 import { isWorkspaceMountNoteId } from "../shared/note-workspace";
+import { normalizeLegacyNoteType } from "../shared/note-type-legacy";
 import { isValidNoteId, isValidNoteType } from "../shared/validators";
 import { readProjectPrefs, writeProjectPrefs } from "../core/project-session";
 import {
@@ -560,7 +561,9 @@ export function createNodexApiRouter(): Router {
       res.status(400).json({ error: "Invalid payload" });
       return;
     }
-    const { type } = payload;
+    const rawType = payload.type;
+    const type =
+      typeof rawType === "string" ? normalizeLegacyNoteType(rawType) : rawType;
     const selectable = headlessSelectableNoteTypes();
     if (!isValidNoteType(type) || !selectable.includes(type)) {
       res.status(400).json({ error: "Invalid note type" });

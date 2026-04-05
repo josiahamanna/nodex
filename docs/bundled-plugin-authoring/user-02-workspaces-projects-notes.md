@@ -28,7 +28,7 @@ Server deployments may also seed a **Documentation** project that holds bundled 
 
 ## Note
 
-A **note** is a single document inside a **project**. Notes have a **type** (for example `markdown`, `observable`) that decides which editor opens in the main area.
+A **note** is a single document inside a **project**. Notes have a **type** (for example `markdown`, `js-notebook`) that decides which editor opens in the main area.
 
 ### Creating a note
 

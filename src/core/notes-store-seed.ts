@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { normalizeLegacyNoteType } from "../shared/note-type-legacy";
 import { registry } from "./registry";
 import {
   getChildren,
@@ -17,6 +18,10 @@ const defaultSampleContent: Record<
   markdown: {
     content:
       "# Hello World\n\nThis is a **markdown** note rendered by a plugin!\n\n## Features\n\n- Dynamic plugin loading\n- Component registry\n- Hot reload support",
+  },
+  mdx: {
+    content:
+      "# MDX note\n\n<NodexCallout>\n\nUse **MDX** with whitelisted components. Curly-brace JavaScript expressions are disabled in workspace notes for safety.\n\n</NodexCallout>\n",
   },
   text: {
     content:
@@ -39,9 +44,9 @@ const defaultSampleContent: Record<
   audio: {
     content: '{"assetRel":""}',
   },
-  observable: {
+  "js-notebook": {
     content: JSON.stringify([
-      { id: "seed-o1", name: "greeting", inputs: [], body: '"Hello from Observable"' },
+      { id: "seed-o1", name: "greeting", inputs: [], body: '"Hello from JS notebook"' },
       { id: "seed-o2", name: "n", inputs: [], body: "40 + 2" },
     ]),
   },
@@ -50,19 +55,21 @@ const defaultSampleContent: Record<
 const defaultTypeToTitle: Record<string, string> = {
   root: "Home",
   markdown: "Markdown Note",
+  mdx: "MDX Note",
   text: "Rich Text Note",
   code: "Code Editor",
   pdf: "PDF",
   image: "Image",
   video: "Video",
   audio: "Audio",
-  observable: "Observable Notebook",
+  "js-notebook": "JS notebook",
 };
 
 export function titleForType(type: string): string {
+  const t = normalizeLegacyNoteType(type);
   return (
-    defaultTypeToTitle[type] ||
-    `${type.charAt(0).toUpperCase() + type.slice(1)} Note`
+    defaultTypeToTitle[t] ||
+    `${t.charAt(0).toUpperCase() + t.slice(1)} Note`
   );
 }
 
@@ -70,9 +77,10 @@ export function bodyForType(type: string): {
   content: string;
   metadata?: Record<string, unknown>;
 } {
-  const sc = defaultSampleContent[type];
+  const t = normalizeLegacyNoteType(type);
+  const sc = defaultSampleContent[t];
   return {
-    content: sc?.content || `Sample content for ${type}`,
+    content: sc?.content || `Sample content for ${t}`,
     metadata: sc?.metadata,
   };
 }

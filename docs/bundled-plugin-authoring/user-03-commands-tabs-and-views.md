@@ -23,7 +23,7 @@ Use the palette when you do not remember the exact id; use the mini bar when you
 
 ## Tabs
 
-**Tabs** represent open **tab types** in the main column: Welcome, Note, Notes explorer hub, Observable notebook, Documentation, and so on.
+**Tabs** represent open **tab types** in the main column: Welcome, Note, Notes explorer hub, JS notebook, Documentation, and so on.
 
 - Each **tab type** is registered with a **main view**, and optionally **primary sidebar** and **secondary (companion)** views. When you activate the tab, the shell aligns the sidebar and companion with that feature.
 - **Reuse keys** let the shell open **one tab per logical session** (for example a single Documentation tab) instead of duplicating identical tabs.
@@ -40,4 +40,4 @@ Use the palette when you do not remember the exact id; use the mini bar when you
 2. **Docs**: open **Documentation** → **Docs** tab + **Docs — search** sidebar + **Docs — outline** companion → pick a guide or command (or use **Settings** in the sidebar).
 3. **Commands**: open the palette → run **Notes: Open explorer** or **Docs: Open documentation** without touching the rail.
 
-The following guide compares **Notes (explorer)**, **Observable**, and **Documentation** as products of those tabs and sidebars.
+The following guide compares **Notes (explorer)**, **JS notebook**, and **Documentation** as products of those tabs and sidebars.

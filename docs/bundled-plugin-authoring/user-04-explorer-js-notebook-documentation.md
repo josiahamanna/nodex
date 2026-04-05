@@ -1,6 +1,6 @@
-# Notes explorer, Observable notebooks, and Documentation
+# Notes explorer, JS notebooks, and Documentation
 
-Three first-party experiences cover most day-to-day use: browsing and editing structured notes, running **Observable**-style computational notebooks, and reading **bundled documentation** plus command references.
+Three first-party experiences cover most day-to-day use: browsing and editing structured notes, running **JS notebooks** backed by `@observablehq/runtime`, and reading **bundled documentation** plus command references.
 
 ## Notes (explorer)
 
@@ -13,23 +13,23 @@ Three first-party experiences cover most day-to-day use: browsing and editing st
 **Typical tasks**
 
 - Create workspace → project → note.
-- Choose note **types** (Markdown, Observable, and others exposed by plugins).
+- Choose note **types** (Markdown, JS notebook, and others exposed by plugins).
 - Reveal the current note in the tree after opening from a link or command.
 
 Commands such as **Notes: Open explorer** jump you into this layout without clicking the rail.
 
-## Observable
+## JS notebook
 
-**Purpose:** Edit **Observable notebook** notes: cells of code and prose backed by JSON in the note body, with a runtime suited to quick visualization and scripting.
+**Purpose:** Edit **JS notebook** notes: cells of code and prose backed by JSON in the note body, with `@observablehq/runtime` and stdlib for visualization and scripting.
 
-- **Rail:** **Observable**.
-- Opens an **Observable** tab with the notebook **main** view.
-- Notebook notes are normal WPN notes whose **type** is `observable`; create them from the explorer’s type picker.
+- **Rail:** **JS notebook**.
+- Opens a **JS notebook** tab with the notebook **main** view.
+- Notebook notes are normal WPN notes whose **type** is `js-notebook`; create them from the explorer’s type picker.
 
 **Typical tasks**
 
-- Open **Observable: Open notebook** from the palette to start or focus a notebook tab.
-- Create a new **observable** note in a project when you want a persistent notebook file in your tree.
+- Open **JS notebook: Open** from the palette to start or focus a notebook tab.
+- Create a new **js-notebook** note in a project when you want a persistent notebook file in your tree.
 
 The editor integrates code editing (including shortcuts such as run cell) and trusted execution paths; see in-app behavior for the exact keybindings in your build.
 
@@ -57,7 +57,7 @@ Bundled guides refresh when the workspace or API server **reseeds** documentatio
 | Need | Use |
 |------|-----|
 | Organize and edit project notes | **Notes** explorer + **Note** tab |
-| Computational notebook cells | **Observable** tab + `observable` notes |
+| Computational notebook cells | **JS notebook** tab + `js-notebook` notes |
 | Product or plugin author docs | **Documentation** tab → **Guides** |
 | Discover shell commands | **Command palette** or Documentation → **Commands** |
 

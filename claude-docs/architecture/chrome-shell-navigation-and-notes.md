@@ -18,8 +18,8 @@ This document describes the **Chrome-only workbench** (`ChromeOnlyWorkbench`) in
 
 - **`ShellTabInstance.reuseKey`:** When `openOrReuseTab(tabTypeId, { reuseKey })` finds an existing instance with the same type and key, it **activates** it and optionally updates `title` / `state`.
 - **Menu rail:** [`ShellMenuRailRegistry`](../../src/renderer/shell/registries/ShellMenuRailRegistry.ts) items may set **`tabReuseKey`** so repeated rail clicks do not spawn duplicate tabs.
-- **Tab-scoped companions:** [`ShellTabType`](../../src/renderer/shell/registries/ShellTabsRegistry.ts) may declare optional **`primarySidebarViewId`** and **`secondaryViewId`**. When the active main tab changes, [`ChromeOnlyWorkbench`](../../src/renderer/shell/ChromeOnlyWorkbench.tsx) syncs those regions: defined ids open the corresponding shell view and expand layout flags; omitted fields **close** the region and collapse **sidebar** / **companion** chrome (so e.g. Observable no longer leaves the Notes tree visible).
-- **Commands** for Documentation, Observable, and Notes Explorer open tabs; sidebar/companion visibility follows tab type companions (see `useRegister*Plugin` under `src/renderer/shell/first-party/plugins/`).
+- **Tab-scoped companions:** [`ShellTabType`](../../src/renderer/shell/registries/ShellTabsRegistry.ts) may declare optional **`primarySidebarViewId`** and **`secondaryViewId`**. When the active main tab changes, [`ChromeOnlyWorkbench`](../../src/renderer/shell/ChromeOnlyWorkbench.tsx) syncs those regions: defined ids open the corresponding shell view and expand layout flags; omitted fields **close** the region and collapse **sidebar** / **companion** chrome (so e.g. JS notebook no longer leaves the Notes tree visible).
+- **Commands** for Documentation, JS notebook, and Notes Explorer open tabs; sidebar/companion visibility follows tab type companions (see `useRegister*Plugin` under `src/renderer/shell/first-party/plugins/`).
 
 ## URL hash semantics
 

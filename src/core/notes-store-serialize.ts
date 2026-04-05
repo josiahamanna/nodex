@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import * as path from "path";
+import { normalizeLegacyNoteType } from "../shared/note-type-legacy";
 import {
   childOrder,
   getChildren,
@@ -60,7 +61,7 @@ export function mergeAttachedSerializedIntoStore(
     notes.set(newId, {
       id: newId,
       parentId: newParent,
-      type: r.type,
+      type: normalizeLegacyNoteType(r.type),
       title: r.title,
       content: r.content,
       metadata: r.metadata,
@@ -159,7 +160,7 @@ export function importSerializedState(data: unknown): boolean {
     notes.set(r.id, {
       id: r.id,
       parentId: r.parentId ?? null,
-      type: r.type,
+      type: normalizeLegacyNoteType(r.type),
       title: typeof r.title === "string" ? r.title : "Untitled",
       content: typeof r.content === "string" ? r.content : "",
       metadata: r.metadata,

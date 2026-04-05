@@ -60,6 +60,7 @@ import {
 } from "../core/wpn/wpn-sqlite-notes";
 import type { Pool } from "pg";
 import { headlessSelectableNoteTypes } from "./headless-bootstrap";
+import { normalizeLegacyNoteType } from "../shared/note-type-legacy";
 import { isValidNoteType } from "../shared/validators";
 import type { NoteMovePlacement } from "../shared/nodex-renderer-api";
 
@@ -350,7 +351,8 @@ export function createWpnRouter(): Router {
       const ownerId = (req as AuthedRequest).user!.id;
       const { projectId } = req.params;
       const body = req.body ?? {};
-      const type = typeof body.type === "string" ? body.type : "";
+      const type =
+        typeof body.type === "string" ? normalizeLegacyNoteType(body.type) : "";
       const selectable = headlessSelectableNoteTypes();
       if (!isValidNoteType(type) || !selectable.includes(type)) {
         sendErr(res, 400, "Invalid note type");
@@ -417,7 +419,9 @@ export function createWpnRouter(): Router {
       } = {};
       if (typeof body.title === "string") patch.title = body.title;
       if (typeof body.content === "string") patch.content = body.content;
-      if (typeof body.type === "string") patch.type = body.type;
+      if (typeof body.type === "string") {
+        patch.type = normalizeLegacyNoteType(body.type);
+      }
       if (body.metadata === null || (body.metadata && typeof body.metadata === "object")) {
         patch.metadata = body.metadata as Record<string, unknown> | null;
       }

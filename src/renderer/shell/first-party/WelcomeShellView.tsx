@@ -14,7 +14,7 @@ Shell views are React components. Use DevTools: \`window.nodex.shell\`. Register
 ### Start here
 
 - [Scratch markdown](#/welcome/scratch-markdown) — open the **Scratch** tab (reusable note; also use the tab strip or activity bar)
-- [Scratch Observable notebook](#/welcome/observable-notebook) — interactive notebook in the primary area (not saved as a project note)
+- [Scratch JS notebook](#/welcome/js-notebook) — interactive notebook in the primary area (not saved as a project note)
 
 ### Go to
 

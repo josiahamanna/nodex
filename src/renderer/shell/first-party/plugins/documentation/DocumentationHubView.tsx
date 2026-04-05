@@ -345,27 +345,45 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
         </div>
       );
     }
-    return (
-      <div className="flex h-full min-h-0 flex-col overflow-auto">
-        <div className="shrink-0 border-b border-border px-5 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                Bundled guide (read-only)
+    if (bundledNote && bundledNoteId) {
+      return (
+        <div className="flex h-full min-h-0 flex-col overflow-auto">
+          <div className="shrink-0 border-b border-border px-5 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Bundled guide (read-only)
+                </div>
+                <h1 className="mt-1 text-lg font-semibold text-foreground">{esc(bundledNote.title)}</h1>
               </div>
-              <h1 className="mt-1 text-lg font-semibold text-foreground">{esc(bundledNote.title)}</h1>
+              <button type="button" className={docHubDismissBtn} onClick={closeBundled}>
+                Close
+              </button>
             </div>
-            <button type="button" className={docHubDismissBtn} onClick={closeBundled}>
-              Close
-            </button>
+          </div>
+          <div ref={scrollRootRef} className="min-h-0 flex-1 overflow-auto">
+            <MarkdownRenderer
+              note={bundledNote}
+              onSamePageHeadingClick={onDocHeadingLinkClick}
+              onInternalNoteNavigate={onInternalNoteNavigate}
+            />
           </div>
         </div>
-        <div ref={scrollRootRef} className="min-h-0 flex-1 overflow-auto">
-          <MarkdownRenderer
-            note={bundledNote}
-            onSamePageHeadingClick={onDocHeadingLinkClick}
-            onInternalNoteNavigate={onInternalNoteNavigate}
-          />
+      );
+    }
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex shrink-0 justify-end border-b border-border px-3 py-2">
+          <button type="button" className={docHubDismissBtn} onClick={closeBundled}>
+            Close
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-2 p-5 text-[13px] text-muted-foreground">
+          <p className="font-medium text-foreground">Guide not available</p>
+          <p>
+            This note id is not in the current workspace, or notes have not finished loading. Open a project and ensure
+            bundled docs have seeded.
+          </p>
         </div>
       </div>
     );

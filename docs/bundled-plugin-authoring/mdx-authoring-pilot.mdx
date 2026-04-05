@@ -1,0 +1,31 @@
+# MDX authoring (pilot)
+
+This file is **bundled MDX** (`sourceFile` ends with `.mdx`). It uses whitelisted components and, in bundled docs only, inline expressions.
+
+<NodexCallout variant="info">
+  Expressions like **{2 + 2}** render as {2 + 2} here because this note is seeded with `bundledDoc` metadata.
+</NodexCallout>
+
+<NodexCard title="UI components">
+
+Use **NodexCard**, **NodexCallout**, and **NodexButton** for structured documentation.
+
+<NodexButton command="nodex-cmd:nodex.docs.open">Open Documentation (command)</NodexButton>
+
+</NodexCard>
+
+## Observable
+
+Embed Observable notebooks with a fixed URL template (notebook path is validated):
+
+<ObservableEmbed notebook="@observablehq/hello-world" />
+
+## Cross-links
+
+Use **DocLink** for commands or internal note routes:
+
+<DocLink to="command:nodex.docs.open">Documentation command</DocLink>
+
+## Embedded documentation page
+
+<DocPage noteId="nodex-docs-hub-overview" />

@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "folder": {
     "id": "nodex-bundled-docs",
     "title": "Nodex — Documentation (bundled)"
@@ -44,9 +44,15 @@
     },
     {
       "id": "nodex-user-guide-features",
-      "file": "user-04-explorer-observable-documentation.md",
-      "title": "User guide — Explorer, Observable, and Documentation",
+      "file": "user-04-explorer-js-notebook-documentation.md",
+      "title": "User guide — Explorer, JS notebook, and Documentation",
       "section": "User guide"
+    },
+    {
+      "id": "nodex-bundled-mdx-pilot",
+      "file": "mdx-authoring-pilot.mdx",
+      "title": "Plugin authoring — MDX pilot (UI, Observable, embeds)",
+      "section": "Plugin authoring"
     },
     {
       "id": "nodex-bundled-plugin-overview",

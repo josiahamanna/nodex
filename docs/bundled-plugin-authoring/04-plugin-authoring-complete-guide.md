@@ -41,7 +41,7 @@ src/renderer/shell/first-party/plugins/<your-feature>/
   useRegisterYourFeaturePlugin.ts   # or .tsx
 ```
 
-Optional: split sidebars, hooks, and types into additional files following existing plugins (Documentation, Notes Explorer, Observable notebook).
+Optional: split sidebars, hooks, and types into additional files following existing plugins (Documentation, Notes Explorer, JS notebook).
 
 ### 2.3 Registration hook pattern
 
@@ -163,7 +163,7 @@ Do **not** rely on Node `fs`, raw SQLite, or unmediated `fetch` from sandboxed p
 | Documentation (rail, sidebars, commands) | `src/renderer/shell/first-party/plugins/documentation/useRegisterDocumentationPlugin.ts` |
 | Notes Explorer | `src/renderer/shell/first-party/plugins/notes-explorer/useRegisterNotesExplorerPlugin.ts` |
 | Markdown note editor | `src/renderer/shell/first-party/plugins/markdown/useRegisterMarkdownNotePlugin.tsx` |
-| Observable notebook | `src/renderer/shell/first-party/plugins/observable-notebook/useRegisterObservableNotebookPlugin.ts` |
+| JS notebook | `src/renderer/shell/first-party/plugins/js-notebook/useRegisterJsNotebookPlugin.ts` |
 | Rail click behavior | `src/renderer/shell/shellRailNavigation.ts` |
 | Contribution registry implementation | `src/renderer/shell/nodex-contribution-registry.ts` |
 

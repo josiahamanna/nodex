@@ -1,5 +1,6 @@
 import type { Database } from "better-sqlite3";
 import * as crypto from "crypto";
+import { normalizeLegacyNoteType } from "../../shared/note-type-legacy";
 import type { NoteMovePlacement } from "../../shared/nodex-renderer-api";
 import { collectReferencedNoteIdsFromMarkdown } from "../../shared/markdown-internal-note-href";
 import type {
@@ -47,12 +48,13 @@ function parseMetadata(json: string | null): Record<string, unknown> | undefined
 }
 
 function loadRows(db: Database, projectId: string): WpnNoteRow[] {
-  return db
+  const raw = db
     .prepare(
       `SELECT id, project_id, parent_id, type, title, content, metadata_json, sibling_index, created_at_ms, updated_at_ms
        FROM wpn_note WHERE project_id = ?`,
     )
     .all(projectId) as WpnNoteRow[];
+  return raw.map((r) => ({ ...r, type: normalizeLegacyNoteType(r.type) }));
 }
 
 function childrenMapFromRows(rows: WpnNoteRow[]): Map<string | null, WpnNoteRow[]> {
@@ -123,7 +125,7 @@ export function wpnSqliteGetNoteById(
     id: r.id,
     project_id: r.project_id,
     parent_id: r.parent_id,
-    type: r.type,
+    type: normalizeLegacyNoteType(r.type),
     title: r.title,
     content: r.content,
     metadata: parseMetadata(r.metadata_json),
@@ -147,6 +149,7 @@ export function wpnSqliteCreateNote(
   },
 ): { id: string } {
   requireWpnSqliteProject(db, ownerId, projectId);
+  const noteType = normalizeLegacyNoteType(payload.type);
 
   const rows = loadRows(db, projectId);
   const cm = childrenMapFromRows(rows);
@@ -194,7 +197,7 @@ export function wpnSqliteCreateNote(
         id,
         projectId,
         parent_id,
-        payload.type,
+        noteType,
         title,
         content,
         metadata_json,
@@ -213,7 +216,7 @@ export function wpnSqliteCreateNote(
     id,
     projectId,
     parent_id,
-    payload.type,
+    noteType,
     title,
     content,
     metadata_json,
@@ -239,7 +242,9 @@ export function wpnSqliteUpdateNote(
   if (!cur) return null;
   const title = patch.title !== undefined ? patch.title.trim() || cur.title : cur.title;
   const content = patch.content !== undefined ? patch.content : cur.content;
-  const type = patch.type !== undefined ? patch.type : cur.type;
+  const type = normalizeLegacyNoteType(
+    patch.type !== undefined ? patch.type : cur.type,
+  );
   let metadata_json: string | null =
     cur.metadata && Object.keys(cur.metadata).length > 0
       ? JSON.stringify(cur.metadata)
@@ -447,7 +452,7 @@ export function wpnSqliteListAllNotesWithContext(
   }[];
   return rows.map((r) => ({
     id: r.id,
-    type: r.type,
+    type: normalizeLegacyNoteType(r.type),
     title: r.title,
     project_id: r.project_id,
     project_name: r.project_name,

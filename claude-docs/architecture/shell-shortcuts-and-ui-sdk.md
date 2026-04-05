@@ -1,8 +1,8 @@
-# Shell shortcuts, keymaps, Observable notebook, and UI SDK
+# Shell shortcuts, keymaps, JS notebook, and UI SDK
 
 ## Consolidated plan (executive summary)
 
-**Goal:** Improve shell UX and extensibility: keyboard behavior when embedded views hold focus, predictable keymaps, Observable notebook as primary content, chrome built from React + SDK, and a **trusted-extension** model (policy + capabilities, not JS blacklists).
+**Goal:** Improve shell UX and extensibility: keyboard behavior when embedded views hold focus, predictable keymaps, JS notebook as primary content, chrome built from React + SDK, and a **trusted-extension** model (policy + capabilities, not JS blacklists).
 
 **Cross-cutting: iframe is optional.** Use a **sandboxed iframe** when you want isolation (legacy plugins, extra defense for user cell code, crash containment, CSP). Use **host-rendered React** when you want simpler integration and global shortcuts without bridging. Regions can mix (e.g. host sidebar + iframe primary, or both host).
 
@@ -10,7 +10,7 @@
 |-------|----------|
 | **Global shortcuts + focus** | Parent `window` does not get `keydown` from a focused **child iframe**. **Fix:** `postMessage` bridge from iframe → host (reuse/extend shell RPC), or avoid iframe for that surface. Optional helper in a future `@nodex/shell-client`. |
 | **Duplicate key chords** | `ShellKeymapRegistry` is keyed by **`id`**, not chord; duplicates possible. **Fix:** stable binding `id` + **chord uniqueness** or eviction on register. Registry stays source of truth; tinykeys/hotkeys only if needed for parsing. |
-| **Observable** | **Embed `@observablehq/runtime`** in main area; system/first-party plugin; storage/sync TBD; license compliance. **No security requirement to iframe** Observable if trusted; iframe **optional** for hardening. **User cell code** may need Workers / restricted eval separately. |
+| **JS notebook** | **Embed `@observablehq/runtime`** in main area; system/first-party plugin; storage/sync TBD; license compliance. **No security requirement to iframe** the runtime if trusted; iframe **optional** for hardening. **User cell code** may need Workers / restricted eval separately. |
 | **Trust model** | **Trusted extensions:** manifest, capabilities, signing/marketplace, user consent. |
 | **Sidebar / secondary** | **Exported React FCs** from plugin bundles; **`@nodex/shell-ui`** primitives; **`nodex`** via context/hooks; cross-plugin via **commands/RPC** only. |
 | **Primary** | **Trusted host React** and/or **iframe** views; **iframe optional** for system content. |
@@ -20,7 +20,7 @@
 
 1. **Keyboard forwarding for iframe focus** (bridge): implement a host message handler + an iframe keydown forwarder injection for `srcDoc` iframes.
 2. **Keymap correctness**: enforce a chord policy (last-wins / replace-on-register) so re-binding does not leave stale chords.
-3. **Observable notebook**: embed runtime, define persistence model for notebooks and cell edits, and define where user cell JS runs (main thread vs Worker).
+3. **JS notebook**: embed `@observablehq/runtime`, define persistence model for notebooks and cell edits, and define where user cell JS runs (main thread vs Worker).
 4. **SDK & capabilities**: define `@nodex/shell-ui` and `nodex` capability surfaces for trusted extension bundles.
 
 ---
@@ -41,9 +41,9 @@ When focus is inside a sandboxed iframe (`ShellIFrameViewHost`), keydown events 
 
 ---
 
-## 3. Observable notebook in primary area
+## 3. JS notebook in primary area
 
-Decision: embed `@observablehq/runtime` (not a hosted iframe). If Observable is a system plugin, an iframe is not required for trust; keep iframe as an optional hardening layer.
+Decision: embed `@observablehq/runtime` (not a hosted iframe). As a first-party plugin, an iframe is not required for trust; keep iframe as an optional hardening layer.
 
 Key follow-up: user-written cell code isolation (Workers or other).
 

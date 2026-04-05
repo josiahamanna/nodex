@@ -97,7 +97,7 @@ function MarketingHome({
                 </div>
               </div>
               <div className={card}>
-                <div className="text-[12px] font-semibold">JavaScript Observable notebooks</div>
+                <div className="text-[12px] font-semibold">JavaScript notebooks (jsNotebook)</div>
                 <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
                   Delve into note system exploration.
                 </div>

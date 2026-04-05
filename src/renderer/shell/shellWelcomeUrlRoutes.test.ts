@@ -22,6 +22,10 @@ test("tryParseWelcomeShellHash base and segments", () => {
     kind: "welcome",
     segment: "documentation",
   });
+  assert.deepEqual(tryParseWelcomeShellHash("/welcome/js-notebook"), {
+    kind: "welcome",
+    segment: "js-notebook",
+  });
   assert.deepEqual(tryParseWelcomeShellHash("welcome/documentation"), {
     kind: "welcome",
     segment: "documentation",

@@ -1,13 +1,13 @@
 /**
- * Observable notebook cells run as `new Function` with `globalThis` / `window` shadowed
+ * JS notebook cells run as `new Function` with `globalThis` / `window` shadowed
  * by this proxy. Blocked names and methods cover typical DOM / CSSOM / UI event surfaces.
  *
- * This is not a hard sandbox: bundled code (e.g. Observable stdlib) may still close over
+ * This is not a hard sandbox: bundled code (e.g. @observablehq/stdlib) may still close over
  * the real `globalThis` and use `document` internally.
  */
 
 const MSG =
-  "Notebook cells cannot use DOM / layout browser APIs on globalThis or window; use Observable stdlib (html, svg, md, width, Plot, …) for output, or nodex for app integration.";
+  "Notebook cells cannot use DOM / layout browser APIs on globalThis or window; use @observablehq/stdlib (html, svg, md, width, Plot, …) for output, or nodex for app integration.";
 
 /** Exact global names to block (constructors, roots, collections, …). */
 const DOM_GLOBAL_NAMES = new Set([

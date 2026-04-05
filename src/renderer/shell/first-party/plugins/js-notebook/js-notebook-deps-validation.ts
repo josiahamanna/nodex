@@ -1,5 +1,5 @@
 import { Library } from "@observablehq/stdlib";
-import type { NormalizedNotebookCell } from "./observable-notebook-types";
+import type { NormalizedNotebookCell } from "./js-notebook-types";
 
 let stdlibBuiltinNames: Set<string> | null = null;
 
@@ -14,7 +14,7 @@ function getStdlibBuiltinNames(): Set<string> {
 /** Injected in run; users may list it explicitly. */
 const RUNTIME_INJECTED_DEPS = new Set(["nodex", "__nb_global"]);
 
-function isObservableGlobalDep(dep: string): boolean {
+function isAmbientGlobalDep(dep: string): boolean {
   if (typeof globalThis === "undefined") return false;
   try {
     return dep in globalThis && (globalThis as Record<string, unknown>)[dep] !== undefined;
@@ -25,7 +25,7 @@ function isObservableGlobalDep(dep: string): boolean {
 
 /**
  * Returns a user-facing error if any JS cell lists a dependency that cannot
- * resolve (not another JS cell name, not an Observable stdlib builtin, etc.).
+ * resolve (not another JS cell name, not an @observablehq/stdlib builtin, etc.).
  */
 export function validateNotebookJsDependencies(cells: NormalizedNotebookCell[]): string | null {
   const jsCells = cells.filter((c) => c.kind === "js");
@@ -40,8 +40,8 @@ export function validateNotebookJsDependencies(cells: NormalizedNotebookCell[]):
       }
       if (jsNames.has(dep)) continue;
       if (builtins.has(dep) || RUNTIME_INJECTED_DEPS.has(dep)) continue;
-      if (isObservableGlobalDep(dep)) continue;
-      return `Unknown dependency "${dep}" for cell "${c.name}". Deps must be names of other JS cells in this note (comma-separated), or Observable stdlib builtins (e.g. d3, Plot). Leave deps empty if you only need literals or nodex.`;
+      if (isAmbientGlobalDep(dep)) continue;
+      return `Unknown dependency "${dep}" for cell "${c.name}". Deps must be names of other JS cells in this note (comma-separated), or @observablehq/stdlib builtins (e.g. d3, Plot). Leave deps empty if you only need literals or nodex.`;
     }
   }
   return null;

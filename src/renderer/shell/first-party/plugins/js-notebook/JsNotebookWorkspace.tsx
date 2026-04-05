@@ -6,15 +6,15 @@ import { NotebookCellEditor } from "./NotebookCellEditor";
 import {
   createNotebookNodexHost,
   NODEX_NOTEBOOK_DOCUMENTED_COMMANDS,
-} from "./observable-notebook-nodex-api";
-import { validateNotebookJsDependencies } from "./observable-notebook-deps-validation";
-import { runObservableNotebookTrusted } from "./observable-notebook-run-trusted";
+} from "./js-notebook-nodex-api";
+import { validateNotebookJsDependencies } from "./js-notebook-deps-validation";
+import { runJsNotebookTrusted } from "./js-notebook-run-trusted";
 import {
   makeNotebookCellId,
   type NotebookCell,
   type NotebookCellsUpdate,
   normalizeNotebookCells,
-} from "./observable-notebook-types";
+} from "./js-notebook-types";
 import { useTheme } from "../../../../theme/ThemeContext";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import { useNodexNoteModeLine } from "../../../useNodexNoteModeLine";
@@ -30,7 +30,7 @@ const NOTEBOOK_VAR_TITLE =
 const NOTEBOOK_INPUTS_TITLE =
   "Other cell variable names this cell depends on, comma-separated (not the current cell’s name).";
 
-export type ObservableNotebookWorkspaceProps = {
+export type JsNotebookWorkspaceProps = {
   cells: NotebookCell[];
   onCellsChange: (next: NotebookCellsUpdate) => void;
   invokeCommand: (commandId: string, args?: Record<string, unknown>) => void | Promise<void>;
@@ -46,7 +46,7 @@ export type ObservableNotebookWorkspaceProps = {
   executeWhenKeyChanges?: string;
 };
 
-export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspaceProps): React.ReactElement {
+export function JsNotebookWorkspace(props: JsNotebookWorkspaceProps): React.ReactElement {
   const {
     cells,
     onCellsChange,
@@ -69,12 +69,12 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
   const [lastRunLabel, setLastRunLabel] = useState<string | null>(null);
   const [runBusy, setRunBusy] = useState(false);
 
-  const observableModeLinePrimary = useMemo(() => {
+  const notebookModeLinePrimary = useMemo(() => {
     const n = cells.length;
-    return `Observable · ${n} cell${n === 1 ? "" : "s"}`;
+    return `JS notebook · ${n} cell${n === 1 ? "" : "s"}`;
   }, [cells.length]);
 
-  const observableModeLineSecondary = useMemo(() => {
+  const notebookModeLineSecondary = useMemo(() => {
     if (runBusy) return "Running…";
     if (err) return err.length > 52 ? `${err.slice(0, 49)}…` : err;
     if (lastRunLabel) return lastRunLabel;
@@ -84,9 +84,9 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
 
   useNodexNoteModeLine({
     scopeId: modeLineScopeId,
-    primaryLine: observableModeLinePrimary,
-    secondaryLine: observableModeLineSecondary,
-    sourcePluginId: "nodex.observable-notebook",
+    primaryLine: notebookModeLinePrimary,
+    secondaryLine: notebookModeLineSecondary,
+    sourcePluginId: "nodex.js-notebook",
   });
 
   const cellOutputSlotRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -185,7 +185,7 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
     };
 
     try {
-      const { dispose } = runObservableNotebookTrusted({
+      const { dispose } = runJsNotebookTrusted({
         cells: norm,
         getOutputSlot,
         nodexFactory: () => nodex,
@@ -261,7 +261,7 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
       };
 
       try {
-        const { dispose } = runObservableNotebookTrusted({
+        const { dispose } = runJsNotebookTrusted({
           cells: norm,
           getOutputSlot,
           nodexFactory: () => nodex,
@@ -340,7 +340,7 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
   return (
     <div className="flex h-full min-h-0 flex-col text-[12px]">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2.5">
-        <div className="text-[12px] font-bold opacity-85">Observable notebook</div>
+        <div className="text-[12px] font-bold opacity-85">JS notebook</div>
         <button
           type="button"
           className="rounded border border-border bg-muted/20 px-2.5 py-1.5 text-[12px] disabled:opacity-40"
@@ -407,7 +407,7 @@ export function ObservableNotebookWorkspace(props: ObservableNotebookWorkspacePr
           <code className="font-mono">nodex</code> merges <code className="font-mono">window.Nodex</code>,{" "}
           <code className="font-mono">window.nodex</code> (same <code className="font-mono">shell</code> as DevTools:
           tabs, commands, layout, views, keymap, …), and helpers like{" "}
-          <code className="font-mono">nodex.commands.run</code>. Use Observable output helpers (
+          <code className="font-mono">nodex.commands.run</code>. Use @observablehq/stdlib output helpers (
           <code className="font-mono">html</code>, <code className="font-mono">svg</code>, …) instead of DOM / layout
           APIs (<code className="font-mono">document</code>, <code className="font-mono">addEventListener</code>,{" "}
           <code className="font-mono">getComputedStyle</code>, …), which are blocked on{" "}

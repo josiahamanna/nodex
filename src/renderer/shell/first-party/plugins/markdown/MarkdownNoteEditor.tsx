@@ -147,11 +147,14 @@ export function MarkdownNoteEditor({
     wikiSelected,
   ]);
 
+  const docKind = note.type === "mdx" ? "MDX" : "Markdown";
+  const docPluginId = note.type === "mdx" ? "nodex.mdx" : "nodex.markdown";
+
   useNodexNoteModeLine({
     scopeId: note.id,
-    primaryLine: `Markdown · ${markdownModeLineLabel}`,
+    primaryLine: `${docKind} · ${markdownModeLineLabel}`,
     secondaryLine: markdownModeLineSecondary,
-    sourcePluginId: "nodex.markdown",
+    sourcePluginId: docPluginId,
   });
 
   const prevWikiTrigRef = useRef<ReturnType<typeof findActiveWikiLinkTrigger>>(null);
@@ -371,12 +374,12 @@ export function MarkdownNoteEditor({
   const previewNote = useMemo<Note>(
     () => ({
       id: note.id,
-      type: "markdown",
-      title: note.title ?? "Markdown",
+      type: note.type === "mdx" ? "mdx" : "markdown",
+      title: note.title ?? (note.type === "mdx" ? "MDX" : "Markdown"),
       content: previewContent,
       metadata: note.metadata,
     }),
-    [note.id, note.metadata, note.title, previewContent],
+    [note.id, note.metadata, note.title, note.type, previewContent],
   );
 
   const flushNow = useCallback(() => {

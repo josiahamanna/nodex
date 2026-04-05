@@ -2,8 +2,8 @@ import DOMPurify from "dompurify";
 import { Inspector } from "@observablehq/inspector";
 import { Runtime } from "@observablehq/runtime";
 import { Library } from "@observablehq/stdlib";
-import { createNotebookCellGlobalThisProxy } from "./observable-notebook-cell-globals";
-import type { NormalizedNotebookCell } from "./observable-notebook-types";
+import { createNotebookCellGlobalThisProxy } from "./js-notebook-cell-globals";
+import type { NormalizedNotebookCell } from "./js-notebook-types";
 
 function isHtmlPayload(value: unknown): value is { html: string } {
   return (
@@ -42,7 +42,7 @@ export type TrustedRunMeta = {
   startedAt: number;
 };
 
-export function runObservableNotebookTrusted(opts: {
+export function runJsNotebookTrusted(opts: {
   cells: NormalizedNotebookCell[];
   /** Mount each cell's inspector here; use a detached element if no UI slot (e.g. dependency-only). */
   getOutputSlot: (cellId: string) => HTMLElement | null;
