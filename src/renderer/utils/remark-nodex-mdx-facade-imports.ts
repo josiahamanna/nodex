@@ -1,6 +1,7 @@
 import type { Root } from "mdast";
 import type { Plugin } from "unified";
 import type { Parent } from "unist";
+import type { VFile } from "vfile";
 import { visit } from "unist-util-visit";
 
 const IMPORT_FROM_RE = /from\s+['"]([^'"]+)['"]/g;
@@ -11,7 +12,7 @@ const ALLOWED_FACADE = /^@nodex\/(ui|date)$/;
 
 function validateAndStripMdxjsEsm(
   node: { type: string; value?: string },
-  file: { fail: (msg: string, n: unknown, ruleId?: string) => void },
+  file: VFile,
 ): void {
   const src = typeof node.value === "string" ? node.value : "";
   if (EXPORT_RE.test(src)) {
