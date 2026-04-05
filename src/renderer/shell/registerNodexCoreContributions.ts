@@ -1,6 +1,7 @@
 import type { NodexContributionRegistry } from "./nodex-contribution-registry";
 import type { ShellRegistries } from "./registries/ShellRegistriesContext";
 import type { ShellKeyBinding } from "./registries/ShellKeymapRegistry";
+import { emitNodexMinibarOutput } from "./minibarEcho";
 import { NODEX_REPL_TOGGLE_EVENT } from "./NodexReplOverlay";
 import { closeShellTabInstance } from "./shellTabClose";
 
@@ -62,9 +63,9 @@ export function registerNodexCoreContributions(
   disposers.push(
     registry.registerCommand({
       id: "nodex.plugins.listInstalled",
-      title: "Plugins: List installed (log)",
+      title: "Plugins: List installed",
       category: "Plugins",
-      doc: "Logs installed plugin ids to the console.",
+      doc: "Lists installed plugin ids in the minibuffer (and console).",
       api: {
         summary: "List installed plugin ids via window.Nodex.getInstalledPlugins().",
         args: [],
@@ -79,12 +80,13 @@ export function registerNodexCoreContributions(
           const ids = await window.Nodex.getInstalledPlugins();
           // eslint-disable-next-line no-console
           console.info("[Nodex] Installed plugins:", ids);
+          const body = ids.length ? ids.map((id) => `  ${id}`).join("\n") : "  (none)";
+          emitNodexMinibarOutput(`Installed plugins (${ids.length}):\n${body}`);
           setTransientStatus(`Installed plugins: ${ids.length}`);
         } catch (e) {
-          setTransientStatus(
-            e instanceof Error ? e.message : "Failed to list plugins",
-            4500,
-          );
+          const msg = e instanceof Error ? e.message : "Failed to list plugins";
+          emitNodexMinibarOutput(msg, "error");
+          setTransientStatus(msg, 4500);
         }
       },
     }),
@@ -107,11 +109,15 @@ export function registerNodexCoreContributions(
       },
       handler: async () => {
         setTransientStatus("Reloading plugins…", 1500);
+        emitNodexMinibarOutput("Reloading plugins…");
         const r = await window.Nodex.reloadPluginRegistry();
         if (r.success) {
+          emitNodexMinibarOutput("Plugins reloaded.");
           setTransientStatus("Plugins reloaded.");
         } else {
-          setTransientStatus(r.error ?? "Plugin reload failed", 4500);
+          const msg = r.error ?? "Plugin reload failed";
+          emitNodexMinibarOutput(msg, "error");
+          setTransientStatus(msg, 4500);
         }
       },
     }),
@@ -144,6 +150,8 @@ export function registerNodexCoreContributions(
       handler: async (args) => {
         const pluginId = String(args?.pluginId ?? "").trim();
         if (!pluginId) {
+          const hint = `Missing args.pluginId.\n\nExample:\n  ${enabled ? "nodex.plugins.enable" : "nodex.plugins.disable"} {"pluginId":"your.plugin.id"}`;
+          emitNodexMinibarOutput(hint, "error");
           setTransientStatus("Missing args.pluginId", 4500);
           return;
         }
@@ -151,11 +159,17 @@ export function registerNodexCoreContributions(
           enabled ? `Enabling ${pluginId}…` : `Disabling ${pluginId}…`,
           1500,
         );
+        emitNodexMinibarOutput(
+          enabled ? `Enabling ${pluginId}…` : `Disabling ${pluginId}…`,
+        );
         const r = await window.Nodex.setPluginEnabled(pluginId, enabled);
         if (r.success) {
+          emitNodexMinibarOutput(enabled ? `Enabled: ${pluginId}` : `Disabled: ${pluginId}`);
           setTransientStatus(enabled ? "Enabled." : "Disabled.");
         } else {
-          setTransientStatus(r.error ?? "Plugin toggle failed", 4500);
+          const msg = r.error ?? "Plugin toggle failed";
+          emitNodexMinibarOutput(msg, "error");
+          setTransientStatus(msg, 4500);
         }
       },
     });
@@ -184,15 +198,22 @@ export function registerNodexCoreContributions(
       handler: async (args) => {
         const pluginId = String(args?.pluginId ?? "").trim();
         if (!pluginId) {
+          const hint =
+            'Missing args.pluginId.\n\nExample:\n  nodex.plugins.uninstall {"pluginId":"your.plugin.id"}';
+          emitNodexMinibarOutput(hint, "error");
           setTransientStatus("Missing args.pluginId", 4500);
           return;
         }
         setTransientStatus(`Uninstalling ${pluginId}…`, 1500);
+        emitNodexMinibarOutput(`Uninstalling ${pluginId}…`);
         const r = await window.Nodex.uninstallPlugin(pluginId);
         if (r.success) {
+          emitNodexMinibarOutput(`Uninstalled: ${pluginId}`);
           setTransientStatus("Uninstalled.");
         } else {
-          setTransientStatus(r.error ?? "Uninstall failed", 4500);
+          const msg = r.error ?? "Uninstall failed";
+          emitNodexMinibarOutput(msg, "error");
+          setTransientStatus(msg, 4500);
         }
       },
     }),
@@ -223,19 +244,30 @@ export function registerNodexCoreContributions(
       handler: async (args) => {
         const packageFile = String(args?.packageFile ?? "").trim();
         if (!packageFile) {
+          const hint =
+            'Missing args.packageFile.\n\nExample:\n  nodex.plugins.installMarketplace {"packageFile":"my-plugin.tgz"}';
+          emitNodexMinibarOutput(hint, "error");
           setTransientStatus("Missing args.packageFile", 4500);
           return;
         }
         setTransientStatus(`Installing ${packageFile}…`, 1500);
+        emitNodexMinibarOutput(`Installing ${packageFile}…`);
         const r = await window.Nodex.installMarketplacePlugin(packageFile);
         if (r.success) {
           const w =
             r.warnings?.length && r.warnings.length > 0
+              ? `\n\nWarnings (${r.warnings.length}):\n${r.warnings.map((x) => `  ${String(x)}`).join("\n")}`
+              : "";
+          emitNodexMinibarOutput(`Installed: ${packageFile}${w}`);
+          const st =
+            r.warnings?.length && r.warnings.length > 0
               ? ` (${r.warnings.length} warning(s))`
               : "";
-          setTransientStatus(`Installed.${w}`);
+          setTransientStatus(`Installed.${st}`);
         } else {
-          setTransientStatus(r.error ?? "Install failed", 4500);
+          const msg = r.error ?? "Install failed";
+          emitNodexMinibarOutput(msg, "error");
+          setTransientStatus(msg, 4500);
         }
       },
     }),

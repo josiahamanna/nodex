@@ -1,4 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  NODEX_MINIBAR_OUTPUT_EVENT,
+  type NodexMinibarEchoDetail,
+} from "./minibarEcho";
 import type { NodexShellVm } from "./useNodexShell";
 
 function splitMiniBar(text: string): { id: string; rest: string; hasSpace: boolean } {
@@ -34,6 +38,7 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
   const activeItemRef = useRef<HTMLButtonElement | null>(null);
   const lastFocusOutsideMinibarRef = useRef<HTMLElement | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [echo, setEcho] = useState<NodexMinibarEchoDetail | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const [inputFocused, setInputFocused] = useState(false);
   const escSeqRef = useRef(0);
@@ -59,7 +64,20 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
 
   useEffect(() => {
     setErr(null);
+    setEcho(null);
     setActiveIdx(0);
+  }, []);
+
+  useEffect(() => {
+    const onEcho = (e: Event) => {
+      const ce = e as CustomEvent<NodexMinibarEchoDetail>;
+      const d = ce.detail;
+      if (!d || typeof d.text !== "string") return;
+      setErr(null);
+      setEcho({ text: d.text, kind: d.kind ?? "info" });
+    };
+    window.addEventListener(NODEX_MINIBAR_OUTPUT_EVENT, onEcho);
+    return () => window.removeEventListener(NODEX_MINIBAR_OUTPUT_EVENT, onEcho);
   }, []);
 
   useEffect(() => {
@@ -152,6 +170,7 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
                   escSeqRef.current = 0;
                   setMiniBarText("");
                   setActiveIdx(0);
+                  setEcho(null);
                   return;
                 }
                 escSeqRef.current = 0;
@@ -180,6 +199,7 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
               if (e.key === "Enter") {
                 e.preventDefault();
                 setErr(null);
+                setEcho(null);
                 void (async () => {
                   try {
                     if (!hasSpace && rest.trim().length === 0) {
@@ -191,6 +211,7 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
                     }
                     await runFromMiniBarText(miniBarText);
                   } catch (ex) {
+                    setEcho(null);
                     setErr(ex instanceof Error ? ex.message : "Command failed");
                   }
                 })();
@@ -237,8 +258,20 @@ export function NodexMiniBar({ vm }: { vm: NodexShellVm }): React.ReactElement |
           ) : null}
         </div>
       </div>
+      {echo ? (
+        <pre
+          className={`max-h-40 w-full overflow-auto whitespace-pre-wrap break-words border-t border-border px-3 py-2 font-mono text-[11px] leading-snug ${
+            echo.kind === "error"
+              ? "text-red-600 dark:text-red-400"
+              : "text-foreground"
+          }`}
+          role="status"
+        >
+          {echo.text}
+        </pre>
+      ) : null}
       {err ? (
-        <div className="w-full px-3 pb-2 text-[11px] text-red-600 dark:text-red-400">
+        <div className="w-full border-t border-border px-3 pb-2 pt-2 text-[11px] text-red-600 dark:text-red-400">
           {err}
         </div>
       ) : null}

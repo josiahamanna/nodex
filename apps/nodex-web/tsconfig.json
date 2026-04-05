@@ -21,6 +21,7 @@
   "include": [
     "next-env.d.ts",
     "nodex-globals.d.ts",
+    "../../src/types/window.d.ts",
     "../../src/types/observable-runtime.d.ts",
     "../../src/types/observable-inspector.d.ts",
     "../../src/types/observable-stdlib.d.ts",

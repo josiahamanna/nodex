@@ -5,15 +5,6 @@ import type { ShellViewRegistry } from "./views/ShellViewRegistry";
 import type { ShellRegistries } from "./registries/ShellRegistriesContext";
 import type { ShellKeyBinding } from "./registries/ShellKeymapRegistry";
 
-declare global {
-  interface Window {
-    nodex?: {
-      shell?: unknown;
-      [key: string]: unknown;
-    };
-  }
-}
-
 /** Same object assigned to `window.nodex.shell` and injected as `nodex.shell` in Observable notebooks. */
 export function buildNodexShellApi(opts: {
   registry: NodexContributionRegistry;
@@ -111,6 +102,8 @@ export function exposeDevtoolsShellApi(opts: {
   if (typeof window === "undefined") return;
 
   window.nodex = window.nodex ?? {};
-  window.nodex.shell = buildNodexShellApi(opts);
+  const shell = buildNodexShellApi(opts);
+  window.nodex.shell = shell;
+  window.nodex.devtools = shell;
 }
 

@@ -16,7 +16,31 @@ function nodexBridgeCompletions(): Completion[] {
   }));
 }
 
-/** `window.nodex` top-level keys and `nodex.shell.*` groups (matches DevTools shell API). */
+/**
+ * Dotted paths under `nodex.shell` / `nodex.devtools` (plain objects + function leaves),
+ * kept in sync with `buildNodexShellApi` at runtime.
+ */
+function collectNestedNodexCompletions(
+  value: object,
+  basePath: string,
+  detail: string,
+  remainingDepth: number,
+  out: Completion[],
+): void {
+  if (remainingDepth <= 0) return;
+  for (const key of Object.keys(value)) {
+    const path = `${basePath}.${key}`;
+    const child = (value as Record<string, unknown>)[key];
+    if (typeof child === "function") {
+      out.push({ label: path, type: "function", detail });
+    } else if (child != null && typeof child === "object") {
+      out.push({ label: path, type: "variable", detail });
+      collectNestedNodexCompletions(child as object, path, detail, remainingDepth - 1, out);
+    }
+  }
+}
+
+/** `window.nodex` top-level keys and nested `nodex.shell.*` / `nodex.devtools.*` (DevTools shell API). */
 function nodexWindowCompletions(): Completion[] {
   if (typeof window === "undefined") return [];
   const wn = (window as unknown as { nodex?: Record<string, unknown> }).nodex;
@@ -29,14 +53,9 @@ function nodexWindowCompletions(): Completion[] {
       type: (typeof v === "function" ? "function" : "variable") as "function" | "variable",
       detail: "window.nodex",
     });
-    if (k === "shell" && v && typeof v === "object") {
-      for (const sk of Object.keys(v as object)) {
-        out.push({
-          label: `nodex.shell.${sk}`,
-          type: "variable",
-          detail: "window.nodex.shell",
-        });
-      }
+    if ((k === "shell" || k === "devtools") && v && typeof v === "object") {
+      const detailRoot = k === "shell" ? "window.nodex.shell" : "window.nodex.devtools";
+      collectNestedNodexCompletions(v as object, `nodex.${k}`, detailRoot, 2, out);
     }
   }
   return out;
@@ -44,6 +63,8 @@ function nodexWindowCompletions(): Completion[] {
 
 const STATIC_COMPLETIONS: Completion[] = [
   { label: "nodex", type: "namespace", detail: "window.Nodex + window.nodex + helpers" },
+  { label: "nodex.shell", type: "variable", detail: "window.nodex.shell" },
+  { label: "nodex.devtools", type: "variable", detail: "Alias of nodex.shell when mounted" },
   { label: "nodex.commands.run", type: "function", detail: "Run command id" },
   { label: "nodex.openNote", type: "function" },
   { label: "nodex.openPalette", type: "function" },
