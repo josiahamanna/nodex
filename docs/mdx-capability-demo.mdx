@@ -1,0 +1,92 @@
+import { Button } from "@nodex/ui"
+
+# MDX capability demo
+
+Short tour of what works in a **workspace MDX** note. Replace placeholder note IDs/paths with real ones from your vault.
+
+## Headings & typography
+
+Regular **bold**, *italic*, `inline code`, and [external link](https://example.com).
+
+> Blockquote with a paragraph.
+
+---
+
+## GitHub-flavored Markdown
+
+| Feature    | Supported |
+| ---------- | --------- |
+| Tables     | Yes       |
+| ~~Strike~~ | Yes       |
+
+- [x] Task list (checked)
+- [ ] Task list (open)
+
+```js
+// Fenced code block
+const x = 1;
+```
+
+## Facade imports (`@nodex/ui` / `@nodex/date`)
+
+Imports are **only** allowed from `@nodex/ui` or `@nodex/date`; they are stripped at compile time and components come from the host map.
+
+<Button>Primary button</Button>
+
+<Button variant="outline">Outline button</Button>
+
+<NodexFormatIso value="2024-06-01T12:00:00.000Z" />
+
+## Nodex layout components
+
+<NodexCallout variant="info">
+  Callouts for tips and notes. Use <code>variant="warning"</code> for cautions.
+</NodexCallout>
+
+<NodexCard title="Card title">
+
+Body copy inside a card. Combine with buttons and links below.
+
+</NodexCard>
+
+## Commands & shell links
+
+Markdown command link (same as in plain markdown):
+
+[nodex-cmd link](nodex-cmd:nodex.docs.open)
+
+JSX helpers:
+
+<DocLink to="command:nodex.docs.open">DocLink → command</DocLink>
+
+<NodexButton command="nodex-cmd:nodex.docs.open">NodexButton</NodexButton>
+
+## Internal note links
+
+Use hash routes so the shell can intercept navigation (adjust IDs/paths):
+
+- [Note by id](#/n/YOUR_NOTE_ID)
+- [Note + heading slug](#/n/YOUR_NOTE_ID/some-heading)
+- [VFS path](#/w/path/to/note)
+
+## Observable embed
+
+<ObservableEmbed notebook="@observablehq/hello-world" title="Hello World" />
+
+## Embedded note (another note as MDX)
+
+Uses a real note id from your workspace (bundled docs often ship ids like this):
+
+<DocPage noteId="nodex-docs-hub-overview" />
+
+## Same-page heading link
+
+Jump targets use generated heading ids. After you add a heading below, link to it with a hash that matches its slug (e.g. `#mdx-limitations`).
+
+### MDX limitations (workspace notes)
+
+**Not allowed** in workspace MDX: `{expressions}`, `export`, dynamic `import()`, side-effect-only imports, and arbitrary module specifiers. Raw `<script>` / `<iframe>` in MDX are blocked or replaced by the host.
+
+---
+
+_End of demo — copy into an MDX note or trim sections as you like._

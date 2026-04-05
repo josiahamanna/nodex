@@ -461,6 +461,60 @@ export function wpnSqliteListAllNotesWithContext(
   }));
 }
 
+export function wpnSqliteGetNoteWithContextById(
+  db: Database,
+  ownerId: string,
+  noteId: string,
+): WpnNoteWithContextListItem | null {
+  const r = db
+    .prepare(
+      `SELECT n.id AS id, n.type AS type, n.title AS title, n.project_id AS project_id,
+              p.name AS project_name, p.workspace_id AS workspace_id, w.name AS workspace_name
+       FROM wpn_note n
+       INNER JOIN wpn_project p ON p.id = n.project_id
+       INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+       WHERE n.id = ? AND w.owner_id = ?`,
+    )
+    .get(noteId, ownerId) as
+    | {
+        id: string;
+        type: string;
+        title: string;
+        project_id: string;
+        project_name: string;
+        workspace_id: string;
+        workspace_name: string;
+      }
+    | undefined;
+  if (!r) return null;
+  return {
+    id: r.id,
+    type: normalizeLegacyNoteType(r.type),
+    title: r.title,
+    project_id: r.project_id,
+    project_name: r.project_name,
+    workspace_id: r.workspace_id,
+    workspace_name: r.workspace_name,
+  };
+}
+
+/** Id + content for every note owned by `ownerId` (cross-workspace). */
+export function wpnSqliteListAllNoteContentsForOwner(
+  db: Database,
+  ownerId: string,
+): { id: string; content: string }[] {
+  const rows = db
+    .prepare(
+      `SELECT n.id AS id, n.content AS content
+       FROM wpn_note n
+       INNER JOIN wpn_project p ON p.id = n.project_id
+       INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+       WHERE w.owner_id = ?`,
+    )
+    .all(ownerId) as { id: string; content: string }[];
+  return rows;
+}
+
 export function wpnSqliteListBacklinksToNote(
   db: Database,
   ownerId: string,

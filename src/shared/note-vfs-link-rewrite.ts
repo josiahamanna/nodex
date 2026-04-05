@@ -1,0 +1,100 @@
+import { parseInternalMarkdownNoteLink } from "./markdown-internal-note-href.ts";
+import { canonicalVfsPathFromLinkRow, markdownVfsNoteHref } from "./note-vfs-path.ts";
+import type { WpnNoteWithContextListItem } from "./wpn-v2-types.ts";
+
+/**
+ * When a note title changes, its canonical VFS path `Workspace/Project/Title` changes.
+ * Rewrite markdown / MDX that pointed at the old path so `#/w/...` and `w/...` links keep working.
+ */
+export function vfsCanonicalPathsForTitleChange(
+  ctx: Pick<WpnNoteWithContextListItem, "workspace_name" | "project_name">,
+  oldTitle: string,
+  newTitle: string,
+): { oldCanonical: string; newCanonical: string } | null {
+  const oldCanonical = canonicalVfsPathFromLinkRow({
+    workspaceName: ctx.workspace_name,
+    projectName: ctx.project_name,
+    title: oldTitle,
+  });
+  const newCanonical = canonicalVfsPathFromLinkRow({
+    workspaceName: ctx.workspace_name,
+    projectName: ctx.project_name,
+    title: newTitle,
+  });
+  if (oldCanonical === newCanonical) return null;
+  return { oldCanonical, newCanonical };
+}
+
+function replaceInternalHref(
+  href: string,
+  oldCanonical: string,
+  newCanonical: string,
+): string | null {
+  const p = parseInternalMarkdownNoteLink(href);
+  if (p?.kind !== "vfs" || p.vfsPath !== oldCanonical) return null;
+  return markdownVfsNoteHref(newCanonical, p.markdownHeadingSlug);
+}
+
+/**
+ * Apply rewrites outside ``` fenced ``` blocks only (inline `code` is not skipped).
+ */
+export function rewriteVfsCanonicalLinksInMarkdown(
+  content: string,
+  oldCanonical: string,
+  newCanonical: string,
+): string {
+  if (oldCanonical === newCanonical) return content;
+  const parts = content.split(/(```[\s\S]*?```)/g);
+  return parts
+    .map((chunk, i) =>
+      i % 2 === 1 ? chunk : rewriteVfsLinksInPlainSegment(chunk, oldCanonical, newCanonical),
+    )
+    .join("");
+}
+
+function rewriteVfsLinksInPlainSegment(
+  segment: string,
+  oldCanonical: string,
+  newCanonical: string,
+): string {
+  let s = rewriteMarkdownLinkHrefs(segment, oldCanonical, newCanonical);
+  s = rewriteDocLinkToAttrs(s, oldCanonical, newCanonical);
+  return s;
+}
+
+function rewriteMarkdownLinkHrefs(
+  segment: string,
+  oldCanonical: string,
+  newCanonical: string,
+): string {
+  return segment.replace(
+    /(!?)\[([^\]]*)\]\(([^)\s]+)(\s+["'][^"']*["'])?\)/g,
+    (match, bang, label, href, titlePart) => {
+      const nh = replaceInternalHref(String(href).trim(), oldCanonical, newCanonical);
+      return nh === null ? match : `${bang}[${label}](${nh}${titlePart ?? ""})`;
+    },
+  );
+}
+
+/**
+ * `<DocLink to="…">` / `<DocLink to='…' />` — static string only.
+ */
+function rewriteDocLinkToAttrs(
+  segment: string,
+  oldCanonical: string,
+  newCanonical: string,
+): string {
+  return segment.replace(
+    /<DocLink\b([\s\S]*?)(\/>|>)/gi,
+    (full: string, inner: string, end: string) => {
+      const m = /\bto=(?:"([^"]*)"|'([^']*)')/.exec(inner);
+      if (!m) return full;
+      const q = m[0].includes('"') ? '"' : "'";
+      const raw = (m[1] ?? m[2] ?? "").trim();
+      const nh = replaceInternalHref(raw, oldCanonical, newCanonical);
+      if (nh === null) return full;
+      const nextInner = inner.replace(/\bto=(?:"[^"]*"|'[^']*')/, `to=${q}${nh}${q}`);
+      return `<DocLink${nextInner}${end}`;
+    },
+  );
+}

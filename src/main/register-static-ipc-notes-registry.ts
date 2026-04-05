@@ -5,6 +5,7 @@ import {
   wpnSqliteGetNoteById,
   wpnSqliteUpdateNote,
 } from "../core/wpn/wpn-sqlite-notes";
+import { wpnSqliteApplyVfsRewritesAfterTitleChange } from "../core/wpn/wpn-rename-vfs-rewrite";
 import {
   ensureNotesSeeded,
   createNote as createNoteInStore,
@@ -166,7 +167,25 @@ ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: strin
   const db = getNotesDatabase();
   const ownerId = getWpnOwnerId();
   if (db && wpnSqliteGetNoteById(db, ownerId, id)) {
-    wpnSqliteUpdateNote(db, ownerId, id, { title });
+    const before = wpnSqliteGetNoteById(db, ownerId, id);
+    if (!before) {
+      throw new Error("Note not found");
+    }
+    const run = db.transaction(() => {
+      const after = wpnSqliteUpdateNote(db, ownerId, id, { title });
+      if (!after) {
+        throw new Error("Note not found");
+      }
+      if (before.title !== after.title) {
+        wpnSqliteApplyVfsRewritesAfterTitleChange(db, ownerId, id, before.title, after.title);
+      }
+    });
+    try {
+      run();
+    } catch (e) {
+      console.error("[RENAME_NOTE] failed (title or VFS link rewrite):", e);
+      throw e instanceof Error ? e : new Error(String(e));
+    }
     return;
   }
   const registeredTypes = registry.getRegisteredTypes();

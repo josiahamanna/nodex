@@ -6,6 +6,10 @@ import {
   wpnSqliteGetNoteById,
   wpnSqliteUpdateNote,
 } from "../core/wpn/wpn-sqlite-notes";
+import {
+  wpnPgApplyVfsRewritesAfterTitleChange,
+  wpnSqliteApplyVfsRewritesAfterTitleChange,
+} from "../core/wpn/wpn-rename-vfs-rewrite";
 import type { WpnNoteDetail } from "../shared/wpn-v2-types";
 
 /**
@@ -38,10 +42,50 @@ export async function headlessPatchWpnNote(
 ): Promise<WpnNoteDetail | null> {
   const ownerId = wpnOwnerId ?? getWpnOwnerId();
   const pool = getWpnPgPool();
+
   if (pool) {
-    return wpnPgUpdateNote(pool, ownerId, noteId, patch);
+    const before =
+      patch.title !== undefined ? await wpnPgGetNoteById(pool, ownerId, noteId) : null;
+    const after = await wpnPgUpdateNote(pool, ownerId, noteId, patch);
+    if (
+      after &&
+      before &&
+      patch.title !== undefined &&
+      (patch.title.trim() || before.title) !== before.title
+    ) {
+      try {
+        await wpnPgApplyVfsRewritesAfterTitleChange(
+          pool,
+          ownerId,
+          noteId,
+          before.title,
+          after.title,
+        );
+      } catch (e) {
+        console.error("[headlessPatchWpnNote] VFS link rewrite failed after title change:", e);
+        throw e;
+      }
+    }
+    return after;
   }
+
   const db = getNotesDatabase();
   if (!db) return null;
-  return wpnSqliteUpdateNote(db, ownerId, noteId, patch);
+  const before =
+    patch.title !== undefined ? wpnSqliteGetNoteById(db, ownerId, noteId) : null;
+  const after = wpnSqliteUpdateNote(db, ownerId, noteId, patch);
+  if (
+    after &&
+    before &&
+    patch.title !== undefined &&
+    (patch.title.trim() || before.title) !== before.title
+  ) {
+    try {
+      wpnSqliteApplyVfsRewritesAfterTitleChange(db, ownerId, noteId, before.title, after.title);
+    } catch (e) {
+      console.error("[headlessPatchWpnNote] VFS link rewrite failed after title change:", e);
+      throw e;
+    }
+  }
+  return after;
 }

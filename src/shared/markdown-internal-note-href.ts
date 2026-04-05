@@ -1,7 +1,7 @@
 import {
   markdownVfsNoteHref,
   parseVfsNoteHashPath,
-} from "./note-vfs-path";
+} from "./note-vfs-path.ts";
 
 export type InternalMarkdownNoteLink =
   | { kind: "noteId"; noteId: string; markdownHeadingSlug?: string }

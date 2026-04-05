@@ -457,6 +457,51 @@ export async function wpnPgListAllNotesWithContext(
   }));
 }
 
+export async function wpnPgGetNoteWithContextById(
+  pool: Pool,
+  ownerId: string,
+  noteId: string,
+): Promise<WpnNoteWithContextListItem | null> {
+  const { rows } = await pool.query(
+    `SELECT n.id, n.type, n.title, n.project_id,
+            p.name AS project_name, p.workspace_id, w.name AS workspace_name
+     FROM wpn_note n
+     INNER JOIN wpn_project p ON p.id = n.project_id
+     INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+     WHERE n.id = $1 AND w.owner_id = $2`,
+    [noteId, ownerId],
+  );
+  const r = rows[0] as Record<string, unknown> | undefined;
+  if (!r) return null;
+  return {
+    id: String(r.id),
+    type: normalizeLegacyNoteType(String(r.type)),
+    title: String(r.title),
+    project_id: String(r.project_id),
+    project_name: String(r.project_name),
+    workspace_id: String(r.workspace_id),
+    workspace_name: String(r.workspace_name),
+  };
+}
+
+export async function wpnPgListAllNoteContentsForOwner(
+  pool: Pool,
+  ownerId: string,
+): Promise<{ id: string; content: string }[]> {
+  const { rows } = await pool.query(
+    `SELECT n.id AS id, n.content AS content
+     FROM wpn_note n
+     INNER JOIN wpn_project p ON p.id = n.project_id
+     INNER JOIN wpn_workspace w ON w.id = p.workspace_id
+     WHERE w.owner_id = $1`,
+    [ownerId],
+  );
+  return (rows as { id: string; content: string }[]).map((row) => ({
+    id: String(row.id),
+    content: String(row.content ?? ""),
+  }));
+}
+
 export async function wpnPgListBacklinksToNote(
   pool: Pool,
   ownerId: string,
