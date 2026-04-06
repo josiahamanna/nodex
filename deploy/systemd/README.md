@@ -19,6 +19,22 @@ Copy and edit on your server; paths and user/group must match your install.
 
 Use the distro package (`docker.io` or Docker CE) and enable `docker.service` so deploy hooks work after reboot.
 
+## Nodex Docker stack (`nodex-docker-stack`)
+
+Compose services use `restart: unless-stopped` in [../../docker-compose.yml](../../docker-compose.yml) so containers come back after a crash or Docker daemon restart without systemd.
+
+To **start the stack on machine boot** (after a cold stop), use a oneshot unit that runs [../../scripts/docker-stack-boot.sh](../../scripts/docker-stack-boot.sh) once Docker is up:
+
+1. Run **`npm run deploy`** at least once on the server so images exist (`docker-stack-boot.sh` uses `--no-build`).
+2. Copy [nodex-docker-stack.service.example](nodex-docker-stack.service.example) to `/etc/systemd/system/nodex-docker-stack.service`.
+3. Edit `WorkingDirectory=` and `ExecStart=` to your **absolute** checkout path (both must match).
+4. Set **`NODEX_AUTH_JWT_SECRET`** in the repo `.env` or via `EnvironmentFile=` on the unit so logins survive container recreates (the full deploy script can generate one; this boot script does not).
+5. `sudo systemctl daemon-reload && sudo systemctl enable --now nodex-docker-stack`
+
+**Suggested order:** `docker.service` → `nodex-docker-stack` → `cloudflared` (tunnel). The stack unit `Requires=docker.service`.
+
+**SQLite / folder-backed API (no Postgres):** this example targets **WPN + `--profile wpn-pg`**. For API + gateway + blue without Postgres, use a different `docker compose up` line (see [../ZERO-DOWNTIME.md](../ZERO-DOWNTIME.md)). Hosts that keep **only green** as the live UI with blue stopped may need a custom compose invocation; the default gateway service depends on `nodex-web-blue`.
+
 ## SSH
 
 Enable `ssh.service` (or `sshd.service`) so `git push` over your tunnel reaches `git-receive-pack`.

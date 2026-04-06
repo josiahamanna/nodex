@@ -1,0 +1,31 @@
+# Example systemd unit: start the Nodex Docker stack on boot (Postgres WPN + API + web blue + gateway).
+# Requires images from a prior `npm run deploy` (this unit does not build).
+#
+# Install:
+#   sudo cp nodex-docker-stack.service.example /etc/systemd/system/nodex-docker-stack.service
+#   sudoedit /etc/systemd/system/nodex-docker-stack.service
+#     - Set WorkingDirectory= to your absolute repo checkout
+#     - Optionally EnvironmentFile=-/path/to/nodex.env (NODEX_AUTH_JWT_SECRET, NODEX_PG_PASSWORD, etc.)
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now nodex-docker-stack
+#
+# Order: enable docker.service first; enable cloudflared separately if you use a tunnel.
+
+[Unit]
+Description=Nodex Docker stack (compose)
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/srv/nodex-studio/nodex
+# Optional: secrets and overrides (leading - means ignore if missing)
+# EnvironmentFile=-/etc/nodex/nodex.env
+ExecStart=/srv/nodex-studio/nodex/scripts/docker-stack-boot.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
