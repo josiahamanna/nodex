@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { MDXProvider } from "@mdx-js/react";
 import * as mdxReact from "@mdx-js/react";
 import * as runtime from "react/jsx-runtime";
@@ -11,12 +11,17 @@ import { remarkNodexMdxFacadeImports } from "../../utils/remark-nodex-mdx-facade
 import { remarkNodexMdxTrust } from "../../utils/remark-nodex-mdx-trust";
 import {
   DocLink,
+  MdxCodeBlock,
+  MdxSafeImage,
   NodexButton,
   NodexCallout,
   NodexCard,
+  NoteContext,
   ObservableEmbed,
+  ObservableRuntimeEmbed,
 } from "./mdx-embed-components";
 import { MdxShellProvider, useMdxShell } from "./mdx-shell-context";
+import { useNodexContributionRegistryMaybe } from "../../shell/NodexContributionContext";
 import { ReactMarkdownNoteBody, type MarkdownRendererProps } from "./ReactMarkdownNoteBody";
 import { markdownShellClass, useNodexMarkdownUiComponents } from "./useNodexMarkdownUiComponents";
 import { shouldRenderMdx } from "../../utils/note-mdx-format";
@@ -143,27 +148,50 @@ export function MdxRenderer({
     onWelcomeShellSegmentClick,
   });
 
+  const registry = useNodexContributionRegistryMaybe();
+  useSyncExternalStore(
+    (onChange: () => void) => (registry ? registry.subscribe(onChange) : () => {}),
+    () => (registry ? registry.getSnapshotVersion() : 0),
+    () => 0,
+  );
+  const pluginMdxComponents = registry ? registry.getMdxComponents() : {};
+
+  const HOST_RESERVED = new Set([
+    "ObservableEmbed", "ObservableRuntimeEmbed", "DocLink", "DocPage",
+    "NodexCallout", "NodexCard", "NodexButton", "NoteContext",
+    "img", "pre", "script", "iframe",
+  ]);
+
   const mdxMap = useMemo(
     () => ({
       ...getNodexMdxFacadeComponentMap(),
+      ...Object.fromEntries(
+        Object.entries(pluginMdxComponents).filter(([k]) => !HOST_RESERVED.has(k)),
+      ),
       ...uiMdx,
       ObservableEmbed,
+      ObservableRuntimeEmbed,
       DocLink,
       DocPage: DocPageEmbed,
       NodexCallout,
       NodexCard,
       NodexButton,
+      NoteContext,
+      img: MdxSafeImage,
+      pre: MdxCodeBlock,
       script: (): null => null,
       iframe: (): React.ReactElement => (
         <span className="text-[12px] text-muted-foreground">Raw iframe elements are not allowed in MDX.</span>
       ),
     }),
-    [uiMdx],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [uiMdx, pluginMdxComponents],
   );
 
   const shellValue = useMemo(
     () => ({
       nestingDepth,
+      note,
       onSamePageHeadingClick,
       onInternalNoteNavigate,
       onNodexCmdLink,
@@ -171,6 +199,7 @@ export function MdxRenderer({
     }),
     [
       nestingDepth,
+      note,
       onSamePageHeadingClick,
       onInternalNoteNavigate,
       onNodexCmdLink,

@@ -1,6 +1,7 @@
 export {
   NodexContributionProvider,
   useNodexContributionRegistry,
+  useNodexContributionRegistryMaybe,
   useNodexCommands,
   useNodexModeLineSegment,
 } from "./NodexContributionContext";

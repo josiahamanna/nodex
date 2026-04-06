@@ -1,8 +1,11 @@
 import React, { createContext, useContext } from "react";
+import type { Note } from "@nodex/ui-types";
 import type { MarkdownUiLinkCallbacks } from "./useNodexMarkdownUiComponents";
 
 export type MdxShellContextValue = MarkdownUiLinkCallbacks & {
   nestingDepth: number;
+  /** The note currently being rendered — available to bundled-tier MDX via `useMdxShell()`. */
+  note: Note | null;
 };
 
 const MdxShellContext = createContext<MdxShellContextValue | null>(null);
@@ -22,6 +25,7 @@ export function useMdxShell(): MdxShellContextValue {
   if (!v) {
     return {
       nestingDepth: 0,
+      note: null,
     };
   }
   return v;

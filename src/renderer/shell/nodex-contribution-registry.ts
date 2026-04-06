@@ -89,6 +89,7 @@ export class NodexContributionRegistry {
   private readonly commands = new Map<string, CommandContribution>();
   private readonly modeLine = new Map<string, ModeLineContribution>();
   private readonly noteTypeReactEditors = new Map<string, ComponentType<NoteTypeReactEditorProps>>();
+  private readonly mdxComponents = new Map<string, ComponentType<Record<string, unknown>>>();
   private readonly listeners = new Set<Listener>();
   private snapshotVersion = 0;
 
@@ -151,6 +152,32 @@ export class NodexContributionRegistry {
     noteType: string,
   ): ComponentType<NoteTypeReactEditorProps> | undefined {
     return this.noteTypeReactEditors.get(noteType);
+  }
+
+  /**
+   * Register a React component as an MDX JSX tag available inside MDX notes.
+   * The `name` is the JSX tag name (PascalCase, e.g. "MyWidget").
+   * Later registrations replace earlier ones for the same name.
+   * Built-in host components cannot be overridden (validation is in MdxRenderer).
+   * Returns a dispose function that removes the registration.
+   */
+  registerMdxComponent(
+    name: string,
+    component: ComponentType<Record<string, unknown>>,
+  ): () => void {
+    this.mdxComponents.set(name, component);
+    this.emit();
+    return () => {
+      if (this.mdxComponents.get(name) === component) {
+        this.mdxComponents.delete(name);
+        this.emit();
+      }
+    };
+  }
+
+  /** Returns a snapshot of all plugin-registered MDX components keyed by tag name. */
+  getMdxComponents(): Record<string, ComponentType<Record<string, unknown>>> {
+    return Object.fromEntries(this.mdxComponents.entries());
   }
 
   registerModeLineItem(c: ModeLineContribution): () => void {

@@ -96,6 +96,11 @@ export function useNodexContributionRegistry(): NodexContributionRegistry {
   return r;
 }
 
+/** Returns null when outside NodexContributionProvider (safe for components that may render in minimal contexts). */
+export function useNodexContributionRegistryMaybe(): NodexContributionRegistry | null {
+  return useContext(RegistryContext);
+}
+
 /** Re-renders when the registry changes. */
 export function useNodexCommands(): CommandContribution[] {
   const registry = useNodexContributionRegistry();
