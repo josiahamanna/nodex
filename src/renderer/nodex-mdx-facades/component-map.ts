@@ -1,6 +1,6 @@
 import React from "react";
 import { formatIsoDate } from "./date";
-import { Alert, Badge, Button, Separator, Tab, TabList, TabPanel, Tabs } from "./ui";
+import { Alert, Badge, Button, Disclosure, Separator, Tab, TabList, TabPanel, Tabs } from "./ui";
 
 /**
  * JSX tags available in MDX matching virtual `@nodex/ui` / `@nodex/date` exports
@@ -10,6 +10,7 @@ export function getNodexMdxFacadeComponentMap(): Record<string, React.ComponentT
   return {
     Button,
     Badge,
+    Disclosure,
     Separator,
     Alert,
     Tabs,

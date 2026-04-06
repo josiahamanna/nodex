@@ -140,6 +140,67 @@ export function Tab({
   );
 }
 
+/**
+ * Self-contained disclosure — a labelled trigger button that toggles an inline callout.
+ * No JS expressions needed; state is managed internally.
+ *
+ * Props:
+ * - `label`   — button text (default "Show")
+ * - `variant` — callout color: info | success | warning | destructive (default "info")
+ * - `open`    — initial open state (default false)
+ * - `children` — the content revealed when open
+ *
+ * Example: `<Disclosure label="Show details" variant="warning">Watch out!</Disclosure>`
+ */
+export function Disclosure({
+  label = "Show",
+  variant = "info",
+  open: initialOpen = false,
+  children,
+}: {
+  label?: string;
+  variant?: "info" | "success" | "warning" | "destructive";
+  open?: boolean;
+  children?: React.ReactNode;
+}): React.ReactElement {
+  const [isOpen, setIsOpen] = React.useState(initialOpen);
+
+  const calloutStyles: Record<string, string> = {
+    info: "border-primary/30 bg-primary/5 text-foreground",
+    success: "border-green-500/40 bg-green-500/10 text-green-900 dark:text-green-200",
+    warning: "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200",
+    destructive: "border-destructive/40 bg-destructive/10 text-destructive",
+  };
+
+  return (
+    <div className="my-3">
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-muted/50"
+        aria-expanded={isOpen}
+      >
+        <span
+          className={`inline-block transition-transform text-[10px] ${isOpen ? "rotate-90" : ""}`}
+          aria-hidden
+        >
+          ▶
+        </span>
+        {label}
+      </button>
+      {isOpen ? (
+        <div
+          className={`mt-2 rounded-md border px-3 py-2.5 text-[13px] leading-6 ${
+            calloutStyles[variant] ?? calloutStyles.info
+          }`}
+        >
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** Content panel shown only when its id matches the active Tab. */
 export function TabPanel({
   id = "",
