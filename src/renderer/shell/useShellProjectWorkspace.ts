@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 
 export type ShellProjectMountKind = "folder" | "wpn-postgres";
 
@@ -17,10 +17,17 @@ const empty: ShellProjectWorkspaceState = {
   workspaceLabels: {},
 };
 
+const ShellProjectWorkspaceContext =
+  createContext<ShellProjectWorkspaceState | null>(null);
+
 /**
- * Project / workspace roots for shell views (mirrors headless `getProjectState` when available).
+ * One shared subscription to `getProjectState` for the whole shell (avoids N parallel polls per hook consumer).
  */
-export function useShellProjectWorkspace(): ShellProjectWorkspaceState {
+export function ShellProjectWorkspaceProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.ReactElement {
   const [state, setState] = useState<ShellProjectWorkspaceState>(empty);
 
   useEffect(() => {
@@ -61,5 +68,22 @@ export function useShellProjectWorkspace(): ShellProjectWorkspaceState {
     };
   }, []);
 
-  return state;
+  return React.createElement(
+    ShellProjectWorkspaceContext.Provider,
+    { value: state },
+    children,
+  );
+}
+
+/**
+ * Project / workspace roots for shell views (mirrors headless `getProjectState` when available).
+ */
+export function useShellProjectWorkspace(): ShellProjectWorkspaceState {
+  const ctx = useContext(ShellProjectWorkspaceContext);
+  if (ctx === null) {
+    throw new Error(
+      "useShellProjectWorkspace must be used within ShellProjectWorkspaceProvider",
+    );
+  }
+  return ctx;
 }

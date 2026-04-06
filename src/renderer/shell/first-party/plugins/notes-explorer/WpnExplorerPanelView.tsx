@@ -12,6 +12,11 @@ import {
   isElectronUserAgent,
   NODEX_WEB_PLUGINS_CHANGED,
 } from "../../../../nodex-web-shim";
+import {
+  getRegisteredTypesCached,
+  getSelectableNoteTypesCached,
+  invalidateNodexNoteTypesCaches,
+} from "../../../../utils/cached-nodex-note-types";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import { closeShellTabsForNoteIds } from "../../../shellTabClose";
 import { useShellNavigation } from "../../../useShellNavigation";
@@ -219,11 +224,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   }, [projectOpen]);
 
   useEffect(() => {
-    const refresh = (): void => {
+    const refresh = (invalidateCaches: boolean): void => {
       void (async () => {
+        if (invalidateCaches) {
+          invalidateNodexNoteTypesCaches();
+        }
         const [registered, selectable] = await Promise.all([
-          window.Nodex.getRegisteredTypes(),
-          window.Nodex.getSelectableNoteTypes(),
+          getRegisteredTypesCached(),
+          getSelectableNoteTypesCached(),
         ]);
         const reg = new Set(Array.isArray(registered) ? registered : []);
         const sel = Array.isArray(selectable) ? selectable : [];
@@ -232,12 +240,12 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         setSelectableTypes(sel.filter((t) => t !== "root" && reg.has(t)));
       })();
     };
-    refresh();
+    refresh(false);
     const onWebPlugins = (): void => {
-      refresh();
+      refresh(true);
     };
     window.addEventListener(NODEX_WEB_PLUGINS_CHANGED, onWebPlugins);
-    const offMain = window.Nodex.onPluginsChanged(refresh);
+    const offMain = window.Nodex.onPluginsChanged(() => refresh(true));
     return () => {
       window.removeEventListener(NODEX_WEB_PLUGINS_CHANGED, onWebPlugins);
       offMain();
@@ -335,9 +343,16 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     let cancelled = false;
     void (async () => {
       try {
-        const r = await window.Nodex.wpnGetNote(currentNoteId);
-        if (cancelled || !r?.note) return;
-        const pid = r.note.project_id;
+        const localRow = notes.find((n) => n.id === currentNoteId);
+        let pid: string | undefined;
+        if (localRow) {
+          pid = localRow.project_id;
+        } else {
+          const r = await window.Nodex.wpnGetNote(currentNoteId);
+          if (cancelled || !r?.note) return;
+          pid = r.note.project_id;
+        }
+        if (!pid) return;
         const visible = Object.values(projectsByWs).some((arr) => arr.some((p) => p.id === pid));
         if (!visible) return;
         let wsId: string | null = null;
@@ -359,7 +374,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     return () => {
       cancelled = true;
     };
-  }, [currentNoteId, projectOpen, projectsByWs]);
+  }, [currentNoteId, projectOpen, projectsByWs, notes]);
 
   const filteredNotes = useMemo(() => {
     const q = search.trim().toLowerCase();

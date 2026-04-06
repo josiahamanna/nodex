@@ -30,6 +30,11 @@ import {
   type TscDiagnostic,
 } from "./plugin-ide-utils";
 import type { PluginIDEProps } from "./PluginIDE.types";
+import {
+  getRegisteredTypesCached,
+  getSelectableNoteTypesCached,
+  invalidateNodexNoteTypesCaches,
+} from "../utils/cached-nodex-note-types";
 
 export function usePluginIDECoreState(
   { onPluginsChanged, shellLayout = false, previewAssetProjectRoot = null }: PluginIDEProps,
@@ -198,8 +203,8 @@ export function usePluginIDECoreState(
 
   const refreshTypes = useCallback(async () => {
     const [registered, selectable] = await Promise.all([
-      window.Nodex.getRegisteredTypes(),
-      window.Nodex.getSelectableNoteTypes(),
+      getRegisteredTypesCached(),
+      getSelectableNoteTypesCached(),
     ]);
     const reg = new Set(Array.isArray(registered) ? registered : []);
     const raw = Array.isArray(selectable) ? selectable : [];
@@ -222,6 +227,7 @@ export function usePluginIDECoreState(
           const r = await window.Nodex.reloadPluginRegistry();
           if (r.success) {
             setPreviewRev((x) => x + 1);
+            invalidateNodexNoteTypesCaches();
             await refreshTypes();
             onPluginsChanged?.();
           }

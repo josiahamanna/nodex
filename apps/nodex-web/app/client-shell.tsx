@@ -7,6 +7,7 @@ import * as monaco from "monaco-editor";
 import { Provider } from "react-redux";
 import { NodexContributionProvider } from "../../../src/renderer/shell/NodexContributionContext";
 import { ShellLayoutProvider } from "../../../src/renderer/shell/layout/ShellLayoutContext";
+import { ShellProjectWorkspaceProvider } from "../../../src/renderer/shell/useShellProjectWorkspace";
 import { ShellViewProvider } from "../../../src/renderer/shell/views/ShellViewContext";
 import { ShellRegistriesProvider } from "../../../src/renderer/shell/registries/ShellRegistriesContext";
 import { NodexDialogProvider } from "../../../src/renderer/dialog/NodexDialogProvider";
@@ -62,11 +63,13 @@ export default function ClientShell({
         <NodexDialogProvider>
           <Provider store={store}>
             <ShellLayoutProvider>
-              <ShellViewProvider>
-                <ShellRegistriesProvider>
-                  <NodexContributionProvider>{children}</NodexContributionProvider>
-                </ShellRegistriesProvider>
-              </ShellViewProvider>
+              <ShellProjectWorkspaceProvider>
+                <ShellViewProvider>
+                  <ShellRegistriesProvider>
+                    <NodexContributionProvider>{children}</NodexContributionProvider>
+                  </ShellRegistriesProvider>
+                </ShellViewProvider>
+              </ShellProjectWorkspaceProvider>
             </ShellLayoutProvider>
           </Provider>
         </NodexDialogProvider>

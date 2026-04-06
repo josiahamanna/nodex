@@ -1,5 +1,5 @@
 import { store } from "../store";
-import { clearCurrentNote, fetchNote } from "../store/notesSlice";
+import { clearCurrentNote } from "../store/notesSlice";
 import { isShellNoteEditorTabType } from "./first-party/shellWorkspaceIds";
 import type { ShellTabsRegistry } from "./registries/ShellTabsRegistry";
 import { dispatchShellNoteTabClosed } from "./shellTabUrlSync";
@@ -16,7 +16,7 @@ function collectOpenNoteIds(tabs: ShellTabsRegistry): Set<string> {
 
 /**
  * Close a main-area shell tab, optionally open Welcome when empty, sync URL hash via tabs.emit,
- * clear Redux current note when its tab is gone, and fetch the newly active note tab.
+ * and clear Redux current note when its tab is gone. Active note body load is handled by NoteEditorShellView.
  */
 export function closeShellTabInstance(tabs: ShellTabsRegistry, instanceId: string): void {
   const normalizedInstanceId = String(instanceId).trim();
@@ -46,19 +46,11 @@ export function closeShellTabInstance(tabs: ShellTabsRegistry, instanceId: strin
   if (tabs.listOpenTabs().length === 0) {
     tabs.openOrReuseTab("shell.tab.welcome", { title: "Welcome", reuseKey: "shell:welcome" });
   }
-
-  const active = tabs.getActiveTab();
-  if (active && isShellNoteEditorTabType(active.tabTypeId)) {
-    const nid = (active.state as { noteId?: string } | undefined)?.noteId;
-    if (typeof nid === "string" && nid) {
-      void store.dispatch(fetchNote(nid));
-    }
-  }
 }
 
 /**
  * Close every main-area note tab whose `state.noteId` is in `noteIds`, then reconcile Redux, URL (via emit),
- * and Welcome — same end state as calling {@link closeShellTabInstance} for each, with a single `fetchNote` for the new active tab.
+ * and Welcome — same end state as calling {@link closeShellTabInstance} for each.
  */
 export function closeShellTabsForNoteIds(tabs: ShellTabsRegistry, noteIds: readonly string[]): void {
   const idSet = new Set(
@@ -98,13 +90,5 @@ export function closeShellTabsForNoteIds(tabs: ShellTabsRegistry, noteIds: reado
 
   if (tabs.listOpenTabs().length === 0) {
     tabs.openOrReuseTab("shell.tab.welcome", { title: "Welcome", reuseKey: "shell:welcome" });
-  }
-
-  const active = tabs.getActiveTab();
-  if (active && isShellNoteEditorTabType(active.tabTypeId)) {
-    const nid = (active.state as { noteId?: string } | undefined)?.noteId;
-    if (typeof nid === "string" && nid) {
-      void store.dispatch(fetchNote(nid));
-    }
   }
 }

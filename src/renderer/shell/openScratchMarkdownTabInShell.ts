@@ -1,5 +1,5 @@
 import { store } from "../store";
-import { createNote, fetchAllNotes, fetchNote } from "../store/notesSlice";
+import { createNote, fetchAllNotes } from "../store/notesSlice";
 import {
   NOTES_EXPLORER_VIEW_SIDEBAR,
   SHELL_TAB_SCRATCH_MARKDOWN,
@@ -72,5 +72,4 @@ export async function openScratchMarkdownTabInShell(deps: ShellNavigationDeps): 
     const mainViewId = deps.tabs.resolveViewForInstance(inst.instanceId);
     if (mainViewId) deps.views.openView(mainViewId, "mainArea");
   }
-  void store.dispatch(fetchNote(noteId));
 }

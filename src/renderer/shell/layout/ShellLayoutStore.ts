@@ -6,6 +6,7 @@ export class ShellLayoutStore {
   private state: ShellLayoutState = defaultShellLayoutState();
   private readonly listeners = new Set<Listener>();
   private persistTimer: number | null = null;
+  private loadFromHostInflight: Promise<void> | null = null;
 
   subscribe(cb: Listener): () => void {
     this.listeners.add(cb);
@@ -42,12 +43,23 @@ export class ShellLayoutStore {
   }
 
   async loadFromHost(): Promise<void> {
+    if (this.loadFromHostInflight) {
+      await this.loadFromHostInflight;
+      return;
+    }
+    this.loadFromHostInflight = (async () => {
+      try {
+        const raw = await window.Nodex.getShellLayout();
+        this.state = coerceShellLayoutState(raw);
+        this.emit();
+      } catch {
+        // ignore, fall back to defaults
+      }
+    })();
     try {
-      const raw = await window.Nodex.getShellLayout();
-      this.state = coerceShellLayoutState(raw);
-      this.emit();
-    } catch {
-      // ignore, fall back to defaults
+      await this.loadFromHostInflight;
+    } finally {
+      this.loadFromHostInflight = null;
     }
   }
 

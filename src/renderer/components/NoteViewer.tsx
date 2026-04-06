@@ -1,6 +1,10 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Note } from "@nodex/ui-types";
 import { useToast } from "../toast/ToastContext";
+import {
+  getRegisteredTypesCached,
+  invalidateNodexNoteTypesCaches,
+} from "../utils/cached-nodex-note-types";
 import NoteTypeReactRenderer from "./renderers/NoteTypeReactRenderer";
 
 interface NoteViewerProps {
@@ -25,7 +29,7 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
     let warnTimer: ReturnType<typeof setTimeout> | null = null;
 
     const checkPlugin = async () => {
-      const types = await window.Nodex.getRegisteredTypes();
+      const types = await getRegisteredTypesCached();
       if (cancelled) {
         return;
       }
@@ -38,7 +42,7 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
       if (!ok) {
         warnTimer = setTimeout(() => {
           void (async () => {
-            const again = await window.Nodex.getRegisteredTypes();
+            const again = await getRegisteredTypesCached();
             if (cancelled || again.includes(note.type)) {
               return;
             }
@@ -54,6 +58,7 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
 
     void checkPlugin();
     const off = window.Nodex.onPluginsChanged(() => {
+      invalidateNodexNoteTypesCaches();
       void checkPlugin();
     });
     return () => {

@@ -1,5 +1,4 @@
 import { store } from "../store";
-import { fetchNote } from "../store/notesSlice";
 import {
   NOTES_EXPLORER_VIEW_SIDEBAR,
   SHELL_TAB_NOTE,
@@ -30,7 +29,6 @@ export function openNoteInShell(
       : { noteId };
   if (options?.newTab) {
     deps.tabs.openTab(SHELL_TAB_NOTE, title, state);
-    void store.dispatch(fetchNote(noteId));
     return;
   }
   const existing = deps.tabs.findNoteTabByNoteId(noteId, SHELL_TAB_NOTE);
@@ -44,5 +42,4 @@ export function openNoteInShell(
       state,
     });
   }
-  void store.dispatch(fetchNote(noteId));
 }
