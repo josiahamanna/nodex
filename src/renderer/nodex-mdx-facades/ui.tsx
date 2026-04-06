@@ -115,10 +115,10 @@ export function TabList({ children }: { children?: React.ReactNode }): React.Rea
 
 /** Individual tab trigger. id must match the corresponding TabPanel id. */
 export function Tab({
-  id,
+  id = "",
   children,
 }: {
-  id: string;
+  id?: string;
   children?: React.ReactNode;
 }): React.ReactElement {
   const ctx = React.useContext(TabsContext);
@@ -142,10 +142,10 @@ export function Tab({
 
 /** Content panel shown only when its id matches the active Tab. */
 export function TabPanel({
-  id,
+  id = "",
   children,
 }: {
-  id: string;
+  id?: string;
   children?: React.ReactNode;
 }): React.ReactElement {
   const ctx = React.useContext(TabsContext);
