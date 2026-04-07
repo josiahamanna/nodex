@@ -176,7 +176,7 @@ export function Disclosure({
     <div className="my-3">
       <button
         type="button"
-        onClick={() => setIsOpen((v) => !v)}
+        onClick={() => setIsOpen((v: boolean) => !v)}
         className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-muted/50"
         aria-expanded={isOpen}
       >
@@ -212,4 +212,131 @@ export function TabPanel({
   const ctx = React.useContext(TabsContext);
   if (ctx?.active !== id) return <></>;
   return <div className="pt-3">{children}</div>;
+}
+
+/**
+ * Self-contained counter with increment / decrement buttons.
+ * No JS expressions needed.
+ *
+ * Props:
+ * - `label`    — label shown above the counter (default "Count")
+ * - `initial`  — starting value (default 0)
+ * - `step`     — amount added/subtracted per click (default 1)
+ * - `min`      — lower bound (optional)
+ * - `max`      — upper bound (optional)
+ *
+ * Example: `<Counter label="Items" initial="0" step="1" min="0" max="10" />`
+ */
+export function Counter({
+  label = "Count",
+  initial = 0,
+  step = 1,
+  min,
+  max,
+}: {
+  label?: string;
+  initial?: number;
+  step?: number;
+  min?: number;
+  max?: number;
+}): React.ReactElement {
+  const [count, setCount] = React.useState(Number(initial));
+  const s = Number(step) || 1;
+
+  const decrement = (): void => {
+    setCount((c: number) => {
+      const next = c - s;
+      return min !== undefined ? Math.max(min, next) : next;
+    });
+  };
+  const increment = (): void => {
+    setCount((c: number) => {
+      const next = c + s;
+      return max !== undefined ? Math.min(max, next) : next;
+    });
+  };
+
+  const atMin = min !== undefined && count <= min;
+  const atMax = max !== undefined && count >= max;
+
+  return (
+    <div className="my-3 inline-flex flex-col items-start gap-1">
+      {label ? (
+        <span className="text-[12px] font-medium text-muted-foreground">{label}</span>
+      ) : null}
+      <div className="flex items-center gap-2 rounded-md border border-border bg-background px-1 py-1">
+        <button
+          type="button"
+          onClick={decrement}
+          disabled={atMin}
+          className="flex h-7 w-7 items-center justify-center rounded text-[16px] font-bold text-foreground transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label={`Decrease ${label}`}
+        >
+          −
+        </button>
+        <span className="min-w-[2.5rem] text-center font-mono text-[14px] font-semibold tabular-nums">
+          {count}
+        </span>
+        <button
+          type="button"
+          onClick={increment}
+          disabled={atMax}
+          className="flex h-7 w-7 items-center justify-center rounded text-[16px] font-bold text-foreground transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label={`Increase ${label}`}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Self-contained labelled text input.
+ * No JS expressions needed — all config via static string props.
+ *
+ * Props:
+ * - `label`       — label above the field (default "Input")
+ * - `placeholder` — placeholder text (default "Type here…")
+ * - `initial`     — starting value (default "")
+ * - `show`        — when "value", renders the live value below the input (default "none")
+ * - `prefix`      — static prefix shown before the live value when show="value"
+ *
+ * Example: `<TextInput label="Your name" placeholder="Enter name" show="value" prefix="Hello, " />`
+ */
+export function TextInput({
+  label = "Input",
+  placeholder = "Type here…",
+  initial = "",
+  show = "none",
+  prefix = "",
+}: {
+  label?: string;
+  placeholder?: string;
+  initial?: string;
+  show?: "none" | "value";
+  prefix?: string;
+}): React.ReactElement {
+  const [value, setValue] = React.useState(String(initial));
+
+  return (
+    <div className="my-3 flex flex-col gap-1.5">
+      {label ? (
+        <label className="text-[12px] font-medium text-muted-foreground">{label}</label>
+      ) : null}
+      <input
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setValue(e.target.value)}
+        className="rounded-md border border-border bg-background px-3 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+      />
+      {show === "value" && value ? (
+        <span className="text-[13px] text-foreground">
+          {prefix}
+          <span className="font-medium">{value}</span>
+        </span>
+      ) : null}
+    </div>
+  );
 }
