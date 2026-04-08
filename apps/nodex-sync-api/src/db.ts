@@ -58,6 +58,13 @@ export type WpnExplorerStateDoc = {
   expanded_ids: string[];
 };
 
+/** Per-user UI chrome persisted from web (shell layout, etc.). */
+export type UserPrefsDoc = {
+  userId: string;
+  shellLayout: unknown | null;
+  updatedAtMs: number;
+};
+
 let client: MongoClient | null = null;
 let db: Db | null = null;
 
@@ -93,6 +100,9 @@ async function ensureIndexes(database: Db): Promise<void> {
 
   const wpnEx = database.collection<WpnExplorerStateDoc>("wpn_explorer_state");
   await wpnEx.createIndex({ userId: 1, project_id: 1 }, { unique: true });
+
+  const prefs = database.collection<UserPrefsDoc>("user_prefs");
+  await prefs.createIndex({ userId: 1 }, { unique: true });
 }
 
 export function getNotesCollection(): Collection<SyncNoteDoc> {
@@ -143,6 +153,13 @@ export function getWpnExplorerStateCollection(): Collection<WpnExplorerStateDoc>
     throw new Error("MongoDB not connected");
   }
   return db.collection<WpnExplorerStateDoc>("wpn_explorer_state");
+}
+
+export function getUserPrefsCollection(): Collection<UserPrefsDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<UserPrefsDoc>("user_prefs");
 }
 
 export async function closeMongo(): Promise<void> {

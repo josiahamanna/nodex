@@ -413,14 +413,13 @@ docker compose --profile sync up -d mongo-sync
 # 3. Fastify sync API (default http://127.0.0.1:4010)
 npm run sync-api
 
-# 4. Legacy headless API (WPN / marketplace / folder notes) — still Express on :3847
-npm run api
+# 4. Next.js UI (sync WPN + sync-only shim; Electron loads this in dev)
+npm run dev:web            # http://127.0.0.1:3000
 
-# 5. Next.js UI (Electron loads this in dev)
-npm run web                # http://127.0.0.1:3000
+# 5. Electron desktop
+npm start                  # after `npm run dev:web` is up
 
-# 6. Electron desktop
-npm start                  # after `npm run web` is up
+# Legacy headless Express (optional): npx tsx src/nodex-api-server/server.ts — see src/nodex-api-server/README.md
 
 # Client env: NEXT_PUBLIC_NODEX_SYNC_API_URL=http://127.0.0.1:4010 (optional in dev — defaults to :4010 when NODE_ENV=development)
 # Or set window.__NODEX_SYNC_API_BASE__ at runtime.

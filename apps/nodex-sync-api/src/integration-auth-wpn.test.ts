@@ -1,0 +1,147 @@
+import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
+import { test } from "node:test";
+import Fastify from "fastify";
+import { closeMongo, connectMongo } from "./db.js";
+import { registerRoutes } from "./routes.js";
+
+const jwtSecret = "dev-only-nodex-sync-secret-min-32-chars!!";
+
+function mongoUriForTest(): string {
+  const base = process.env.MONGODB_URI?.trim() || "mongodb://127.0.0.1:27017";
+  const sep = base.includes("?") ? "&" : "?";
+  /** Fail fast when Mongo is not running (default driver timeout is ~30s). */
+  return `${base}${sep}serverSelectionTimeoutMS=2500`;
+}
+
+/**
+ * End-to-end HTTP flow against a disposable DB: register → JWT → shell layout,
+ * WPN workspace/project/note CRUD surface, built-in plugin render.
+ * Skips when Mongo is not running (local dev without docker).
+ */
+test(
+  "sign-in, shell layout persist, WPN note create, builtin markdown render",
+  { timeout: 20_000 },
+  async (t) => {
+    const dbName = `nodex_sync_it_${randomBytes(8).toString("hex")}`;
+    let app: Awaited<ReturnType<typeof Fastify>> | undefined;
+
+    const uri = mongoUriForTest();
+    try {
+      await connectMongo(uri, dbName);
+    } catch (err) {
+      t.skip(`MongoDB not reachable: ${String(err)}`);
+      return;
+    }
+
+    try {
+      app = Fastify({ logger: false });
+      registerRoutes(app, { jwtSecret });
+      await app.ready();
+
+      const email = `it-${Date.now()}@nodex-integration.test`;
+      const password = "password12345";
+
+      const reg = await app.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: { email, password },
+      });
+      assert.strictEqual(reg.statusCode, 200, reg.body);
+      const regJson = JSON.parse(reg.body) as { token: string; userId: string };
+      assert.ok(regJson.token?.length > 10);
+      const authHeader = { authorization: `Bearer ${regJson.token}` };
+
+      const layout0 = await app.inject({
+        method: "GET",
+        url: "/me/shell-layout",
+        headers: authHeader,
+      });
+      assert.strictEqual(layout0.statusCode, 200);
+      const layout0Json = JSON.parse(layout0.body) as { layout: unknown };
+      assert.strictEqual(layout0Json.layout, null);
+
+      const putLayout = await app.inject({
+        method: "PUT",
+        url: "/me/shell-layout",
+        headers: { ...authHeader, "content-type": "application/json" },
+        payload: JSON.stringify({ layout: { panels: ["a"], v: 1 } }),
+      });
+      assert.strictEqual(putLayout.statusCode, 204, putLayout.body);
+
+      const layout1 = await app.inject({
+        method: "GET",
+        url: "/me/shell-layout",
+        headers: authHeader,
+      });
+      assert.strictEqual(layout1.statusCode, 200);
+      const layout1Json = JSON.parse(layout1.body) as {
+        layout: { panels: string[]; v: number };
+      };
+      assert.deepStrictEqual(layout1Json.layout, { panels: ["a"], v: 1 });
+
+      const ws = await app.inject({
+        method: "POST",
+        url: "/wpn/workspaces",
+        headers: { ...authHeader, "content-type": "application/json" },
+        payload: JSON.stringify({ name: "IT Workspace" }),
+      });
+      assert.strictEqual(ws.statusCode, 201, ws.body);
+      const wsId = (JSON.parse(ws.body) as { workspace: { id: string } }).workspace.id;
+
+      const proj = await app.inject({
+        method: "POST",
+        url: `/wpn/workspaces/${wsId}/projects`,
+        headers: { ...authHeader, "content-type": "application/json" },
+        payload: JSON.stringify({ name: "IT Project" }),
+      });
+      assert.strictEqual(proj.statusCode, 201, proj.body);
+      const projectId = (JSON.parse(proj.body) as { project: { id: string } }).project.id;
+
+      const note = await app.inject({
+        method: "POST",
+        url: `/wpn/projects/${projectId}/notes`,
+        headers: { ...authHeader, "content-type": "application/json" },
+        payload: JSON.stringify({
+          type: "markdown",
+          relation: "root",
+          title: "Hello",
+          content: "# Integration",
+        }),
+      });
+      assert.strictEqual(note.statusCode, 201, note.body);
+      const noteRow = JSON.parse(note.body) as { note: { id: string } };
+      assert.ok(noteRow.note?.id);
+
+      const meta = await app.inject({
+        method: "GET",
+        url: "/plugins/builtin-renderer-meta?type=markdown",
+        headers: authHeader,
+      });
+      assert.strictEqual(meta.statusCode, 200, meta.body);
+
+      const render = await app.inject({
+        method: "POST",
+        url: "/plugins/builtin-render",
+        headers: { ...authHeader, "content-type": "application/json" },
+        payload: JSON.stringify({
+          type: "markdown",
+          note: {
+            id: noteRow.note.id,
+            type: "markdown",
+            title: "Hello",
+            content: "# Rendered",
+          },
+        }),
+      });
+      assert.strictEqual(render.statusCode, 200, render.body);
+      const renderJson = JSON.parse(render.body) as { html: string };
+      assert.match(renderJson.html, /Rendered/);
+    } finally {
+      if (app) {
+        await app.close();
+      }
+      await closeMongo();
+    }
+  },
+);

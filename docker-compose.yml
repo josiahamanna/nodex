@@ -56,6 +56,28 @@ services:
     volumes:
       - nodex-mongo-sync-data:/data
 
+  # Fastify + Mongo (web / cloud WPN). Build: docker compose --profile sync build nodex-sync-api
+  nodex-sync-api:
+    profiles: ["sync"]
+    build:
+      context: .
+      dockerfile: Dockerfile.sync-api
+    image: nodex-sync-api:local
+    container_name: nodex-sync-api
+    restart: unless-stopped
+    ports:
+      - "${NODEX_SYNC_API_PORT:-4010}:4010"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "4010"
+      MONGODB_URI: mongodb://mongo-sync:27017
+      MONGODB_DB: ${MONGODB_DB:-nodex_sync}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-nodex-sync-secret-min-32-chars!!}
+      NODEX_BUNDLED_DOCS_DIR: /app/docs/bundled-plugin-authoring
+    depends_on:
+      mongo-sync:
+        condition: service_started
+
   nodex-web-blue:
     build:
       context: .

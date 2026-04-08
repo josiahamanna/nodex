@@ -18,7 +18,7 @@ import {
 /** Types passed to `activateWorkspace` / seeding when no Electron plugin registry is loaded. */
 const HEADLESS_REGISTERED_TYPES = ["markdown", "mdx", "text", "root"];
 
-/** Used when `NODEX_PROJECT_ROOT` is unset so `npm run start:api` works locally. */
+/** Used when `NODEX_PROJECT_ROOT` is unset so the legacy headless server can start locally. */
 const DEFAULT_HEADLESS_PROJECT_DIR = ".nodex-headless-project";
 
 let lastResult: ActivateProjectResult | null = null;

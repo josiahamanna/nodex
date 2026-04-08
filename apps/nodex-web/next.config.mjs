@@ -17,9 +17,10 @@ const envHeadlessOrigin = process.env.NODEX_HEADLESS_API_ORIGIN?.trim().replace(
  * if you hit Next on :3000 without nginx. Prefer nodex-gateway on :8080 with
  * NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1 (relative /api/v1, no rewrite in Next).
  */
+/** Legacy Express headless API proxy; leave unset for sync-api-only web (default). */
 const headlessApiOrigin =
   envHeadlessOrigin ||
-  (!staticExport && process.env.NODE_ENV === "development"
+  (!staticExport && process.env.NODEX_HEADLESS_API_ORIGIN_DEV === "1"
     ? "http://127.0.0.1:3847"
     : "");
 

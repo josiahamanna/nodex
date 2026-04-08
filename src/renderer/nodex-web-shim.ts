@@ -55,6 +55,21 @@ export function syncWpnNotesBackend(): boolean {
   return syncWpnUsesSyncApi() && resolveSyncApiBase().trim().length > 0;
 }
 
+/**
+ * When true, `webRequest` (headless Express `/api/v1`) is disabled — use nodex-sync-api only.
+ * Set `NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only` (ignored in Electron renderer).
+ */
+export function nodexWebBackendSyncOnly(): boolean {
+  if (typeof navigator !== "undefined" && navigator.userAgent.includes("Electron")) {
+    return false;
+  }
+  try {
+    return process.env.NEXT_PUBLIC_NODEX_WEB_BACKEND === "sync-only";
+  } catch {
+    return false;
+  }
+}
+
 const WPN_BUILTIN_NOTE_TYPES = ["markdown", "mdx", "text", "code", "root"] as const;
 
 async function wpnAggregateAllNoteListItems(
@@ -277,6 +292,10 @@ export function initHeadlessWebApiBaseFromUrlAndStorage(): void {
   if (typeof window === "undefined") {
     return;
   }
+  if (nodexWebBackendSyncOnly()) {
+    window.__NODEX_WEB_API_BASE__ = "";
+    return;
+  }
   const q = new URLSearchParams(window.location.search);
   const web = q.get("web") === "1" || q.get("web") === "true";
 
@@ -348,6 +367,11 @@ async function webRequest<T>(
   body?: unknown,
   attempt?: number,
 ): Promise<T> {
+  if (nodexWebBackendSyncOnly()) {
+    throw new Error(
+      "[Nodex] Headless API calls are disabled (NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only). Run nodex-sync-api and use sync routes only.",
+    );
+  }
   const path = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
   const url =
     baseUrl.trim() === ""
@@ -392,7 +416,7 @@ async function webRequest<T>(
     }
     const isHtml = /<\s*html[\s>]/i.test(text) || /<\s*!doctype/i.test(text);
     if (isHtml && /cannot\s+post/i.test(msg)) {
-      msg = `${msg.trim()}\n\nThe server has no route for this request. Restart the headless API from this repo (\`npm run start:api\`) or rebuild the API image so it includes POST /api/v1/marketplace/session-install.`;
+      msg = `${msg.trim()}\n\nThe server has no route for this request. Use nodex-sync-api (\`npm run sync-api\`) or unset NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only if you still rely on the legacy headless Express API.`;
     }
     throw new Error(msg);
   }
@@ -571,6 +595,14 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       });
     },
     getPluginHTML: async (type, note) => {
+      if (syncWpnNotesBackend()) {
+        const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
+        const r = await syncWpnFetch<{ html: string }>(syncBase, "POST", "/plugins/builtin-render", {
+          type,
+          note,
+        });
+        return r.html;
+      }
       const r = await req<{ html: string }>("POST", "/plugins/render-html", {
         type,
         note,
@@ -628,13 +660,55 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       return req("GET", "/project/state");
     },
     getShellLayout: async () => {
+      if (syncWpnUsesSyncApi()) {
+        const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
+        if (syncBase.length > 0) {
+          try {
+            const r = await syncWpnFetch<{ layout: unknown }>(
+              syncBase,
+              "GET",
+              "/me/shell-layout",
+            );
+            return r?.layout ?? null;
+          } catch {
+            return null;
+          }
+        }
+      }
       const r = await req<{ layout: unknown }>("GET", "/project/shell-layout");
       return r?.layout ?? null;
     },
-    setShellLayout: (layout) => req("POST", "/project/shell-layout", { layout }),
+    setShellLayout: async (layout) => {
+      if (syncWpnUsesSyncApi()) {
+        const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
+        if (syncBase.length > 0) {
+          await syncWpnFetch(syncBase, "PUT", "/me/shell-layout", { layout });
+          return;
+        }
+      }
+      await req("POST", "/project/shell-layout", { layout });
+    },
     getAppPrefs: async () => ({ seedSampleNotes: true }),
-    nodexUndo: () => req("POST", "/undo"),
-    nodexRedo: () => req("POST", "/redo"),
+    nodexUndo: async () => {
+      if (syncWpnNotesBackend()) {
+        return {
+          ok: false as const,
+          error: "Undo is not available in the browser sync client. Use the desktop app for full undo.",
+          touchedNotes: false as const,
+        };
+      }
+      return req("POST", "/undo");
+    },
+    nodexRedo: async () => {
+      if (syncWpnNotesBackend()) {
+        return {
+          ok: false as const,
+          error: "Redo is not available in the browser sync client. Use the desktop app for full redo.",
+          touchedNotes: false as const,
+        };
+      }
+      return req("POST", "/redo");
+    },
     wpnListWorkspaces: () => wpnReq("GET", "/wpn/workspaces"),
     wpnCreateWorkspace: (name) =>
       wpnReq("POST", "/wpn/workspaces", { name: name ?? "Workspace" }),
@@ -682,9 +756,25 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
         `/wpn/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}/duplicate`,
         {},
       ),
-    listMarketplacePlugins: () =>
-      req<MarketplaceListResponse>("GET", "/marketplace/plugins"),
+    listMarketplacePlugins: () => {
+      if (syncWpnNotesBackend()) {
+        return Promise.resolve({
+          filesBasePath: "",
+          generatedAt: new Date().toISOString(),
+          plugins: [] as MarketplaceListResponse["plugins"],
+          indexError:
+            "Marketplace is not available on sync web. Use the desktop app to browse and install plugins.",
+        });
+      }
+      return req<MarketplaceListResponse>("GET", "/marketplace/plugins");
+    },
     installMarketplacePlugin: async (packageFile) => {
+      if (syncWpnNotesBackend()) {
+        return {
+          success: false,
+          error: "Marketplace install requires the Nodex desktop app.",
+        };
+      }
       const out = await req<{
         success: boolean;
         error?: string;
@@ -701,6 +791,30 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       );
     },
     getPluginRendererUiMeta: async (noteType) => {
+      if (syncWpnNotesBackend()) {
+        const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
+        try {
+          const j = await syncWpnFetch<{
+            theme?: string;
+            deferDisplayUntilContentReady?: boolean;
+            designSystemVersion?: string | null;
+          } | null>(
+            syncBase,
+            "GET",
+            `/plugins/builtin-renderer-meta?type=${encodeURIComponent(noteType)}`,
+          );
+          if (!j || typeof j !== "object") {
+            return null;
+          }
+          return {
+            theme: j.theme === "isolated" ? "isolated" : "inherit",
+            deferDisplayUntilContentReady: j.deferDisplayUntilContentReady === true,
+            designSystemVersion: j.designSystemVersion ?? undefined,
+          };
+        } catch {
+          return null;
+        }
+      }
       const root = baseUrl.trim() === "" ? "" : baseUrl.replace(/\/$/, "");
       const u =
         root === ""
@@ -755,6 +869,9 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       error: "Not available in web mode.",
     }),
     getInstalledPlugins: async () => {
+      if (syncWpnNotesBackend()) {
+        return [];
+      }
       try {
         const r = await req<{ ids: string[] }>("GET", "/plugins/session-installed");
         return Array.isArray(r?.ids) ? r.ids : [];
@@ -833,7 +950,16 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       ok: false as const,
       error: "Legacy scratch migration is Electron-only.",
     }),
-    assetUrl: () => "nodex-asset:web-unsupported",
+    assetUrl: (relativePath) => {
+      if (syncWpnNotesBackend()) {
+        const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
+        if (syncBase.length > 0) {
+          const rel = String(relativePath || "").replace(/^\/+/, "");
+          return `${syncBase}/me/assets/file?path=${encodeURIComponent(rel)}`;
+        }
+      }
+      return "nodex-asset:web-unsupported";
+    },
     getNativeThemeDark: async () =>
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-color-scheme: dark)").matches,
@@ -1123,7 +1249,7 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       generatedAt: "",
       plugins: [],
       indexError:
-        "Start the API (npm run start:api), then pick its URL under Market → Headless API (or use ?api= on the page URL).",
+        "Start nodex-sync-api (npm run sync-api) and Mongo, sign in, or set NEXT_PUBLIC_NODEX_SYNC_API_URL. Legacy headless: npx tsx src/nodex-api-server/server.ts if needed.",
     }),
     installMarketplacePlugin: async () => ({
       success: false,

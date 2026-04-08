@@ -1,6 +1,17 @@
 # Deploying `nodex-sync-api` (Mongo WPN + auth)
 
-Signed-in **web** and **Electron cloud windows** use the Fastify service in `apps/nodex-sync-api` as WPN source of truth (`/wpn/*`, `/auth/*`). The legacy **headless Express** API (`nodex-api`, `/api/v1/wpn/*` JSON file) is **not** SoT for that mode.
+Signed-in **web** and **Electron cloud windows** use the Fastify service in `apps/nodex-sync-api` as WPN source of truth (`/wpn/*`, `/auth/*`). The legacy **headless Express** API (`nodex-api`, `/api/v1/wpn/*` JSON file) is **deprecated** — see `src/nodex-api-server/README.md`.
+
+## Web + API dev checklist
+
+1. Start Mongo: `docker compose --profile sync up -d mongo-sync`
+2. Start API: `npm run sync-api` (or run both API + DB: `docker compose --profile sync up -d mongo-sync nodex-sync-api`)
+3. Start web: `npm run dev:web` (sets `NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API=1` and `NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only`)
+4. Register / sign in via the app (tokens required for WPN mutations, `/me/shell-layout`, builtin plugin render)
+5. Bundled Documentation: served anonymously from sync-api at `GET /public/bundled-docs/notes/:id` when `docs/bundled-plugin-authoring` is present in the image or `NODEX_BUNDLED_DOCS_DIR` is set
+6. **Automated tests:** `npm run test -w @nodex/sync-api` includes an HTTP integration test (`integration-auth-wpn.test.ts`) that exercises register → shell layout → WPN note → built-in plugin render. It **skips** when Mongo is unreachable (uses `serverSelectionTimeoutMS=2500`). In CI, start Mongo first (same profile as above) so the test **runs** instead of skipping.
+
+See also: [`docs/web-backend-modes.md`](web-backend-modes.md).
 
 ## Environment variables
 
@@ -8,27 +19,30 @@ Signed-in **web** and **Electron cloud windows** use the Fastify service in `app
 |----------|--------|---------|
 | `NEXT_PUBLIC_NODEX_SYNC_API_URL` | Web build / runtime | Public sync base URL (no trailing slash), e.g. `https://api.example.com` |
 | `NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API` | Web (optional) | Set `1` to force sync WPN routing when no URL is baked in |
+| `NEXT_PUBLIC_NODEX_WEB_BACKEND` | Web | `sync-only` — disable legacy headless `/api/v1` calls in the shim |
 | `NODEX_SYNC_API_URL` | Electron webpack / Node | Same as above when `window.__NODEX_SYNC_API_BASE__` is unset |
 | `JWT_SECRET` | sync-api (≥32 chars in prod) | Signs access + refresh tokens |
 | `MONGODB_URI` / `MONGODB_DB` | sync-api | Mongo connection (defaults in `server.ts`) |
+| `NODEX_BUNDLED_DOCS_DIR` | sync-api | Optional absolute path to bundled markdown (default: packaged `docs/bundled-plugin-authoring`) |
 
 Dev: `resolve-sync-base` falls back to `http://127.0.0.1:4010` when `NODE_ENV=development` and nothing else is set.
 
 ## Docker Compose (`profile: sync`)
 
-Mongo for sync:
+Mongo + sync-api (API image: [`Dockerfile.sync-api`](../Dockerfile.sync-api)):
+
+```bash
+docker compose --profile sync up -d mongo-sync nodex-sync-api
+```
+
+Run the API on the host only (Mongo in Docker):
 
 ```bash
 docker compose --profile sync up -d mongo-sync
-```
-
-Run the API on the host (simplest during development):
-
-```bash
 npm run sync-api
 ```
 
-For production, run `apps/nodex-sync-api` behind your process manager or add a dedicated image/service (not bundled in the default `Dockerfile` today).
+Legacy headless Express (`Dockerfile` on port 3847) remains available for exceptional single-folder workflows; it is no longer the default web backend.
 
 ## Nginx gateway (optional same-origin path)
 
@@ -55,8 +69,8 @@ Then set:
 
 `NEXT_PUBLIC_NODEX_SYNC_API_URL` to the **browser-visible** origin + path prefix (e.g. `https://your.domain/backend/sync` — no trailing slash).
 
-## Headless API without WPN
+## Legacy headless Express
 
-You can run **nodex-api** headless for plugins, assets, marketplace, and legacy routes **without** using its JSON workspace as cloud SoT: keep signed-in clients on sync-api for `/wpn/*` only.
+Manual run: `npx tsx src/nodex-api-server/server.ts`. Prefer sync-api for web; see `src/nodex-api-server/README.md`.
 
 See also: `docs/wpn-storage-modes.md`.

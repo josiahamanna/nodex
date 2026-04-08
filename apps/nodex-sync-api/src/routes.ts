@@ -11,6 +11,10 @@ import {
 } from "./auth.js";
 import type { SyncNoteDoc, UserDoc } from "./db.js";
 import { getNotesCollection, getUsersCollection } from "./db.js";
+import { registerBuiltinPluginRoutes } from "./builtin-plugin-routes.js";
+import { registerBundledDocsPublicRoutes } from "./bundled-docs-routes.js";
+import { registerMeAssetsRoutes } from "./me-assets-routes.js";
+import { registerMeRoutes } from "./me-routes.js";
 import { registerWpnBatchRoutes } from "./wpn-batch-routes.js";
 import { registerWpnReadRoutes } from "./wpn-routes.js";
 import { registerWpnWriteRoutes } from "./wpn-write-routes.js";
@@ -49,9 +53,13 @@ export function registerRoutes(
 ): void {
   const { jwtSecret } = opts;
 
+  registerBundledDocsPublicRoutes(app);
   registerWpnReadRoutes(app, { jwtSecret });
   registerWpnWriteRoutes(app, { jwtSecret });
   registerWpnBatchRoutes(app, { jwtSecret });
+  registerMeRoutes(app, { jwtSecret });
+  registerMeAssetsRoutes(app, { jwtSecret });
+  registerBuiltinPluginRoutes(app, { jwtSecret });
 
   app.post("/auth/register", async (request, reply) => {
     const parsed = registerBody.safeParse(request.body);
