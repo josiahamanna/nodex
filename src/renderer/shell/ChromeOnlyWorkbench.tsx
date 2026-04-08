@@ -302,7 +302,8 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const bottomRef = React.useRef<ImperativePanelHandle>(null);
   const horizontalWorkspaceRef = useRef<HTMLDivElement>(null);
   const lastViewportWidthRef = useRef(0);
-  const beforePrimaryCollapseRef = useRef({ sidebarPanel: true });
+  /** True after we hid the side panel because the workspace was too narrow; used to restore on widen. */
+  const sidebarAutoCollapsedByWidthRef = useRef(false);
   const lastPrimaryPctWithSidebarRef = useRef<number>(layout.sizes.primaryPct);
   const pendingPanelGroupLayoutRef = useRef<number[] | null>(null);
   const panelGroupLayoutRafRef = useRef<number | null>(null);
@@ -619,7 +620,21 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     return () => window.cancelAnimationFrame(id);
   }, [showBottom, layout.bottomTabs.heightPct]);
 
-  /** When the viewport shrinks, collapse companion if its column falls below min width (px). */
+  useEffect(() => {
+    const tabTypeId = activeTab?.tabTypeId ?? null;
+    const ty = tabTypeId ? tabs.getTabType(tabTypeId) : null;
+    if (!ty?.primarySidebarViewId) {
+      sidebarAutoCollapsedByWidthRef.current = false;
+    }
+  }, [activeTab?.tabTypeId, tabs]);
+
+  useEffect(() => {
+    if (layout.visible.sidebarPanel) {
+      sidebarAutoCollapsedByWidthRef.current = false;
+    }
+  }, [layout.visible.sidebarPanel]);
+
+  /** Shrink: collapse companion/sidebar when columns fall below min width. Grow: restore sidebar if we auto-collapsed it. */
   useEffect(() => {
     const el = horizontalWorkspaceRef.current;
     if (!el) return;
@@ -628,17 +643,45 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       const W = el.clientWidth;
       if (W <= 0) return;
       setWorkspaceWidthPx((prev) => (prev !== W ? W : prev));
-      const prev = lastViewportWidthRef.current;
+      const prevW = lastViewportWidthRef.current;
       lastViewportWidthRef.current = W;
-      const shouldReact = prev === 0 || W < prev;
-      if (!shouldReact) return;
 
       const { primaryPct: p, mainPct: m, secondaryPct: s } = layout.sizes;
       const total = Math.max(1, p + m + s);
-      const rightPx = (W * s) / total;
+      const railW = showMenuRail ? SHELL_ACTIVITY_BAR_WIDTH_PX : 0;
+      const panelWorkspaceW = Math.max(0, W - railW);
+      const leftPx = (panelWorkspaceW * p) / total;
+      const rightPx = (panelWorkspaceW * s) / total;
 
-      if (showCompanion && rightPx < SHELL_COMPANION_MIN_EXPANDED_PX) {
-        companionRef.current?.collapse();
+      const shrinking = prevW === 0 || W < prevW;
+      const growing = prevW !== 0 && W > prevW;
+
+      const tabTypeId = activeTab?.tabTypeId ?? null;
+      const ty = tabTypeId ? tabs.getTabType(tabTypeId) : null;
+      const tabAllowsSidebar = Boolean(ty?.primarySidebarViewId);
+
+      if (shrinking) {
+        if (showCompanion && rightPx < SHELL_COMPANION_MIN_EXPANDED_PX) {
+          companionRef.current?.collapse();
+        }
+        if (showSidebarPanel && leftPx < SHELL_SIDEBAR_MIN_EXPANDED_PX) {
+          sidebarAutoCollapsedByWidthRef.current = true;
+          store.setVisible("sidebarPanel", false);
+        }
+      }
+
+      if ((growing || prevW === 0) && tabAllowsSidebar) {
+        const pRestore = Math.max(10, lastPrimaryPctWithSidebarRef.current || p);
+        const totalRestore = Math.max(1, pRestore + m + s);
+        const leftIfExpanded = (panelWorkspaceW * pRestore) / totalRestore;
+        if (
+          sidebarAutoCollapsedByWidthRef.current &&
+          !store.get().visible.sidebarPanel &&
+          leftIfExpanded >= SHELL_SIDEBAR_MIN_EXPANDED_PX
+        ) {
+          sidebarAutoCollapsedByWidthRef.current = false;
+          store.setVisible("sidebarPanel", true);
+        }
       }
     };
     const schedule = (): void => {
@@ -655,7 +698,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [layout.sizes, showCompanion]);
+  }, [activeTab?.tabTypeId, layout.sizes, showCompanion, showMenuRail, showSidebarPanel, store, tabs]);
 
   return (
     <div className="nodex-app-pad box-border flex min-h-0 flex-1 flex-col bg-muted/45 text-foreground dark:bg-muted/25">
@@ -923,7 +966,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
             onLayout={(sizes) => schedulePersistPanelLayout(sizes)}
           >
             <Panel ref={primaryRef} defaultSize={hSizes[0]} minSize={1} collapsible collapsedSize={0} className="min-w-0">
-              <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden" style={{ minWidth: SHELL_SIDEBAR_MIN_EXPANDED_PX }}>
+              <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                 {primaryView ? (
                   <div className="flex h-full min-h-0 min-w-0 flex-col">
                     <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/10 px-2 py-1">

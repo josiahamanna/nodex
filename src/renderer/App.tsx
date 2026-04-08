@@ -16,7 +16,6 @@ import { useRegisterJsNotebookPlugin } from "./shell/first-party/plugins/js-note
 import { useRegisterCloudSyncPlugin } from "./shell/first-party/useRegisterCloudSyncPlugin";
 import { useRegisterNotesShellPlugin } from "./shell/first-party/useRegisterNotesShellPlugin";
 import { useRegisterMarkdownNotePlugin } from "./shell/first-party/plugins/markdown/useRegisterMarkdownNotePlugin";
-import { DesktopOnlyGate } from "./shell/DesktopOnlyGate";
 import { GlobalContextMenuHost } from "./shell/GlobalContextMenuHost";
 import { AuthProvider } from "./auth/AuthContext";
 import { AuthGate } from "./auth/AuthGate";
@@ -84,20 +83,18 @@ const App: React.FC = () => {
         <CloudRuntimeBootstrap />
         <WebScratchCloudHydrator />
         <ElectronScratchCloudHydrator />
-        <DesktopOnlyGate>
-          <div className="flex h-screen min-h-0 flex-col">
-            {/* Reserve vertical space for mode line + minibuffer so they do not overlay the workbench. */}
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <ChromeOnlyWorkbench />
-            </div>
-            {/* Emacs order: mode line above minibuffer; minibuffer sits on the bottom edge. */}
-            {layout.visible.modeLine ? <NodexModeLineHost /> : null}
-            <NodexCommandPalette vm={shellVm} />
-            {layout.visible.miniBar ? <NodexMiniBar vm={shellVm} /> : null}
-            <NodexReplOverlay />
-            <GlobalContextMenuHost />
+        <div className="flex h-screen min-h-0 flex-col">
+          {/* Reserve vertical space for mode line + minibuffer so they do not overlay the workbench. */}
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <ChromeOnlyWorkbench />
           </div>
-        </DesktopOnlyGate>
+          {/* Emacs order: mode line above minibuffer; minibuffer sits on the bottom edge. */}
+          {layout.visible.modeLine ? <NodexModeLineHost /> : null}
+          <NodexCommandPalette vm={shellVm} />
+          {layout.visible.miniBar ? <NodexMiniBar vm={shellVm} /> : null}
+          <NodexReplOverlay />
+          <GlobalContextMenuHost />
+        </div>
       </AuthGate>
     </AuthProvider>
   );
