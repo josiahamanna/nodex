@@ -20,9 +20,26 @@ import {
 import type { CloudNoteDoc } from "./cloudNotesTypes";
 import { isCloudNoteDoc } from "./cloudNotesTypes";
 import {
+  ELECTRON_SCRATCH_CLOUD_USER_ID,
+  isElectronScratchSession,
+} from "../auth/electron-scratch";
+import {
   WEB_SCRATCH_CLOUD_USER_ID,
   isWebScratchSession,
 } from "../auth/web-scratch";
+
+function scratchCloudStorageUserId(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  if (isWebScratchSession()) {
+    return WEB_SCRATCH_CLOUD_USER_ID;
+  }
+  if (isElectronScratchSession()) {
+    return ELECTRON_SCRATCH_CLOUD_USER_ID;
+  }
+  return null;
+}
 
 type CloudSyncAuthSlice = {
   cloudAuth: { status: string; userId: string | null };
@@ -196,12 +213,8 @@ export const hydrateCloudNotesFromRxDbThunk = createAsyncThunk<
       root.cloudAuth.status === "signedIn" && root.cloudAuth.userId
         ? root.cloudAuth.userId
         : null;
-    if (
-      !storageUserId &&
-      typeof window !== "undefined" &&
-      isWebScratchSession()
-    ) {
-      storageUserId = WEB_SCRATCH_CLOUD_USER_ID;
+    if (!storageUserId && typeof window !== "undefined") {
+      storageUserId = scratchCloudStorageUserId();
     }
   }
   if (!storageUserId) {
@@ -239,12 +252,8 @@ export const runCloudSyncThunk = createAsyncThunk<
       root.cloudAuth.status === "signedIn" && root.cloudAuth.userId
         ? root.cloudAuth.userId
         : null;
-    if (
-      !storageUserId &&
-      typeof window !== "undefined" &&
-      isWebScratchSession()
-    ) {
-      storageUserId = WEB_SCRATCH_CLOUD_USER_ID;
+    if (!storageUserId && typeof window !== "undefined") {
+      storageUserId = scratchCloudStorageUserId();
     }
   }
   if (!storageUserId) {

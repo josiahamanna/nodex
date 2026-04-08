@@ -1,6 +1,7 @@
 import React from "react";
 import { NodexLogo } from "../components/NodexLogo";
 import type { ElectronRunModeChoice } from "./electron-run-mode";
+import { ElectronHomeChromeBar } from "./ElectronHomeChromeBar";
 
 export function ElectronRunModeGreet({
   onChoose,
@@ -12,6 +13,7 @@ export function ElectronRunModeGreet({
 
   return (
     <div className="relative flex h-screen min-h-0 w-full flex-col items-center justify-center overflow-y-auto bg-background px-4 py-8 text-foreground">
+      <ElectronHomeChromeBar />
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -left-40 -top-40 h-[36rem] w-[36rem] rounded-full bg-primary/15 blur-3xl" />
         <div className="absolute -bottom-48 -right-40 h-[34rem] w-[34rem] rounded-full bg-primary/10 blur-3xl" />
@@ -26,31 +28,33 @@ export function ElectronRunModeGreet({
             How do you want to use Nodex?
           </h1>
           <p className="mt-2 max-w-md text-pretty text-[12px] leading-5 text-muted-foreground">
-            Choose <span className="font-medium text-foreground">Local</span> for offline work with no
-            account, or <span className="font-medium text-foreground">Cloud</span> to sign in and sync
-            with the hosted API.
+            <span className="font-medium text-foreground">Scratch</span> is a temporary session in this app (local
+            storage + IndexedDB, no disk workspace). <span className="font-medium text-foreground">Notes</span> uses your on-disk
+            workspace; you can turn on cloud sync anytime from the app.
           </p>
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <button type="button" className={card} onClick={() => onChoose("local")}>
-            <span className="text-[13px] font-semibold">Local</span>
+          <button type="button" className={card} onClick={() => onChoose("scratch")}>
+            <span className="text-[13px] font-semibold">Scratch</span>
             <span className="mt-2 text-left text-[12px] leading-5 text-muted-foreground">
-              Pick a folder on disk when you create a workspace, or start a scratch session (temp — save when
-              ready). No account.
+              Try ideas in a throwaway session. Data stays in this app’s local storage and IndexedDB until you start
+              a new scratch session or clear it.
             </span>
           </button>
-          <button type="button" className={card} onClick={() => onChoose("cloud")}>
-            <span className="text-[13px] font-semibold">Cloud</span>
+          <button type="button" className={card} onClick={() => onChoose("notes")}>
+            <span className="text-[13px] font-semibold">Notes</span>
             <span className="mt-2 text-left text-[12px] leading-5 text-muted-foreground">
-              Sign in or create an account to use the cloud sync API (same as the web app).
+              Open your normal workspace on disk. Optional: sign in from <span className="font-medium text-foreground">Sync</span>{" "}
+              in the top bar to sync notes with your server when configured.
             </span>
           </button>
         </div>
 
         <p className="mt-6 text-center text-[11px] text-muted-foreground">
-          Your choice is saved on this device. To switch later, clear app data / local storage for
-          Nodex (key <span className="font-mono">nodex.electron.runMode</span>).
+          Your choice is saved on this device (key{" "}
+          <span className="font-mono">nodex.electron.runMode</span>). Use Close from Notes or Exit session from
+          Scratch to return here.
         </p>
       </div>
     </div>

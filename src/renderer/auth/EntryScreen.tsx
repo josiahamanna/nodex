@@ -1,7 +1,11 @@
 import React, { useMemo, useState } from "react";
 import { AuthScreen } from "./AuthScreen";
 import { NodexLogo } from "../components/NodexLogo";
-import { setWebScratchSession } from "./web-scratch";
+import {
+  isWebScratchSession,
+  resetWebScratchClearLocalData,
+  setWebScratchSession,
+} from "./web-scratch";
 
 type EntryView = "marketing" | "auth";
 type AuthMode = "login" | "signup";
@@ -83,13 +87,10 @@ function MarketingHome({
               <button
                 type="button"
                 className="nodex-btn-neutral h-10 rounded-md px-4 text-[13px] font-medium"
-                onClick={onSignup}
+                onClick={onTryBrowserScratch}
               >
-                Create an account
+                Try out
               </button>
-              <div className="ml-1 text-[11px] text-muted-foreground">
-                Offline Electron Application coming soon.
-              </div>
             </div>
 
             <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -199,7 +200,22 @@ function MarketingHome({
           className="text-[11px] text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
           onClick={onTryBrowserScratch}
         >
-          Try in the browser (scratch) — explore the app; cloud notes stay in this browser until you sign in
+          Try in the browser — opens your saved try-out if you used it before on this device
+        </button>
+        <button
+          type="button"
+          className="text-[11px] text-muted-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+          onClick={() => {
+            if (
+              window.confirm(
+                "Start a new try-out session? This clears try-out data in this browser (localStorage + IndexedDB). You cannot undo this.",
+              )
+            ) {
+              void resetWebScratchClearLocalData();
+            }
+          }}
+        >
+          New try-out session (clears try-out notes in this browser)
         </button>
         <span>Built by Jehu Shalom Amanna</span>
       </footer>
@@ -212,7 +228,9 @@ export function EntryScreen(): React.ReactElement {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
 
   const onTryBrowserScratch = (): void => {
-    setWebScratchSession(true);
+    if (!isWebScratchSession()) {
+      setWebScratchSession(true);
+    }
     window.location.reload();
   };
 
@@ -228,9 +246,11 @@ export function EntryScreen(): React.ReactElement {
     [authMode],
   );
 
-  if (view === "auth") return auth;
+  if (view === "auth") {
+    return auth;
+  }
 
-  return (
+  const marketing = (
     <MarketingHome
       onLogin={() => {
         setAuthMode("login");
@@ -243,5 +263,7 @@ export function EntryScreen(): React.ReactElement {
       onTryBrowserScratch={onTryBrowserScratch}
     />
   );
+
+  return marketing;
 }
 

@@ -43,7 +43,12 @@ export function chordFromEvent(e: KeyboardEvent): string {
   if (e.altKey && !e.ctrlKey && !e.metaKey && /^Key([A-Z])$/.test(e.code)) {
     keyTok = e.code.slice(3).toLowerCase();
   } else {
-    keyTok = e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase();
+    const k = e.key;
+    if (k == null || k === "") {
+      keyTok = "";
+    } else {
+      keyTok = k.length === 1 ? k.toLowerCase() : k.toLowerCase();
+    }
   }
   return normalizeChord([...mods, keyTok].join("+"));
 }

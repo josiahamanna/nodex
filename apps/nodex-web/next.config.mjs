@@ -26,6 +26,11 @@ const headlessApiOrigin =
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   ...(staticExport ? { output: "export", assetPrefix: "./" } : {}),
+  /**
+   * Electron and some browsers load `http://127.0.0.1:3000` while dev defaults to `localhost`;
+   * without this, Next 16 blocks `/_next/*` dev assets and the app can break or show wrong UI.
+   */
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   transpilePackages: ["@nodex/platform", "rxdb", "dexie"],
   images: { unoptimized: true },
   async rewrites() {

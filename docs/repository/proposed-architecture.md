@@ -551,7 +551,7 @@ flowchart LR
 ### ADR-017 — MongoDB as server source of truth: web authoritative-first, Electron offline-first + sync
 
 **Status**: Accepted (April 2026)  
-**Context**: The **browser** shell today often depends on the **headless Express API** and **`NODEX_PROJECT_ROOT`** + **`nodex-workspace.json`**, which is a **single-tenant, on-disk** model. **`apps/nodex-sync-api`** already holds **per-user** note documents in **MongoDB** with **`POST /sync/push`** and **`GET /sync/pull`**, but that schema is still **narrow** (flat `notes` with `markdown` \| `text` \| `code` — no **WPN** workspaces/projects tree in Mongo yet). **Electron** is intended to stay **offline-first** with **RxDB** (renderer) and **push/pull** when online (ADRs 004, 005, 007).
+**Context**: The **browser** may use the **headless Express API** and **`NODEX_PROJECT_ROOT`** for single-tenant on-disk workflows. The **hosted product** treats **WPN Mongo** (`wpn_workspaces`, `wpn_projects`, `wpn_notes`, …) as **authoritative** for workspace notes. A separate **`POST /sync/push`** / **`GET /sync/pull`** path for flat **`notes`** documents still exists and is consumed by **RxDB `cloudNotesSlice`** in the renderer — see **Flat `notes` sync (experimental)** below. **Electron** stays **offline-first** with **RxDB** and sync when online (ADRs 004, 005, 007).
 
 **Decision**:
 1. **MongoDB (via `nodex-sync-api` or a clearly bounded extension of it)** becomes the **canonical store** for the **cloud / multi-user** product path: authenticated users, durable notes and (as schemas land) **WPN-aligned** workspace data.
@@ -576,7 +576,23 @@ flowchart LR
 - **Web-first authoritative** minimizes client state and matches PWA expectations (ADR-013).
 - **Electron + RxDB + sync** preserves offline UX without abandoning Mongo as canonical when connected.
 
-**Consequences**: **`nodex-sync-api`** grows beyond thin **sync** endpoints; **`@nodex/platform` `RemoteApi`** may gain **non-sync** methods or a dedicated **REST client** module. **WPN types** ([`wpn-types.ts`](../../src/core/wpn/wpn-types.ts) / [`wpn-v2-types.ts`](../../src/shared/wpn-v2-types.ts)) must be **mapped** to Mongo documents and migration scripts. **Tests** need **in-memory Mongo** or Testcontainers for API integration.
+**Consequences**: **`nodex-sync-api`** grows beyond thin **sync** endpoints; **`@nodex/platform` `RemoteApi`** may gain **non-sync** methods or a dedicated **REST client** module. **WPN types** ([`wpn-types.ts`](../../src/core/wpn/wpn-types.ts) / [`wpn-v2-types.ts`](../../src/shared/wpn-v2-types.ts)) must be **mapped** to Mongo documents and migration scripts. **Tests** need **in-memory Mongo** or Testcontainers for API integration. **`window.Nodex` `getNote` / `getAllNotes` / …** in **sync WPN** mode use **`/wpn/*`** (including **`GET /wpn/all-notes-list`** for a single flat list round-trip).
+
+#### Flat `notes` sync (experimental)
+
+**Status**: In-repo **staging / experiment**, not the WPN product model.
+
+**Context**: [`src/renderer/store/cloudNotesSlice.ts`](../../src/renderer/store/cloudNotesSlice.ts) pushes and pulls Mongo collection **`"notes"`** as flat **`CloudNoteDoc`** rows into **RxDB** (`cloud-notes-rxdb.ts`), alongside the **WPN HTTP** surface.
+
+**Decision**: **Keep** this pipeline for now under **`RemoteApi.syncPush` / `syncPull`**, with **no product guarantee** that it matches hosted WPN data. **Removal** or **WPN-shaped sync** is a follow-up milestone once offline desktop parity (ADR-017 P3) is specified.
+
+**Consequences**: Cloud Sync UI may show **flat** documents that **do not** reflect **`wpn_*`** content; operators should treat **WPN routes** as authoritative for workspace trees in the hosted SKU.
+
+#### Electron and WPN vs legacy flat notes
+
+**Context**: [`src/main/register-static-ipc-notes-registry.ts`](../../src/main/register-static-ipc-notes-registry.ts) (and related handlers) branch on whether a note exists in the **WPN JSON** store vs the **legacy flat** in-memory store.
+
+**Direction**: For **WPN-first** projects, the open **notes DB** holds WPN rows; IPC patch/rename/content paths use **`wpnJson*`** helpers. Legacy flat paths apply when the workspace is still on the older model. Align new features with **WPN** so desktop and web agree when syncing to Mongo **`wpn_*`**.
 
 ### 11.3 Mobile — phase 2
 

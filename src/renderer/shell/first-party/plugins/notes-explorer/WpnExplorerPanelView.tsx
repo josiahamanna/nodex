@@ -6,11 +6,13 @@ import type {
 } from "@nodex/ui-types";
 import type { WpnNoteListItem, WpnProjectRow, WpnWorkspaceRow } from "../../../../../shared/wpn-v2-types";
 import type { AppDispatch, RootState } from "../../../../store";
+import { useAuth } from "../../../../auth/AuthContext";
 import { fetchNote } from "../../../../store/notesSlice";
 import {
   fetchHeadlessWpnSession,
   isElectronUserAgent,
   NODEX_WEB_PLUGINS_CHANGED,
+  syncWpnNotesBackend,
 } from "../../../../nodex-web-shim";
 import {
   getRegisteredTypesCached,
@@ -21,6 +23,7 @@ import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import { closeShellTabsForNoteIds } from "../../../shellTabClose";
 import { useShellNavigation } from "../../../useShellNavigation";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
+import { rememberWpnProjectIdForScratch } from "../../../wpnScratchProject";
 import { NODEX_SHELL_NOTE_TAB_CLOSED_EVENT } from "../../../shellTabUrlSync";
 import { SHELL_TAB_NOTE, SHELL_TAB_SCRATCH_MARKDOWN } from "../../shellWorkspaceIds";
 import { InlineSingleLineEditable } from "../../../../components/InlineSingleLineEditable";
@@ -157,6 +160,7 @@ type RenamingState =
   | null;
 
 export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.ReactElement {
+  const { openWebAuth } = useAuth();
   const dispatch = useDispatch<AppDispatch>();
   const { tabs } = useShellRegistries();
   const { openNoteById } = useShellNavigation();
@@ -221,6 +225,10 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       setBusy(false);
     }
   }, [projectOpen]);
+
+  useEffect(() => {
+    rememberWpnProjectIdForScratch(selectedProjectId);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     const refresh = (invalidateCaches: boolean): void => {
@@ -922,13 +930,37 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
               <p className="text-[10px] opacity-70">Or right-click in this panel for the same action.</p>
             </>
           ) : (
-            <p className="max-w-[16rem] text-[11px] leading-relaxed">
-              In the browser, the headless API must run with{" "}
-              <code className="rounded bg-muted px-0.5 font-mono text-[10px] text-foreground">NODEX_PROJECT_ROOT</code>{" "}
-              pointing at a project folder so workspaces and notes persist in{" "}
-              <code className="rounded bg-muted px-0.5 font-mono text-[10px] text-foreground">nodex-workspace.json</code>
-              . Use the desktop app for a native folder workflow.
-            </p>
+            <>
+              <p className="max-w-[18rem] text-[11px] leading-relaxed">
+                Sign in with{" "}
+                <button
+                  type="button"
+                  className="font-medium text-sky-600 underline decoration-sky-600/40 underline-offset-2 hover:text-sky-500 dark:text-sky-400"
+                  onClick={() => openWebAuth("login")}
+                >
+                  Login
+                </button>{" "}
+                or{" "}
+                <button
+                  type="button"
+                  className="font-medium text-sky-600 underline decoration-sky-600/40 underline-offset-2 hover:text-sky-500 dark:text-sky-400"
+                  onClick={() => openWebAuth("signup")}
+                >
+                  Signup
+                </button>{" "}
+                to load your workspaces and notes here.
+              </p>
+              <p className="max-w-[18rem] text-[11px] leading-relaxed text-muted-foreground">
+                Prefer files on your computer? Use the Nodex desktop app when it’s available.
+              </p>
+              {process.env.NODE_ENV === "development" && !syncWpnNotesBackend() ? (
+                <p className="max-w-[20rem] text-[10px] leading-relaxed text-muted-foreground/70">
+                  Dev: local browser setup needs the headless API with{" "}
+                  <code className="rounded bg-muted/50 px-0.5 font-mono text-[9px]">NODEX_PROJECT_ROOT</code> or{" "}
+                  <code className="rounded bg-muted/50 px-0.5 font-mono text-[9px]">?web=1&amp;api=…</code>.
+                </p>
+              ) : null}
+            </>
           )}
         </div>
         {menu?.kind === "no_project" && showFolderBasedWorkspaceCreate ? (

@@ -11,6 +11,10 @@ import {
 } from "./cloudNotesSlice";
 import type { CloudNoteDoc } from "./cloudNotesTypes";
 import {
+  ELECTRON_SCRATCH_CLOUD_USER_ID,
+  isElectronScratchSession,
+} from "../auth/electron-scratch";
+import {
   WEB_SCRATCH_CLOUD_USER_ID,
   isWebScratchSession,
 } from "../auth/web-scratch";
@@ -34,12 +38,12 @@ cloudNotesRxListener.startListening({
       state.cloudAuth.status === "signedIn" && state.cloudAuth.userId
         ? state.cloudAuth.userId
         : null;
-    if (
-      !storageUserId &&
-      typeof window !== "undefined" &&
-      isWebScratchSession()
-    ) {
-      storageUserId = WEB_SCRATCH_CLOUD_USER_ID;
+    if (!storageUserId && typeof window !== "undefined") {
+      if (isWebScratchSession()) {
+        storageUserId = WEB_SCRATCH_CLOUD_USER_ID;
+      } else if (isElectronScratchSession()) {
+        storageUserId = ELECTRON_SCRATCH_CLOUD_USER_ID;
+      }
     }
     if (!storageUserId) {
       return;

@@ -83,8 +83,8 @@ export function CloudSyncMainView(): React.ReactElement {
         </p>
         {isWebScratchSession() ? (
           <p className="mt-3 max-w-lg rounded-md border border-amber-500/35 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-muted-foreground">
-            Browser scratch: cloud notes are stored in IndexedDB on this device until you authenticate. Sign in
-            below to use the sync API (Mongo) when configured.
+            Browser scratch: try-out notes use localStorage + IndexedDB on this device until you authenticate. Sign
+            in below to use the sync API (Mongo) when configured.
           </p>
         ) : null}
         {auth.error ? (
@@ -167,9 +167,10 @@ export function CloudSyncMainView(): React.ReactElement {
           <button
             type="button"
             className="rounded border border-input bg-background px-2 py-1 text-[11px] hover:bg-muted/50"
+            title="Logout: end this sync session on this device. Server-side notes remain in the cloud."
             onClick={() => void dispatch(cloudLogoutThunk())}
           >
-            Sign out
+            Logout
           </button>
         </div>
       </div>

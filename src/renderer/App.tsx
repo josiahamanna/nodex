@@ -20,9 +20,11 @@ import { DesktopOnlyGate } from "./shell/DesktopOnlyGate";
 import { GlobalContextMenuHost } from "./shell/GlobalContextMenuHost";
 import { AuthProvider } from "./auth/AuthContext";
 import { AuthGate } from "./auth/AuthGate";
+import { isElectronScratchSession } from "./auth/electron-scratch";
 import { isWebScratchSession } from "./auth/web-scratch";
+import { initCloudSyncRuntime } from "./cloud-sync/initCloudSyncRuntime";
 import { isElectronUserAgent } from "./nodex-web-shim";
-import { store } from "./store";
+import { platformDeps, store } from "./store";
 import { hydrateCloudNotesFromRxDbThunk } from "./store/cloudNotesSlice";
 
 ensureSesLockdown();
@@ -36,6 +38,29 @@ function WebScratchCloudHydrator(): null {
       return;
     }
     void store.dispatch(hydrateCloudNotesFromRxDbThunk());
+  }, []);
+  return null;
+}
+
+function ElectronScratchCloudHydrator(): null {
+  useEffect(() => {
+    if (typeof window === "undefined" || !isElectronUserAgent()) {
+      return;
+    }
+    if (!isElectronScratchSession()) {
+      return;
+    }
+    void store.dispatch(hydrateCloudNotesFromRxDbThunk());
+  }, []);
+  return null;
+}
+
+function CloudRuntimeBootstrap(): null {
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    initCloudSyncRuntime(platformDeps, store.dispatch);
   }, []);
   return null;
 }
@@ -56,7 +81,9 @@ const App: React.FC = () => {
   return (
     <AuthProvider>
       <AuthGate>
+        <CloudRuntimeBootstrap />
         <WebScratchCloudHydrator />
+        <ElectronScratchCloudHydrator />
         <DesktopOnlyGate>
           <div className="flex h-screen min-h-0 flex-col">
             {/* Reserve vertical space for mode line + minibuffer so they do not overlay the workbench. */}

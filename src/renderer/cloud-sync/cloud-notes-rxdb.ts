@@ -42,6 +42,25 @@ function safeDbNameSegment(userId: string): string {
   return userId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
 }
 
+function indexedDbNameForCloudNotesUser(userId: string): string {
+  return `nodex_cloud_notes__${safeDbNameSegment(userId)}`;
+}
+
+/** Close any open RxDB handle and remove the IndexedDB database for this user (e.g. reset web scratch). */
+export async function destroyCloudNotesDbForUser(userId: string): Promise<void> {
+  if (typeof indexedDB === "undefined") {
+    return;
+  }
+  await closeCloudNotesDb();
+  const name = indexedDbNameForCloudNotesUser(userId);
+  await new Promise<void>((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(name);
+    req.onblocked = () => {};
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error ?? new Error("deleteDatabase failed"));
+  });
+}
+
 export function getOpenCloudNotesUserId(): string | null {
   return openUserId;
 }
@@ -58,7 +77,7 @@ export async function openCloudNotesDbForUser(userId: string): Promise<boolean> 
   await closeCloudNotesDb();
   const { createRxDatabase, ensureNoStartupErrors } = await import("rxdb");
   const { getRxStorageDexie } = await import("rxdb/plugins/storage-dexie");
-  const name = `nodex_cloud_notes__${safeDbNameSegment(userId)}`;
+  const name = indexedDbNameForCloudNotesUser(userId);
   const db = await createRxDatabase({
     name,
     storage: getRxStorageDexie(),

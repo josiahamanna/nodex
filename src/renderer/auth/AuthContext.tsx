@@ -4,11 +4,14 @@ import { setAccessToken, type AuthUser } from "./auth-session";
 import { isElectronUserAgent } from "../nodex-web-shim";
 import { isWebScratchSession } from "./web-scratch";
 import {
+  clearElectronRunMode,
   readElectronRunMode,
   writeElectronRunMode,
   type ElectronRunMode,
   type ElectronRunModeChoice,
 } from "./electron-run-mode";
+import { store } from "../store";
+import { cloudLogoutThunk } from "../store/cloudAuthSlice";
 
 const LOCAL_AUTH_USER: AuthUser = {
   id: "local",
@@ -22,6 +25,8 @@ type AuthState =
   | { status: "authed"; user: AuthUser }
   | { status: "anon"; user: null };
 
+type WebAuthOverlayMode = "login" | "signup";
+
 type AuthContextValue = {
   state: AuthState;
   /** Electron only; always `"unset"` in the browser. */
@@ -32,6 +37,16 @@ type AuthContextValue = {
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
   setAnon: () => void;
+  /** Web only: full-screen login/signup over the shell (e.g. from Notes explorer). */
+  webAuthOverlay: WebAuthOverlayMode | null;
+  openWebAuth: (mode: WebAuthOverlayMode) => void;
+  closeWebAuth: () => void;
+  /** Electron Notes: overlay for sync API sign-in / register. */
+  electronSyncOverlay: WebAuthOverlayMode | null;
+  openElectronSyncAuth: (mode: WebAuthOverlayMode) => void;
+  closeElectronSyncAuth: () => void;
+  /** Electron only: leave workbench and return to the welcome screen (does not quit the app). */
+  exitElectronSessionToWelcome: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -50,11 +65,11 @@ function initialAuthState(): AuthState {
   }
   if (isElectronUserAgent()) {
     const mode = readElectronRunMode();
-    if (mode === "local") {
+    if (mode === "notes") {
       return { status: "authed", user: LOCAL_AUTH_USER };
     }
-    if (mode === "cloud") {
-      return { status: "loading", user: null };
+    if (mode === "scratch") {
+      return { status: "anon", user: null };
     }
     return { status: "anon", user: null };
   }
@@ -68,21 +83,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       : "unset",
   );
   const [state, setState] = useState<AuthState>(initialAuthState);
+  const [webAuthOverlay, setWebAuthOverlay] = useState<WebAuthOverlayMode | null>(null);
+  const [electronSyncOverlay, setElectronSyncOverlay] = useState<WebAuthOverlayMode | null>(null);
+
+  useEffect(() => {
+    if (state.status === "authed") {
+      setWebAuthOverlay(null);
+    }
+  }, [state.status]);
 
   const refreshSession = useCallback(async () => {
     if (typeof window === "undefined") return;
     if (isElectronUserAgent()) {
-      if (electronRunMode !== "cloud") {
-        return;
-      }
-      setState({ status: "loading", user: null });
-      try {
-        const u = await authRefresh();
-        setState({ status: "authed", user: u });
-      } catch {
-        setAccessToken(null);
-        setState({ status: "anon", user: null });
-      }
       return;
     }
     setState({ status: "loading", user: null });
@@ -93,23 +105,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       setAccessToken(null);
       setState({ status: "anon", user: null });
     }
-  }, [electronRunMode]);
+  }, []);
 
   useEffect(() => {
     void (async () => {
       if (typeof window === "undefined") return;
       if (isElectronUserAgent()) {
-        if (electronRunMode !== "cloud") {
-          return;
-        }
-        try {
-          const u = await authRefresh();
-          setState({ status: "authed", user: u });
-          return;
-        } catch {
-          /* fall through */
-        }
-        setState({ status: "anon", user: null });
         return;
       }
       try {
@@ -121,17 +122,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       }
       setState({ status: "anon", user: null });
     })();
-  }, [electronRunMode]);
+  }, []);
 
   const chooseElectronRunMode = useCallback((mode: ElectronRunModeChoice) => {
+    if (mode === "scratch") {
+      void store.dispatch(cloudLogoutThunk());
+    }
     writeElectronRunMode(mode);
     setElectronRunModeState(mode);
     setAccessToken(null);
-    if (mode === "local") {
+    if (mode === "notes") {
       setState({ status: "authed", user: LOCAL_AUTH_USER });
       return;
     }
-    setState({ status: "loading", user: null });
+    setState({ status: "anon", user: null });
   }, []);
 
   const mergeWebScratchCloudNotesAfterAuth = useCallback(async (userId: string) => {
@@ -139,17 +143,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       return;
     }
     const { migrateWebScratchCloudNotesToUser } = await import(
-      "../cloud-sync/migrate-web-scratch-cloud-notes",
+      "../cloud-sync/migrate-web-scratch-cloud-notes"
     );
     await migrateWebScratchCloudNotesToUser(userId);
-    const { store } = await import("../store");
+    const { store: appStore } = await import("../store");
     const { cloudNotesSlice } = await import("../store/cloudNotesSlice");
     const { openCloudNotesDbForUser, rxdbFindAllCloudNotes } = await import(
-      "../cloud-sync/cloud-notes-rxdb",
+      "../cloud-sync/cloud-notes-rxdb"
     );
     await openCloudNotesDbForUser(userId);
     const rows = await rxdbFindAllCloudNotes();
-    store.dispatch(cloudNotesSlice.actions.hydrateFromRxDb({ rows }));
+    appStore.dispatch(cloudNotesSlice.actions.hydrateFromRxDb({ rows }));
   }, []);
 
   const login = useCallback(
@@ -172,16 +176,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
   const logout = useCallback(async () => {
     if (typeof window === "undefined") return;
-    if (isElectronUserAgent() && electronRunMode !== "cloud") {
+    if (isElectronUserAgent()) {
       return;
     }
     await authLogout();
     setState({ status: "anon", user: null });
-  }, [electronRunMode]);
+  }, []);
 
   const setAnon = useCallback(() => {
     setAccessToken(null);
     setState({ status: "anon", user: null });
+  }, []);
+
+  const openWebAuth = useCallback((mode: WebAuthOverlayMode) => {
+    if (typeof window === "undefined" || isElectronUserAgent()) {
+      return;
+    }
+    setWebAuthOverlay(mode);
+  }, []);
+
+  const closeWebAuth = useCallback(() => {
+    setWebAuthOverlay(null);
+  }, []);
+
+  const openElectronSyncAuth = useCallback((mode: WebAuthOverlayMode) => {
+    if (typeof window === "undefined" || !isElectronUserAgent()) {
+      return;
+    }
+    setElectronSyncOverlay(mode);
+  }, []);
+
+  const closeElectronSyncAuth = useCallback(() => {
+    setElectronSyncOverlay(null);
+  }, []);
+
+  const exitElectronSessionToWelcome = useCallback(() => {
+    if (typeof window === "undefined" || !isElectronUserAgent()) {
+      return;
+    }
+    void (async () => {
+      try {
+        await store.dispatch(cloudLogoutThunk());
+      } catch {
+        /* still leave workbench */
+      }
+      clearElectronRunMode();
+      setElectronRunModeState("unset");
+      setAccessToken(null);
+      setElectronSyncOverlay(null);
+      setState({ status: "anon", user: null });
+    })();
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -194,6 +238,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       logout,
       refreshSession,
       setAnon,
+      webAuthOverlay,
+      openWebAuth,
+      closeWebAuth,
+      electronSyncOverlay,
+      openElectronSyncAuth,
+      closeElectronSyncAuth,
+      exitElectronSessionToWelcome,
     }),
     [
       state,
@@ -204,9 +255,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       logout,
       refreshSession,
       setAnon,
+      webAuthOverlay,
+      openWebAuth,
+      closeWebAuth,
+      electronSyncOverlay,
+      openElectronSyncAuth,
+      closeElectronSyncAuth,
+      exitElectronSessionToWelcome,
     ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
-

@@ -33,7 +33,7 @@ export function syncWpnUsesSyncApi(): boolean {
 }
 
 /** Sync WPN mode with a resolved sync base: use `/wpn/*` for note data (no legacy `/api/v1/notes/*`). */
-function syncWpnNotesBackend(): boolean {
+export function syncWpnNotesBackend(): boolean {
   return syncWpnUsesSyncApi() && resolveSyncApiBase().trim().length > 0;
 }
 
@@ -42,6 +42,25 @@ const WPN_BUILTIN_NOTE_TYPES = ["markdown", "mdx", "text", "code", "root"] as co
 async function wpnAggregateAllNoteListItems(
   headlessBaseUrl: string,
 ): Promise<NoteListItem[]> {
+  if (syncWpnNotesBackend()) {
+    try {
+      const { notes } = await wpnHttp<{ notes: WpnNoteListItem[] }>(
+        headlessBaseUrl,
+        "GET",
+        "/wpn/all-notes-list",
+      );
+      const list = notes ?? [];
+      return list.map((n) => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        parentId: n.parent_id,
+        depth: n.depth,
+      }));
+    } catch {
+      /* fall through to N+1 if route missing (older server) */
+    }
+  }
   const { workspaces } = await wpnHttp<{ workspaces: { id: string }[] }>(
     headlessBaseUrl,
     "GET",
@@ -442,11 +461,44 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       }
       return req("POST", "/notes/move-bulk", { ids, targetId, placement });
     },
-    pasteSubtree: async (_payload) => {
+    pasteSubtree: async (payload) => {
       if (syncWpnNotesBackend()) {
-        throw new Error("pasteSubtree is not implemented for sync WPN yet");
+        const { sourceId, targetId, mode, placement } = payload;
+        const projectId = await wpnResolveProjectIdForNote(baseUrl, sourceId);
+        const pt = await wpnResolveProjectIdForNote(baseUrl, targetId);
+        if (!projectId || !pt || projectId !== pt) {
+          throw new Error(
+            "pasteSubtree: source and target notes must be in the same WPN project",
+          );
+        }
+        if (mode === "cut") {
+          await wpnHttp(baseUrl, "POST", "/wpn/notes/move", {
+            projectId,
+            draggedId: sourceId,
+            targetId,
+            placement,
+          });
+          return {};
+        }
+        const dup = await wpnHttp<{ newRootId: string }>(
+          baseUrl,
+          "POST",
+          `/wpn/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(sourceId)}/duplicate`,
+          {},
+        );
+        const newRootId = dup?.newRootId;
+        if (!newRootId) {
+          throw new Error("pasteSubtree: duplicate failed");
+        }
+        await wpnHttp(baseUrl, "POST", "/wpn/notes/move", {
+          projectId,
+          draggedId: newRootId,
+          targetId,
+          placement,
+        });
+        return { newRootId };
       }
-      return req("POST", "/notes/paste", _payload);
+      return req("POST", "/notes/paste", payload);
     },
     saveNotePluginUiState: async (noteId, state) => {
       if (syncWpnNotesBackend()) {

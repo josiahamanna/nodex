@@ -25,6 +25,7 @@ import React, {
   useState,
   useSyncExternalStore,
 } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import {
   Panel,
   PanelGroup,
@@ -57,7 +58,16 @@ import {
   SHELL_SIDEBAR_MIN_EXPANDED_PX,
 } from "./shellResponsiveConstants";
 import { useAuth } from "../auth/AuthContext";
+import { resetElectronScratchClearData } from "../auth/electron-scratch";
+import {
+  exitWebScratchKeepData,
+  isWebScratchSession,
+  resetWebScratchClearLocalData,
+} from "../auth/web-scratch";
 import { NodexLogo } from "../components/NodexLogo";
+import { isElectronUserAgent } from "../nodex-web-shim";
+import { cloudLogoutThunk } from "../store/cloudAuthSlice";
+import type { AppDispatch, RootState } from "../store";
 
 function IconBottomDockLayout({ className }: { className?: string }): React.ReactElement {
   return (
@@ -265,6 +275,12 @@ function applyShellHashNoteTarget(
 
 export function ChromeOnlyWorkbench(): React.ReactElement {
   const auth = useAuth();
+  const dispatch = useDispatch<AppDispatch>();
+  const cloudAuth = useSelector((s: RootState) => s.cloudAuth);
+  const isElectronScratchWorkbench =
+    isElectronUserAgent() && auth.electronRunMode === "scratch";
+  const isElectronNotesWorkbench =
+    isElectronUserAgent() && auth.electronRunMode === "notes";
   const layout = useShellLayoutState();
   const store = useShellLayoutStore();
   const views = useShellViewRegistry();
@@ -696,15 +712,89 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               </div>
             </SortableContext>
           </DndContext>
-          <div className="flex items-center gap-1">
-            {auth.state.status === "authed" && auth.state.user.id !== "local" ? (
+          <div className="flex shrink-0 items-center gap-1">
+            {!isElectronUserAgent() && isWebScratchSession() ? (
+              <>
+                <button
+                  type="button"
+                  className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
+                  onClick={() => exitWebScratchKeepData()}
+                  title="Exit try-out: return to home. Try-out notes stay in this browser (localStorage flag + IndexedDB)."
+                >
+                  Exit session
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "Start a new try-out session? This clears try-out data in this browser (localStorage + IndexedDB). You cannot undo this.",
+                      )
+                    ) {
+                      void resetWebScratchClearLocalData();
+                    }
+                  }}
+                  title="New try-out session: clear localStorage + IndexedDB for scratch, then reload"
+                >
+                  New session
+                </button>
+              </>
+            ) : null}
+            {isElectronScratchWorkbench ? (
+              <>
+                <button
+                  type="button"
+                  className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
+                  onClick={() => auth.exitElectronSessionToWelcome()}
+                  title="Exit scratch: return to welcome. Ephemeral data stays in local storage until you start a new scratch session."
+                >
+                  Exit session
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "Start a new scratch session? This clears scratch data in this app (IndexedDB). You cannot undo this.",
+                      )
+                    ) {
+                      void resetElectronScratchClearData();
+                    }
+                  }}
+                  title="Discard this scratch session and reload with an empty scratch workspace"
+                >
+                  New session
+                </button>
+              </>
+            ) : null}
+            {isElectronNotesWorkbench ? (
+              <button
+                type="button"
+                className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
+                onClick={() => auth.exitElectronSessionToWelcome()}
+                title="Close: return to welcome. Files on disk are unchanged."
+              >
+                Close
+              </button>
+            ) : null}
+            {isElectronNotesWorkbench && cloudAuth.status === "signedOut" ? (
+              <button
+                type="button"
+                className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
+                onClick={() => auth.openElectronSyncAuth("login")}
+                title="Sign in or register to sync notes with the configured API"
+              >
+                Sync
+              </button>
+            ) : null}
+            {isElectronNotesWorkbench && cloudAuth.status === "signedIn" ? (
               <button
                 type="button"
                 className="mr-1 rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
-                onClick={() => {
-                  void auth.logout();
-                }}
-                title="Logout"
+                onClick={() => void dispatch(cloudLogoutThunk())}
+                title="Logout: end sync on this device. Server-side data stays in the cloud."
               >
                 Logout
               </button>

@@ -1,5 +1,7 @@
+import { syncWpnNotesBackend } from "../nodex-web-shim";
 import { store } from "../store";
 import { createNote, fetchAllNotes } from "../store/notesSlice";
+import { resolveWpnProjectIdForRootNote } from "./wpnScratchProject";
 import {
   NOTES_EXPLORER_VIEW_SIDEBAR,
   SHELL_TAB_SCRATCH_MARKDOWN,
@@ -37,16 +39,35 @@ export async function openScratchMarkdownTabInShell(deps: ShellNavigationDeps): 
 
   if (!noteId) {
     try {
-      const { id } = await store
-        .dispatch(
-          createNote({
-            relation: "root",
-            type: "markdown",
-            title: "Scratch",
-            content: "",
-          }),
-        )
-        .unwrap();
+      let id: string;
+      if (syncWpnNotesBackend()) {
+        const projectId = await resolveWpnProjectIdForRootNote();
+        if (!projectId) {
+          window.alert(
+            "Open the Notes explorer and select a project (or create a workspace with a project), then try Scratch again.",
+          );
+          return;
+        }
+        const created = await window.Nodex.wpnCreateNoteInProject(projectId, {
+          relation: "root",
+          type: "markdown",
+          title: "Scratch",
+          content: "",
+        });
+        id = created.id;
+      } else {
+        const r = await store
+          .dispatch(
+            createNote({
+              relation: "root",
+              type: "markdown",
+              title: "Scratch",
+              content: "",
+            }),
+          )
+          .unwrap();
+        id = r.id;
+      }
       noteId = id;
       try {
         localStorage.setItem(LS_KEY, id);

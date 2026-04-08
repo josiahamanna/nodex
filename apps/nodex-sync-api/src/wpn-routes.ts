@@ -159,6 +159,34 @@ export function registerWpnReadRoutes(
     return reply.send({ notes });
   });
 
+  /** Single round-trip flat list for all projects (same row shape as `GET /wpn/projects/:id/notes`). */
+  app.get("/wpn/all-notes-list", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const userId = auth.sub;
+    const wsCol = getWpnWorkspacesCollection();
+    const projCol = getWpnProjectsCollection();
+    const noteCol = getWpnNotesCollection();
+    const workspaces = await wsCol
+      .find({ userId })
+      .sort({ sort_index: 1, name: 1 })
+      .toArray();
+    const out: WpnNoteListItemOut[] = [];
+    for (const w of workspaces) {
+      const projects = await projCol
+        .find({ userId, workspace_id: w.id })
+        .sort({ sort_index: 1, name: 1 })
+        .toArray();
+      for (const p of projects) {
+        const rows = await noteCol.find({ userId, project_id: p.id }).toArray();
+        out.push(...listNotesFlatPreorder(rows));
+      }
+    }
+    return reply.send({ notes: out });
+  });
+
   app.get("/wpn/notes-with-context", async (request, reply) => {
     const auth = await requireAuth(request, reply, jwtSecret);
     if (!auth) {

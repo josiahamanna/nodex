@@ -5,8 +5,10 @@ import { openNoteInShell } from "../openNoteInShell";
 import { openScratchMarkdownTabInShell } from "../openScratchMarkdownTabInShell";
 import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../views/ShellViewContext";
+import { syncWpnNotesBackend } from "../../nodex-web-shim";
 import { store } from "../../store";
 import { createNote, fetchAllNotes } from "../../store/notesSlice";
+import { resolveWpnProjectIdForRootNote } from "../wpnScratchProject";
 import { NoteEditorShellView } from "./NoteEditorShellView";
 import { MarkdownTocShellView } from "./MarkdownTocShellView";
 import { NODEX_MARKDOWN_OPEN_NOTE_LINK_PICKER_EVENT } from "./plugins/markdown/markdownNoteLinkEvents";
@@ -151,16 +153,35 @@ export function useRegisterNotesShellPlugin(): void {
         },
         handler: async () => {
           try {
-            const { id } = await store
-              .dispatch(
-                createNote({
-                  relation: "root",
-                  type: "markdown",
-                  title: "Scratch",
-                  content: "",
-                }),
-              )
-              .unwrap();
+            let id: string;
+            if (syncWpnNotesBackend()) {
+              const projectId = await resolveWpnProjectIdForRootNote();
+              if (!projectId) {
+                window.alert(
+                  "Select a project in the Notes explorer (or create a workspace with a project) before creating a new note.",
+                );
+                return;
+              }
+              const created = await window.Nodex.wpnCreateNoteInProject(projectId, {
+                relation: "root",
+                type: "markdown",
+                title: "Scratch",
+                content: "",
+              });
+              id = created.id;
+            } else {
+              const r = await store
+                .dispatch(
+                  createNote({
+                    relation: "root",
+                    type: "markdown",
+                    title: "Scratch",
+                    content: "",
+                  }),
+                )
+                .unwrap();
+              id = r.id;
+            }
             await store.dispatch(fetchAllNotes()).unwrap();
             openNoteInShell(
               id,
