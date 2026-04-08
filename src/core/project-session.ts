@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { bootstrapWorkspaceNotes, closeNotesSqlite } from "./notes-persistence";
+import { bootstrapWorkspaceNotes, releaseWorkspaceStore } from "./notes-persistence";
 import { resetNotesStore } from "./notes-store";
 import { getNotesDatabase } from "./workspace-store";
 import { wpnJsonCreateProject, wpnJsonCreateWorkspace, wpnJsonListWorkspaces } from "./wpn/wpn-json-service";
@@ -202,7 +202,7 @@ export function activateScratchWorkspace(
 ): ActivateProjectResult {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-scratch-"));
   try {
-    closeNotesSqlite();
+    releaseWorkspaceStore();
   } catch {
     /* ignore */
   }
@@ -259,7 +259,7 @@ export function saveScratchWorkspaceToFolder(
   }
 
   try {
-    closeNotesSqlite();
+    releaseWorkspaceStore();
   } catch {
     /* ignore */
   }
@@ -283,7 +283,7 @@ export function replaceScratchWithNewSession(
     /* non-fatal */
   }
   try {
-    closeNotesSqlite();
+    releaseWorkspaceStore();
   } catch {
     /* ignore */
   }
@@ -316,7 +316,7 @@ export function activateWorkspace(
   const existing = filterExistingWorkspaceRoots(roots);
   if (existing.length === 0) {
     try {
-      closeNotesSqlite();
+      releaseWorkspaceStore();
     } catch {
       /* ignore */
     }
@@ -330,7 +330,7 @@ export function activateWorkspace(
   const rootsResolved = existing;
   ensureProjectDirectories(rootsResolved[0]!);
   try {
-    closeNotesSqlite();
+    releaseWorkspaceStore();
   } catch {
     /* ignore */
   }
@@ -396,7 +396,7 @@ export function activateProject(
 
 export function deactivateProject(): void {
   try {
-    closeNotesSqlite();
+    releaseWorkspaceStore();
   } catch {
     /* ignore */
   }
@@ -409,7 +409,7 @@ export function closeWorkspace(userDataPath: string): ActivateProjectResult {
   const scratchRoot =
     store?.scratchSession && store.roots[0] ? store.roots[0] : null;
   try {
-    closeNotesSqlite();
+    releaseWorkspaceStore();
   } catch {
     /* ignore */
   }

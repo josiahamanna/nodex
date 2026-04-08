@@ -17,6 +17,10 @@ import type {
 import { wpnComputeChildMapAfterMove } from "../../core/wpn/wpn-note-move";
 import type { WpnNoteRow } from "../../core/wpn/wpn-types";
 import { WPN_SCRATCH_INDEXEDDB_NAME } from "./wpn-scratch-constants";
+import {
+  mergeLegacyMainScratchWpnIntoScratchBundle,
+  type LegacyMainScratchWpnBundle,
+} from "./merge-legacy-main-scratch-wpn";
 
 const KV_KEY = "wpn_scratch_bundle_v1";
 
@@ -759,6 +763,28 @@ export async function scratchDeleteNotes(ids: string[]): Promise<void> {
 }
 
 /** Delete IndexedDB database for scratch WPN (used by clear-db). */
+/** Merge WPN rows from a legacy Electron temp-dir scratch session (main memory) into this DB. */
+export async function applyLegacyMainScratchWpnMigration(
+  legacy: LegacyMainScratchWpnBundle,
+): Promise<void> {
+  const cur = await loadBundle();
+  const next = mergeLegacyMainScratchWpnIntoScratchBundle(
+    {
+      workspaces: cur.workspaces,
+      projects: cur.projects,
+      notes: cur.notes,
+      explorer: cur.explorer,
+    },
+    legacy,
+  );
+  await saveBundle({
+    workspaces: next.workspaces,
+    projects: next.projects,
+    notes: next.notes,
+    explorer: next.explorer,
+  });
+}
+
 export async function destroyWpnScratchIndexedDb(): Promise<void> {
   if (typeof indexedDB === "undefined") {
     return;

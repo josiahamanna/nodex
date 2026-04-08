@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Note } from "@nodex/ui-types";
 import { useToast } from "../toast/ToastContext";
@@ -57,7 +58,7 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
     };
 
     void checkPlugin();
-    const off = window.Nodex.onPluginsChanged(() => {
+    const off = getNodex().onPluginsChanged(() => {
       invalidateNodexNoteTypesCaches();
       void checkPlugin();
     });

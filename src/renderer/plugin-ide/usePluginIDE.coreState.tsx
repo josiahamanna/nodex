@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import {
   useCallback,
   useEffect,
@@ -224,7 +225,7 @@ export function usePluginIDECoreState(
       reloadAfterSaveTimerRef.current = null;
       void (async () => {
         try {
-          const r = await window.Nodex.reloadPluginRegistry();
+          const r = await getNodex().reloadPluginRegistry();
           if (r.success) {
             setPreviewRev((x) => x + 1);
             invalidateNodexNoteTypesCaches();
@@ -244,7 +245,7 @@ export function usePluginIDECoreState(
       return;
     }
     try {
-      const files = await window.Nodex.listPluginSourceFiles(pluginFolder);
+      const files = await getNodex().listPluginSourceFiles(pluginFolder);
       setFileList(files);
       setFolderFilesCache((prev) => ({ ...prev, [pluginFolder]: files }));
     } catch (e) {
@@ -270,7 +271,7 @@ export function usePluginIDECoreState(
         continue;
       }
       try {
-        const meta = await window.Nodex.getPluginSourceFileMeta(
+        const meta = await getNodex().getPluginSourceFileMeta(
           pf,
           t.relativePath,
         );
@@ -280,7 +281,7 @@ export function usePluginIDECoreState(
         if (t.diskMtimeMs !== null && meta.mtimeMs === t.diskMtimeMs) {
           continue;
         }
-        const raw = await window.Nodex.readPluginSourceFile(pf, t.relativePath);
+        const raw = await getNodex().readPluginSourceFile(pf, t.relativePath);
         if (raw === null) {
           continue;
         }
@@ -323,7 +324,7 @@ export function usePluginIDECoreState(
         continue;
       }
       try {
-        const meta = await window.Nodex.getPluginSourceFileMeta(
+        const meta = await getNodex().getPluginSourceFileMeta(
           pf,
           t.relativePath,
         );
@@ -344,7 +345,7 @@ export function usePluginIDECoreState(
   }, []);
 
   const refreshWorkspaceFolders = useCallback(async () => {
-    const list = await window.Nodex.listPluginWorkspaceFolders();
+    const list = await getNodex().listPluginWorkspaceFolders();
     setFolders(list);
     setFolderFilesCache((prev) => {
       const next: Record<string, string[] | undefined> = {};
@@ -373,14 +374,14 @@ export function usePluginIDECoreState(
   }, []);
 
   useEffect(() => {
-    void window.Nodex.setIdeWorkspaceWatch(pluginFolder || null);
+    void getNodex().setIdeWorkspaceWatch(pluginFolder || null);
     return () => {
-      void window.Nodex.setIdeWorkspaceWatch(null);
+      void getNodex().setIdeWorkspaceWatch(null);
     };
   }, [pluginFolder]);
 
   useEffect(() => {
-    const off = window.Nodex.onIdeWorkspaceFsChanged(() => {
+    const off = getNodex().onIdeWorkspaceFsChanged(() => {
       void (async () => {
         await refreshFileList();
         await syncCleanOpenTabsFromDisk();
@@ -402,7 +403,7 @@ export function usePluginIDECoreState(
     let cancelled = false;
     void (async () => {
       try {
-        const k = await window.Nodex.getPluginSourceEntryKind(
+        const k = await getNodex().getPluginSourceEntryKind(
           pluginFolder,
           "manifest.json",
         );

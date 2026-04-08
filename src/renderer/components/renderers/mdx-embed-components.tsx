@@ -1,3 +1,4 @@
+import { getNodex } from "../../../shared/nodex-host-access";
 import React from "react";
 import {
   markdownInternalNoteHref,
@@ -15,7 +16,7 @@ const SAFE_IMG_SCHEMES = new Set(["https:", "http:", "data:", "blob:"]);
 
 /**
  * Safe MDX image override.
- * - `nodex-asset:` URLs are resolved via `window.Nodex.assetUrl` (uses `?root=` if present).
+ * - `nodex-asset:` URLs are resolved via `getNodex().assetUrl` (uses `?root=` if present).
  * - External URLs are only allowed for https/http/data/blob schemes.
  * - All other schemes (file:, javascript:, etc.) render a blocked placeholder.
  */
@@ -34,8 +35,8 @@ export function MdxSafeImage({
       if (rel) {
         const projectRoot = u.searchParams.get("root") ?? undefined;
         resolvedSrc =
-          typeof window !== "undefined" && window.Nodex?.assetUrl
-            ? window.Nodex.assetUrl(rel, projectRoot)
+          typeof window !== "undefined" && getNodex()?.assetUrl
+            ? getNodex().assetUrl(rel, projectRoot)
             : null;
       }
     } catch {

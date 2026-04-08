@@ -57,8 +57,8 @@ export function AppShellMainColumn(props: AppShellMainColumnProps): React.ReactN
       return (
         <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
           <p className="max-w-md text-center text-[13px] text-muted-foreground">
-            Choose a folder for this workspace. Notes live in SQLite under{" "}
-            <span className="font-mono text-[12px]">data/</span>; put
+            Choose a folder for this workspace. Notes and workspace state live under{" "}
+            <span className="font-mono text-[12px]">data/</span> (JSON); put
             attachments and other files in{" "}
             <span className="font-mono text-[12px]">assets/</span>.
           </p>

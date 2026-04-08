@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import {
   useCallback,
   useEffect,
@@ -113,7 +114,7 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
           setPathModal(null);
           return;
         }
-        const res = await window.Nodex.renamePluginSourcePath(
+        const res = await getNodex().renamePluginSourcePath(
           pluginFolder,
           pathModal.from,
           toRel,
@@ -122,7 +123,7 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
           setStatus(res.error ?? "Rename failed");
           return;
         }
-        const renamedMeta = await window.Nodex.getPluginSourceFileMeta(
+        const renamedMeta = await getNodex().getPluginSourceFileMeta(
           pluginFolder,
           toRel,
         );
@@ -142,7 +143,7 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
         await refreshFileList();
         setStatus(`Renamed to ${toRel}`);
       } else if (pathModal.kind === "newFile") {
-        const res = await window.Nodex.createPluginSourceFile(
+        const res = await getNodex().createPluginSourceFile(
           pluginFolder,
           raw,
           "",
@@ -157,7 +158,7 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
         setStatus(`Created ${raw}`);
       } else {
         const normalized = raw.replace(/\/+$/, "");
-        const res = await window.Nodex.mkdirPluginSource(
+        const res = await getNodex().mkdirPluginSource(
           pluginFolder,
           normalized,
         );
@@ -181,11 +182,11 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
     setBusy(true);
     setStatus(null);
     try {
-      const paths = await window.Nodex.selectImportFiles();
+      const paths = await getNodex().selectImportFiles();
       if (!paths?.length) {
         return;
       }
-      const res = await window.Nodex.importFilesIntoWorkspace(
+      const res = await getNodex().importFilesIntoWorkspace(
         pluginFolder,
         paths,
         "",
@@ -210,11 +211,11 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
     setBusy(true);
     setStatus(null);
     try {
-      const dir = await window.Nodex.selectImportDirectory();
+      const dir = await getNodex().selectImportDirectory();
       if (!dir) {
         return;
       }
-      const res = await window.Nodex.importDirectoryIntoWorkspace(
+      const res = await getNodex().importDirectoryIntoWorkspace(
         pluginFolder,
         dir,
         "",
@@ -239,11 +240,11 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
     setBusy(true);
     setStatus(null);
     try {
-      const dir = await window.Nodex.selectImportDirectory();
+      const dir = await getNodex().selectImportDirectory();
       if (!dir) {
         return;
       }
-      const res = await window.Nodex.importDirectoryAsNewWorkspace(dir);
+      const res = await getNodex().importDirectoryAsNewWorkspace(dir);
       if (!res.success) {
         setStatus(res.error ?? "Import failed");
         return;
@@ -253,7 +254,7 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
         setPluginFolder(res.folderName);
         dispatchIdeShellExpandFolder(res.folderName);
       }
-      const reload = await window.Nodex.reloadPluginRegistry();
+      const reload = await getNodex().reloadPluginRegistry();
       if (!reload.success) {
         setStatus(
           `Workspace "${res.folderName}" imported, but registry reload failed: ${reload.error ?? "unknown"}.`,
@@ -289,7 +290,7 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
     setBusy(true);
     setStatus(null);
     try {
-      const res = await window.Nodex.loadNodexPluginsFromParent();
+      const res = await getNodex().loadNodexPluginsFromParent();
       if (res.cancelled) {
         return;
       }
@@ -333,7 +334,7 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
     setBusy(true);
     setStatus(null);
     try {
-      const r = await window.Nodex.removeExternalPluginWorkspace(id);
+      const r = await getNodex().removeExternalPluginWorkspace(id);
       if (!r.success) {
         setStatus(r.error ?? "Remove failed");
         return;
@@ -376,7 +377,7 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
       const entries: { rel: string; isDir: boolean }[] = [];
       for (const rel of paths) {
         const nrel = normalizePluginRelPath(rel);
-        const kind = await window.Nodex.getPluginSourceEntryKind(srcWs, nrel);
+        const kind = await getNodex().getPluginSourceEntryKind(srcWs, nrel);
         if (kind === "missing") {
           setStatus(`Cannot copy: ${nrel} not found.`);
           return;
@@ -425,7 +426,7 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
       const entries: { rel: string; isDir: boolean }[] = [];
       for (const rel of paths) {
         const nrel = normalizePluginRelPath(rel);
-        const kind = await window.Nodex.getPluginSourceEntryKind(srcWs, nrel);
+        const kind = await getNodex().getPluginSourceEntryKind(srcWs, nrel);
         if (kind === "missing") {
           setStatus(`Cannot cut: ${nrel} not found.`);
           return;
@@ -470,19 +471,19 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
         );
         let attempt = 0;
         let res = isCut
-          ? await window.Nodex.movePluginSourceBetweenWorkspaces(
+          ? await getNodex().movePluginSourceBetweenWorkspaces(
               srcFolder,
               ent.rel,
               pluginFolder,
               destRel,
             )
           : srcFolder === pluginFolder
-            ? await window.Nodex.copyPluginSourceWithinWorkspace(
+            ? await getNodex().copyPluginSourceWithinWorkspace(
                 pluginFolder,
                 ent.rel,
                 destRel,
               )
-            : await window.Nodex.copyPluginSourceBetweenWorkspaces(
+            : await getNodex().copyPluginSourceBetweenWorkspaces(
                 srcFolder,
                 ent.rel,
                 pluginFolder,
@@ -492,19 +493,19 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
           attempt += 1;
           destRel = siblingCopyRelativePath(destRel, ent.isDir);
           res = isCut
-            ? await window.Nodex.movePluginSourceBetweenWorkspaces(
+            ? await getNodex().movePluginSourceBetweenWorkspaces(
                 srcFolder,
                 ent.rel,
                 pluginFolder,
                 destRel,
               )
             : srcFolder === pluginFolder
-              ? await window.Nodex.copyPluginSourceWithinWorkspace(
+              ? await getNodex().copyPluginSourceWithinWorkspace(
                   pluginFolder,
                   ent.rel,
                   destRel,
                 )
-              : await window.Nodex.copyPluginSourceBetweenWorkspaces(
+              : await getNodex().copyPluginSourceBetweenWorkspaces(
                   srcFolder,
                   ent.rel,
                   pluginFolder,
@@ -524,7 +525,7 @@ export function usePluginIDEImportPathAndClipboard(p: ReturnType<typeof usePlugi
       if (isCut && srcFolder === pluginFolder) {
         const metas = await Promise.all(
           [...movedMap.entries()].map(async ([from, to]) => {
-            const m = await window.Nodex.getPluginSourceFileMeta(
+            const m = await getNodex().getPluginSourceFileMeta(
               pluginFolder,
               to,
             );

@@ -1,4 +1,7 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { store } from "../store";
+import { fetchAllNotes } from "../store/notesSlice";
 
 export type ShellProjectMountKind = "folder";
 
@@ -34,7 +37,7 @@ export function ShellProjectWorkspaceProvider({
     let cancelled = false;
     const tick = async (): Promise<void> => {
       try {
-        const s = await window.Nodex.getProjectState();
+        const s = await getNodex().getProjectState();
         if (cancelled || !s) return;
         const mk = s.mountKind;
         let mountKind: ShellProjectMountKind | undefined = mk === "folder" ? mk : undefined;
@@ -56,8 +59,9 @@ export function ShellProjectWorkspaceProvider({
       }
     };
     void tick();
-    const unsub = window.Nodex.onProjectRootChanged(() => {
+    const unsub = getNodex().onProjectRootChanged(() => {
       void tick();
+      void store.dispatch(fetchAllNotes());
     });
     const id = window.setInterval(() => void tick(), 8000);
     return () => {

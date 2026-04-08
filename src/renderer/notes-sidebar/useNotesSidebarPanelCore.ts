@@ -212,6 +212,7 @@ export function useNotesSidebarPanelCore({
   const getTypeBadgeClass = (type: string): string => {
     switch (type) {
       case "markdown":
+      case "mdx":
         return "bg-badge-markdown-bg text-badge-markdown-fg";
       case "text":
         return "bg-badge-text-bg text-badge-text-fg";

@@ -1,6 +1,7 @@
 /**
- * When {@link isWebScratchSession} is on and the user has no access token, route WPN + note
- * APIs to browser-local IndexedDB instead of HTTP.
+ * When the browser try-out session is on and the user has no access token, route WPN + note
+ * APIs to browser-local IndexedDB instead of HTTP. Electron does not use this — packaged
+ * apps use empty `workspaceRoots` + {@link setElectronIdbScratchOverlay} / preload `Nodex`.
  */
 import { PLUGIN_UI_METADATA_KEY, validatePluginUiStateSize } from "../../shared/plugin-state-protocol";
 import type { NodexRendererApi, PasteSubtreePayload } from "../../shared/nodex-renderer-api";
@@ -37,7 +38,8 @@ import {
 } from "./wpn-scratch-store";
 import { resolveWpnProjectIdForRootNote } from "../shell/wpnScratchProject";
 
-export function useWebScratchLocalFirst(): boolean {
+/** Web-only: `nodex.web.scratchSession` + no sync token → WPN in IndexedDB. */
+export function useWebTryoutWpnIndexedDb(): boolean {
   if (typeof window === "undefined") {
     return false;
   }
@@ -46,6 +48,11 @@ export function useWebScratchLocalFirst(): boolean {
   } catch {
     return false;
   }
+}
+
+/** @deprecated Use {@link useWebTryoutWpnIndexedDb}. */
+export function useWebScratchLocalFirst(): boolean {
+  return useWebTryoutWpnIndexedDb();
 }
 
 async function scratchResolveProjectIdForNote(noteId: string): Promise<string | null> {

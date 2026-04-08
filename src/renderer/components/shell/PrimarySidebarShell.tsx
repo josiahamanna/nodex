@@ -1,4 +1,5 @@
 import React from "react";
+import { shouldSkipDurableChromePersistence } from "../../cloud-sync/signed-in-cloud-offline";
 import SidebarPowerMenu from "./SidebarPowerMenu";
 
 function CollapseChevronsLeft({ className }: { className?: string }) {
@@ -63,6 +64,9 @@ export function readStoredPrimaryTab(): PrimaryTab {
 }
 
 export function writeStoredPrimaryTab(tab: PrimaryTab): void {
+  if (shouldSkipDurableChromePersistence()) {
+    return;
+  }
   try {
     localStorage.setItem(PRIMARY_TAB_KEY, tab);
   } catch {

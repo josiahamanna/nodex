@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import {
   useCallback,
   useEffect,
@@ -102,7 +103,7 @@ export function usePluginIDEWorkspaceLifecycle(p: ReturnType<typeof usePluginIDE
       void (async () => {
         const metas = await Promise.all(
           normalized.map(async (t) => {
-            const m = await window.Nodex.getPluginSourceFileMeta(
+            const m = await getNodex().getPluginSourceFileMeta(
               pf,
               t.relativePath,
             );
@@ -190,7 +191,7 @@ export function usePluginIDEWorkspaceLifecycle(p: ReturnType<typeof usePluginIDE
       };
     }
 
-    void window.Nodex.getIdePluginTypings(pluginFolder).then((res) => {
+    void getNodex().getIdePluginTypings(pluginFolder).then((res) => {
       if (cancelled || !res) {
         return;
       }
@@ -222,7 +223,7 @@ export function usePluginIDEWorkspaceLifecycle(p: ReturnType<typeof usePluginIDE
     let cancelled = false;
     (async () => {
       try {
-        const raw = await window.Nodex.readPluginSourceFile(
+        const raw = await getNodex().readPluginSourceFile(
           pluginFolder,
           "package.json",
         );

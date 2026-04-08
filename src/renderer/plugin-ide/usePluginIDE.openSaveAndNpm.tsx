@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import {
   useCallback,
   useEffect,
@@ -105,7 +106,7 @@ export function usePluginIDEOpenSaveAndNpm(p: ReturnType<typeof usePluginIDEWork
     setNpmLoading(true);
     const t = window.setTimeout(() => {
       void (async () => {
-        const res = await window.Nodex.npmRegistrySearch(q);
+        const res = await getNodex().npmRegistrySearch(q);
         if (!res.success) {
           setNpmResults([]);
           setNpmLoading(false);
@@ -179,7 +180,7 @@ export function usePluginIDEOpenSaveAndNpm(p: ReturnType<typeof usePluginIDEWork
       return;
     }
     try {
-      const content = await window.Nodex.readPluginSourceFile(
+      const content = await getNodex().readPluginSourceFile(
         pluginFolder,
         relativePath,
       );
@@ -187,7 +188,7 @@ export function usePluginIDEOpenSaveAndNpm(p: ReturnType<typeof usePluginIDEWork
         setStatus("File not found.");
         return;
       }
-      const meta = await window.Nodex.getPluginSourceFileMeta(
+      const meta = await getNodex().getPluginSourceFileMeta(
         pluginFolder,
         relativePath,
       );
@@ -269,7 +270,7 @@ export function usePluginIDEOpenSaveAndNpm(p: ReturnType<typeof usePluginIDEWork
         const rc: Record<string, unknown> = {};
         for (const cfg of [".prettierrc.json", ".prettierrc"] as const) {
           try {
-            const raw = await window.Nodex.readPluginSourceFile(
+            const raw = await getNodex().readPluginSourceFile(
               pluginFolder,
               cfg,
             );
@@ -323,7 +324,7 @@ export function usePluginIDEOpenSaveAndNpm(p: ReturnType<typeof usePluginIDEWork
         );
       }
     }
-    const res = await window.Nodex.writePluginSourceFile(
+    const res = await getNodex().writePluginSourceFile(
       pluginFolder,
       activeTab.relativePath,
       toWrite,
@@ -332,7 +333,7 @@ export function usePluginIDEOpenSaveAndNpm(p: ReturnType<typeof usePluginIDEWork
       setStatus(res.error ?? "Save failed");
       return false;
     }
-    const afterMeta = await window.Nodex.getPluginSourceFileMeta(
+    const afterMeta = await getNodex().getPluginSourceFileMeta(
       pluginFolder,
       activeTab.relativePath,
     );
@@ -351,7 +352,7 @@ export function usePluginIDEOpenSaveAndNpm(p: ReturnType<typeof usePluginIDEWork
     if (tscOnSave && pluginFolder) {
       void (async () => {
         try {
-          const tr = await window.Nodex.runPluginTypecheck(pluginFolder);
+          const tr = await getNodex().runPluginTypecheck(pluginFolder);
           setTscDiagnostics(tr.diagnostics);
         } catch {
           // ignore background typecheck errors
@@ -386,7 +387,7 @@ export function usePluginIDEOpenSaveAndNpm(p: ReturnType<typeof usePluginIDEWork
             );
           }
         }
-        const res = await window.Nodex.writePluginSourceFile(
+        const res = await getNodex().writePluginSourceFile(
           pluginFolder,
           t.relativePath,
           body,
@@ -398,7 +399,7 @@ export function usePluginIDEOpenSaveAndNpm(p: ReturnType<typeof usePluginIDEWork
       }
       const mtimeByRel: Record<string, number | null> = {};
       for (const t of dirty) {
-        const m = await window.Nodex.getPluginSourceFileMeta(
+        const m = await getNodex().getPluginSourceFileMeta(
           pluginFolder,
           t.relativePath,
         );
@@ -421,7 +422,7 @@ export function usePluginIDEOpenSaveAndNpm(p: ReturnType<typeof usePluginIDEWork
       if (tscOnSave) {
         void (async () => {
           try {
-            const tr = await window.Nodex.runPluginTypecheck(pluginFolder);
+            const tr = await getNodex().runPluginTypecheck(pluginFolder);
             setTscDiagnostics(tr.diagnostics);
           } catch {
             /* ignore */

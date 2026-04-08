@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import {
   useCallback,
   useEffect,
@@ -128,12 +129,12 @@ export function usePluginIDEBundleDiskAndTabs(p: ReturnType<typeof usePluginIDEO
     }
     setBusy(true);
     try {
-      const content = await window.Nodex.readPluginSourceFile(pf, rel);
+      const content = await getNodex().readPluginSourceFile(pf, rel);
       if (content === null) {
         setStatus("File not found on disk.");
         return;
       }
-      const meta = await window.Nodex.getPluginSourceFileMeta(pf, rel);
+      const meta = await getNodex().getPluginSourceFileMeta(pf, rel);
       setTabs((prev) =>
         prev.map((t) =>
           t.relativePath === rel
@@ -161,7 +162,7 @@ export function usePluginIDEBundleDiskAndTabs(p: ReturnType<typeof usePluginIDEO
     if (!rel || !pf) {
       return;
     }
-    const meta = await window.Nodex.getPluginSourceFileMeta(pf, rel);
+    const meta = await getNodex().getPluginSourceFileMeta(pf, rel);
     setTabs((prev) =>
       prev.map((t) =>
         t.relativePath === rel
@@ -186,7 +187,7 @@ export function usePluginIDEBundleDiskAndTabs(p: ReturnType<typeof usePluginIDEO
           return;
         }
       }
-      const bundle = await window.Nodex.bundlePluginLocal(pluginFolder);
+      const bundle = await getNodex().bundlePluginLocal(pluginFolder);
       if (!bundle.success) {
         setStatus(bundle.error ?? "Bundle failed");
         return;
@@ -213,7 +214,7 @@ export function usePluginIDEBundleDiskAndTabs(p: ReturnType<typeof usePluginIDEO
           return;
         }
       }
-      const installRes = await window.Nodex.installPluginDependencies(
+      const installRes = await getNodex().installPluginDependencies(
         pluginFolder,
       );
       if (!installRes.success) {
@@ -221,13 +222,13 @@ export function usePluginIDEBundleDiskAndTabs(p: ReturnType<typeof usePluginIDEO
         setBusy(false);
         return;
       }
-      const bundle = await window.Nodex.bundlePluginLocal(pluginFolder);
+      const bundle = await getNodex().bundlePluginLocal(pluginFolder);
       if (!bundle.success) {
         setStatus(bundle.error ?? "Bundle failed");
         setBusy(false);
         return;
       }
-      const reload = await window.Nodex.reloadPluginRegistry();
+      const reload = await getNodex().reloadPluginRegistry();
       if (!reload.success) {
         setStatus(reload.error ?? "Reload failed");
         setBusy(false);
@@ -259,7 +260,7 @@ export function usePluginIDEBundleDiskAndTabs(p: ReturnType<typeof usePluginIDEO
           return;
         }
       }
-      const res = await window.Nodex.publishPluginAsFile(pluginFolder);
+      const res = await getNodex().publishPluginAsFile(pluginFolder);
       if (!res.success) {
         setStatus(res.error ?? "Publish failed");
         return;
@@ -278,7 +279,7 @@ export function usePluginIDEBundleDiskAndTabs(p: ReturnType<typeof usePluginIDEO
     setBusy(true);
     setStatus(null);
     try {
-      const reload = await window.Nodex.reloadPluginRegistry();
+      const reload = await getNodex().reloadPluginRegistry();
       if (!reload.success) {
         setStatus(reload.error ?? "Reload failed");
         return;

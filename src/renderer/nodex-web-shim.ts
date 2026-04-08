@@ -15,8 +15,9 @@ import {
   writeCloudSyncRefreshToken,
   writeCloudSyncToken,
 } from "./cloud-sync/cloud-sync-storage";
+import { assertSignedInCloudWpnOnlineForMutation } from "./cloud-sync/signed-in-cloud-offline";
 import {
-  useWebScratchLocalFirst,
+  useWebTryoutWpnIndexedDb,
   webScratchPlainStubOverrides,
 } from "./wpnscratch/web-scratch-nodex-api";
 
@@ -29,11 +30,24 @@ export function syncWpnUsesSyncApi(): boolean {
   if (typeof window !== "undefined" && window.__NODEX_WPN_USE_SYNC_API__ === true) {
     return true;
   }
-  try {
-    return process.env.NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API === "1";
-  } catch {
-    return false;
+  if (typeof window !== "undefined" && window.__NODEX_ELECTRON_WPN_BACKEND__ === "cloud") {
+    return true;
   }
+  try {
+    if (process.env.NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API === "1") {
+      return true;
+    }
+    const syncUrl =
+      typeof process.env.NEXT_PUBLIC_NODEX_SYNC_API_URL === "string"
+        ? process.env.NEXT_PUBLIC_NODEX_SYNC_API_URL.trim()
+        : "";
+    if (syncUrl.length > 0) {
+      return true;
+    }
+  } catch {
+    /* no process in some bundles */
+  }
+  return false;
 }
 
 /** Sync WPN mode with a resolved sync base: use `/wpn/*` for note data (no legacy `/api/v1/notes/*`). */
@@ -62,7 +76,13 @@ async function wpnAggregateAllNoteListItems(
         depth: n.depth,
       }));
     } catch {
-      /* fall through to N+1 if route missing (older server) */
+      /**
+       * Signed-in Mongo mode: never fall back to headless JSON file WPN — that is not SoT.
+       * (Legacy headless-only builds may still use the loop below when sync API is not configured.)
+       */
+      if (syncWpnUsesSyncApi() && resolveSyncApiBase().trim().length > 0) {
+        return [];
+      }
     }
   }
   const { workspaces } = await wpnHttp<{ workspaces: { id: string }[] }>(
@@ -209,6 +229,7 @@ async function wpnHttp<T>(
   if (syncWpnUsesSyncApi()) {
     const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
     if (syncBase.length > 0) {
+      assertSignedInCloudWpnOnlineForMutation(method);
       return syncWpnFetch<T>(syncBase, method, path, body);
     }
   }
@@ -804,13 +825,21 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       ok: false as const,
       error: "Scratch workspace is only available in the Nodex desktop app.",
     }),
+    pullLegacyScratchWpnMigrationPayload: async () => ({
+      ok: false as const,
+      reason: "none" as const,
+    }),
+    ackLegacyScratchWpnMigrationImported: async () => ({
+      ok: false as const,
+      error: "Legacy scratch migration is Electron-only.",
+    }),
     assetUrl: () => "nodex-asset:web-unsupported",
     getNativeThemeDark: async () =>
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-color-scheme: dark)").matches,
   };
 
-  if (useWebScratchLocalFirst()) {
+  if (useWebTryoutWpnIndexedDb()) {
     Object.assign(impl, webScratchPlainStubOverrides());
   }
 
@@ -943,6 +972,14 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
     newScratchSession: async () => ({
       ok: false as const,
       error: "Desktop app only",
+    }),
+    pullLegacyScratchWpnMigrationPayload: async () => ({
+      ok: false as const,
+      reason: "none" as const,
+    }),
+    ackLegacyScratchWpnMigrationImported: async () => ({
+      ok: false as const,
+      error: "Legacy scratch migration is Electron-only.",
     }),
     openProjectPath: async () => ({
       ok: false as const,
@@ -1227,7 +1264,7 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
     }),
   };
 
-  if (useWebScratchLocalFirst()) {
+  if (useWebTryoutWpnIndexedDb()) {
     Object.assign(impl, webScratchPlainStubOverrides());
   }
 

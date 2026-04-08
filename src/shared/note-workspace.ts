@@ -7,7 +7,7 @@ export function isWorkspaceMountNoteId(noteId: string): boolean {
   return /^__nodex_mount_\d+$/.test(noteId);
 }
 
-/** Which SQLite file owns this note: `0` = primary project, `N` = `rN_` prefix. Mount headers return `-1`. */
+/** Which workspace slot owns this note: `0` = primary project, `N` = `rN_` prefix. Mount headers return `-1`. */
 export const WORKSPACE_MOUNT_SENTINEL = -1;
 
 export function noteDataWorkspaceSlot(noteId: string): number {
@@ -21,7 +21,6 @@ export function noteDataWorkspaceSlot(noteId: string): number {
   return 0;
 }
 
-/** Absolute project folder for this note (which `data/nodex-workspace.json` / `assets/` belong to). */
 /** Loose compare of absolute project folder paths (Windows vs POSIX separators). */
 export function sameWorkspaceFolderPath(a: string, b: string): boolean {
   const na = a.replace(/\\/g, "/").replace(/\/+$/u, "");
@@ -29,6 +28,7 @@ export function sameWorkspaceFolderPath(a: string, b: string): boolean {
   return na === nb;
 }
 
+/** Absolute project folder for this note (that root’s `data/nodex-workspace.json` and `assets/`). */
 export function workspaceFolderPathForNote(
   noteId: string,
   workspaceRoots: string[],

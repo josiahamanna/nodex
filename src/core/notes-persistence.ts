@@ -11,7 +11,7 @@ import {
 } from "./notes-store";
 import { seedBundledDocumentationNotesFromDir } from "./bundled-docs-seed";
 import {
-  closeNotesSqlite,
+  releaseWorkspaceStore,
   getNotesDatabase,
   initWorkspaceNotesDatabase,
   type WorkspaceStore,
@@ -168,4 +168,4 @@ export function bootstrapNotesTree(
   bootstrapWorkspaceNotes([root], legacyJsonPath, registeredTypes);
 }
 
-export { closeNotesSqlite };
+export { releaseWorkspaceStore };

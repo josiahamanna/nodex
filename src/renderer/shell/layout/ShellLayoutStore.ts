@@ -1,3 +1,5 @@
+import { shouldSkipDurableChromePersistence } from "../../cloud-sync/signed-in-cloud-offline";
+import { getNodex } from "../../../shared/nodex-host-access";
 import { coerceShellLayoutState, defaultShellLayoutState, type ShellLayoutState, type ShellRegionId } from "./ShellLayoutState";
 
 type Listener = () => void;
@@ -49,7 +51,7 @@ export class ShellLayoutStore {
     }
     this.loadFromHostInflight = (async () => {
       try {
-        const raw = await window.Nodex.getShellLayout();
+        const raw = await getNodex().getShellLayout();
         this.state = coerceShellLayoutState(raw);
         this.emit();
       } catch {
@@ -64,6 +66,9 @@ export class ShellLayoutStore {
   }
 
   private schedulePersist(): void {
+    if (shouldSkipDurableChromePersistence()) {
+      return;
+    }
     if (this.persistTimer != null) {
       window.clearTimeout(this.persistTimer);
     }
@@ -74,8 +79,11 @@ export class ShellLayoutStore {
   }
 
   async persistToHost(): Promise<void> {
+    if (shouldSkipDurableChromePersistence()) {
+      return;
+    }
     try {
-      const r = await window.Nodex.setShellLayout(this.state);
+      const r = await getNodex().setShellLayout(this.state);
       if ("ok" in r && r.ok === false) {
         // eslint-disable-next-line no-console
         console.warn("[ShellLayoutStore] persist failed:", r.error);

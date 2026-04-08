@@ -1,3 +1,4 @@
+import { getNodex } from "../../../shared/nodex-host-access";
 import React, { useEffect, useState } from "react";
 
 export type PluginsSidebarSelection =
@@ -19,13 +20,13 @@ const PluginsSidebarList: React.FC<PluginsSidebarListProps> = ({
   onSelectPlugin,
 }) => {
   const [rows, setRows] = useState<
-    Awaited<ReturnType<typeof window.Nodex.getPluginInventory>>
+    Awaited<ReturnType<typeof getNodex().getPluginInventory>>
   >([]);
   const [err, setErr] = useState<string | null>(null);
 
   const refresh = () => {
     setErr(null);
-    void window.Nodex
+    void getNodex()
       .getPluginInventory()
       .then(setRows)
       .catch((e) => {
@@ -39,7 +40,7 @@ const PluginsSidebarList: React.FC<PluginsSidebarListProps> = ({
   }, []);
 
   useEffect(() => {
-    return window.Nodex.onPluginsChanged(refresh);
+    return getNodex().onPluginsChanged(refresh);
   }, []);
 
   const generalActive = selection.kind === "general";

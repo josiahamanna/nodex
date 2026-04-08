@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, { useCallback, useEffect, useState } from "react";
 import type { MarketplaceListResponse } from "@nodex/ui-types";
 import { WebHeadlessApiMarketplaceSection } from "./WebHeadlessApiMarketplaceSection";
@@ -27,7 +28,7 @@ const PluginPanelMarketplace: React.FC<PluginPanelMarketplaceProps> = ({
 
   const refresh = useCallback(() => {
     setLoadErr(null);
-    void window.Nodex
+    void getNodex()
       .listMarketplacePlugins()
       .then(setData)
       .catch((e) => {
@@ -41,7 +42,7 @@ const PluginPanelMarketplace: React.FC<PluginPanelMarketplaceProps> = ({
   }, [refresh]);
 
   useEffect(() => {
-    return window.Nodex.onPluginsChanged(refresh);
+    return getNodex().onPluginsChanged(refresh);
   }, [refresh]);
 
   const apiBase = webApiBase();
@@ -53,7 +54,7 @@ const PluginPanelMarketplace: React.FC<PluginPanelMarketplaceProps> = ({
     setInstalling(packageFile);
     setMessage(null);
     try {
-      const r = await window.Nodex.installMarketplacePlugin(packageFile);
+      const r = await getNodex().installMarketplacePlugin(packageFile);
       if (!r.success) {
         setMessage({
           type: "error",

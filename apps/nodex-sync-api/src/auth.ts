@@ -1,7 +1,15 @@
 import jwt, { type SignOptions } from "jsonwebtoken";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-export type JwtPayload = { sub: string; email: string; typ?: string };
+export type JwtPayload = {
+  sub: string;
+  email: string;
+  typ?: string;
+  /** Present on refresh tokens (rotation / single active session). */
+  jti?: string;
+};
+
+export type RefreshJwtPayload = JwtPayload & { typ: "refresh"; jti: string };
 
 export function signToken(
   secret: string,
@@ -19,8 +27,12 @@ export function signAccessToken(secret: string, payload: JwtPayload): string {
   return signToken(secret, { ...payload, typ: "access" }, "15m");
 }
 
-export function signRefreshToken(secret: string, payload: JwtPayload): string {
-  return signToken(secret, { ...payload, typ: "refresh" }, "30d");
+export function signRefreshToken(
+  secret: string,
+  payload: JwtPayload,
+  jti: string,
+): string {
+  return signToken(secret, { ...payload, typ: "refresh", jti }, "30d");
 }
 
 export function verifyToken(secret: string, token: string): JwtPayload {
@@ -44,9 +56,12 @@ export function verifyAccessToken(secret: string, token: string): JwtPayload {
   return p;
 }
 
-export function verifyRefreshToken(secret: string, token: string): JwtPayload {
-  const p = verifyToken(secret, token);
-  if (p.typ !== "refresh") {
+export function verifyRefreshToken(
+  secret: string,
+  token: string,
+): RefreshJwtPayload {
+  const p = verifyToken(secret, token) as RefreshJwtPayload;
+  if (p.typ !== "refresh" || typeof p.jti !== "string" || p.jti.length === 0) {
     throw new Error("Invalid refresh token");
   }
   return p;

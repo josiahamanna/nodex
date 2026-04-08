@@ -1,5 +1,6 @@
 const KNOWN: Record<string, string> = {
   markdown: "MD",
+  mdx: "MX",
   text: "RT",
   code: "CD",
   pdf: "PDF",

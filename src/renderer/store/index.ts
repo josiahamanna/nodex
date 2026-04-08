@@ -1,3 +1,4 @@
+import { nodexDelegatingProxy } from "../../shared/nodex-host-access";
 import { configureStore } from "@reduxjs/toolkit";
 import { createNodexPlatformDeps } from "@nodex/platform";
 import {
@@ -12,7 +13,7 @@ import pluginUiReducer from "./pluginUiSlice";
 
 /**
  * Next / browser: other modules may import `store` before any client entry runs; `createNodexPlatformDeps`
- * needs `window.Nodex`. Electron preload sets `Nodex` first; `installNodexWebShimIfNeeded` is a no-op then.
+ * needs `nodexDelegatingProxy` / `window.Nodex`. Electron preload sets `Nodex` first; `installNodexWebShimIfNeeded` is a no-op then.
  */
 if (typeof window !== "undefined") {
   try {
@@ -24,7 +25,7 @@ if (typeof window !== "undefined") {
 }
 
 /** Single instance: Redux thunks and optional desktop sync nudge share this. */
-export const platformDeps = createNodexPlatformDeps();
+export const platformDeps = createNodexPlatformDeps({ notes: nodexDelegatingProxy });
 
 export const store = configureStore({
   reducer: {

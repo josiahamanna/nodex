@@ -1,9 +1,10 @@
+import { getNodex } from "../../../shared/nodex-host-access";
 export type PluginInventoryRow = Awaited<
-  ReturnType<typeof window.Nodex.getPluginInventory>
+  ReturnType<typeof getNodex().getPluginInventory>
 >[number];
 
 export type PluginUiMeta = Awaited<
-  ReturnType<typeof window.Nodex.getPluginManifestUi>
+  ReturnType<typeof getNodex().getPluginManifestUi>
 >;
 
 export type UserMessage = {

@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 /**
  * Dedupes concurrent and recent repeated fetches of note type lists (web: GET /notes/types/*).
  */
@@ -27,7 +28,7 @@ export async function getRegisteredTypesCached(): Promise<string[]> {
   }
   registeredInflight = (async () => {
     try {
-      const t = await window.Nodex.getRegisteredTypes();
+      const t = await getNodex().getRegisteredTypes();
       const value = Array.isArray(t) ? t : [];
       registeredCache = { value, at: Date.now() };
       return value;
@@ -48,7 +49,7 @@ export async function getSelectableNoteTypesCached(): Promise<string[]> {
   }
   selectableInflight = (async () => {
     try {
-      const t = await window.Nodex.getSelectableNoteTypes();
+      const t = await getNodex().getSelectableNoteTypes();
       const value = Array.isArray(t) ? t : [];
       selectableCache = { value, at: Date.now() };
       return value;

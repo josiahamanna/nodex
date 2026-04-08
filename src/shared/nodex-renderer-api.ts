@@ -232,6 +232,26 @@ export type NodexRendererApi = {
     | { ok: false; cancelled: true }
     | { ok: false; error: string }
   >;
+  /**
+   * One-shot: main had an in-memory legacy temp-dir scratch session; pull WPN rows for IndexedDB merge.
+   * Electron only; returns `none` when there is nothing to migrate.
+   */
+  pullLegacyScratchWpnMigrationPayload: () => Promise<
+    | {
+        ok: true;
+        bundle: {
+          workspaces: WpnWorkspaceRow[];
+          projects: WpnProjectRow[];
+          notes: WpnNoteRow[];
+          explorer: Array<{ project_id: string; expanded_ids: string[] }>;
+        };
+      }
+    | { ok: false; reason: "none" }
+  >;
+  /** After renderer merged {@link pullLegacyScratchWpnMigrationPayload} into scratch IDB, main clears temp scratch. */
+  ackLegacyScratchWpnMigrationImported: () => Promise<
+    { ok: true } | { ok: false; error: string }
+  >;
   openProjectPath: (
     absPath: string,
   ) => Promise<
@@ -534,7 +554,7 @@ export type NodexRendererApi = {
     designSystemVersion?: string;
     designSystemWarning: string | null;
   } | null>;
-  /** Workspace / project (v2). Electron: IPC + SQLite. Web: HTTP `/api/v1/wpn/...`. */
+  /** Workspace / project (v2). Electron: IPC + on-disk JSON workspace. Web: HTTP `/api/v1/wpn/...`. */
   wpnListWorkspaces: () => Promise<{ workspaces: WpnWorkspaceRow[] }>;
   wpnCreateWorkspace: (name?: string) => Promise<{ workspace: WpnWorkspaceRow }>;
   wpnUpdateWorkspace: (

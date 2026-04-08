@@ -1,3 +1,4 @@
+import { getNodex } from "../../../shared/nodex-host-access";
 import React, { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import type { WpnBacklinkSourceItem } from "../../../shared/wpn-v2-types";
@@ -44,7 +45,7 @@ export function MarkdownTocShellView(_props: ShellViewComponentProps): React.Rea
     setBacklinkError(null);
     void (async () => {
       try {
-        const nodex = window.Nodex;
+        const nodex = getNodex();
         if (!nodex?.wpnListBacklinksToNote) {
           if (!cancelled) setBacklinks([]);
           return;

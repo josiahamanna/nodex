@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   extMatchesCategory,
@@ -53,7 +54,7 @@ export default function AssetPreview({ relativePath, projectRoot }: Props) {
     setTextBody(null);
     setTextErr(null);
     void (async () => {
-      const meta = await window.Nodex.getAssetInfo(relativePath, projectRoot);
+      const meta = await getNodex().getAssetInfo(relativePath, projectRoot);
       if (cancelled) {
         return;
       }
@@ -67,7 +68,7 @@ export default function AssetPreview({ relativePath, projectRoot }: Props) {
         setLoadDone(true);
         return;
       }
-      const tr = await window.Nodex.readAssetText(relativePath, projectRoot);
+      const tr = await getNodex().readAssetText(relativePath, projectRoot);
       if (cancelled) {
         return;
       }
@@ -84,7 +85,7 @@ export default function AssetPreview({ relativePath, projectRoot }: Props) {
   }, [relativePath, projectRoot]);
 
   const openExternal = () => {
-    void window.Nodex.openAssetExternal(relativePath, projectRoot);
+    void getNodex().openAssetExternal(relativePath, projectRoot);
   };
 
   if (!loadDone) {
@@ -110,7 +111,7 @@ export default function AssetPreview({ relativePath, projectRoot }: Props) {
     );
   }
 
-  const assetSrc = window.Nodex.assetUrl(relativePath, projectRoot);
+  const assetSrc = getNodex().assetUrl(relativePath, projectRoot);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">

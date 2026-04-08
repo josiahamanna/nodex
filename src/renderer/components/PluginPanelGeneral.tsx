@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, { useEffect, useState } from "react";
 import { useNodexDialog } from "../dialog/NodexDialogProvider";
 
@@ -18,7 +19,7 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
-    void window.Nodex
+    void getNodex()
       .getUserPluginsDirectory()
       .then((r) => {
         if (r.path) {
@@ -36,7 +37,7 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
     try {
       setImporting(true);
       setMessage(null);
-      const pkgPath = await window.Nodex.selectZipFile();
+      const pkgPath = await getNodex().selectZipFile();
       if (!pkgPath) {
         setMessage({
           type: "info",
@@ -44,7 +45,7 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
         });
         return;
       }
-      const pre = await window.Nodex.validatePluginZip(pkgPath);
+      const pre = await getNodex().validatePluginZip(pkgPath);
       if (!pre.valid) {
         setMessage({
           type: "error",
@@ -58,7 +59,7 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
           text: `Warnings:\n${pre.warnings.join("\n")}`,
         });
       }
-      const result = await window.Nodex.importPlugin(pkgPath);
+      const result = await getNodex().importPlugin(pkgPath);
       if (!result.success) {
         setMessage({
           type: "error",
@@ -75,7 +76,7 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
         text: `Plugin imported successfully!${w}`,
       });
       onPluginsChanged?.();
-      const again = await window.Nodex.getUserPluginsDirectory();
+      const again = await getNodex().getUserPluginsDirectory();
       if (again.path) {
         setPath(again.path);
       } else if (again.error) {
@@ -103,7 +104,7 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
       if (res.success) {
         setMessage({ type: "success", text: okText });
         onPluginsChanged?.();
-        const again = await window.Nodex.getUserPluginsDirectory();
+        const again = await getNodex().getUserPluginsDirectory();
         if (again.path) {
           setPath(again.path);
         } else if (again.error) {
@@ -138,7 +139,7 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
     }
     await run(
       "bin",
-      () => window.Nodex.deletePluginBinAndCaches(),
+      () => getNodex().deletePluginBinAndCaches(),
       "bin/, dependency cache, and plugin main cache cleared. Registry reloaded.",
     );
   };
@@ -156,7 +157,7 @@ const PluginPanelGeneral: React.FC<PluginPanelGeneralProps> = ({
     }
     await run(
       "sources",
-      () => window.Nodex.deleteAllPluginSources(),
+      () => getNodex().deleteAllPluginSources(),
       "sources/ was emptied and the registry reloaded.",
     );
   };
@@ -188,7 +189,7 @@ Sample markdown/tiptap sources will be re-seeded. Plugin disable flags are reset
     }
     await run(
       "format",
-      () => window.Nodex.formatNodexPluginData(),
+      () => getNodex().formatNodexPluginData(),
       "Format complete. Plugins folder re-seeded and registry reloaded.",
     );
   };

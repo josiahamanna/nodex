@@ -1,3 +1,4 @@
+import { getNodex } from "../../../shared/nodex-host-access";
 import type { NodexConfirmOptions } from "../../dialog/NodexDialogProvider";
 import type { UserMessage } from "./plugin-manager-types";
 
@@ -36,7 +37,7 @@ export function createPluginManagerMaintenanceHandlers({
       return;
     }
     setMessage(null);
-    await window.Nodex.clearAllPluginDependencyCaches();
+    await getNodex().clearAllPluginDependencyCaches();
     setMessage({
       type: "success",
       text: "All plugin dependency caches cleared.",
@@ -72,7 +73,7 @@ This removes sources/, bin/, IDE metadata under that folder. Sample markdown/tip
     setWorking("reset-user-plugins");
     setMessage(null);
     try {
-      const res = await window.Nodex.resetUserPluginsDirectory();
+      const res = await getNodex().resetUserPluginsDirectory();
       if (res.success) {
         setMessage({
           type: "success",
@@ -82,7 +83,7 @@ This removes sources/, bin/, IDE metadata under that folder. Sample markdown/tip
         await loadPlugins();
         await refreshLoadIssues();
         await refreshCacheStats();
-        const again = await window.Nodex.getUserPluginsDirectory();
+        const again = await getNodex().getUserPluginsDirectory();
         if (again.path) {
           setUserPluginsPath(again.path);
         }

@@ -6,6 +6,11 @@ const APP_PREFS_FILE = "nodex-app-prefs.json";
 export type NodexAppPrefs = {
   /** When true (default), empty primary/added project folders get sample notes. */
   seedSampleNotes: boolean;
+  /**
+   * One-shot: legacy Electron temp-dir scratch WPN was copied into renderer IndexedDB
+   * (`nodex_wpn_scratch__v1`); main workspace was cleared.
+   */
+  legacyScratchToIdbMigrated?: boolean;
 };
 
 const defaultPrefs: NodexAppPrefs = {
@@ -24,6 +29,8 @@ export function readAppPrefs(userDataPath: string): NodexAppPrefs {
         typeof j.seedSampleNotes === "boolean"
           ? j.seedSampleNotes
           : defaultPrefs.seedSampleNotes,
+      legacyScratchToIdbMigrated:
+        j.legacyScratchToIdbMigrated === true ? true : undefined,
     };
   } catch {
     return { ...defaultPrefs };
@@ -40,6 +47,10 @@ export function writeAppPrefs(
       typeof prefs.seedSampleNotes === "boolean"
         ? prefs.seedSampleNotes
         : cur.seedSampleNotes,
+    legacyScratchToIdbMigrated:
+      typeof prefs.legacyScratchToIdbMigrated === "boolean"
+        ? prefs.legacyScratchToIdbMigrated
+        : cur.legacyScratchToIdbMigrated,
   };
   fs.mkdirSync(userDataPath, { recursive: true });
   fs.writeFileSync(

@@ -32,6 +32,11 @@ declare global {
      * (`/wpn/*` on sync base + cloud JWT) instead of headless `/api/v1/wpn/*`.
      */
     __NODEX_WPN_USE_SYNC_API__?: boolean;
+    /**
+     * Electron only: per-window WPN backend from `webPreferences.additionalArguments`
+     * (`--nodex-electron-wpn-backend=file|cloud`). Preload exposes this for the renderer.
+     */
+    __NODEX_ELECTRON_WPN_BACKEND__?: "file" | "cloud";
   }
 }
 

@@ -1,3 +1,4 @@
+import { getNodex } from "../../../../../shared/nodex-host-access";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { NoteListItem } from "@nodex/ui-types";
@@ -124,24 +125,24 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
     setWpnGuidesError(null);
     void (async () => {
       try {
-        const { workspaces } = await window.Nodex.wpnListWorkspaces();
+        const { workspaces } = await getNodex().wpnListWorkspaces();
         const ws0 = workspaces[0];
         if (!ws0) {
           if (!cancelled) setWpnGuides([]);
           return;
         }
-        const { projects } = await window.Nodex.wpnListProjects(ws0.id);
+        const { projects } = await getNodex().wpnListProjects(ws0.id);
         const docsProject = projects.find((p) => p.name === "Documentation");
         if (!docsProject) {
           if (!cancelled) setWpnGuides([]);
           return;
         }
-        const { notes } = await window.Nodex.wpnListNotes(docsProject.id);
+        const { notes } = await getNodex().wpnListNotes(docsProject.id);
         // Fetch details for each note so we can filter bundledDocRole/pages.
         const details = await Promise.all(
           notes.map(async (n) => {
             try {
-              const r = await window.Nodex.wpnGetNote(n.id);
+              const r = await getNodex().wpnGetNote(n.id);
               return r.note;
             } catch {
               return null;

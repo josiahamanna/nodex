@@ -47,7 +47,3 @@ export function wpnJsonApplyVfsRewritesAfterTitleChange(
   }
   return { updatedNoteCount };
 }
-
-/** @deprecated Use wpnJsonApplyVfsRewritesAfterTitleChange */
-export const wpnSqliteApplyVfsRewritesAfterTitleChange =
-  wpnJsonApplyVfsRewritesAfterTitleChange;

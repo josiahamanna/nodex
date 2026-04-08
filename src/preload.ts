@@ -18,6 +18,27 @@ export type {
   PluginProgressPayload,
 } from "./shared/nodex-renderer-api";
 
+function readElectronWpnBackendFromArgv(): "file" | "cloud" {
+  try {
+    const hit = process.argv.find((a) =>
+      a.startsWith("--nodex-electron-wpn-backend="),
+    );
+    const v = hit?.split("=", 2)[1]?.trim().toLowerCase();
+    if (v === "cloud") {
+      return "cloud";
+    }
+  } catch {
+    /* ignore */
+  }
+  return "file";
+}
+
+const electronWpnBackendMode = readElectronWpnBackendFromArgv();
+contextBridge.exposeInMainWorld(
+  "__NODEX_ELECTRON_WPN_BACKEND__",
+  electronWpnBackendMode,
+);
+
 const api: NodexRendererApi = {
   getNote: (noteId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_NOTE, noteId),
@@ -133,6 +154,10 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_SAVE_SCRATCH_TO_FOLDER),
   newScratchSession: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_NEW_SCRATCH_SESSION),
+  pullLegacyScratchWpnMigrationPayload: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_PULL_LEGACY_SCRATCH_WPN_MIGRATION),
+  ackLegacyScratchWpnMigrationImported: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_ACK_LEGACY_SCRATCH_WPN_MIGRATION),
   openProjectPath: (absPath) =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_OPEN_PATH, absPath),
   addWorkspaceFolder: () =>

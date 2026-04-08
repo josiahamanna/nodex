@@ -1,4 +1,5 @@
 import { ipcMain } from "electron";
+import { assertElectronFileVaultWindow } from "./electron-wpn-backend";
 import { registry } from "../core/registry";
 import { getNotesDatabase } from "../core/workspace-store";
 import { getWpnOwnerId } from "../core/wpn/wpn-owner";
@@ -44,13 +45,15 @@ function requireWorkspaceStore() {
 }
 
 export function registerStaticIpcWpnHandlers(): void {
-  ipcMain.handle(IPC_CHANNELS.WPN_LIST_WORKSPACES, async () => {
+  ipcMain.handle(IPC_CHANNELS.WPN_LIST_WORKSPACES, async (e) => {
+    assertElectronFileVaultWindow(e);
     const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
     return { workspaces: wpnJsonListWorkspaces(db, ownerId) };
   });
 
-  ipcMain.handle(IPC_CHANNELS.WPN_CREATE_WORKSPACE, async (_e, name?: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.WPN_CREATE_WORKSPACE, async (e, name?: unknown) => {
+    assertElectronFileVaultWindow(e);
     const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
     const n = typeof name === "string" ? name : "Workspace";
@@ -60,7 +63,8 @@ export function registerStaticIpcWpnHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.WPN_UPDATE_WORKSPACE,
-    async (_e, id: unknown, patch: unknown) => {
+    async (e, id: unknown, patch: unknown) => {
+      assertElectronFileVaultWindow(e);
       if (typeof id !== "string" || !id) {
         throw new Error("Invalid workspace id");
       }
@@ -77,7 +81,8 @@ export function registerStaticIpcWpnHandlers(): void {
     },
   );
 
-  ipcMain.handle(IPC_CHANNELS.WPN_DELETE_WORKSPACE, async (_e, id: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.WPN_DELETE_WORKSPACE, async (e, id: unknown) => {
+    assertElectronFileVaultWindow(e);
     if (typeof id !== "string" || !id) {
       throw new Error("Invalid workspace id");
     }
@@ -92,7 +97,8 @@ export function registerStaticIpcWpnHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.WPN_LIST_PROJECTS,
-    async (_e, workspaceId: unknown) => {
+    async (e, workspaceId: unknown) => {
+      assertElectronFileVaultWindow(e);
       if (typeof workspaceId !== "string" || !workspaceId) {
         throw new Error("Invalid workspace id");
       }
@@ -104,7 +110,8 @@ export function registerStaticIpcWpnHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.WPN_CREATE_PROJECT,
-    async (_e, workspaceId: unknown, name?: unknown) => {
+    async (e, workspaceId: unknown, name?: unknown) => {
+      assertElectronFileVaultWindow(e);
       if (typeof workspaceId !== "string" || !workspaceId) {
         throw new Error("Invalid workspace id");
       }
@@ -121,7 +128,8 @@ export function registerStaticIpcWpnHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.WPN_UPDATE_PROJECT,
-    async (_e, id: unknown, patch: unknown) => {
+    async (e, id: unknown, patch: unknown) => {
+      assertElectronFileVaultWindow(e);
       if (typeof id !== "string" || !id) {
         throw new Error("Invalid project id");
       }
@@ -138,7 +146,8 @@ export function registerStaticIpcWpnHandlers(): void {
     },
   );
 
-  ipcMain.handle(IPC_CHANNELS.WPN_DELETE_PROJECT, async (_e, id: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.WPN_DELETE_PROJECT, async (e, id: unknown) => {
+    assertElectronFileVaultWindow(e);
     if (typeof id !== "string" || !id) {
       throw new Error("Invalid project id");
     }
@@ -151,7 +160,8 @@ export function registerStaticIpcWpnHandlers(): void {
     return { ok: true as const };
   });
 
-  ipcMain.handle(IPC_CHANNELS.WPN_LIST_NOTES, async (_e, projectId: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.WPN_LIST_NOTES, async (e, projectId: unknown) => {
+    assertElectronFileVaultWindow(e);
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project id");
     }
@@ -160,13 +170,15 @@ export function registerStaticIpcWpnHandlers(): void {
     return { notes: wpnJsonListNotesFlat(db, ownerId, projectId) };
   });
 
-  ipcMain.handle(IPC_CHANNELS.WPN_LIST_ALL_NOTES_WITH_CONTEXT, async () => {
+  ipcMain.handle(IPC_CHANNELS.WPN_LIST_ALL_NOTES_WITH_CONTEXT, async (e) => {
+    assertElectronFileVaultWindow(e);
     const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
     return { notes: wpnJsonListAllNotesWithContext(db, ownerId) };
   });
 
-  ipcMain.handle(IPC_CHANNELS.WPN_LIST_BACKLINKS_TO_NOTE, async (_e, targetNoteId: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.WPN_LIST_BACKLINKS_TO_NOTE, async (e, targetNoteId: unknown) => {
+    assertElectronFileVaultWindow(e);
     if (typeof targetNoteId !== "string" || !targetNoteId) {
       throw new Error("Invalid note id");
     }
@@ -175,7 +187,8 @@ export function registerStaticIpcWpnHandlers(): void {
     return { sources: wpnJsonListBacklinksToNote(db, ownerId, targetNoteId) };
   });
 
-  ipcMain.handle(IPC_CHANNELS.WPN_GET_NOTE, async (_e, noteId: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.WPN_GET_NOTE, async (e, noteId: unknown) => {
+    assertElectronFileVaultWindow(e);
     if (typeof noteId !== "string" || !noteId) {
       throw new Error("Invalid note id");
     }
@@ -188,7 +201,8 @@ export function registerStaticIpcWpnHandlers(): void {
     return { note };
   });
 
-  ipcMain.handle(IPC_CHANNELS.WPN_GET_EXPLORER_STATE, async (_e, projectId: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.WPN_GET_EXPLORER_STATE, async (e, projectId: unknown) => {
+    assertElectronFileVaultWindow(e);
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project id");
     }
@@ -199,7 +213,8 @@ export function registerStaticIpcWpnHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.WPN_SET_EXPLORER_STATE,
-    async (_e, projectId: unknown, expandedIds: unknown) => {
+    async (e, projectId: unknown, expandedIds: unknown) => {
+      assertElectronFileVaultWindow(e);
       if (typeof projectId !== "string" || !projectId) {
         throw new Error("Invalid project id");
       }
@@ -215,7 +230,8 @@ export function registerStaticIpcWpnHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.WPN_CREATE_NOTE_IN_PROJECT,
-    async (_e, projectId: unknown, payload: unknown) => {
+    async (e, projectId: unknown, payload: unknown) => {
+      assertElectronFileVaultWindow(e);
       if (typeof projectId !== "string" || !projectId) {
         throw new Error("Invalid project id");
       }
@@ -250,7 +266,8 @@ export function registerStaticIpcWpnHandlers(): void {
     },
   );
 
-  ipcMain.handle(IPC_CHANNELS.WPN_PATCH_NOTE, async (_e, noteId: unknown, patch: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.WPN_PATCH_NOTE, async (e, noteId: unknown, patch: unknown) => {
+    assertElectronFileVaultWindow(e);
     if (typeof noteId !== "string" || !noteId) {
       throw new Error("Invalid note id");
     }
@@ -272,7 +289,8 @@ export function registerStaticIpcWpnHandlers(): void {
     return { note };
   });
 
-  ipcMain.handle(IPC_CHANNELS.WPN_DELETE_NOTES, async (_e, ids: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.WPN_DELETE_NOTES, async (e, ids: unknown) => {
+    assertElectronFileVaultWindow(e);
     if (!Array.isArray(ids)) {
       throw new Error("Invalid ids");
     }
@@ -286,7 +304,7 @@ export function registerStaticIpcWpnHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.WPN_MOVE_NOTE,
     async (
-      _e,
+      e,
       payload: {
         projectId?: string;
         draggedId?: string;
@@ -294,6 +312,7 @@ export function registerStaticIpcWpnHandlers(): void {
         placement?: string;
       },
     ) => {
+      assertElectronFileVaultWindow(e);
       if (!payload || typeof payload !== "object") {
         throw new Error("Invalid payload");
       }
@@ -324,7 +343,8 @@ export function registerStaticIpcWpnHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.WPN_DUPLICATE_NOTE_SUBTREE,
-    async (_e, projectId: unknown, noteId: unknown) => {
+    async (e, projectId: unknown, noteId: unknown) => {
+      assertElectronFileVaultWindow(e);
       if (typeof projectId !== "string" || typeof noteId !== "string") {
         throw new Error("projectId and noteId required");
       }

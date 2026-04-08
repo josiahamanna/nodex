@@ -1,3 +1,4 @@
+import { getNodex } from "../../../shared/nodex-host-access";
 import type { PluginModuleDefinition } from "../../../../packages/nodex-plugin-ui/src/index";
 import type { PluginHostCapabilities } from "../../../shared/plugin-host-capabilities";
 import { compilePluginSource } from "./compilePluginSource";
@@ -40,9 +41,9 @@ export async function loadPluginModuleFromUrl(url: string): Promise<PluginModule
   return plugin;
 }
 
-/** Build {@link PluginHostCapabilities} from `window.Nodex` + mediated fetch. */
+/** Build {@link PluginHostCapabilities} from `getNodex()` + mediated fetch. */
 export function buildRendererPluginHostCapabilities(): PluginHostCapabilities {
-  const nodex = window.Nodex;
+  const nodex = getNodex();
   const mediatedFetch: PluginHostCapabilities["fetch"] = (input, init) => {
     const url = typeof input === "string" ? input : input.toString();
     if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/")) {

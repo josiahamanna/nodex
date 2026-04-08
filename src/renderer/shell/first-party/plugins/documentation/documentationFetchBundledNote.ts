@@ -1,3 +1,4 @@
+import { getNodex } from "../../../../../shared/nodex-host-access";
 import type { Note } from "@nodex/ui-types";
 
 /**
@@ -6,19 +7,19 @@ import type { Note } from "@nodex/ui-types";
  */
 export async function fetchBundledDocumentationNote(logicalId: string): Promise<Note> {
   try {
-    const n = await window.Nodex.getNote(logicalId);
+    const n = await getNodex().getNote(logicalId);
     if (n && typeof (n as { id?: unknown }).id === "string") {
       return n as unknown as Note;
     }
   } catch {
     /* try WPN composite id */
   }
-  const { workspaces } = await window.Nodex.wpnListWorkspaces();
+  const { workspaces } = await getNodex().wpnListWorkspaces();
   const ws0 = workspaces[0];
   if (!ws0) {
     throw new Error("No workspace available to load bundled documentation.");
   }
   const noteId = `wpn-docs:${ws0.id}:${logicalId}`;
-  const r = await window.Nodex.wpnGetNote(noteId);
+  const r = await getNodex().wpnGetNote(noteId);
   return r.note as unknown as Note;
 }

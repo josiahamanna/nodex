@@ -1,3 +1,4 @@
+import { getNodex } from "../../../../../shared/nodex-host-access";
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
@@ -87,8 +88,8 @@ export function DocumentationTocPanelView(_props: ShellViewComponentProps): Reac
         }
         if (doc?.view === "bundled" && doc.noteId) {
           const note = doc.noteId.startsWith("wpn-docs:")
-            ? (await window.Nodex.wpnGetNote(doc.noteId)).note
-            : await window.Nodex.getNote(doc.noteId);
+            ? (await getNodex().wpnGetNote(doc.noteId)).note
+            : await getNodex().getNote(doc.noteId);
           const content = typeof (note as { content?: unknown }).content === "string" ? (note as { content: string }).content : "";
           if (!cancelled) {
             setMarkdown(content);

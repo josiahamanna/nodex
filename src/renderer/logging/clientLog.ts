@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import type { ClientLogLevel, ClientLogPayload } from "../../shared/client-log";
 
 export type ClientLogOptions = {
@@ -58,7 +59,7 @@ export function clientLog(opts: ClientLogOptions): void {
     noteTitle: opts.noteTitle,
   };
   try {
-    window.Nodex.sendClientLog?.(payload);
+    getNodex().sendClientLog?.(payload);
   } catch {
     /* ignore */
   }

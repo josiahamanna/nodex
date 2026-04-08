@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -49,7 +50,7 @@ export function PublishToMarketModal(props: {
         setMessage("Auth response missing token");
         return;
       }
-      const r = await window.Nodex.publishPluginToMarketplace(pluginName, {
+      const r = await getNodex().publishPluginToMarketplace(pluginName, {
         baseUrl: root,
         token,
       });

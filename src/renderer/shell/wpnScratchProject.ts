@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 /**
  * Remembers the last WPN project the user had open in the explorer so shell commands
  * (e.g. Scratch) can create a root note without a flat legacy `createNote` API.
@@ -32,12 +33,12 @@ export async function resolveWpnProjectIdForRootNote(): Promise<string | null> {
     if (sid) {
       return sid;
     }
-    const { workspaces } = await window.Nodex.wpnListWorkspaces();
+    const { workspaces } = await getNodex().wpnListWorkspaces();
     const w = workspaces?.[0];
     if (!w) {
       return null;
     }
-    const { projects } = await window.Nodex.wpnListProjects(w.id);
+    const { projects } = await getNodex().wpnListProjects(w.id);
     return projects?.[0]?.id ?? null;
   } catch {
     return null;

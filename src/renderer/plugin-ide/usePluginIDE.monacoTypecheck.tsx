@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import {
   useCallback,
   useEffect,
@@ -87,7 +88,7 @@ export function usePluginIDEMonacoTypecheck(p: ReturnType<typeof usePluginIDEBun
       editorRef.current = ed;
       if (!ideTypingsLoadedRef.current) {
         ideTypingsLoadedRef.current = true;
-        void window.Nodex.getIdeTypings().then((res) => {
+        void getNodex().getIdeTypings().then((res) => {
           if (!res.libs?.length) {
             return;
           }
@@ -117,7 +118,7 @@ export function usePluginIDEMonacoTypecheck(p: ReturnType<typeof usePluginIDEBun
     setBusy(true);
     setStatus(null);
     try {
-      const res = await window.Nodex.runPluginTypecheck(pluginFolder);
+      const res = await getNodex().runPluginTypecheck(pluginFolder);
       setTscDiagnostics(res.diagnostics);
       const errCount = res.diagnostics.filter((d) => d.category === "error")
         .length;

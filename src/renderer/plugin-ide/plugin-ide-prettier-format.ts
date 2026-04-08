@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import { clientLog } from "../logging/clientLog";
 
 /**
@@ -54,7 +55,7 @@ export async function formatPluginSourceWithPrettier(
     const rc: Record<string, unknown> = {};
     for (const cfg of [".prettierrc.json", ".prettierrc"] as const) {
       try {
-        const raw = await window.Nodex.readPluginSourceFile(pluginFolder, cfg);
+        const raw = await getNodex().readPluginSourceFile(pluginFolder, cfg);
         if (raw === null) {
           continue;
         }

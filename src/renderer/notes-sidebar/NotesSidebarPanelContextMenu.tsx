@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React from "react";
 import { createPortal } from "react-dom";
 import type {
@@ -92,7 +93,7 @@ const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> 
                   const p = menu.workspaceProjectRoot;
                   closeMenu();
                   if (p) {
-                    void window.Nodex.revealProjectFolderInExplorer(p);
+                    void getNodex().revealProjectFolderInExplorer(p);
                   }
                 }}
               >
@@ -122,7 +123,7 @@ const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> 
                     if (!ok) {
                       return;
                     }
-                    const r = await window.Nodex.removeWorkspaceRoot(p, false);
+                    const r = await getNodex().removeWorkspaceRoot(p, false);
                     if (!r.ok) {
                       void alert({
                         title: "Could not update workspace",
@@ -157,7 +158,7 @@ const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> 
                     if (!ok) {
                       return;
                     }
-                    const r = await window.Nodex.removeWorkspaceRoot(p, true);
+                    const r = await getNodex().removeWorkspaceRoot(p, true);
                     if (!r.ok) {
                       void alert({
                         title: "Could not update workspace",

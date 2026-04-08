@@ -16,7 +16,7 @@
 #
 # Notes:
 #   - This is zero-downtime for the UI tier: old stays live until new is healthy.
-#   - It does not attempt blue/green for nodex-api (SQLite mount is not replica-safe).
+#   - It does not attempt blue/green for nodex-api (shared JSON workspace mount is not replica-safe).
 #   - After a successful switch, `docker image prune -f` removes untagged parents from rebuilds.
 #   - With --stop-old, the inactive container is removed (not only stopped) so old image layers can be pruned.
 

@@ -1,6 +1,8 @@
+import { getNodex } from "../../../shared/nodex-host-access";
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { MDXProvider } from "@mdx-js/react";
 import * as mdxReact from "@mdx-js/react";
+import * as jsxDevRuntime from "react/jsx-dev-runtime";
 import * as runtime from "react/jsx-runtime";
 import remarkGfm from "remark-gfm";
 import remarkMdx from "remark-mdx";
@@ -47,7 +49,7 @@ function DocPageEmbed({ noteId }: { noteId: string }): React.ReactElement {
     }
     void (async () => {
       try {
-        const n = await window.Nodex.getNote(id);
+        const n = await getNodex().getNote(id);
         if (cancelled) return;
         if (!n) {
           setErr(`Note not found: ${id}`);
@@ -218,12 +220,14 @@ export function MdxRenderer({
     void (async () => {
       try {
         const { evaluate } = await import("@mdx-js/mdx");
+        const isDev = process.env.NODE_ENV === "development";
         const mod = await evaluate(src, {
           ...mdxReact,
           ...runtime,
+          ...(isDev ? { jsxDEV: jsxDevRuntime.jsxDEV } : {}),
           baseUrl: mdxBaseUrl(),
           remarkPlugins: [...remarkPlugins],
-          development: process.env.NODE_ENV === "development",
+          development: isDev,
         });
         if (!cancelled) {
           setContent(() => mod.default);

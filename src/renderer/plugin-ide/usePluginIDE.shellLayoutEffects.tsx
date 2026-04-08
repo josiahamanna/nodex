@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import {
   useCallback,
   useEffect,
@@ -200,7 +201,7 @@ export function usePluginIDEShellLayoutEffects(p: ReturnType<typeof usePluginIDE
       }
       void (async () => {
         try {
-          const files = await window.Nodex.listPluginSourceFiles(name);
+          const files = await getNodex().listPluginSourceFiles(name);
           setFolderFilesCache((prev) => ({ ...prev, [name]: files }));
         } catch (err) {
           clientLog({

@@ -95,8 +95,8 @@ export function applyShellWelcomeHash(
   }
   if (!segment) return;
   const commandId = WELCOME_SHELL_URL_COMMANDS[segment];
-  void Promise.resolve(invokeCommand(commandId)).catch(() => {
-    /* unknown command or handler error */
+  void Promise.resolve(invokeCommand(commandId)).catch((err: unknown) => {
+    console.error("[applyShellWelcomeHash] command failed:", commandId, err);
   });
 }
 

@@ -12,18 +12,17 @@ import {
 } from "../core/notes-store";
 import {
   activateProject,
-  activateScratchWorkspace,
   activateWorkspace,
   closeWorkspace,
   readProjectPrefs,
-  replaceScratchWithNewSession,
-  saveScratchWorkspaceToFolder,
   setWorkspaceFolderLabel,
   pruneWorkspaceLabels,
   writeProjectPrefs,
 } from "../core/project-session";
+import { getNotesDatabase } from "../core/workspace-store";
 import { registry } from "../core/registry";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
+import { getWebContentsWpnBackend } from "./electron-wpn-backend";
 import { ctx } from "./main-context";
 import {
   applyWorkspaceActivateResult,
@@ -33,8 +32,25 @@ import {
   showOpenDialogWithParent,
 } from "./main-helpers";
 
+const ELECTRON_CLOUD_WPN_WINDOW_FOLDER_ERROR =
+  "This window is a cloud WPN session. Use File → New local window to open a folder on disk.";
+
+function isElectronCloudWpnWindow(e: { sender: { id: number } }): boolean {
+  return getWebContentsWpnBackend(e.sender.id) === "cloud";
+}
+
 export function registerRunAppReadyProjectIpc(userDataPath: string): void {
-  ipcMain.handle(IPC_CHANNELS.PROJECT_GET_STATE, () => {
+  ipcMain.handle(IPC_CHANNELS.PROJECT_GET_STATE, (e) => {
+    if (isElectronCloudWpnWindow(e)) {
+      return {
+        rootPath: null,
+        notesDbPath: null,
+        workspaceRoots: [] as string[],
+        workspaceLabels: {} as Record<string, string>,
+        scratchSession: false,
+        mountKind: "cloud" as const,
+      };
+    }
     const prefs = readProjectPrefs(userDataPath);
     const roots = ctx.workspaceRoots;
     const labels =
@@ -51,12 +67,18 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
     };
   });
 
-  ipcMain.handle(IPC_CHANNELS.SHELL_GET_LAYOUT, () => {
+  ipcMain.handle(IPC_CHANNELS.SHELL_GET_LAYOUT, (e) => {
+    if (isElectronCloudWpnWindow(e)) {
+      return null;
+    }
     const prefs = readProjectPrefs(userDataPath);
     return prefs.shellLayout ?? null;
   });
 
-  ipcMain.handle(IPC_CHANNELS.SHELL_SET_LAYOUT, (_e, layout: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.SHELL_SET_LAYOUT, (e, layout: unknown) => {
+    if (isElectronCloudWpnWindow(e)) {
+      return { ok: true as const };
+    }
     const prefs = readProjectPrefs(userDataPath);
     // Keep as renderer-owned blob; only enforce JSON-serializable object shape.
     if (layout !== null && (typeof layout !== "object" || Array.isArray(layout))) {
@@ -85,43 +107,31 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
     },
   );
 
-  ipcMain.handle(IPC_CHANNELS.PROJECT_START_SCRATCH_SESSION, async () => {
-    const res = activateScratchWorkspace(registry.getRegisteredTypes());
-    if (!res.ok) {
-      return { ok: false as const, error: res.error };
+  ipcMain.handle(IPC_CHANNELS.PROJECT_START_SCRATCH_SESSION, async (e) => {
+    if (isElectronCloudWpnWindow(e)) {
+      return {
+        ok: false as const,
+        error: ELECTRON_CLOUD_WPN_WINDOW_FOLDER_ERROR,
+      };
     }
-    applyWorkspaceActivateResult(res);
-    clearNodexUndoRedo();
-    broadcastProjectRootChanged();
-    return {
-      ok: true as const,
-      rootPath: ctx.projectRootPath,
-      workspaceRoots: [...ctx.workspaceRoots],
-      scratchSession: true as const,
-    };
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PROJECT_SAVE_SCRATCH_TO_FOLDER, async () => {
-    if (!ctx.scratchSession) {
-      return { ok: false as const, error: "Not in a scratch session" };
+    if (ctx.workspaceRoots.length > 0 && !ctx.scratchSession) {
+      return {
+        ok: false as const,
+        error:
+          "A project folder is already open. Close it from Notes before using scratch-only mode (IndexedDB).",
+      };
     }
-    const r = await showOpenDialogWithParent({
-      properties: ["openDirectory", "createDirectory"],
-      title: "Choose folder to save your workspace",
-    });
-    if (r.canceled || r.filePaths.length === 0) {
-      return { ok: false as const, cancelled: true as const };
+    if (ctx.scratchSession) {
+      const res = closeWorkspace(userDataPath);
+      applyWorkspaceActivateResult(res);
+    } else {
+      applyWorkspaceActivateResult({
+        ok: true,
+        root: "",
+        dbPath: "",
+        workspaceRoots: [],
+      });
     }
-    const chosen = path.resolve(r.filePaths[0]!);
-    const res = saveScratchWorkspaceToFolder(
-      chosen,
-      userDataPath,
-      registry.getRegisteredTypes(),
-    );
-    if (!res.ok) {
-      return { ok: false as const, error: res.error };
-    }
-    applyWorkspaceActivateResult(res);
     clearNodexUndoRedo();
     broadcastProjectRootChanged();
     return {
@@ -132,26 +142,73 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
     };
   });
 
-  ipcMain.handle(IPC_CHANNELS.PROJECT_NEW_SCRATCH_SESSION, async () => {
-    if (!ctx.scratchSession) {
-      return { ok: false as const, error: "Not in a scratch session" };
+  ipcMain.handle(IPC_CHANNELS.PROJECT_SAVE_SCRATCH_TO_FOLDER, async () => ({
+    ok: false as const,
+    error:
+      "Scratch notes live in IndexedDB. Use Notes → Open project to use a folder on disk.",
+  }));
+
+  ipcMain.handle(IPC_CHANNELS.PROJECT_NEW_SCRATCH_SESSION, async () => ({
+    ok: false as const,
+    error:
+      "Use the Notes explorer in scratch mode, or clear local IndexedDB from developer commands.",
+  }));
+
+  ipcMain.handle(IPC_CHANNELS.PROJECT_PULL_LEGACY_SCRATCH_WPN_MIGRATION, () => {
+    const prefs = readAppPrefs(userDataPath);
+    if (prefs.legacyScratchToIdbMigrated === true) {
+      return { ok: false as const, reason: "none" as const };
     }
-    const res = replaceScratchWithNewSession(userDataPath, registry.getRegisteredTypes());
-    if (!res.ok) {
-      return { ok: false as const, error: res.error };
+    const store = getNotesDatabase();
+    if (!store?.scratchSession || store.roots.length === 0) {
+      return { ok: false as const, reason: "none" as const };
     }
-    applyWorkspaceActivateResult(res);
-    clearNodexUndoRedo();
-    broadcastProjectRootChanged();
+    const slot = store.slots[0]!;
+    const workspaces = slot.workspaces.map(({ owner_id: _o, ...row }) => row);
     return {
       ok: true as const,
-      rootPath: ctx.projectRootPath,
-      workspaceRoots: [...ctx.workspaceRoots],
-      scratchSession: true as const,
+      bundle: {
+        workspaces,
+        projects: slot.projects.map((p) => ({ ...p })),
+        notes: slot.notes.map((n) => ({ ...n })),
+        explorer: slot.explorer.map((e) => ({
+          project_id: e.project_id,
+          expanded_ids: [...e.expanded_ids],
+        })),
+      },
     };
   });
 
-  ipcMain.handle(IPC_CHANNELS.PROJECT_SELECT_FOLDER, async () => {
+  ipcMain.handle(IPC_CHANNELS.PROJECT_ACK_LEGACY_SCRATCH_WPN_MIGRATION, () => {
+    try {
+      const prefs = readAppPrefs(userDataPath);
+      if (prefs.legacyScratchToIdbMigrated === true) {
+        return { ok: true as const };
+      }
+      if (!ctx.scratchSession) {
+        return {
+          ok: false as const,
+          error: "No legacy in-memory scratch session to finalize",
+        };
+      }
+      const res = closeWorkspace(userDataPath);
+      applyWorkspaceActivateResult(res);
+      clearNodexUndoRedo();
+      writeAppPrefs(userDataPath, { legacyScratchToIdbMigrated: true });
+      broadcastProjectRootChanged();
+      return { ok: true as const };
+    } catch (e) {
+      return {
+        ok: false as const,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PROJECT_SELECT_FOLDER, async (e) => {
+    if (isElectronCloudWpnWindow(e)) {
+      return { ok: false as const, error: ELECTRON_CLOUD_WPN_WINDOW_FOLDER_ERROR };
+    }
     const r = await showOpenDialogWithParent({
       properties: ["openDirectory", "createDirectory"],
       title: "Choose or create a folder for your notes",
@@ -178,7 +235,10 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
     };
   });
 
-  ipcMain.handle(IPC_CHANNELS.PROJECT_ADD_WORKSPACE_FOLDER, async () => {
+  ipcMain.handle(IPC_CHANNELS.PROJECT_ADD_WORKSPACE_FOLDER, async (e) => {
+    if (isElectronCloudWpnWindow(e)) {
+      return { ok: false as const, error: ELECTRON_CLOUD_WPN_WINDOW_FOLDER_ERROR };
+    }
     if (!ctx.projectRootPath || ctx.workspaceRoots.length === 0) {
       return {
         ok: false as const,
@@ -213,7 +273,10 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
     };
   });
 
-  ipcMain.handle(IPC_CHANNELS.PROJECT_OPEN_PATH, async (_e, absPath: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.PROJECT_OPEN_PATH, async (e, absPath: unknown) => {
+    if (isElectronCloudWpnWindow(e)) {
+      return { ok: false as const, error: ELECTRON_CLOUD_WPN_WINDOW_FOLDER_ERROR };
+    }
     if (typeof absPath !== "string" || absPath.length === 0) {
       return { ok: false as const, error: "Invalid path" };
     }
@@ -235,7 +298,10 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
     };
   });
 
-  ipcMain.handle(IPC_CHANNELS.PROJECT_REVEAL_FOLDER, async (_e, folderPath: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.PROJECT_REVEAL_FOLDER, async (e, folderPath: unknown) => {
+    if (isElectronCloudWpnWindow(e)) {
+      return { ok: false as const, error: ELECTRON_CLOUD_WPN_WINDOW_FOLDER_ERROR };
+    }
     try {
       if (typeof folderPath !== "string" || folderPath.length === 0) {
         return { ok: false as const, error: "Invalid path" };
@@ -283,7 +349,10 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
 
   ipcMain.handle(
     IPC_CHANNELS.PROJECT_SWAP_WORKSPACE_BLOCK,
-    (_e, payload: unknown) => {
+    (e, payload: unknown) => {
+      if (isElectronCloudWpnWindow(e)) {
+        return { ok: false as const, error: ELECTRON_CLOUD_WPN_WINDOW_FOLDER_ERROR };
+      }
       assertProjectOpenForNotes();
       if (!payload || typeof payload !== "object") {
         return { ok: false as const, error: "Invalid payload" };
@@ -313,7 +382,10 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
 
   ipcMain.handle(
     IPC_CHANNELS.PROJECT_SET_WORKSPACE_LABEL,
-    (_e, payload: unknown) => {
+    (e, payload: unknown) => {
+      if (isElectronCloudWpnWindow(e)) {
+        return { ok: false as const, error: ELECTRON_CLOUD_WPN_WINDOW_FOLDER_ERROR };
+      }
       if (!payload || typeof payload !== "object") {
         return { ok: false as const, error: "Invalid payload" };
       }
@@ -335,7 +407,10 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
     },
   );
 
-  ipcMain.handle(IPC_CHANNELS.PROJECT_REFRESH_WORKSPACE, () => {
+  ipcMain.handle(IPC_CHANNELS.PROJECT_REFRESH_WORKSPACE, (e) => {
+    if (isElectronCloudWpnWindow(e)) {
+      return { ok: false as const, error: ELECTRON_CLOUD_WPN_WINDOW_FOLDER_ERROR };
+    }
     if (ctx.workspaceRoots.length === 0) {
       return { ok: false as const, error: "No workspace open" };
     }
@@ -359,7 +434,10 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
 
   ipcMain.handle(
     IPC_CHANNELS.PROJECT_REMOVE_WORKSPACE_ROOT,
-    async (_e, payload: unknown) => {
+    async (e, payload: unknown) => {
+      if (isElectronCloudWpnWindow(e)) {
+        return { ok: false as const, error: ELECTRON_CLOUD_WPN_WINDOW_FOLDER_ERROR };
+      }
       if (!payload || typeof payload !== "object") {
         return { ok: false as const, error: "Invalid payload" };
       }

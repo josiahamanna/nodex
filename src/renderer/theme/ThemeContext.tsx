@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, {
   createContext,
   useCallback,
@@ -88,7 +89,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
     (async () => {
       if (colorMode === "system") {
         try {
-          const dark = await window.Nodex.getNativeThemeDark();
+          const dark = await getNodex().getNativeThemeDark();
           if (!cancelled) {
             applyDarkClass(dark);
           }
@@ -110,7 +111,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
     if (FORCE_LIGHT_COLOR_MODE) {
       return;
     }
-    const unsub = window.Nodex.onNativeThemeChanged((isDark: boolean) => {
+    const unsub = getNodex().onNativeThemeChanged((isDark: boolean) => {
       if (colorMode === "system") {
         applyDarkClass(isDark);
       }

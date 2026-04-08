@@ -1,8 +1,9 @@
+import { getNodex } from "../../shared/nodex-host-access";
 /**
  * Prefer Electron `openExternalUrl` (system browser); fall back to `window.open`.
  */
 export async function openExternalNavigationUrl(url: string): Promise<void> {
-  const api = typeof window !== "undefined" ? window.Nodex : undefined;
+  const api = typeof window !== "undefined" ? getNodex() : undefined;
   if (api?.openExternalUrl) {
     try {
       const r = await api.openExternalUrl(url);

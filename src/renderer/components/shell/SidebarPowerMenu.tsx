@@ -1,3 +1,4 @@
+import { getNodex } from "../../../shared/nodex-host-access";
 import React, { useEffect, useRef, useState } from "react";
 import { useNodexDialog } from "../../dialog/NodexDialogProvider";
 
@@ -71,7 +72,7 @@ const SidebarPowerMenu: React.FC<{ layout: Layout }> = ({ layout }) => {
         variant: "default",
       });
       if (ok) {
-        void window.Nodex.reloadWindow();
+        void getNodex().reloadWindow();
       }
     })();
   };
@@ -86,7 +87,7 @@ const SidebarPowerMenu: React.FC<{ layout: Layout }> = ({ layout }) => {
         variant: "danger",
       });
       if (ok) {
-        void window.Nodex.quitApp();
+        void getNodex().quitApp();
       }
     })();
   };

@@ -1,3 +1,4 @@
+import { getNodex } from "../../../src/shared/nodex-host-access";
 import type { ComponentType } from "react";
 import { useEffect, useMemo } from "react";
 import type { NodexRendererApi } from "../../../src/shared/nodex-renderer-api";
@@ -42,13 +43,13 @@ export function definePlugin(def: PluginModuleDefinition): PluginModuleDefinitio
   return def;
 }
 
-/** Full `window.Nodex` for first-party React plugins (no iframe sandbox). */
+/** Full `getNodex()` for first-party React plugins (no iframe sandbox). */
 export function useHostNodex(): NodexRendererApi {
   return useMemo(() => {
     if (typeof window === "undefined") {
       throw new Error("useHostNodex requires a browser environment");
     }
-    return window.Nodex;
+    return getNodex();
   }, []);
 }
 
@@ -90,7 +91,7 @@ export function getNodexIframeApi(): NodexIframeApi | undefined {
   if (typeof window === "undefined") {
     return undefined;
   }
-  return window.Nodex as unknown as NodexIframeApi;
+  return getNodex() as unknown as NodexIframeApi;
 }
 
 /**
@@ -105,16 +106,16 @@ export function useNodexIframeApi(): {
   return useMemo(
     () => ({
       postMessage: (data: unknown) => {
-        window.Nodex?.postMessage?.(data);
+        getNodex()?.postMessage?.(data);
       },
       postPluginUiState: (state: unknown) => {
-        window.Nodex?.postPluginUiState?.(state);
+        getNodex()?.postPluginUiState?.(state);
       },
       notifyDisplayReady: () => {
-        window.Nodex?.notifyDisplayReady?.();
+        getNodex()?.notifyDisplayReady?.();
       },
       saveNoteContent: (content: string) => {
-        window.Nodex?.saveNoteContent?.(content);
+        getNodex()?.saveNoteContent?.(content);
       },
     }),
     [],
@@ -133,7 +134,7 @@ export function useNodexHostMessages(options: UseNodexHostMessagesOptions): void
   const { onHydratePluginUi, onNotePayload } = options;
 
   useEffect(() => {
-    const iframeApi = window.Nodex as unknown as NodexIframeApi;
+    const iframeApi = getNodex() as unknown as NodexIframeApi;
     iframeApi.onMessage = (message: HostToPluginMessage) => {
       if (message.type === "hydrate_plugin_ui") {
         const p = message.payload;
@@ -172,7 +173,7 @@ export function useNotifyDisplayReady(options?: UseNotifyDisplayReadyOptions): v
     let inner = 0;
     const outer = requestAnimationFrame(() => {
       inner = requestAnimationFrame(() => {
-        (window.Nodex as unknown as NodexIframeApi)?.notifyDisplayReady?.();
+        (getNodex() as unknown as NodexIframeApi)?.notifyDisplayReady?.();
       });
     });
     return () => {

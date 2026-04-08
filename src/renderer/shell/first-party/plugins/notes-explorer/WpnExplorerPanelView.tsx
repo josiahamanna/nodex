@@ -1,3 +1,4 @@
+import { getNodex } from "../../../../../shared/nodex-host-access";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type {
@@ -113,6 +114,8 @@ function noteTypeExplorerAbbrev(type: string): string {
   const overrides: Record<string, string> = {
     // "md" is the usual shorthand; first two letters would be "ma".
     markdown: "md",
+    // "mdx" would otherwise slice to "md" and collide with markdown.
+    mdx: "mx",
   };
   const fromOverride = overrides[key];
   if (fromOverride) return fromOverride;
@@ -201,11 +204,11 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     if (!projectOpen) return;
     setBusy(true);
     try {
-      const { workspaces: ws } = await window.Nodex.wpnListWorkspaces();
+      const { workspaces: ws } = await getNodex().wpnListWorkspaces();
       setWorkspaces(ws);
       const entries = await Promise.all(
         ws.map(async (w) => {
-          const { projects } = await window.Nodex.wpnListProjects(w.id);
+          const { projects } = await getNodex().wpnListProjects(w.id);
           // Bundled plugin docs live in a dedicated project; browse them from Documentation, not Notes explorer.
           return [w.id, projects.filter((p) => p.name !== "Documentation")] as const;
         }),
@@ -252,7 +255,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       refresh(true);
     };
     window.addEventListener(NODEX_WEB_PLUGINS_CHANGED, onWebPlugins);
-    const offMain = window.Nodex.onPluginsChanged(() => refresh(true));
+    const offMain = getNodex().onPluginsChanged(() => refresh(true));
     return () => {
       window.removeEventListener(NODEX_WEB_PLUGINS_CHANGED, onWebPlugins);
       offMain();
@@ -280,8 +283,8 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
 
   const loadProjectTree = useCallback(async (projectId: string) => {
     const [{ notes: n }, { expanded_ids }] = await Promise.all([
-      window.Nodex.wpnListNotes(projectId),
-      window.Nodex.wpnGetExplorerState(projectId),
+      getNodex().wpnListNotes(projectId),
+      getNodex().wpnGetExplorerState(projectId),
     ]);
     if (selectedProjectIdRef.current !== projectId) return;
     setNotes(n);
@@ -335,7 +338,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const persistExpandedNotes = useCallback(
     async (projectId: string, next: Set<string>) => {
       setExpandedNoteParents(next);
-      await window.Nodex.wpnSetExplorerState(projectId, [...next]);
+      await getNodex().wpnSetExplorerState(projectId, [...next]);
     },
     [],
   );
@@ -354,7 +357,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         if (localRow) {
           pid = localRow.project_id;
         } else {
-          const r = await window.Nodex.wpnGetNote(currentNoteId);
+          const r = await getNodex().wpnGetNote(currentNoteId);
           if (cancelled || !r?.note) return;
           pid = r.note.project_id;
         }
@@ -445,7 +448,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   }, []);
 
   const onCreateWorkspace = async () => {
-    await window.Nodex.wpnCreateWorkspace("Workspace");
+    await getNodex().wpnCreateWorkspace("Workspace");
     await loadWorkspaces();
     closeAllMenus();
   };
@@ -454,14 +457,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     closeAllMenus();
     setBusy(true);
     try {
-      const r = await window.Nodex.selectProjectFolder();
+      const r = await getNodex().selectProjectFolder();
       if (!r.ok) {
         if ("error" in r) {
           window.alert(r.error);
         }
         return;
       }
-      await window.Nodex.wpnCreateWorkspace("Workspace");
+      await getNodex().wpnCreateWorkspace("Workspace");
     } catch (e) {
       window.alert(e instanceof Error ? e.message : String(e));
     } finally {
@@ -470,14 +473,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   }, [closeAllMenus]);
 
   const onCreateProject = async (workspaceId: string) => {
-    await window.Nodex.wpnCreateProject(workspaceId, "Project");
+    await getNodex().wpnCreateProject(workspaceId, "Project");
     await loadWorkspaces();
     closeAllMenus();
   };
 
   const onDeleteWorkspace = async (id: string) => {
     if (!window.confirm("Delete this workspace and all projects and notes inside it?")) return;
-    await window.Nodex.wpnDeleteWorkspace(id);
+    await getNodex().wpnDeleteWorkspace(id);
     if (selectedProjectId) {
       const projs = projectsByWs[id] ?? [];
       if (projs.some((p) => p.id === selectedProjectId)) {
@@ -491,7 +494,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
 
   const onDeleteProject = async (id: string) => {
     if (!window.confirm("Delete this project and all its notes?")) return;
-    await window.Nodex.wpnDeleteProject(id);
+    await getNodex().wpnDeleteProject(id);
     if (selectedProjectId === id) {
       setSelectedProjectId(null);
       setNotes([]);
@@ -506,7 +509,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     type: string,
     anchorId?: string,
   ) => {
-    const { id } = await window.Nodex.wpnCreateNoteInProject(projectId, {
+    const { id } = await getNodex().wpnCreateNoteInProject(projectId, {
       relation,
       type,
       anchorId,
@@ -518,7 +521,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
 
   const onDeleteNotes = async (projectId: string, ids: string[]) => {
     if (!window.confirm(`Delete ${ids.length} note(s)?`)) return;
-    await window.Nodex.wpnDeleteNotes(ids);
+    await getNodex().wpnDeleteNotes(ids);
     closeShellTabsForNoteIds(tabs, ids);
     await loadProjectTree(projectId);
     closeAllMenus();
@@ -533,8 +536,8 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       const b = workspaces[j]!;
       const siA = a.sort_index;
       const siB = b.sort_index;
-      await window.Nodex.wpnUpdateWorkspace(a.id, { sort_index: siB });
-      await window.Nodex.wpnUpdateWorkspace(b.id, { sort_index: siA });
+      await getNodex().wpnUpdateWorkspace(a.id, { sort_index: siB });
+      await getNodex().wpnUpdateWorkspace(b.id, { sort_index: siA });
       await loadWorkspaces();
       closeAllMenus();
     },
@@ -551,8 +554,8 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       const b = list[j]!;
       const siA = a.sort_index;
       const siB = b.sort_index;
-      await window.Nodex.wpnUpdateProject(a.id, { sort_index: siB });
-      await window.Nodex.wpnUpdateProject(b.id, { sort_index: siA });
+      await getNodex().wpnUpdateProject(a.id, { sort_index: siB });
+      await getNodex().wpnUpdateProject(b.id, { sort_index: siA });
       await loadWorkspaces();
       closeAllMenus();
     },
@@ -561,7 +564,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
 
   const runMoveNote = useCallback(
     async (projectId: string, draggedId: string, targetId: string, placement: NoteMovePlacement) => {
-      await window.Nodex.wpnMoveNote({ projectId, draggedId, targetId, placement });
+      await getNodex().wpnMoveNote({ projectId, draggedId, targetId, placement });
       await loadProjectTree(projectId);
       closeAllMenus();
     },
@@ -598,12 +601,12 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
           setNoteClipboard(null);
           return;
         }
-        const { newRootId } = await window.Nodex.wpnDuplicateNoteSubtree(targetProjectId, clip.noteId);
-        const fresh = (await window.Nodex.wpnListNotes(targetProjectId)).notes;
+        const { newRootId } = await getNodex().wpnDuplicateNoteSubtree(targetProjectId, clip.noteId);
+        const fresh = (await getNodex().wpnListNotes(targetProjectId)).notes;
         const roots2 = rootIdsInPreorder(fresh);
         const last2 = roots2[roots2.length - 1];
         if (last2 && last2 !== newRootId) {
-          await window.Nodex.wpnMoveNote({
+          await getNodex().wpnMoveNote({
             projectId: targetProjectId,
             draggedId: newRootId,
             targetId: last2,
@@ -630,10 +633,10 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         setNoteClipboard(null);
         return;
       }
-      const { newRootId } = await window.Nodex.wpnDuplicateNoteSubtree(targetProjectId, clip.noteId);
+      const { newRootId } = await getNodex().wpnDuplicateNoteSubtree(targetProjectId, clip.noteId);
       const placement: NoteMovePlacement =
         mode === "into" ? "into" : mode === "before" ? "before" : "after";
-      await window.Nodex.wpnMoveNote({
+      await getNodex().wpnMoveNote({
         projectId: targetProjectId,
         draggedId: newRootId,
         targetId: targetNoteId,
@@ -650,14 +653,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     const name = renaming.draft.trim();
     try {
       if (renaming.kind === "ws") {
-        await window.Nodex.wpnUpdateWorkspace(renaming.id, { name: name || "Workspace" });
+        await getNodex().wpnUpdateWorkspace(renaming.id, { name: name || "Workspace" });
         await loadWorkspaces();
       } else if (renaming.kind === "project") {
-        await window.Nodex.wpnUpdateProject(renaming.id, { name: name || "Project" });
+        await getNodex().wpnUpdateProject(renaming.id, { name: name || "Project" });
         await loadWorkspaces();
       } else if (renaming.kind === "note" && renaming.projectId) {
         const title = name || "Untitled";
-        await window.Nodex.wpnPatchNote(renaming.id, { title });
+        await getNodex().wpnPatchNote(renaming.id, { title });
         await loadProjectTree(renaming.projectId);
         const tabInst =
           tabs.findNoteTabByNoteId(renaming.id, SHELL_TAB_NOTE) ??
@@ -730,7 +733,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     if (!dropAllowedOne(parsed.noteId, targetId, placement, noteParentsMap)) {
       return;
     }
-    await window.Nodex.wpnMoveNote({
+    await getNodex().wpnMoveNote({
       projectId,
       draggedId: parsed.noteId,
       targetId,
@@ -1337,7 +1340,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                   const wid = e.target.value;
                   e.target.value = "";
                   if (!wid || wid === menu.workspaceId) return;
-                  await window.Nodex.wpnUpdateProject(menu.id, { workspace_id: wid });
+                  await getNodex().wpnUpdateProject(menu.id, { workspace_id: wid });
                   await loadWorkspaces();
                   closeAllMenus();
                 }}

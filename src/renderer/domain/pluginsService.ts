@@ -1,37 +1,38 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import type { PluginInventoryItem } from "@nodex/ui-types";
 
 export async function listInstalledPlugins(): Promise<string[]> {
-  return window.Nodex.getInstalledPlugins();
+  return getNodex().getInstalledPlugins();
 }
 
 export async function getPluginInventory(): Promise<PluginInventoryItem[]> {
-  return window.Nodex.getPluginInventory();
+  return getNodex().getPluginInventory();
 }
 
 export async function reloadPluginRegistry(): Promise<{
   success: boolean;
   error?: string;
 }> {
-  return window.Nodex.reloadPluginRegistry();
+  return getNodex().reloadPluginRegistry();
 }
 
 export async function setPluginEnabled(
   pluginId: string,
   enabled: boolean,
 ): Promise<{ success: boolean; error?: string }> {
-  return window.Nodex.setPluginEnabled(pluginId, enabled);
+  return getNodex().setPluginEnabled(pluginId, enabled);
 }
 
 export async function uninstallPluginFromBin(
   pluginId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  return window.Nodex.uninstallPlugin(pluginId);
+  return getNodex().uninstallPlugin(pluginId);
 }
 
 export async function getPluginLoadIssues(): Promise<
   { folder: string; error: string }[]
 > {
-  return window.Nodex.getPluginLoadIssues();
+  return getNodex().getPluginLoadIssues();
 }
 
 export async function getPluginCacheStats(): Promise<{
@@ -39,14 +40,14 @@ export async function getPluginCacheStats(): Promise<{
   totalBytes: number;
   plugins: { name: string; bytes: number }[];
 }> {
-  return window.Nodex.getPluginCacheStats();
+  return getNodex().getPluginCacheStats();
 }
 
 export async function getUserPluginsDirectory(): Promise<{
   path: string;
   error?: string;
 }> {
-  return window.Nodex.getUserPluginsDirectory();
+  return getNodex().getUserPluginsDirectory();
 }
 
 export async function getPluginManifestUi(pluginId: string): Promise<{
@@ -54,6 +55,6 @@ export async function getPluginManifestUi(pluginId: string): Promise<{
   designSystemVersion?: string;
   designSystemWarning: string | null;
 } | null> {
-  return window.Nodex.getPluginManifestUi(pluginId);
+  return getNodex().getPluginManifestUi(pluginId);
 }
 

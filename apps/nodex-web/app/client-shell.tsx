@@ -1,5 +1,7 @@
 "use client";
 
+import "../../../src/renderer/bootstrap/electron-nodex-idb-scratch-run";
+
 import React from "react";
 import * as ReactDOM from "react-dom";
 import { loader } from "@monaco-editor/react";

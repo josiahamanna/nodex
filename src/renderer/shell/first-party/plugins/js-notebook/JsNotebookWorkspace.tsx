@@ -1,3 +1,4 @@
+import { getNodex } from "../../../../../shared/nodex-host-access";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";

@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import {
   useCallback,
   useEffect,
@@ -103,7 +104,7 @@ export function usePluginIDEDistDepsAndRename(p: ReturnType<typeof usePluginIDEI
     setBusy(true);
     setStatus(null);
     try {
-      const cp = await window.Nodex.copyPluginDistToFolder(pluginFolder);
+      const cp = await getNodex().copyPluginDistToFolder(pluginFolder);
       setStatus(
         cp.success
           ? "dist/ contents copied."
@@ -140,7 +141,7 @@ export function usePluginIDEDistDepsAndRename(p: ReturnType<typeof usePluginIDEI
     try {
       let raw: string;
       try {
-        const read = await window.Nodex.readPluginSourceFile(
+        const read = await getNodex().readPluginSourceFile(
           pluginFolder,
           "package.json",
         );
@@ -175,7 +176,7 @@ export function usePluginIDEDistDepsAndRename(p: ReturnType<typeof usePluginIDEI
       block[row.name] = `^${row.version}`;
       j[depsKey] = block;
       const out = `${JSON.stringify(j, null, 2)}\n`;
-      const w = await window.Nodex.writePluginSourceFile(
+      const w = await getNodex().writePluginSourceFile(
         pluginFolder,
         "package.json",
         out,
@@ -214,7 +215,7 @@ export function usePluginIDEDistDepsAndRename(p: ReturnType<typeof usePluginIDEI
     setBusy(true);
     setStatus(null);
     try {
-      const res = await window.Nodex.installPluginDependencies(pluginFolder);
+      const res = await getNodex().installPluginDependencies(pluginFolder);
       if (!res.success) {
         setStatus(res.error ?? "npm install failed");
         return;
@@ -276,7 +277,7 @@ export function usePluginIDEDistDepsAndRename(p: ReturnType<typeof usePluginIDEI
         ) {
           continue;
         }
-        const res = await window.Nodex.deletePluginSourcePath(ws, p);
+        const res = await getNodex().deletePluginSourcePath(ws, p);
         if (!res.success) {
           setStatus(res.error ?? `Delete failed: ${p}`);
           return;
@@ -313,7 +314,7 @@ export function usePluginIDEDistDepsAndRename(p: ReturnType<typeof usePluginIDEI
         await refreshFileList();
       } else {
         try {
-          const files = await window.Nodex.listPluginSourceFiles(ws);
+          const files = await getNodex().listPluginSourceFiles(ws);
           setFolderFilesCache((prev) => ({ ...prev, [ws]: files }));
         } catch {
           /* ignore */

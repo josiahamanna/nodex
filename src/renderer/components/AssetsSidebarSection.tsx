@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, { useEffect, useState } from "react";
 
 const ASSETS_EXPANDED_KEY = "nodex.assetsSidebarExpanded";
@@ -35,7 +36,7 @@ export default function AssetsSidebarSection({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const r = await window.Nodex.listAssets(relDir, projectRoot);
+      const r = await getNodex().listAssets(relDir, projectRoot);
       if (cancelled) {
         return;
       }

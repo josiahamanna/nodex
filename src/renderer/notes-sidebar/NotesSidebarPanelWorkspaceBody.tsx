@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import type {
   CreateNoteRelation,
@@ -411,7 +412,7 @@ const NotesSidebarPanelWorkspaceBody: React.FC<NotesSidebarPanelWorkspaceBodyPro
                     className="shrink-0 rounded px-1 py-0.5 text-[10px] text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                     title="Open assets folder in file manager"
                     onClick={() => {
-                      void window.Nodex.revealAssetInFileManager(
+                      void getNodex().revealAssetInFileManager(
                         "",
                         sec.projectRoot,
                       );

@@ -1,3 +1,4 @@
+import { getNodex } from "../../../shared/nodex-host-access";
 import React from "react";
 import type {
   PluginInventoryRow,
@@ -100,7 +101,7 @@ export function PluginManagerPluginRows({
                       disabled={working !== null}
                       onClick={async () => {
                         const enabled = invFor(plugin)?.enabled !== false;
-                        const r = await window.Nodex.setPluginEnabled(
+                        const r = await getNodex().setPluginEnabled(
                           plugin,
                           !enabled,
                         );

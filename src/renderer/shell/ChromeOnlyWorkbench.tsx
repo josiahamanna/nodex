@@ -66,6 +66,10 @@ import {
 } from "../auth/web-scratch";
 import { NodexLogo } from "../components/NodexLogo";
 import { isElectronUserAgent } from "../nodex-web-shim";
+import {
+  isSignedInCloudWpnOffline,
+  shouldSkipDurableChromePersistence,
+} from "../cloud-sync/signed-in-cloud-offline";
 import { cloudLogoutThunk } from "../store/cloudAuthSlice";
 import type { AppDispatch, RootState } from "../store";
 
@@ -303,6 +307,22 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const pendingPanelGroupLayoutRef = useRef<number[] | null>(null);
   const panelGroupLayoutRafRef = useRef<number | null>(null);
   const [workspaceWidthPx, setWorkspaceWidthPx] = useState(0);
+  const [signedInCloudReadOnlyOffline, setSignedInCloudReadOnlyOffline] = useState(
+    () => (typeof window !== "undefined" ? isSignedInCloudWpnOffline() : false),
+  );
+
+  useEffect(() => {
+    const sync = (): void => {
+      setSignedInCloudReadOnlyOffline(isSignedInCloudWpnOffline());
+    };
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    sync();
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, [cloudAuth.status, cloudAuth.userId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -461,6 +481,9 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
 
   useEffect(() => {
     return tabs.subscribe(() => {
+      if (shouldSkipDurableChromePersistence()) {
+        return;
+      }
       const a = tabs.getActiveTab();
       const h = hashForActiveTab(a);
       if (!h) {
@@ -636,6 +659,15 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
 
   return (
     <div className="nodex-app-pad box-border flex min-h-0 flex-1 flex-col bg-muted/45 text-foreground dark:bg-muted/25">
+      {signedInCloudReadOnlyOffline ? (
+        <div
+          className="mb-1 shrink-0 rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-1.5 text-center text-[11px] text-amber-950 dark:text-amber-100"
+          role="status"
+        >
+          Offline — cloud workspace is read-only. Connect to the internet to save note edits and
+          UI settings.
+        </div>
+      ) : null}
       <div
         className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-sm box-border outline-none"
         data-nodex-main-surface

@@ -1,5 +1,9 @@
 # Nodex headless API — mount a host project directory into the container.
-# MongoDB for Fastify sync API: docker compose --profile sync up -d mongo-sync  (see apps/nodex-sync-api)
+#
+# MongoDB + Fastify sync API (cloud WPN / auth): see docs/deploy-nodex-sync.md
+#   docker compose --profile sync up -d mongo-sync
+#   npm run sync-api   # host: http://127.0.0.1:4010 (not in this compose file by default)
+# Web/Electron cloud: set NEXT_PUBLIC_NODEX_SYNC_API_URL (and optional nginx /backend/sync/ proxy).
 #
 # Usage — set NODEX_HOST_PROJECT to your vault (Compose does not expand $HOME in .env files):
 #   export NODEX_HOST_PROJECT="$HOME/Documents/my-vault"   # shell expands $HOME → absolute path
@@ -31,7 +35,7 @@
 # Direct API (bypass gateway): http://127.0.0.1:3847/api/v1/health
 # If 3847 is already in use: NODEX_API_PORT=3848 npm run docker:api:up
 #
-# SQLite: do not run multiple nodex-api replicas against the same NODEX_HOST_PROJECT mount.
+# Single-writer JSON workspace: do not run multiple nodex-api replicas against the same NODEX_HOST_PROJECT mount.
 # Blue/green applies to nodex-web only; a single nodex-api serves both.
 #
 # Zero-downtime UI deploy: deploy/ZERO-DOWNTIME.md and scripts/docker-web-swap.sh

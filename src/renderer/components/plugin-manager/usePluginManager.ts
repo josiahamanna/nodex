@@ -1,3 +1,4 @@
+import { getNodex } from "../../../shared/nodex-host-access";
 import { useState, useEffect, useCallback } from "react";
 import { useNodexDialog } from "../../dialog/NodexDialogProvider";
 import { MAX_PROGRESS_LINES } from "./plugin-manager-constants";
@@ -99,7 +100,7 @@ export function usePluginManager({
   }, []);
 
   useEffect(() => {
-    return window.Nodex.onPluginProgress((p) => {
+    return getNodex().onPluginProgress((p) => {
       const tag = p.pluginName ? `[${p.pluginName}] ` : "";
       pushProgress(`${p.op}/${p.phase}: ${tag}${p.message}`);
     });
@@ -110,13 +111,13 @@ export function usePluginManager({
       setImporting(true);
       setMessage(null);
 
-      const zipPath = await window.Nodex.selectZipFile();
+      const zipPath = await getNodex().selectZipFile();
       if (!zipPath) {
         setImporting(false);
         return;
       }
 
-      const pre = await window.Nodex.validatePluginZip(zipPath);
+      const pre = await getNodex().validatePluginZip(zipPath);
       if (!pre.valid) {
         setMessage({
           type: "error",
@@ -132,7 +133,7 @@ export function usePluginManager({
         });
       }
 
-      const result = await window.Nodex.importPlugin(zipPath);
+      const result = await getNodex().importPlugin(zipPath);
 
       if (result.success) {
         const w =

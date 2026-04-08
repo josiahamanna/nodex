@@ -1,3 +1,4 @@
+import { getNodex } from "../../../../../shared/nodex-host-access";
 import type { NodexRendererApi } from "../../../../../shared/nodex-renderer-api";
 import type { NodexContributionRegistry } from "../../../nodex-contribution-registry";
 import type { ShellLayoutStore } from "../../../layout/ShellLayoutStore";

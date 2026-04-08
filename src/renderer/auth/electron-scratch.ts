@@ -11,12 +11,14 @@ export function isElectronScratchSession(): boolean {
   return readElectronRunMode() === "scratch";
 }
 
-/** Wipe scratch IndexedDB and reload (run mode `scratch` stays in localStorage). */
+/** Wipe scratch IndexedDB (WPN + cloud-notes segment) and reload (run mode `scratch` stays in localStorage). */
 export async function resetElectronScratchClearData(): Promise<void> {
   if (typeof window === "undefined") {
     return;
   }
   const { destroyCloudNotesDbForUser } = await import("../cloud-sync/cloud-notes-rxdb");
+  const { destroyWpnScratchIndexedDb } = await import("../wpnscratch/wpn-scratch-store");
   await destroyCloudNotesDbForUser(ELECTRON_SCRATCH_CLOUD_USER_ID);
+  await destroyWpnScratchIndexedDb();
   window.location.reload();
 }

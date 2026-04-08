@@ -96,10 +96,16 @@ export const IPC_CHANNELS = {
   /** Opened project folder (notes DB + assets). */
   PROJECT_GET_STATE: "project:get-state",
   PROJECT_SELECT_FOLDER: "project:select-folder",
-  /** Ephemeral temp-dir workspace (Electron); not persisted until save-to-folder. */
+  /** No longer creates a temp dir; returns empty workspace (WPN scratch uses IndexedDB). */
   PROJECT_START_SCRATCH_SESSION: "project:start-scratch-session",
+  /** Deprecated: scratch WPN is in IndexedDB; open a folder from Notes to persist on disk. */
   PROJECT_SAVE_SCRATCH_TO_FOLDER: "project:save-scratch-to-folder",
+  /** Deprecated: clear scratch data from the app (IndexedDB) instead. */
   PROJECT_NEW_SCRATCH_SESSION: "project:new-scratch-session",
+  /** Renderer pulls WPN rows from an in-memory legacy temp scratch session before main clears it. */
+  PROJECT_PULL_LEGACY_SCRATCH_WPN_MIGRATION: "project:pull-legacy-scratch-wpn-migration",
+  /** After renderer merged into IndexedDB, main closes temp scratch and sets migration flag. */
+  PROJECT_ACK_LEGACY_SCRATCH_WPN_MIGRATION: "project:ack-legacy-scratch-wpn-migration",
   PROJECT_OPEN_PATH: "project:open-path",
   PROJECT_ADD_WORKSPACE_FOLDER: "project:add-workspace-folder",
   PROJECT_REVEAL_FOLDER: "project:reveal-folder",

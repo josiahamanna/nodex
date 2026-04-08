@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, { useEffect } from "react";
 import { useNodexContributionRegistry } from "./NodexContributionContext";
 
@@ -8,7 +9,7 @@ export function NodexContributionMenuBridge(): null {
   const registry = useNodexContributionRegistry();
 
   useEffect(() => {
-    const api = window.Nodex;
+    const api = getNodex();
     if (!api?.onRunContributionCommand) {
       return undefined;
     }

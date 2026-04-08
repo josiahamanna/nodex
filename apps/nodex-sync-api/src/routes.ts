@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import bcrypt from "bcryptjs";
 import { ObjectId } from "mongodb";
@@ -10,6 +11,7 @@ import {
 } from "./auth.js";
 import type { SyncNoteDoc, UserDoc } from "./db.js";
 import { getNotesCollection, getUsersCollection } from "./db.js";
+import { registerWpnBatchRoutes } from "./wpn-batch-routes.js";
 import { registerWpnReadRoutes } from "./wpn-routes.js";
 import { registerWpnWriteRoutes } from "./wpn-write-routes.js";
 
@@ -49,6 +51,7 @@ export function registerRoutes(
 
   registerWpnReadRoutes(app, { jwtSecret });
   registerWpnWriteRoutes(app, { jwtSecret });
+  registerWpnBatchRoutes(app, { jwtSecret });
 
   app.post("/auth/register", async (request, reply) => {
     const parsed = registerBody.safeParse(request.body);
@@ -71,8 +74,13 @@ export function registerRoutes(
       sub: userId,
       email: email.toLowerCase(),
     };
+    const jti = randomUUID();
     const token = signAccessToken(jwtSecret, payload);
-    const refreshToken = signRefreshToken(jwtSecret, payload);
+    const refreshToken = signRefreshToken(jwtSecret, payload, jti);
+    await users.updateOne(
+      { _id: ins.insertedId },
+      { $set: { activeRefreshJti: jti } },
+    );
     return reply.send({ token, refreshToken, userId });
   });
 
@@ -93,8 +101,13 @@ export function registerRoutes(
     }
     const userId = user._id.toHexString();
     const payload = { sub: userId, email: user.email };
+    const jti = randomUUID();
     const token = signAccessToken(jwtSecret, payload);
-    const refreshToken = signRefreshToken(jwtSecret, payload);
+    const refreshToken = signRefreshToken(jwtSecret, payload, jti);
+    await users.updateOne(
+      { _id: user._id },
+      { $set: { activeRefreshJti: jti } },
+    );
     return reply.send({ token, refreshToken, userId });
   });
 
@@ -105,14 +118,28 @@ export function registerRoutes(
     }
     try {
       const p = verifyRefreshToken(jwtSecret, parsed.data.refreshToken);
+      const users = getUsersCollection();
+      let userId: ObjectId;
+      try {
+        userId = new ObjectId(p.sub);
+      } catch {
+        return reply.status(401).send({ error: "Invalid or expired refresh token" });
+      }
+      const user = await users.findOne({ _id: userId });
+      if (!user || user.activeRefreshJti !== p.jti) {
+        return reply.status(401).send({ error: "Invalid or expired refresh token" });
+      }
+      const newJti = randomUUID();
+      await users.updateOne({ _id: userId }, { $set: { activeRefreshJti: newJti } });
       const token = signAccessToken(jwtSecret, {
         sub: p.sub,
         email: p.email,
       });
-      const refreshToken = signRefreshToken(jwtSecret, {
-        sub: p.sub,
-        email: p.email,
-      });
+      const refreshToken = signRefreshToken(
+        jwtSecret,
+        { sub: p.sub, email: p.email },
+        newJti,
+      );
       return reply.send({ token, refreshToken });
     } catch {
       return reply.status(401).send({ error: "Invalid or expired refresh token" });

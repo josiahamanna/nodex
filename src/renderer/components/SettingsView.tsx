@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, { useEffect, useState } from "react";
 import { useMainDebugDock } from "../debug/MainDebugDockContext";
 import { useTheme } from "../theme/ThemeContext";
@@ -41,7 +42,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ category }) => {
   const [seedPrefLoaded, setSeedPrefLoaded] = useState(false);
 
   useEffect(() => {
-    void window.Nodex.getAppPrefs().then((p) => {
+    void getNodex().getAppPrefs().then((p) => {
       setSeedSampleNotes(p.seedSampleNotes);
       setSeedPrefLoaded(true);
     });
@@ -144,7 +145,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ category }) => {
                 const skip = e.target.checked;
                 const nextEnabled = !skip;
                 setSeedSampleNotes(nextEnabled);
-                void window.Nodex.setSeedSampleNotes(nextEnabled).then((r) => {
+                void getNodex().setSeedSampleNotes(nextEnabled).then((r) => {
                   if (r.ok) {
                     setSeedSampleNotes(r.seedSampleNotes);
                   }
@@ -193,7 +194,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ category }) => {
           <button
             type="button"
             className="rounded-sm border border-input bg-background px-3 py-1.5 text-[12px] shadow-sm hover:bg-muted/50"
-            onClick={() => void window.Nodex.toggleDeveloperTools()}
+            onClick={() => void getNodex().toggleDeveloperTools()}
           >
             Open Developer Tools
           </button>

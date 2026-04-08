@@ -1,3 +1,4 @@
+import { getNodex } from "../../../../../shared/nodex-host-access";
 import { autocompletion, completionKeymap, type Completion, type CompletionContext } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";

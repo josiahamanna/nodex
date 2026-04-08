@@ -146,7 +146,7 @@ function ensureChildOf(parentId: string, childId: string): void {
  * Upserts bundled documentation notes from local `.md` / `.mdx` files (manifest-driven).
  * Safe to call on every workspace bootstrap / API server start: overwrites title/body from disk.
  *
- * @returns true if the notes store was modified (caller should persist SQLite).
+ * @returns true if the notes store was modified (caller should persist the workspace JSON).
  */
 export function seedBundledDocumentationNotesFromDir(): boolean {
   const dir = resolveDocsDir();
@@ -286,7 +286,7 @@ export function seedBundledDocumentationNotesFromDir(): boolean {
   }
 
   // Extra bundled docs that aren't part of the plugin-authoring manifest.
-  // These are still seeded into the SQLite notes tree so the Docs hub can display them.
+  // These are still seeded into the in-memory legacy notes tree so the Docs hub can display them.
   const aboutPath = path.resolve(process.cwd(), ABOUT_NODEX_RELATIVE_FILE);
   if (fs.existsSync(aboutPath)) {
     try {

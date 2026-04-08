@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 type RpcRequest =
   | {
       type: "eval";
@@ -167,7 +168,7 @@ async function handleRpc(req: Extract<RpcRequest, { type: "rpc" }>): Promise<voi
     iframe?.contentWindow?.postMessage(resp, "*");
   };
   try {
-    const api = window.Nodex;
+    const api = getNodex();
     if (!api) {
       post({ type: "rpcResult", id: req.id, ok: false, error: "No host API" });
       return;

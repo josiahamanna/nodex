@@ -26,7 +26,7 @@ import {
   softDeleteCloudNoteLocal,
 } from "../../../store/cloudNotesSlice";
 import { useTheme } from "../../../theme/ThemeContext";
-import { isWebScratchSession } from "../../../auth/web-scratch";
+import { isEphemeralScratchExperience } from "../../../auth/scratch-experience";
 
 export function CloudSyncMainView(): React.ReactElement {
   const dispatch = useDispatch<AppDispatch>();
@@ -81,10 +81,10 @@ export function CloudSyncMainView(): React.ReactElement {
           unchanged. API base:{" "}
           <span className="font-mono text-[11px]">{apiBase || "see env"}</span>
         </p>
-        {isWebScratchSession() ? (
+        {isEphemeralScratchExperience() ? (
           <p className="mt-3 max-w-lg rounded-md border border-amber-500/35 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-muted-foreground">
-            Browser scratch: try-out notes use localStorage + IndexedDB on this device until you authenticate. Sign
-            in below to use the sync API (Mongo) when configured.
+            Scratch / try-out: notes use IndexedDB (and browser try-out also uses a localStorage flag) on this device
+            until you authenticate. Sign in below to use the sync API (Mongo) when configured.
           </p>
         ) : null}
         {auth.error ? (

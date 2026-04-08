@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, {
   useCallback,
   useEffect,
@@ -125,18 +126,18 @@ export function usePluginIDETreeScaffoldAndTools(p: ReturnType<typeof usePluginI
       try {
         let res = isDup
           ? d.fromPlugin === d.toPlugin
-            ? await window.Nodex.copyPluginSourceWithinWorkspace(
+            ? await getNodex().copyPluginSourceWithinWorkspace(
                 d.toPlugin,
                 fromRel,
                 destRel,
               )
-            : await window.Nodex.copyPluginSourceBetweenWorkspaces(
+            : await getNodex().copyPluginSourceBetweenWorkspaces(
                 d.fromPlugin,
                 fromRel,
                 d.toPlugin,
                 destRel,
               )
-          : await window.Nodex.movePluginSourceBetweenWorkspaces(
+          : await getNodex().movePluginSourceBetweenWorkspaces(
               d.fromPlugin,
               fromRel,
               d.toPlugin,
@@ -147,18 +148,18 @@ export function usePluginIDETreeScaffoldAndTools(p: ReturnType<typeof usePluginI
           destRel = siblingCopyRelativePath(destRel, d.fromIsDir);
           res = isDup
             ? d.fromPlugin === d.toPlugin
-              ? await window.Nodex.copyPluginSourceWithinWorkspace(
+              ? await getNodex().copyPluginSourceWithinWorkspace(
                   d.toPlugin,
                   fromRel,
                   destRel,
                 )
-              : await window.Nodex.copyPluginSourceBetweenWorkspaces(
+              : await getNodex().copyPluginSourceBetweenWorkspaces(
                   d.fromPlugin,
                   fromRel,
                   d.toPlugin,
                   destRel,
                 )
-            : await window.Nodex.movePluginSourceBetweenWorkspaces(
+            : await getNodex().movePluginSourceBetweenWorkspaces(
                 d.fromPlugin,
                 fromRel,
                 d.toPlugin,
@@ -173,7 +174,7 @@ export function usePluginIDETreeScaffoldAndTools(p: ReturnType<typeof usePluginI
           await refreshFileList();
         }
         try {
-          const files = await window.Nodex.listPluginSourceFiles(d.toPlugin);
+          const files = await getNodex().listPluginSourceFiles(d.toPlugin);
           setFolderFilesCache((prev) => ({ ...prev, [d.toPlugin]: files }));
         } catch {
           /* ignore */
@@ -202,7 +203,7 @@ export function usePluginIDETreeScaffoldAndTools(p: ReturnType<typeof usePluginI
     setBusy(true);
     setStatus(null);
     try {
-      const r = await window.Nodex.scaffoldPluginWorkspace(pluginFolder);
+      const r = await getNodex().scaffoldPluginWorkspace(pluginFolder);
       if (!r.success) {
         setStatus(r.error ?? "Scaffold failed");
         return;
@@ -224,7 +225,7 @@ export function usePluginIDETreeScaffoldAndTools(p: ReturnType<typeof usePluginI
         return;
       }
       if (v === "reveal") {
-        const r = await window.Nodex.revealPluginWorkspaceInFileManager(
+        const r = await getNodex().revealPluginWorkspaceInFileManager(
           pluginFolder,
         );
         setStatus(
@@ -244,7 +245,7 @@ export function usePluginIDETreeScaffoldAndTools(p: ReturnType<typeof usePluginI
           return;
         }
         localStorage.setItem(PLUGIN_IDE_CUSTOM_EDITOR_KEY, cmd.trim());
-        const r = await window.Nodex.openPluginWorkspaceInEditor({
+        const r = await getNodex().openPluginWorkspaceInEditor({
           editor: "custom",
           customBin: cmd.trim(),
           pluginName: pluginFolder,
@@ -254,7 +255,7 @@ export function usePluginIDETreeScaffoldAndTools(p: ReturnType<typeof usePluginI
         );
         return;
       }
-      const r = await window.Nodex.openPluginWorkspaceInEditor({
+      const r = await getNodex().openPluginWorkspaceInEditor({
         editor: v,
         pluginName: pluginFolder,
       });
@@ -301,7 +302,7 @@ export function usePluginIDETreeScaffoldAndTools(p: ReturnType<typeof usePluginI
         className="rounded-sm border border-input bg-background px-2 py-1 text-[11px] hover:bg-muted/50"
         disabled={busy}
         title="Electron DevTools for this window (inspect host + plugin iframe)"
-        onClick={() => void window.Nodex.toggleDeveloperTools()}
+        onClick={() => void getNodex().toggleDeveloperTools()}
       >
         DevTools
       </button>

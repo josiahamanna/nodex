@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import {
   useCallback,
   useEffect,
@@ -26,12 +27,12 @@ export function useMainDebugLogStream(): {
     let unsub: (() => void) | undefined;
     void (async () => {
       try {
-        const initial = await window.Nodex.getMainDebugLogBuffer();
+        const initial = await getNodex().getMainDebugLogBuffer();
         setMainDebugLogs(initial);
       } catch {
         /* ignore */
       }
-      unsub = window.Nodex.onMainDebugLog((entry) => {
+      unsub = getNodex().onMainDebugLog((entry) => {
         setMainDebugLogs((prev) => {
           const next = [...prev, entry];
           return next.length > RENDERER_CAP
@@ -52,7 +53,7 @@ export function useMainDebugLogStream(): {
 
   const clearMainDebugLogs = useCallback(async () => {
     try {
-      await window.Nodex.clearMainDebugLogBuffer();
+      await getNodex().clearMainDebugLogBuffer();
       setMainDebugLogs([]);
     } catch {
       setMainDebugLogs([]);

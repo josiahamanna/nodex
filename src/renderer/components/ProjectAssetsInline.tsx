@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -109,7 +110,7 @@ export default function ProjectAssetsInline({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const r = await window.Nodex.listAssets(relDir, projectRoot);
+      const r = await getNodex().listAssets(relDir, projectRoot);
       if (cancelled) {
         return;
       }
@@ -160,7 +161,7 @@ export default function ProjectAssetsInline({
       ) {
         return;
       }
-      const r = await window.Nodex.moveProjectAsset({
+      const r = await getNodex().moveProjectAsset({
         fromProject: payload.fromProject,
         fromRel: payload.fromRel,
         toProject: projectRoot,
@@ -369,7 +370,7 @@ export default function ProjectAssetsInline({
                 onClick={() => {
                   const rel = ctxMenu.fullRel;
                   setCtxMenu(null);
-                  void window.Nodex.revealAssetInFileManager(rel, projectRoot);
+                  void getNodex().revealAssetInFileManager(rel, projectRoot);
                 }}
               >
                 Open containing folder

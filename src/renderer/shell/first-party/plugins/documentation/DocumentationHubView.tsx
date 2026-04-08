@@ -1,3 +1,4 @@
+import { getNodex } from "../../../../../shared/nodex-host-access";
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Note } from "@nodex/ui-types";
 import MarkdownRenderer from "../../../../components/renderers/MarkdownRenderer";
@@ -159,10 +160,10 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     setBundledError(null);
     const load = async () => {
       if (bundledNoteId.startsWith("wpn-docs:")) {
-        const r = await window.Nodex.wpnGetNote(bundledNoteId);
+        const r = await getNodex().wpnGetNote(bundledNoteId);
         return r.note as unknown as Note;
       }
-      return await window.Nodex.getNote(bundledNoteId);
+      return await getNodex().getNote(bundledNoteId);
     };
     void load()
       .then((n) => {

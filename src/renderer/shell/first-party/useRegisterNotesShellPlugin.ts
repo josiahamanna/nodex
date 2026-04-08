@@ -1,3 +1,4 @@
+import { getNodex } from "../../../shared/nodex-host-access";
 import { useEffect } from "react";
 import { useNodexContributionRegistry } from "../NodexContributionContext";
 import { useShellLayoutStore } from "../layout/ShellLayoutContext";
@@ -162,7 +163,7 @@ export function useRegisterNotesShellPlugin(): void {
                 );
                 return;
               }
-              const created = await window.Nodex.wpnCreateNoteInProject(projectId, {
+              const created = await getNodex().wpnCreateNoteInProject(projectId, {
                 relation: "root",
                 type: "markdown",
                 title: "Scratch",

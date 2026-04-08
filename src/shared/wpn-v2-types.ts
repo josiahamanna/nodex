@@ -1,4 +1,4 @@
-/** Workspace → project → note (v2) — DTOs for SQLite, Postgres, HTTP, and IPC. */
+/** Workspace → project → note (v2) — DTOs for JSON workspace, Postgres, HTTP, and IPC. */
 
 export type WpnWorkspaceRow = {
   id: string;

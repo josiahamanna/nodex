@@ -1,3 +1,4 @@
+import { getNodex } from "../../shared/nodex-host-access";
 import type { NodexContributionRegistry } from "./nodex-contribution-registry";
 import type { ShellRegistries } from "./registries/ShellRegistriesContext";
 import type { ShellKeyBinding } from "./registries/ShellKeymapRegistry";
@@ -72,7 +73,7 @@ export function registerNodexCoreContributions(
       category: "Plugins",
       doc: "Lists installed plugin ids in the minibuffer (and console).",
       api: {
-        summary: "List installed plugin ids via window.Nodex.getInstalledPlugins().",
+        summary: "List installed plugin ids via getNodex().getInstalledPlugins().",
         args: [],
         exampleInvoke: {},
         returns: {
@@ -82,7 +83,7 @@ export function registerNodexCoreContributions(
       },
       handler: async () => {
         try {
-          const ids = await window.Nodex.getInstalledPlugins();
+          const ids = await getNodex().getInstalledPlugins();
           // eslint-disable-next-line no-console
           console.info("[Nodex] Installed plugins:", ids);
           const body = ids.length ? ids.map((id) => `  ${id}`).join("\n") : "  (none)";
@@ -109,13 +110,13 @@ export function registerNodexCoreContributions(
         exampleInvoke: {},
         returns: {
           type: "Promise<void>",
-          description: "Resolves after window.Nodex.reloadPluginRegistry(); shows status in mode line.",
+          description: "Resolves after getNodex().reloadPluginRegistry(); shows status in mode line.",
         },
       },
       handler: async () => {
         setTransientStatus("Reloading plugins…", 1500);
         emitNodexMinibarOutput("Reloading plugins…");
-        const r = await window.Nodex.reloadPluginRegistry();
+        const r = await getNodex().reloadPluginRegistry();
         if (r.success) {
           emitNodexMinibarOutput("Plugins reloaded.");
           setTransientStatus("Plugins reloaded.");
@@ -149,7 +150,7 @@ export function registerNodexCoreContributions(
         exampleInvoke: { pluginId: "com.example.plugin" },
         returns: {
           type: "Promise<void>",
-          description: "Calls window.Nodex.setPluginEnabled(pluginId, enabled).",
+          description: "Calls getNodex().setPluginEnabled(pluginId, enabled).",
         },
       },
       handler: async (args) => {
@@ -167,7 +168,7 @@ export function registerNodexCoreContributions(
         emitNodexMinibarOutput(
           enabled ? `Enabling ${pluginId}…` : `Disabling ${pluginId}…`,
         );
-        const r = await window.Nodex.setPluginEnabled(pluginId, enabled);
+        const r = await getNodex().setPluginEnabled(pluginId, enabled);
         if (r.success) {
           emitNodexMinibarOutput(enabled ? `Enabled: ${pluginId}` : `Disabled: ${pluginId}`);
           setTransientStatus(enabled ? "Enabled." : "Disabled.");
@@ -198,7 +199,7 @@ export function registerNodexCoreContributions(
           },
         ],
         exampleInvoke: { pluginId: "com.example.plugin" },
-        returns: { type: "Promise<void>", description: "window.Nodex.uninstallPlugin" },
+        returns: { type: "Promise<void>", description: "getNodex().uninstallPlugin" },
       },
       handler: async (args) => {
         const pluginId = String(args?.pluginId ?? "").trim();
@@ -211,7 +212,7 @@ export function registerNodexCoreContributions(
         }
         setTransientStatus(`Uninstalling ${pluginId}…`, 1500);
         emitNodexMinibarOutput(`Uninstalling ${pluginId}…`);
-        const r = await window.Nodex.uninstallPlugin(pluginId);
+        const r = await getNodex().uninstallPlugin(pluginId);
         if (r.success) {
           emitNodexMinibarOutput(`Uninstalled: ${pluginId}`);
           setTransientStatus("Uninstalled.");
@@ -237,7 +238,7 @@ export function registerNodexCoreContributions(
             name: "packageFile",
             type: "string",
             required: true,
-            description: "Basename or path key understood by window.Nodex.installMarketplacePlugin.",
+            description: "Basename or path key understood by getNodex().installMarketplacePlugin.",
           },
         ],
         exampleInvoke: { packageFile: "my-plugin.tgz" },
@@ -257,7 +258,7 @@ export function registerNodexCoreContributions(
         }
         setTransientStatus(`Installing ${packageFile}…`, 1500);
         emitNodexMinibarOutput(`Installing ${packageFile}…`);
-        const r = await window.Nodex.installMarketplacePlugin(packageFile);
+        const r = await getNodex().installMarketplacePlugin(packageFile);
         if (r.success) {
           const w =
             r.warnings?.length && r.warnings.length > 0

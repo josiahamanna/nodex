@@ -32,7 +32,7 @@ This **Home** note is the workspace root — use it as your documentation landin
 
 _Edit this page anytime to match your project._`;
 
-/** Workspace row including owner (matches former SQLite column). */
+/** Workspace row including owner (persisted in JSON workspace alongside WPN rows). */
 export type WpnWorkspaceStored = WpnWorkspaceRow & { owner_id: string };
 
 export type WorkspaceExplorerRow = {
@@ -137,8 +137,8 @@ function normalizeSlot(raw: unknown): WorkspacePersistedSlot {
   };
 }
 
-function workspaceJsonPath(root: string): string {
-  return path.join(root, "data", WORKSPACE_JSON);
+export function workspaceDataJsonPath(root: string): string {
+  return path.join(path.resolve(root), "data", WORKSPACE_JSON);
 }
 
 function writeJsonAtomic(filePath: string, data: unknown): void {
@@ -206,26 +206,50 @@ function buildAttachedOrder(
 
 let workspaceStore: WorkspaceStore | null = null;
 
+export type InitWorkspaceNotesOptions = {
+  /** When false, `persist()` is a no-op (ephemeral temp-dir scratch). Default: true when not scratch. */
+  diskPersistence?: boolean;
+  /** Temp-dir Electron scratch: in-memory + optional on-disk JSON only after save-to-folder. */
+  scratchSession?: boolean;
+};
+
 export class WorkspaceStore {
-  readonly roots: string[];
+  /** Mutable: `saveScratchWorkspaceToFolder` replaces the scratch root with a real folder path. */
+  roots: string[];
 
   readonly slots: WorkspacePersistedSlot[];
 
-  private constructor(roots: string[], slots: WorkspacePersistedSlot[]) {
+  scratchSession: boolean;
+
+  diskPersistence: boolean;
+
+  private constructor(
+    roots: string[],
+    slots: WorkspacePersistedSlot[],
+    scratchSession: boolean,
+    diskPersistence: boolean,
+  ) {
     this.roots = roots;
     this.slots = slots;
+    this.scratchSession = scratchSession;
+    this.diskPersistence = diskPersistence;
   }
 
-  static open(roots: string[]): WorkspaceStore {
+  static open(roots: string[], options?: InitWorkspaceNotesOptions): WorkspaceStore {
     const resolved = roots.map((r) => path.resolve(r));
+    const scratchSession = options?.scratchSession === true;
+    const diskPersistence =
+      options?.diskPersistence !== undefined
+        ? options.diskPersistence
+        : !scratchSession;
     const slots = resolved.map((root) =>
-      readSlotFile(workspaceJsonPath(root)),
+      readSlotFile(workspaceDataJsonPath(root)),
     );
-    return new WorkspaceStore(resolved, slots);
+    return new WorkspaceStore(resolved, slots, scratchSession, diskPersistence);
   }
 
   filePathForSlot(slotIndex: number): string {
-    return workspaceJsonPath(this.roots[slotIndex]!);
+    return workspaceDataJsonPath(this.roots[slotIndex]!);
   }
 
   getAppMeta(slotIndex: number, key: string): string | null {
@@ -275,8 +299,12 @@ export class WorkspaceStore {
 
   /**
    * Persist in-memory notes tree + all WPN data to per-root JSON files.
+   * Skipped for ephemeral scratch until `diskPersistence` is enabled (save-to-folder).
    */
   persist(): void {
+    if (!this.diskPersistence) {
+      return;
+    }
     const state = exportSerializedState();
     for (let i = 0; i < this.slots.length; i++) {
       const slot = this.slots[i]!;
@@ -329,22 +357,31 @@ export class WorkspaceStore {
   }
 }
 
-export function initWorkspaceNotesDatabase(rootPaths: string[]): WorkspaceStore {
+export function initWorkspaceNotesDatabase(
+  rootPaths: string[],
+  options?: InitWorkspaceNotesOptions,
+): WorkspaceStore {
   if (rootPaths.length === 0) {
     throw new Error("initWorkspaceNotesDatabase: no roots");
   }
   if (workspaceStore) {
     workspaceStore = null;
   }
-  workspaceStore = WorkspaceStore.open(rootPaths);
+  workspaceStore = WorkspaceStore.open(rootPaths, options);
   return workspaceStore;
+}
+
+/** Read persisted primary slot from disk (for one-off migration; does not open the global store). */
+export function readWorkspacePersistedSlotForRoot(root: string): WorkspacePersistedSlot {
+  return readSlotFile(workspaceDataJsonPath(root));
 }
 
 export function getNotesDatabase(): WorkspaceStore | null {
   return workspaceStore;
 }
 
-export function closeNotesSqlite(): void {
+/** Drop the in-memory `WorkspaceStore` singleton (e.g. before opening another project). */
+export function releaseWorkspaceStore(): void {
   workspaceStore = null;
 }
 
@@ -355,5 +392,5 @@ export function getAttachedDatabaseAliases(): string[] {
   return workspaceStore.roots.slice(1).map((_, i) => `ext${i + 1}`);
 }
 
-/** @deprecated SQLite removed — use getNotesDatabase() → WorkspaceStore */
+/** @deprecated Use `WorkspaceStore` / `getNotesDatabase()`. */
 export type NotesDatabase = WorkspaceStore;

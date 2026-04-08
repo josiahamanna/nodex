@@ -1,3 +1,4 @@
+import { getNodex } from "../../../../../shared/nodex-host-access";
 import type { WpnNoteWithContextListItem } from "../../../../../shared/wpn-v2-types";
 
 export type WpnNoteLinkRow = {
@@ -35,7 +36,7 @@ function rowsFromBulk(notes: readonly WpnNoteWithContextListItem[]): WpnNoteLink
  * Uses `wpnListAllNotesWithContext` when available; falls back to nested list calls.
  */
 export async function fetchWpnNoteLinkIndex(): Promise<WpnNoteLinkRow[]> {
-  const nodex = typeof window !== "undefined" ? window.Nodex : undefined;
+  const nodex = typeof window !== "undefined" ? getNodex() : undefined;
   if (!nodex?.wpnListWorkspaces) {
     return [];
   }

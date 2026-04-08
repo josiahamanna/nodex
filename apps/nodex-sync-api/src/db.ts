@@ -106,6 +106,8 @@ export type UserDoc = {
   _id: ObjectId;
   email: string;
   passwordHash: string;
+  /** Refresh token jti; new login/register overwrites → other clients cannot refresh. */
+  activeRefreshJti?: string | null;
 };
 
 export function getUsersCollection(): Collection {
