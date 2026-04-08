@@ -1,8 +1,11 @@
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
-import { getNodexDatabasePath } from "./nodex-paths";
 import { bootstrapWorkspaceNotes, closeNotesSqlite } from "./notes-persistence";
 import { resetNotesStore } from "./notes-store";
+import { getNotesDatabase } from "./workspace-store";
+import { wpnJsonCreateProject, wpnJsonCreateWorkspace, wpnJsonListWorkspaces } from "./wpn/wpn-json-service";
+import { getWpnOwnerId } from "./wpn/wpn-owner";
 
 const PREFS_FILE = "nodex-project-prefs.json";
 
@@ -145,9 +148,9 @@ export function writeProjectPrefs(
   );
 }
 
-/** `projectRoot/data/nodex.sqlite` */
+/** Primary workspace persistence: `projectRoot/data/nodex-workspace.json`. */
 export function getProjectNotesDbPath(projectRoot: string): string {
-  return path.resolve(projectRoot, "data", "nodex.sqlite");
+  return path.resolve(projectRoot, "data", "nodex-workspace.json");
 }
 
 /** `projectRoot/data/notes-tree.json` (legacy JSON migration target inside project). */
@@ -166,41 +169,131 @@ export function ensureProjectDirectories(projectRoot: string): void {
   fs.mkdirSync(path.join(root, "assets"), { recursive: true });
 }
 
-/**
- * If the project has no DB yet but userData has a legacy SQLite file, copy it once.
- */
-export function migrateLegacyUserDataDbIfNeeded(
-  projectRoot: string,
-  userDataPath: string,
-): void {
-  const dest = getProjectNotesDbPath(projectRoot);
-  if (fs.existsSync(dest)) {
+export type ActivateProjectResult =
+  | {
+      ok: true;
+      root: string;
+      dbPath: string;
+      workspaceRoots: string[];
+      /** Ephemeral Electron temp-dir session (not written to disk until saved). */
+      scratch?: boolean;
+    }
+  | { ok: false; error: string };
+
+function seedWpnWorkspaceIfEmpty(): void {
+  const store = getNotesDatabase();
+  if (!store) {
     return;
   }
-  const legacy = getNodexDatabasePath(userDataPath);
-  if (!fs.existsSync(legacy)) {
+  const owner = getWpnOwnerId();
+  if (wpnJsonListWorkspaces(store, owner).length > 0) {
     return;
   }
-  try {
-    const st = fs.statSync(legacy);
-    if (st.size === 0) {
-      return;
-    }
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(legacy, dest);
-    try {
-      fs.renameSync(legacy, `${legacy}.migrated-to-project.bak`);
-    } catch {
-      /* non-fatal */
-    }
-  } catch (e) {
-    console.warn("[Project] Legacy DB migration failed:", e);
-  }
+  const w = wpnJsonCreateWorkspace(store, owner, "Workspace");
+  wpnJsonCreateProject(store, owner, w.id, "Project");
 }
 
-export type ActivateProjectResult =
-  | { ok: true; root: string; dbPath: string; workspaceRoots: string[] }
-  | { ok: false; error: string };
+/**
+ * Open a temp-dir workspace: full app experience, nothing written to `nodex-workspace.json` until the user saves to a folder.
+ * Does not update project prefs (closing the app drops the session).
+ */
+export function activateScratchWorkspace(
+  registeredTypes: string[],
+): ActivateProjectResult {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-scratch-"));
+  try {
+    closeNotesSqlite();
+  } catch {
+    /* ignore */
+  }
+  resetNotesStore();
+  const legacyJson = getProjectLegacyNotesJsonPath(tempRoot);
+  bootstrapWorkspaceNotes([tempRoot], legacyJson, registeredTypes, {
+    scratchSession: true,
+  });
+  seedWpnWorkspaceIfEmpty();
+  return {
+    ok: true,
+    root: tempRoot,
+    dbPath: getProjectNotesDbPath(tempRoot),
+    workspaceRoots: [tempRoot],
+    scratch: true,
+  };
+}
+
+/**
+ * Write scratch state into `targetRoot`, remove the temp tree, activate the folder as the real workspace (updates prefs).
+ */
+export function saveScratchWorkspaceToFolder(
+  targetRoot: string,
+  userDataPath: string,
+  registeredTypes: string[],
+): ActivateProjectResult {
+  const store = getNotesDatabase();
+  if (!store?.scratchSession) {
+    return { ok: false, error: "Not in a scratch session" };
+  }
+  if (store.roots.length === 0) {
+    return { ok: false, error: "No scratch root" };
+  }
+  const scratchRoot = store.roots[0]!;
+  const resolved = path.resolve(targetRoot);
+  fs.mkdirSync(path.join(resolved, "data"), { recursive: true });
+  fs.mkdirSync(path.join(resolved, "assets"), { recursive: true });
+
+  store.diskPersistence = true;
+  store.scratchSession = false;
+  store.roots.splice(0, store.roots.length, resolved);
+  store.persist();
+
+  const sAssets = path.join(scratchRoot, "assets");
+  const tAssets = path.join(resolved, "assets");
+  if (fs.existsSync(sAssets)) {
+    fs.cpSync(sAssets, tAssets, { recursive: true });
+  }
+
+  try {
+    fs.rmSync(scratchRoot, { recursive: true, force: true });
+  } catch {
+    /* non-fatal */
+  }
+
+  try {
+    closeNotesSqlite();
+  } catch {
+    /* ignore */
+  }
+  resetNotesStore();
+  return activateWorkspace([resolved], userDataPath, registeredTypes);
+}
+
+/** Remove scratch temp files and start a fresh scratch workspace. Clears saved workspace prefs. */
+export function replaceScratchWithNewSession(
+  userDataPath: string,
+  registeredTypes: string[],
+): ActivateProjectResult {
+  const store = getNotesDatabase();
+  if (!store?.scratchSession || store.roots.length === 0) {
+    return { ok: false, error: "Not in a scratch session" };
+  }
+  const old = store.roots[0]!;
+  try {
+    fs.rmSync(old, { recursive: true, force: true });
+  } catch {
+    /* non-fatal */
+  }
+  try {
+    closeNotesSqlite();
+  } catch {
+    /* ignore */
+  }
+  resetNotesStore();
+  writeProjectPrefs(userDataPath, {
+    lastProjectRoot: null,
+    workspaceRoots: undefined,
+  });
+  return activateScratchWorkspace(registeredTypes);
+}
 
 /**
  * Close current notes DB, reset store, open multiple project folders (merged tree), persist prefs.
@@ -236,7 +329,6 @@ export function activateWorkspace(
   }
   const rootsResolved = existing;
   ensureProjectDirectories(rootsResolved[0]!);
-  migrateLegacyUserDataDbIfNeeded(rootsResolved[0]!, userDataPath);
   try {
     closeNotesSqlite();
   } catch {
@@ -313,12 +405,22 @@ export function deactivateProject(): void {
 
 /** Close DB, clear in-memory notes, clear saved workspace prefs (no folders open). */
 export function closeWorkspace(userDataPath: string): ActivateProjectResult {
+  const store = getNotesDatabase();
+  const scratchRoot =
+    store?.scratchSession && store.roots[0] ? store.roots[0] : null;
   try {
     closeNotesSqlite();
   } catch {
     /* ignore */
   }
   resetNotesStore();
+  if (scratchRoot) {
+    try {
+      fs.rmSync(scratchRoot, { recursive: true, force: true });
+    } catch {
+      /* non-fatal */
+    }
+  }
   writeProjectPrefs(userDataPath, {
     lastProjectRoot: null,
     workspaceRoots: undefined,

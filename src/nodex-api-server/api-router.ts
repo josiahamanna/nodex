@@ -45,9 +45,11 @@ import {
 import { createMarketplaceRouter } from "./marketplace/marketplace-router";
 import { createWpnRouter } from "./wpn-router";
 import { readMarketplaceS3ConfigFromEnv } from "./marketplace/marketplace-s3";
-import { openMarketplaceDb } from "./marketplace/marketplace-db";
+import {
+  listPublishedMarketplaceEntries,
+  loadMarketplaceState,
+} from "./marketplace/marketplace-json";
 import { isAssetMediaCategory, extMatchesCategory } from "../shared/asset-media";
-import { getLogicalWpnProjectStateIfAvailable } from "./logical-wpn-project-state";
 import { getWpnOwnerId } from "../core/wpn/wpn-owner";
 import {
   headlessGetWpnNoteById,
@@ -261,43 +263,23 @@ export function createNodexApiRouter(): Router {
     // If S3 marketplace is configured, list published releases from the marketplace DB.
     const s3 = readMarketplaceS3ConfigFromEnv();
     if (s3) {
-      const dbPath =
+      const jsonPath =
         process.env.NODEX_MARKET_DB_PATH?.trim() ||
-        path.join(getHeadlessUserDataPath(), "marketplace.sqlite");
-      const db = openMarketplaceDb(path.resolve(dbPath));
-      try {
-        const rows = db
-          .prepare(
-            `SELECT p.name AS name,
-                    r.version AS version,
-                    r.object_key AS object_key,
-                    r.created_at AS created_at
-             FROM marketplace_releases r
-             JOIN marketplace_plugins p ON p.id = r.plugin_id
-             WHERE r.status = 'published'
-             ORDER BY r.created_at DESC`,
-          )
-          .all() as Array<{
-          name: string;
-          version: string;
-          object_key: string;
-          created_at: string;
-        }>;
-        res.json({
-          filesBasePath: MARKETPLACE_FILES_BASE,
-          marketplaceDir: "",
-          generatedAt: "",
-          plugins: rows.map((r) => ({
-            name: r.name,
-            version: r.version,
-            packageFile: path.basename(r.object_key),
-            markdownFile: null,
-          })),
-        });
-        return;
-      } finally {
-        db.close();
-      }
+        path.join(getHeadlessUserDataPath(), "marketplace.json");
+      const state = loadMarketplaceState(path.resolve(jsonPath));
+      const rows = listPublishedMarketplaceEntries(state);
+      res.json({
+        filesBasePath: MARKETPLACE_FILES_BASE,
+        marketplaceDir: "",
+        generatedAt: "",
+        plugins: rows.map((r) => ({
+          name: r.name,
+          version: r.version,
+          packageFile: path.basename(r.object_key),
+          markdownFile: null,
+        })),
+      });
+      return;
     }
 
     const marketDir = resolveHeadlessMarketplaceDir();
@@ -426,11 +408,6 @@ export function createNodexApiRouter(): Router {
       const view = getHeadlessProjectStateView();
       res.json({ ...view, mountKind: "folder" as const });
     } catch (e) {
-      const logical = getLogicalWpnProjectStateIfAvailable();
-      if (logical) {
-        res.json(logical);
-        return;
-      }
       res.status(503).json({
         error: e instanceof Error ? e.message : String(e),
       });

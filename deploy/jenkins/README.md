@@ -1,6 +1,6 @@
 # Jenkins release / deploy
 
-The root [`Jenkinsfile`](../../Jenkinsfile) defaults to **`FULL_DEPLOY`**: `npm run deploy -- --stop-old` from a clean checkout, which drives Docker Compose and the UI blue/green flow ([`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh)). Uncheck **`FULL_DEPLOY`** to use **four optional targets** (run in order when enabled): **Postgres** → **API** → **gateway** → **web** (`deploy:web-only`). For cold starts or simplicity, keep **`FULL_DEPLOY`** or enable all four. **`Verify`** runs after full deploy, gateway-only, or web-only builds; it prints **`docker ps`** for `nodex-*` on **the Jenkins agent** and checks **`nodex-gateway`**. Gateway-only can fail if [`deploy/nginx-active-web.upstream.conf`](../../deploy/nginx-active-web.upstream.conf) names a web container that is not on the Docker network yet — align the active color with a running `nodex-web-blue` / `nodex-web-green`, or use **`FULL_DEPLOY`**. Use **Console Output** if you do not have SSH to the server.
+The root [`Jenkinsfile`](../../Jenkinsfile) defaults to **`FULL_DEPLOY`**: `npm run deploy -- --stop-old` from a clean checkout, which drives Docker Compose and the UI blue/green flow ([`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh)). Uncheck **`FULL_DEPLOY`** to use **optional targets** (run in order when enabled): **API** → **gateway** → **web** (`deploy:web-only`). For cold starts or simplicity, keep **`FULL_DEPLOY`** or enable all three. **`Verify`** runs after full deploy, gateway-only, or web-only builds; it prints **`docker ps`** for `nodex-*` on **the Jenkins agent** and checks **`nodex-gateway`**. Gateway-only can fail if [`deploy/nginx-active-web.upstream.conf`](../../deploy/nginx-active-web.upstream.conf) names a web container that is not on the Docker network yet — align the active color with a running `nodex-web-blue` / `nodex-web-green`, or use **`FULL_DEPLOY`**. Use **Console Output** if you do not have SSH to the server.
 
 ## No SSH to the agent
 
@@ -44,12 +44,12 @@ Confirm the machine or container that runs the job has:
 3. **Docker CLI and Compose v2** — same daemon that should run the stack; the `jenkins` user must be able to run `docker` and `docker compose` (group membership or equivalent socket access).
 4. **Repository root as `WORKSPACE`** — the job must check out this repo so `package.json` and `scripts/` are at the top level of the workspace (use **Checkout** to the default workspace or set `subdir` consistently).
 
-## Docker: `nodex-postgres` / `nodex-gateway` name already in use
+## Docker: `nodex-gateway` / fixed `container_name` already in use
 
 Compose uses fixed `container_name` values (see [`docker-compose.yml`](../../docker-compose.yml)). Docker allows each name only once per daemon.
 
-- **Stopped leftover** — [`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh) removes a **stopped** `nodex-postgres` before `compose up`; the **`nodex-pg-data` volume** keeps database files.
-- **Wrong Compose project** — Compose labels each container with `com.docker.compose.project` (default: checkout directory basename, e.g. `nodex-studio`). If the [`Jenkinsfile`](../../Jenkinsfile) sets **`COMPOSE_PROJECT_NAME=nodex`** but old containers still belong to `nodex-studio`, Compose tries to **create** new containers and hits a name conflict. The deploy script **removes** postgres, gateway, API, and web slots whose project label **does not** match the current `COMPOSE_PROJECT_NAME`, then recreates them under the correct project (named volumes are unchanged; expect a short DB/API blip).
+- **Stopped leftovers** — [`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh) can remove **stopped** `nodex-gateway`, `nodex-api`, or web slots when they block a recreate.
+- **Wrong Compose project** — Compose labels each container with `com.docker.compose.project` (default: checkout directory basename, e.g. `nodex-studio`). If the [`Jenkinsfile`](../../Jenkinsfile) sets **`COMPOSE_PROJECT_NAME=nodex`** but old containers still belong to `nodex-studio`, Compose tries to **create** new containers and hits a name conflict. The deploy script **removes** gateway, API, and web slots whose project label **does not** match the current `COMPOSE_PROJECT_NAME`, then recreates them under the correct project (named volumes such as `nodex-user-data` are unchanged).
 - **Local dev** — If you do not set `COMPOSE_PROJECT_NAME`, the script defaults it to the repo directory basename, matching Compose’s usual behavior.
 
 ## Why a naive `sh` + hard-coded NVM path fails
@@ -64,7 +64,7 @@ Compose uses fixed `container_name` values (see [`docker-compose.yml`](../../doc
 1. Add a **Secret text** credential (for example ID `nodex-auth-jwt-secret`).
 2. In the `Jenkinsfile`, uncomment the `NODEX_*` credential lines inside `environment { }` and match the credential IDs to what you created.
 
-Optional overrides (same as local deploy): `NODEX_PG_PASSWORD`, `NODEX_PG_DATABASE_URL`, `NODEX_WPN_DEFAULT_OWNER`, etc. Set them on the job or via an **Inject environment variables** / **Credentials** binding.
+Optional overrides (same as local deploy): `NODEX_WPN_DEFAULT_OWNER`, `NODEX_HOST_PROJECT`, `NODEX_GATEWAY_PORT`, etc. Set them on the job or via an **Inject environment variables** / **Credentials** binding.
 
 ## Web deploy: `container ... is not running` during UI wait
 

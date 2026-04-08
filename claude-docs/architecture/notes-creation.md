@@ -48,7 +48,7 @@ sequenceDiagram
 - **API**: [`loadNotesState` / `saveNotesState` / `bootstrapNotesTree`](../../src/core/notes-persistence.ts).
 - **Bootstrap**: On startup, load JSON; if missing or invalid, reset or seed sample tree, then save.
 
-**Backlog wording**: “Persisted in DB” in older notes means **durable storage**; swapping in SQLite/LevelDB later would sit behind the same persistence boundary.
+**Backlog wording**: “Persisted in DB” in older notes means **durable storage**; the current stack uses **workspace JSON + host persistence**; future stores (RxDB, etc.) sit behind the same persistence boundary.
 
 ---
 

@@ -223,11 +223,11 @@ Not every interaction must be synchronous REST. The **Node server** may expose *
 
 | Mode | UI | Transport | API runtime | Source_of_truth | Notes |
 |------|----|-----------|-------------|-----------------|-------|
-| **Local desktop (Electron)** | Local renderer assets (file://) | IPC (default) | Electron main | **SQLite** (local) | Local-first; no horizontal scaling. Optional: main can also expose HTTP for automation later, but IPC remains the primary path. |
-| **Local web + headless API** | Next dev/static (localhost) | HTTP | Node headless API (localhost) | **SQLite** (local) | Good for browser testing and local use; treat as single-node. |
-| **Cloud web (hosted)** | Next server or static + CDN | HTTP | Node API (container/orchestrated) | **Postgres** (cloud) | Enables load balancing/replicas; put marketplace assets and attachments on object storage/CDN when needed. |
+| **Local desktop (Electron)** | Local renderer assets (file://) | IPC (default) | Electron main | **JSON workspace file** (`nodex-workspace.json` under project `data/`) | Local-first; no horizontal scaling. Optional: main can also expose HTTP for automation later, but IPC remains the primary path. |
+| **Local web + headless API** | Next dev/static (localhost) | HTTP | Node headless API (localhost) | **Same JSON workspace** (requires `NODEX_PROJECT_ROOT`) | Good for browser testing; treat as **single-node** per mounted project. |
+| **Cloud web (hosted)** | Next server or static + CDN | HTTP | Node API (container/orchestrated) | **Mounted project volume** (same JSON file) | Scale **UI** freely; run **one API instance per writable project mount**. Use object storage/CDN for marketplace artifacts when needed. |
 
-Operational rule: you can load-balance **stateless** UI servers freely; you can load-balance the API **only** when the backing store is a multi-user network DB (e.g. Postgres) and file storage is not tied to local disk.
+Operational rule: you can load-balance **stateless** UI servers freely. The headless API is **not** horizontally scaled against a single shared workspace path — use separate project mounts or a future sync/replicated store if you need multi-node writes.
 
 ---
 
@@ -321,16 +321,16 @@ At **runtime**, a given process uses **one** path: Electron **or** browser+Node,
 
 #### Storage backends (treat web and Electron as equal first-class targets)
 
-To keep **product semantics** aligned across both hosts while supporting **local-first** desktop usage and **cloud** web hosting, define a single persistence boundary (repositories/services) and provide **two concrete storage backends**:
+To keep **product semantics** aligned across both hosts while supporting **local-first** desktop usage and **hosted** web, define a single persistence boundary (repositories/services) and treat the **workspace JSON file** as the canonical on-disk store for WPN + legacy tree in the current stack:
 
-- **Local / desktop / dev** — **SQLite** (single-writer). Best for offline vaults, single-user workspaces, and local headless runs.
-- **Cloud** — **Postgres** (or similar multi-user SQL). Best for hosted web and multi-device use; enables horizontal API scaling, backups, and migrations.
+- **Local / desktop / dev** — **JSON workspace** under `{project}/data/nodex-workspace.json` (single-writer). Offline vaults and headless API both use this file when a project folder is open.
+- **Cloud / multi-user** — **North star**: MongoDB + Fastify sync API (`apps/nodex-sync-api`) and **RxDB** in clients for replication; the legacy Express headless API does not replace that with Postgres.
 
 Rules of thumb:
 
-- **SQLite mode is single-node.** Do not run multiple API replicas against the same SQLite file (or the same mounted workspace that owns it).
-- **Cloud scaling requires a network DB** (e.g. Postgres) as the source of truth. When notes/attachments involve the filesystem, add an object store (or a well-defined storage service) instead of relying on local disk.
-- If a user needs both “local and cloud”, model it as **sync** (explicit conflict + merge policy) rather than “two databases at once” inside one runtime.
+- **One API writer per project mount.** Do not run multiple `nodex-api` replicas against the same `NODEX_HOST_PROJECT` / workspace bind.
+- **Attachments and marketplace** — use object storage (e.g. S3/MinIO) for large artifacts; keep the workspace file for structured notes metadata and content as designed.
+- If a user needs both “local and cloud”, model it as **sync** (explicit conflict + merge policy) via the sync API + RxDB rather than multiple writers on one JSON file.
 
 ### Trust and tenancy
 
@@ -363,7 +363,7 @@ Implemented wiring:
 
 **Run locally**
 
-1. Use a **system Node** that matches the **better-sqlite3** binary, or rebuild after switching Node: `npm rebuild better-sqlite3` (Electron’s postinstall targets Electron’s Node; the headless server uses whatever runs `tsx`).
+1. Use a **Node version compatible with the repo** (see `package.json` / CI). After changing Node, run **`npm install`**; Electron native addons are rebuilt via root **`postinstall`** (`electron-rebuild`). The headless API uses **`tsx`** and persists to **`nodex-workspace.json`** — no separate SQL native module for workspace data.
 2. Start the API, pointing at an existing project directory:
 
    `NODEX_PROJECT_ROOT=/path/to/project npm run start:api`

@@ -485,16 +485,19 @@ export function applyWorkspaceActivateResult(res: {
   root: string;
   dbPath: string;
   workspaceRoots: string[];
+  scratch?: boolean;
 }): void {
   if (res.workspaceRoots.length === 0) {
     ctx.projectRootPath = null;
     ctx.notesPersistencePath = null;
     ctx.workspaceRoots = [];
+    ctx.scratchSession = false;
     return;
   }
   ctx.projectRootPath = res.root;
   ctx.notesPersistencePath = res.dbPath;
   ctx.workspaceRoots = res.workspaceRoots;
+  ctx.scratchSession = res.scratch === true;
 }
 
 export function tryLoadSavedProject(
@@ -507,6 +510,7 @@ export function tryLoadSavedProject(
     ctx.projectRootPath = null;
     ctx.notesPersistencePath = null;
     ctx.workspaceRoots = [];
+    ctx.scratchSession = false;
     clearNodexUndoRedo();
     deactivateProject();
     return;
@@ -524,6 +528,7 @@ export function tryLoadSavedProject(
   ctx.projectRootPath = null;
   ctx.notesPersistencePath = null;
   ctx.workspaceRoots = [];
+  ctx.scratchSession = false;
   clearNodexUndoRedo();
   deactivateProject();
 }

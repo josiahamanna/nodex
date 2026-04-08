@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { clearNodexUndoRedo } from "../core/nodex-undo";
@@ -17,15 +18,32 @@ import {
 /** Types passed to `activateWorkspace` / seeding when no Electron plugin registry is loaded. */
 const HEADLESS_REGISTERED_TYPES = ["markdown", "mdx", "text", "root"];
 
+/** Used when `NODEX_PROJECT_ROOT` is unset so `npm run start:api` works locally. */
+const DEFAULT_HEADLESS_PROJECT_DIR = ".nodex-headless-project";
+
 let lastResult: ActivateProjectResult | null = null;
 let userDataPath = "";
 
 export function initHeadlessFromEnv(): ActivateProjectResult {
-  const raw = process.env.NODEX_PROJECT_ROOT?.trim();
-  if (!raw) {
-    return { ok: false, error: "Set NODEX_PROJECT_ROOT to an absolute project folder" };
-  }
+  const envRaw = process.env.NODEX_PROJECT_ROOT?.trim();
+  const usedDefault = !envRaw;
+  const raw = envRaw ?? path.join(process.cwd(), DEFAULT_HEADLESS_PROJECT_DIR);
   const projectRoot = path.resolve(raw);
+  if (usedDefault) {
+    try {
+      fs.mkdirSync(projectRoot, { recursive: true });
+    } catch (e) {
+      return {
+        ok: false,
+        error: `Could not create default project folder ${projectRoot}: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      };
+    }
+    // eslint-disable-next-line no-console
+    console.info(`[Nodex API] NODEX_PROJECT_ROOT not set; using ${projectRoot}`);
+  }
+  process.env.NODEX_PROJECT_ROOT = projectRoot;
   userDataPath =
     process.env.NODEX_USER_DATA_DIR?.trim() ||
     path.join(os.homedir(), ".nodex-headless-data");
@@ -116,16 +134,3 @@ export function headlessSelectableNoteTypes(): string[] {
   return [...types].sort();
 }
 
-/**
- * When the API runs with Postgres WPN only (no `NODEX_PROJECT_ROOT`), set a minimal
- * `userDataPath` so marketplace / prefs code that reads it does not see an empty path.
- */
-export function initHeadlessPgOnlyFromEnv(): void {
-  userDataPath =
-    process.env.NODEX_USER_DATA_DIR?.trim() ||
-    path.join(os.tmpdir(), "nodex-headless-pg-only");
-  loadPersistedHeadlessSessionPlugins(userDataPath);
-  registerBuiltinJsNotebookNoteRenderer(getHeadlessSessionRegistry());
-  registerBuiltinMarkdownNoteRenderer(getHeadlessSessionRegistry());
-  registerBuiltinMdxNoteRenderer(getHeadlessSessionRegistry());
-}

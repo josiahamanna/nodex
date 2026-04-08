@@ -154,7 +154,7 @@ Optional: add **`regs.menuRail.registerItem`** so the activity rail opens the sa
 
 Use **`window.Nodex`** in the renderer. Its TypeScript contract is **`NodexRendererApi`** in `src/shared/nodex-renderer-api.ts` (notes, project, plugins, assets, shell layout, workspace APIs, plugin IDE helpers, etc.). The package **`@nodex/shell-ui` / `nodex-plugin-ui`** exposes **`useHostNodex()`** as a small wrapper around `window.Nodex` for first-party code.
 
-Do **not** rely on Node `fs`, raw SQLite, or unmediated `fetch` from sandboxed plugin code; use the host API (see section 4).
+Do **not** rely on Node `fs`, raw SQL/database drivers, or unmediated `fetch` from sandboxed plugin code; use the host API (see section 4).
 
 ### 2.7 Examples to read in the repo
 
@@ -194,7 +194,7 @@ The full shape is **`PluginManifest`** in `src/core/plugin-loader-types.ts`. Imp
 
 The loader **`require`s** your main file and calls **`activate`** with an API object. The classic surface includes **`registerNoteRenderer`** / note UI registration (see `src/core/plugin-loader-registry.ts`). The minimal **typed** legacy shape is **`NodexAPI`** in `plugin-loader-types.ts` (`Nodex.ui.registerComponent` for string-based component registration).
 
-End-user oriented overview and ZIP tips: **`PLUGIN_SYSTEM.md`** at the repo root.
+End-user oriented overview and ZIP tips: **`docs/repository/PLUGIN_SYSTEM.md`**.
 
 ### 3.4 Legacy iframe note UI
 

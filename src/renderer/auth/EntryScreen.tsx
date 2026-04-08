@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { AuthScreen } from "./AuthScreen";
 import { NodexLogo } from "../components/NodexLogo";
+import { setWebScratchSession } from "./web-scratch";
 
 type EntryView = "marketing" | "auth";
 type AuthMode = "login" | "signup";
@@ -8,9 +9,11 @@ type AuthMode = "login" | "signup";
 function MarketingHome({
   onLogin,
   onSignup,
+  onTryBrowserScratch,
 }: {
   onLogin: () => void;
   onSignup: () => void;
+  onTryBrowserScratch: () => void;
 }): React.ReactElement {
   const card =
     "rounded-xl border border-border bg-background/70 p-5 shadow-sm backdrop-blur";
@@ -190,8 +193,15 @@ function MarketingHome({
         </section>
       </main>
 
-      <footer className="relative z-10 mx-auto w-full max-w-6xl px-6 pb-5 text-center text-[11px] text-muted-foreground">
-        Built by Jehu Shalom Amanna
+      <footer className="relative z-10 mx-auto flex w-full max-w-6xl flex-col items-center gap-2 px-6 pb-5 text-center text-[11px] text-muted-foreground">
+        <button
+          type="button"
+          className="text-[11px] text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+          onClick={onTryBrowserScratch}
+        >
+          Try in the browser (scratch) — explore the app; cloud notes stay in this browser until you sign in
+        </button>
+        <span>Built by Jehu Shalom Amanna</span>
       </footer>
     </div>
   );
@@ -200,6 +210,11 @@ function MarketingHome({
 export function EntryScreen(): React.ReactElement {
   const [view, setView] = useState<EntryView>("marketing");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
+
+  const onTryBrowserScratch = (): void => {
+    setWebScratchSession(true);
+    window.location.reload();
+  };
 
   const auth = useMemo(
     () => (
@@ -225,6 +240,7 @@ export function EntryScreen(): React.ReactElement {
         setAuthMode("signup");
         setView("auth");
       }}
+      onTryBrowserScratch={onTryBrowserScratch}
     />
   );
 }

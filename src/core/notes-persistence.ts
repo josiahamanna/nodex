@@ -12,22 +12,18 @@ import {
 import { seedBundledDocumentationNotesFromDir } from "./bundled-docs-seed";
 import {
   closeNotesSqlite,
-  countNotesInDb,
-  getHomeWelcomeMarkdown,
   getNotesDatabase,
   initWorkspaceNotesDatabase,
-  loadFromDatabase,
-  readSerializedFromAlias,
-  saveWorkspaceToDatabases,
-} from "./notes-sqlite";
+  type WorkspaceStore,
+} from "./workspace-store";
 
-function trySeedBundledDocsAndSave(db: ReturnType<typeof getNotesDatabase>): void {
-  if (!db) {
+function trySeedBundledDocsAndSave(store: WorkspaceStore | null): void {
+  if (!store) {
     return;
   }
   try {
     if (seedBundledDocumentationNotesFromDir()) {
-      saveWorkspaceToDatabases(db);
+      store.persist();
     }
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -59,20 +55,21 @@ export function loadNotesStateFromJsonFile(filePath: string): NotesLoadResult {
 }
 
 export function saveNotesState(): void {
-  const db = getNotesDatabase();
-  if (!db) {
-    throw new Error("Notes database not initialized");
+  const store = getNotesDatabase();
+  if (!store) {
+    throw new Error("Notes workspace store not initialized");
   }
-  saveWorkspaceToDatabases(db);
+  store.persist();
 }
 
 /**
- * Load primary + attached project DBs into memory. `legacyJsonPath` is for the first root only.
+ * Load primary + attached project data into memory. `legacyJsonPath` is for the first root only.
  */
 export function bootstrapWorkspaceNotes(
   roots: string[],
   legacyJsonPath: string,
   registeredTypes: string[],
+  options?: { diskPersistence?: boolean; scratchSession?: boolean },
 ): void {
   for (const r of roots) {
     const root = path.resolve(r);
@@ -80,13 +77,16 @@ export function bootstrapWorkspaceNotes(
     fs.mkdirSync(path.join(root, "assets"), { recursive: true });
   }
 
-  const db = initWorkspaceNotesDatabase(roots);
+  const store = initWorkspaceNotesDatabase(roots, {
+    diskPersistence: options?.diskPersistence,
+    scratchSession: options?.scratchSession,
+  });
 
-  if (countNotesInDb(db) === 0 && fs.existsSync(legacyJsonPath)) {
+  if (store.countLegacyNotesInSlot(0) === 0 && fs.existsSync(legacyJsonPath)) {
     resetNotesStore();
     const migrated = loadNotesStateFromJsonFile(legacyJsonPath);
     if (migrated === "ok" && getNotesFlat().length > 0) {
-      saveWorkspaceToDatabases(db);
+      store.persist();
       try {
         fs.renameSync(legacyJsonPath, `${legacyJsonPath}.migrated.bak`);
       } catch {
@@ -97,10 +97,10 @@ export function bootstrapWorkspaceNotes(
 
   resetNotesStore();
 
-  const mainEmpty = countNotesInDb(db) === 0;
+  const mainEmpty = store.countLegacyNotesInSlot(0) === 0;
   let allAttachedEmpty = true;
   for (let i = 1; i < roots.length; i++) {
-    const st = readSerializedFromAlias(db, `ext${i}`);
+    const st = store.readSerializedFromSlot(i);
     if (st.records.length > 0) {
       allAttachedEmpty = false;
     }
@@ -108,58 +108,56 @@ export function bootstrapWorkspaceNotes(
 
   if (mainEmpty && allAttachedEmpty) {
     ensureNotesSeeded(registeredTypes, {
-      homeMarkdown: getHomeWelcomeMarkdown(db),
+      homeMarkdown: store.getHomeWelcomeMarkdown(0),
     });
     mergeMultipleRootsIfNeeded();
-    saveWorkspaceToDatabases(db);
-    trySeedBundledDocsAndSave(db);
+    store.persist();
+    trySeedBundledDocsAndSave(store);
     return;
   }
 
-  if (!loadFromDatabase(db)) {
+  if (!store.loadPrimaryLegacyIntoMemory()) {
     resetNotesStore();
     ensureNotesSeeded(registeredTypes, {
-      homeMarkdown: getHomeWelcomeMarkdown(db),
+      homeMarkdown: store.getHomeWelcomeMarkdown(0),
     });
     mergeMultipleRootsIfNeeded();
-    saveWorkspaceToDatabases(db);
-    trySeedBundledDocsAndSave(db);
+    store.persist();
+    trySeedBundledDocsAndSave(store);
     return;
   }
 
   mergeMultipleRootsIfNeeded();
 
   for (let i = 1; i < roots.length; i++) {
-    const data = readSerializedFromAlias(db, `ext${i}`);
+    const data = store.readSerializedFromSlot(i);
     mergeAttachedSerializedIntoStore(i, roots[i]!, data, registeredTypes);
-    // Always attempt seed: seedAttachedWorkspaceIfEmpty no-ops if mount already has children
-    // (avoids skipping when SQLite has stray rows but the tree under the mount is empty).
     seedAttachedWorkspaceIfEmpty(i, registeredTypes);
   }
   mergeMultipleRootsIfNeeded();
 
   if (roots.length > 1) {
-    saveWorkspaceToDatabases(db);
+    store.persist();
   }
 
   if (getNotesFlat().length === 0 && registeredTypes.length > 0) {
     resetNotesStore();
     ensureNotesSeeded(registeredTypes, {
-      homeMarkdown: getHomeWelcomeMarkdown(db),
+      homeMarkdown: store.getHomeWelcomeMarkdown(0),
     });
     mergeMultipleRootsIfNeeded();
-    saveWorkspaceToDatabases(db);
-    trySeedBundledDocsAndSave(db);
+    store.persist();
+    trySeedBundledDocsAndSave(store);
     return;
   }
 
   mergeMultipleRootsIfNeeded();
-  trySeedBundledDocsAndSave(db);
+  trySeedBundledDocsAndSave(store);
 }
 
 /**
- * Open SQLite, migrate from legacy JSON if DB empty, seed if still empty.
- * `dbPath` = e.g. project/data/nodex.sqlite; `legacyJsonPath` = project/data/notes-tree.json
+ * Open workspace JSON store; migrate from legacy `notes-tree.json` in data/ if empty.
+ * `dbPath` should be `project/data/nodex-workspace.json` (or any file under `project/data/`); parent folders resolve the project root.
  */
 export function bootstrapNotesTree(
   dbPath: string,

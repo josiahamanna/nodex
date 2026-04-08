@@ -13,23 +13,15 @@ import { ShellRegistriesProvider } from "../../../src/renderer/shell/registries/
 import { NodexDialogProvider } from "../../../src/renderer/dialog/NodexDialogProvider";
 import { ThemeProvider } from "../../../src/renderer/theme/ThemeContext";
 import { ToastProvider } from "../../../src/renderer/toast/ToastContext";
-import {
-  initHeadlessWebApiBaseFromUrlAndStorage,
-  installNodexWebShimIfNeeded,
-} from "../../../src/renderer/nodex-web-shim";
-import { store } from "../../../src/renderer/store";
+import { initCloudSyncRuntime } from "../../../src/renderer/cloud-sync/initCloudSyncRuntime";
+import { platformDeps, store } from "../../../src/renderer/store";
 import { ensureSesLockdown } from "../../../src/renderer/shell/sandbox/sesLockdown";
 
 function runClientBootstrap(): void {
   if (typeof window === "undefined") {
     return;
   }
-  try {
-    initHeadlessWebApiBaseFromUrlAndStorage();
-  } catch {
-    /* ignore */
-  }
-  installNodexWebShimIfNeeded();
+  initCloudSyncRuntime(platformDeps, store.dispatch);
   ensureSesLockdown();
   loader.config({ monaco });
   (window as unknown as { React?: typeof React }).React = React;

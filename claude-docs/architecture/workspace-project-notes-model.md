@@ -1,6 +1,6 @@
 # Workspace → project → note model (v2)
 
-This document describes the **logical data model** and **dual persistence** strategy for the next-generation Nodex explorer (no user-facing “folders”; **project** is the unit under **workspace**).
+This document describes the **logical data model** and **persistence** for the Nodex explorer (no user-facing “folders”; **project** is the unit under **workspace**).
 
 It complements [chrome-shell-navigation-and-notes.md](./chrome-shell-navigation-and-notes.md) (shell tabs, hash URLs for notes today) and the Cursor plan **workspace_projects_explorer_v2**.
 
@@ -8,21 +8,23 @@ It complements [chrome-shell-navigation-and-notes.md](./chrome-shell-navigation-
 
 | Topic | Decision |
 |--------|-----------|
-| Migration | **None** — v2 tables are additive or live alongside legacy `notes` / `child_order`; no automatic import of old trees in this phase. |
+| Migration | **None** — v2 data is additive or lives alongside legacy `notes` / `child_order` in the same workspace file; no automatic import of old trees in this phase. |
 | Folders | **No folder concept** in the product UI — only **workspace → project → note** (tree is notes within a project). |
 | Move project | **Logical reassignment** — change `workspace_id` (or equivalent FK); **no** required on-disk folder move. |
-| Electron | **SQLite** — same process as today; v2 tables live in the existing workspace `data/nodex.sqlite` (see `wpn_*` tables). |
-| Web / headless API | **PostgreSQL** when `NODEX_PG_DATABASE_URL` is set; otherwise the API falls back to **SQLite** via `getNotesDatabase()` (same JSON contract). |
+| Electron | **JSON workspace file** — WPN rows and explorer state live in `{project}/data/nodex-workspace.json` via [`WorkspaceStore`](../../src/core/workspace-store.ts); legacy outline may still load into the in-memory notes graph from the same file. |
+| Web / headless API | **Same JSON file** — requires **`NODEX_PROJECT_ROOT`** pointing at a project folder; WPN routes use `getNotesDatabase()` → `WorkspaceStore`. **PostgreSQL was removed**; there is no server-only DB mode for WPN. |
 
 ## Logical entities
 
-- **Workspace** — `id`, `name`, `sort_index`, optional `color_token`, timestamps, **`owner_id`** (TEXT, server default `jehu`) — scopes rows in shared Postgres/SQLite so multiple logical owners can coexist in one DB without a login UI today.
+- **Workspace** — `id`, `name`, `sort_index`, optional `color_token`, timestamps, **`owner_id`** (TEXT, default `jehu`) — scopes rows so multiple logical owners can coexist; JWT `sub` is used as owner when authenticated.
 - **Project** — `id`, `workspace_id`, `name`, `sort_index`, optional `color_token`, timestamps.
 - **Note (v2)** — `id`, `project_id`, optional `parent_id` (tree **within** project), `type`, `title`, `content`, optional `metadata_json`, `sibling_index`, timestamps.
 
 **Color tokens** — small palette keys (e.g. `c01`…`c12`) for mild UI colors; resolved in the renderer.
 
-**Explorer expand/collapse** — per-project JSON list of expanded node ids in `wpn_explorer_state` (`GET/PATCH …/explorer-state` on the WPN API and `wpnGetExplorerState` / `wpnSetExplorerState` on `window.Nodex`). Workspace/project sections in the panel also use local UI state.
+**Explorer expand/collapse** — per-project list of expanded node ids in the workspace JSON (`GET/PATCH …/explorer-state` on the WPN API and `wpnGetExplorerState` / `wpnSetExplorerState` on `window.Nodex`). Workspace/project sections in the panel also use local UI state.
+
+**Workspace / project settings** — arbitrary JSON blobs per workspace and per project, stored in `wpnWorkspaceSettings` / `wpnProjectSettings` inside `nodex-workspace.json`.
 
 ## URL / shell (target)
 
@@ -53,9 +55,10 @@ Surface:
 - `GET /wpn/projects/:projectId/notes` — flat preorder list with `depth`
 - `GET/PATCH /wpn/projects/:projectId/explorer-state` — `{ expanded_ids: string[] }`
 - `POST /wpn/projects/:projectId/notes` — create (`relation` root|child|sibling, `type`, optional `anchorId`, …)
-- `GET/PATCH /wpn/notes/:id` — read/update note (including `metadata` for plugin UI state on web)
+- `GET/PATCH /wpn/notes/:id` — read/update note (including `metadata` for plugin UI state on web); title changes trigger VFS link rewrites in markdown where applicable
 - `POST /wpn/notes/delete` — body `{ ids: string[] }`
 - `POST /wpn/notes/move` — body `{ projectId, draggedId, targetId, placement }`
+- `GET/PATCH /wpn/workspaces/:workspaceId/settings` and `GET/PATCH /wpn/projects/:projectId/settings` — JSON settings merged into the workspace file
 
 **Session (headless)** — `GET /api/v1/session` returns `{ wpnOwnerId: string }` from `NODEX_WPN_DEFAULT_OWNER` (default `jehu`) so the web shell can label the active WPN owner without duplicating env in the client.
 
@@ -63,14 +66,18 @@ On Electron, the same operations are available over IPC (`WPN_*` channels); **no
 
 Responses use JSON; errors use `{ error: string }` or `{ ok: false, error }` where aligned with existing API style.
 
+## Authentication (headless)
+
+Signup, login, refresh, and logout use **JSON files** under `{NODEX_USER_DATA_DIR or ~/.nodex-headless-data}/auth/` (`users.json`, `refresh_sessions.json`) — see [`auth-json-store.ts`](../../src/nodex-api-server/auth/auth-json-store.ts). No database driver is required.
+
 ## Code map
 
 | Area | Location |
 |------|-----------|
-| SQLite DDL + ensure | [`src/core/wpn/wpn-schema-sqlite.ts`](../../src/core/wpn-schema-sqlite.ts) (applied from [`notes-sqlite.ts`](../../src/core/notes-sqlite.ts) `ensureSchema`) |
+| Workspace file + slots | [`src/core/workspace-store.ts`](../../src/core/workspace-store.ts) — `nodex-workspace.json` under `{project}/data/` |
 | Types (canonical) | [`src/shared/wpn-v2-types.ts`](../../src/shared/wpn-v2-types.ts) — re-exported from [`src/core/wpn/wpn-types.ts`](../../src/core/wpn/wpn-types.ts) |
-| SQLite service | [`src/core/wpn/wpn-sqlite-service.ts`](../../src/core/wpn/wpn-sqlite-service.ts), notes: [`wpn-sqlite-notes.ts`](../../src/core/wpn/wpn-sqlite-notes.ts), move helper: [`wpn-note-move.ts`](../../src/core/wpn/wpn-note-move.ts) |
-| Postgres DDL + service | [`src/core/wpn/wpn-pg-schema.ts`](../../src/core/wpn/wpn-pg-schema.ts), [`src/core/wpn/wpn-pg-service.ts`](../../src/core/wpn/wpn-pg-service.ts), notes: [`wpn-pg-notes.ts`](../../src/core/wpn/wpn-pg-notes.ts) |
+| JSON WPN service | [`src/core/wpn/wpn-json-service.ts`](../../src/core/wpn/wpn-json-service.ts), notes: [`wpn-json-notes.ts`](../../src/core/wpn/wpn-json-notes.ts), settings: [`wpn-json-settings.ts`](../../src/core/wpn/wpn-json-settings.ts) |
+| VFS rewrites after rename | [`src/core/wpn/wpn-rename-vfs-rewrite.ts`](../../src/core/wpn/wpn-rename-vfs-rewrite.ts) |
 | Express routes | [`src/nodex-api-server/wpn-router.ts`](../../src/nodex-api-server/wpn-router.ts), mounted in [`api-router.ts`](../../src/nodex-api-server/api-router.ts) as `/wpn` |
 | Electron IPC | [`src/main/register-static-ipc-wpn.ts`](../../src/main/register-static-ipc-wpn.ts) (`IPC_CHANNELS.WPN_*`) |
 | Renderer contract | [`nodex-renderer-api.ts`](../../src/shared/nodex-renderer-api.ts) (`wpnListWorkspaces` … `wpnDeleteProject`), [`preload.ts`](../../src/preload.ts), web: [`nodex-web-shim.ts`](../../src/renderer/nodex-web-shim.ts) |
@@ -79,22 +86,22 @@ Responses use JSON; errors use `{ error: string }` or `{ ok: false, error }` whe
 
 | Variable | Purpose |
 |----------|---------|
-| `NODEX_PG_DATABASE_URL` | Optional Postgres connection string for **web** deployments. When unset, WPN routes use **SQLite** (`getNotesDatabase()`). |
-| `NODEX_PROJECT_ROOT` | Headless folder project: when set and valid, opens SQLite under project `data/` and enables legacy `/notes`, assets, etc. When unset **and** `NODEX_PG_DATABASE_URL` is set, the API still starts and serves WPN on Postgres; folder-only routes stay unavailable until a project root is configured. |
-| `NODEX_WPN_DEFAULT_OWNER` | String owner id for all WPN workspace rows (default **`jehu`**). Used by the HTTP WPN router and Electron IPC SQLite path. |
+| `NODEX_PROJECT_ROOT` | **Required** for headless API: absolute path to the open project folder (`/workspace` in Docker). WPN + legacy routes use the workspace JSON and project `data/` tree. |
+| `NODEX_USER_DATA_DIR` | Headless prefs, session plugins on disk, and **`auth/`** JSON files for `/api/v1/auth/*`. |
+| `NODEX_WPN_DEFAULT_OWNER` | String owner id for WPN rows when unauthenticated (default **`jehu`**). |
 | `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN` | When `1` or `true`, the Next/web bundle uses **relative** `/api/v1/...` (same origin as the page). Use with **nginx gateway** (or Next rewrites via `NODEX_HEADLESS_API_ORIGIN`) so the browser does not need `?api=` / localStorage API base. |
 
 ## Docker / gateway
 
-- **`docker-compose.yml`** — optional **`postgres`** service (`--profile wpn-pg`), `NODEX_PG_DATABASE_URL` and `NODEX_WPN_DEFAULT_OWNER` on **`nodex-api`**, default workspace bind `./.nodex-docker-workspace` when `NODEX_HOST_PROJECT` is unset.
+- **`docker-compose.yml`** — **`nodex-api`** binds `./.nodex-docker-workspace` (or `NODEX_HOST_PROJECT`) to `/workspace`, **`NODEX_WPN_DEFAULT_OWNER`**, optional marketplace mounts. **No Postgres service.**
 - **`nodex-gateway`** — recommended access: UI + **`/api/v1/`** on one origin (e.g. port 8080) so `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1` works without per-browser API configuration.
 
 ## Risks
 
-- **Dual-backend parity** — schema changes must be applied to **both** SQLite `ensureWpnV2Schema` and Postgres `ensureWpnPgSchema`.
-- **Legacy coexistence** — Legacy `notes` table remains for existing features until the app fully switches the explorer to WPN APIs.
+- **Single-writer JSON** — do not run multiple `nodex-api` replicas against the same mounted project directory.
+- **Legacy coexistence** — Legacy `notes` / `legacy` block in the workspace file remains for existing features until the explorer fully switches to WPN APIs everywhere.
 - **Assets** — Binary attachments still need a clear **project-scoped** storage story (out of scope for the first schema slice).
 
 ## Maintenance
 
-Update this file when changing table columns, public routes, URL conventions, or preview/pin tab behavior.
+Update this file when changing workspace file shape, public routes, URL conventions, or preview/pin tab behavior.

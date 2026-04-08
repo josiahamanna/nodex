@@ -1,6 +1,6 @@
 # Zero-downtime local deploy (Docker + Cloudflare Tunnel)
 
-The stack uses **one `nodex-api`** (SQLite cannot safely run two API containers on the same `NODEX_HOST_PROJECT` mount) and **two UI containers** (`nodex-web-blue`, `nodex-web-green`) so you can rebuild and swap the web tier without dropping the tunnel upstream.
+The stack uses **one `nodex-api`** (do not run two API containers against the same **`NODEX_HOST_PROJECT`** / `/workspace` mount — the workspace JSON file is single-writer) and **two UI containers** (`nodex-web-blue`, `nodex-web-green`) so you can rebuild and swap the web tier without dropping the tunnel upstream.
 
 ## Stable URL for `cloudflared`
 
@@ -22,17 +22,17 @@ NODEX_GATEWAY_PORT=5555 npm run docker:api:up
 
 ## Bring the stack up
 
-**Recommended (Postgres WPN + notes in DB, default user `jehu`, gateway on :8080):**
+**Recommended (`npm run deploy` — API + web blue + gateway on :8080):**
 
 ```bash
 npm run deploy
 ```
 
-This starts **postgres** (`wpn-pg` profile), `nodex-api` (with `NODEX_PG_DATABASE_URL` defaulted for Docker), `nodex-web-blue`, and `nodex-gateway`, then runs the blue/green web image build/swap. Open `http://127.0.0.1:8080`.
+This starts **`nodex-api`**, **`nodex-web-blue`**, and **`nodex-gateway`**, then runs the blue/green web image build/swap. WPN and notes persist in the **mounted project folder** (`data/nodex-workspace.json` under the bind mount). Open `http://127.0.0.1:8080`.
 
 Subsequent UI-only updates: `npm run deploy` again, or `npm run deploy:web-only` if the stack is already running.
 
-**Folder-backed SQLite API (no Postgres):**
+**API + gateway with a specific host project:**
 
 ```bash
 export NODEX_HOST_PROJECT=/absolute/path/to/project

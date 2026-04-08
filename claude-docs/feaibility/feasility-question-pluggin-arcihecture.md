@@ -70,7 +70,7 @@ Q4: What's the minimum required structure?
 
 Q5: How should database isolation work?
 * Option A: Prefix-based (as in Windsurf doc): plugin_markdown_data
-* Option B: Separate SQLite database per plugin
+* Option B: Separate namespaced storage per plugin (host-mediated; not raw per-plugin SQL files)
 * Option C: Virtual tables with row-level security
 > **Option A is better for our use case**
 * Q6: Can plugins query note content/metadata?

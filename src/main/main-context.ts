@@ -9,6 +9,8 @@ export const ctx = {
   notesPersistencePath: null as string | null,
   projectRootPath: null as string | null,
   workspaceRoots: [] as string[],
+  /** True when the primary root is a temp scratch dir (no JSON written until save to folder). */
+  scratchSession: false,
   ideWorkspaceWatch: null as FSWatcher | null,
   ideWorkspaceWatchTimer: null as ReturnType<typeof setTimeout> | null,
 };

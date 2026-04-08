@@ -26,6 +26,7 @@ const headlessApiOrigin =
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   ...(staticExport ? { output: "export", assetPrefix: "./" } : {}),
+  transpilePackages: ["@nodex/platform", "rxdb", "dexie"],
   images: { unoptimized: true },
   async rewrites() {
     if (staticExport || !headlessApiOrigin) {
@@ -45,23 +46,13 @@ const nextConfig = {
   experimental: {
     externalDir: true,
   },
-  webpack: (config, { isServer }) => {
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      "@nodex/ui-types": path.resolve(
-        __dirname,
-        "../../src/shared/nodex-preload-public-types.ts",
-      ),
-    };
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        path: false,
-        child_process: false,
-      };
-    }
-    return config;
+  turbopack: {
+    resolveAlias: {
+      "@nodex/ui-types": "../../src/shared/nodex-preload-public-types.ts",
+      "@nodex/platform": "../../packages/nodex-platform/src/index.ts",
+      // Next resolves `node` for Client Component SSR; esnode pulls fs/path. Force browser build.
+      "broadcast-channel": "../../node_modules/broadcast-channel/dist/esbrowser/index.js",
+    },
   },
 };
 

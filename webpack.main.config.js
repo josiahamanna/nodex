@@ -26,7 +26,6 @@ module.exports = {
   },
   externalsPresets: { node: true },
   externals: {
-    "better-sqlite3": "commonjs better-sqlite3",
     "adm-zip": "commonjs adm-zip",
     "./zip-handler": "commonjs ./zip-handler",
     // Rollup 4 loads @rollup/rollup-<platform> native addons; bundling breaks that resolution.

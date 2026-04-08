@@ -1,30 +1,30 @@
 import { ipcMain } from "electron";
 import { registry } from "../core/registry";
-import { getNotesDatabase } from "../core/notes-sqlite";
+import { getNotesDatabase } from "../core/workspace-store";
 import { getWpnOwnerId } from "../core/wpn/wpn-owner";
 import {
-  wpnSqliteCreateProject,
-  wpnSqliteCreateWorkspace,
-  wpnSqliteDeleteProject,
-  wpnSqliteDeleteWorkspace,
-  wpnSqliteListProjects,
-  wpnSqliteListWorkspaces,
-  wpnSqliteUpdateProject,
-  wpnSqliteUpdateWorkspace,
-} from "../core/wpn/wpn-sqlite-service";
+  wpnJsonCreateProject,
+  wpnJsonCreateWorkspace,
+  wpnJsonDeleteProject,
+  wpnJsonDeleteWorkspace,
+  wpnJsonListProjects,
+  wpnJsonListWorkspaces,
+  wpnJsonUpdateProject,
+  wpnJsonUpdateWorkspace,
+} from "../core/wpn/wpn-json-service";
 import {
-  wpnSqliteCreateNote,
-  wpnSqliteDeleteNotes,
-  wpnSqliteDuplicateNoteSubtree,
-  wpnSqliteGetExplorerExpanded,
-  wpnSqliteGetNoteById,
-  wpnSqliteListAllNotesWithContext,
-  wpnSqliteListBacklinksToNote,
-  wpnSqliteListNotesFlat,
-  wpnSqliteMoveNote,
-  wpnSqliteSetExplorerExpanded,
-  wpnSqliteUpdateNote,
-} from "../core/wpn/wpn-sqlite-notes";
+  wpnJsonCreateNote,
+  wpnJsonDeleteNotes,
+  wpnJsonDuplicateNoteSubtree,
+  wpnJsonGetExplorerExpanded,
+  wpnJsonGetNoteById,
+  wpnJsonListAllNotesWithContext,
+  wpnJsonListBacklinksToNote,
+  wpnJsonListNotesFlat,
+  wpnJsonMoveNote,
+  wpnJsonSetExplorerExpanded,
+  wpnJsonUpdateNote,
+} from "../core/wpn/wpn-json-notes";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import type { NoteMovePlacement } from "../shared/nodex-renderer-api";
 import { isValidNoteId, isValidNoteType } from "../shared/validators";
@@ -34,27 +34,27 @@ import type {
 } from "../shared/wpn-v2-types";
 import { assertProjectOpenForNotes } from "./main-helpers";
 
-function requireNotesDb() {
+function requireWorkspaceStore() {
   assertProjectOpenForNotes();
-  const db = getNotesDatabase();
-  if (!db) {
-    throw new Error("Notes database is not open");
+  const store = getNotesDatabase();
+  if (!store) {
+    throw new Error("Workspace store is not open");
   }
-  return db;
+  return store;
 }
 
 export function registerStaticIpcWpnHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.WPN_LIST_WORKSPACES, async () => {
-    const db = requireNotesDb();
+    const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
-    return { workspaces: wpnSqliteListWorkspaces(db, ownerId) };
+    return { workspaces: wpnJsonListWorkspaces(db, ownerId) };
   });
 
   ipcMain.handle(IPC_CHANNELS.WPN_CREATE_WORKSPACE, async (_e, name?: unknown) => {
-    const db = requireNotesDb();
+    const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
     const n = typeof name === "string" ? name : "Workspace";
-    const workspace = wpnSqliteCreateWorkspace(db, ownerId, n);
+    const workspace = wpnJsonCreateWorkspace(db, ownerId, n);
     return { workspace };
   });
 
@@ -64,12 +64,12 @@ export function registerStaticIpcWpnHandlers(): void {
       if (typeof id !== "string" || !id) {
         throw new Error("Invalid workspace id");
       }
-      const db = requireNotesDb();
+      const db = requireWorkspaceStore();
       const ownerId = getWpnOwnerId();
       const p = (patch && typeof patch === "object"
         ? patch
         : {}) as WpnWorkspacePatch;
-      const workspace = wpnSqliteUpdateWorkspace(db, ownerId, id, p);
+      const workspace = wpnJsonUpdateWorkspace(db, ownerId, id, p);
       if (!workspace) {
         throw new Error("Workspace not found");
       }
@@ -81,9 +81,9 @@ export function registerStaticIpcWpnHandlers(): void {
     if (typeof id !== "string" || !id) {
       throw new Error("Invalid workspace id");
     }
-    const db = requireNotesDb();
+    const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
-    const ok = wpnSqliteDeleteWorkspace(db, ownerId, id);
+    const ok = wpnJsonDeleteWorkspace(db, ownerId, id);
     if (!ok) {
       throw new Error("Workspace not found");
     }
@@ -96,9 +96,9 @@ export function registerStaticIpcWpnHandlers(): void {
       if (typeof workspaceId !== "string" || !workspaceId) {
         throw new Error("Invalid workspace id");
       }
-      const db = requireNotesDb();
+      const db = requireWorkspaceStore();
       const ownerId = getWpnOwnerId();
-      return { projects: wpnSqliteListProjects(db, ownerId, workspaceId) };
+      return { projects: wpnJsonListProjects(db, ownerId, workspaceId) };
     },
   );
 
@@ -108,10 +108,10 @@ export function registerStaticIpcWpnHandlers(): void {
       if (typeof workspaceId !== "string" || !workspaceId) {
         throw new Error("Invalid workspace id");
       }
-      const db = requireNotesDb();
+      const db = requireWorkspaceStore();
       const ownerId = getWpnOwnerId();
       const n = typeof name === "string" ? name : "Project";
-      const project = wpnSqliteCreateProject(db, ownerId, workspaceId, n);
+      const project = wpnJsonCreateProject(db, ownerId, workspaceId, n);
       if (!project) {
         throw new Error("Workspace not found");
       }
@@ -125,12 +125,12 @@ export function registerStaticIpcWpnHandlers(): void {
       if (typeof id !== "string" || !id) {
         throw new Error("Invalid project id");
       }
-      const db = requireNotesDb();
+      const db = requireWorkspaceStore();
       const ownerId = getWpnOwnerId();
       const p = (patch && typeof patch === "object"
         ? patch
         : {}) as WpnProjectPatch;
-      const project = wpnSqliteUpdateProject(db, ownerId, id, p);
+      const project = wpnJsonUpdateProject(db, ownerId, id, p);
       if (!project) {
         throw new Error("Project not found");
       }
@@ -142,9 +142,9 @@ export function registerStaticIpcWpnHandlers(): void {
     if (typeof id !== "string" || !id) {
       throw new Error("Invalid project id");
     }
-    const db = requireNotesDb();
+    const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
-    const ok = wpnSqliteDeleteProject(db, ownerId, id);
+    const ok = wpnJsonDeleteProject(db, ownerId, id);
     if (!ok) {
       throw new Error("Project not found");
     }
@@ -155,33 +155,33 @@ export function registerStaticIpcWpnHandlers(): void {
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project id");
     }
-    const db = requireNotesDb();
+    const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
-    return { notes: wpnSqliteListNotesFlat(db, ownerId, projectId) };
+    return { notes: wpnJsonListNotesFlat(db, ownerId, projectId) };
   });
 
   ipcMain.handle(IPC_CHANNELS.WPN_LIST_ALL_NOTES_WITH_CONTEXT, async () => {
-    const db = requireNotesDb();
+    const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
-    return { notes: wpnSqliteListAllNotesWithContext(db, ownerId) };
+    return { notes: wpnJsonListAllNotesWithContext(db, ownerId) };
   });
 
   ipcMain.handle(IPC_CHANNELS.WPN_LIST_BACKLINKS_TO_NOTE, async (_e, targetNoteId: unknown) => {
     if (typeof targetNoteId !== "string" || !targetNoteId) {
       throw new Error("Invalid note id");
     }
-    const db = requireNotesDb();
+    const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
-    return { sources: wpnSqliteListBacklinksToNote(db, ownerId, targetNoteId) };
+    return { sources: wpnJsonListBacklinksToNote(db, ownerId, targetNoteId) };
   });
 
   ipcMain.handle(IPC_CHANNELS.WPN_GET_NOTE, async (_e, noteId: unknown) => {
     if (typeof noteId !== "string" || !noteId) {
       throw new Error("Invalid note id");
     }
-    const db = requireNotesDb();
+    const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
-    const note = wpnSqliteGetNoteById(db, ownerId, noteId);
+    const note = wpnJsonGetNoteById(db, ownerId, noteId);
     if (!note) {
       throw new Error("Note not found");
     }
@@ -192,9 +192,9 @@ export function registerStaticIpcWpnHandlers(): void {
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project id");
     }
-    const db = requireNotesDb();
+    const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
-    return { expanded_ids: wpnSqliteGetExplorerExpanded(db, ownerId, projectId) };
+    return { expanded_ids: wpnJsonGetExplorerExpanded(db, ownerId, projectId) };
   });
 
   ipcMain.handle(
@@ -206,9 +206,9 @@ export function registerStaticIpcWpnHandlers(): void {
       const ids = Array.isArray(expandedIds)
         ? expandedIds.filter((x): x is string => typeof x === "string")
         : [];
-      const db = requireNotesDb();
+      const db = requireWorkspaceStore();
       const ownerId = getWpnOwnerId();
-      wpnSqliteSetExplorerExpanded(db, ownerId, projectId, ids);
+      wpnJsonSetExplorerExpanded(db, ownerId, projectId, ids);
       return { expanded_ids: ids };
     },
   );
@@ -238,9 +238,9 @@ export function registerStaticIpcWpnHandlers(): void {
       if (rel !== "child" && rel !== "sibling" && rel !== "root") {
         throw new Error("Invalid relation");
       }
-      const db = requireNotesDb();
+      const db = requireWorkspaceStore();
       const ownerId = getWpnOwnerId();
-      return wpnSqliteCreateNote(db, ownerId, projectId, {
+      return wpnJsonCreateNote(db, ownerId, projectId, {
         anchorId: rel === "root" ? undefined : p.anchorId,
         relation: rel,
         type,
@@ -263,9 +263,9 @@ export function registerStaticIpcWpnHandlers(): void {
             metadata?: Record<string, unknown> | null;
           })
         : {};
-    const db = requireNotesDb();
+    const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
-    const note = wpnSqliteUpdateNote(db, ownerId, noteId, p);
+    const note = wpnJsonUpdateNote(db, ownerId, noteId, p);
     if (!note) {
       throw new Error("Note not found");
     }
@@ -277,9 +277,9 @@ export function registerStaticIpcWpnHandlers(): void {
       throw new Error("Invalid ids");
     }
     const list = ids.filter((x): x is string => typeof x === "string" && isValidNoteId(x));
-    const db = requireNotesDb();
+    const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
-    wpnSqliteDeleteNotes(db, ownerId, list);
+    wpnJsonDeleteNotes(db, ownerId, list);
     return { ok: true as const };
   });
 
@@ -308,9 +308,9 @@ export function registerStaticIpcWpnHandlers(): void {
       if (placement !== "before" && placement !== "after" && placement !== "into") {
         throw new Error("Invalid placement");
       }
-      const db = requireNotesDb();
+      const db = requireWorkspaceStore();
       const ownerId = getWpnOwnerId();
-      wpnSqliteMoveNote(
+      wpnJsonMoveNote(
         db,
         ownerId,
         projectId,
@@ -328,9 +328,9 @@ export function registerStaticIpcWpnHandlers(): void {
       if (typeof projectId !== "string" || typeof noteId !== "string") {
         throw new Error("projectId and noteId required");
       }
-      const db = requireNotesDb();
+      const db = requireWorkspaceStore();
       const ownerId = getWpnOwnerId();
-      return wpnSqliteDuplicateNoteSubtree(db, ownerId, projectId, noteId);
+      return wpnJsonDuplicateNoteSubtree(db, ownerId, projectId, noteId);
     },
   );
 }

@@ -7,4 +7,8 @@ const path = require("path");
 
 process.env.NODEX_NEXT_STATIC_EXPORT = "1";
 const webDir = path.join(__dirname, "..", "apps", "nodex-web");
-execSync("npx next build", { stdio: "inherit", cwd: webDir, env: process.env });
+execSync("npx next build", {
+  stdio: "inherit",
+  cwd: webDir,
+  env: process.env,
+});

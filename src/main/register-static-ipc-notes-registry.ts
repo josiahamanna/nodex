@@ -1,11 +1,8 @@
 import { ipcMain } from "electron";
-import { getNotesDatabase } from "../core/notes-sqlite";
+import { getNotesDatabase } from "../core/workspace-store";
 import { getWpnOwnerId } from "../core/wpn/wpn-owner";
-import {
-  wpnSqliteGetNoteById,
-  wpnSqliteUpdateNote,
-} from "../core/wpn/wpn-sqlite-notes";
-import { wpnSqliteApplyVfsRewritesAfterTitleChange } from "../core/wpn/wpn-rename-vfs-rewrite";
+import { wpnJsonGetNoteById, wpnJsonUpdateNote } from "../core/wpn/wpn-json-notes";
+import { wpnJsonApplyVfsRewritesAfterTitleChange } from "../core/wpn/wpn-rename-vfs-rewrite";
 import {
   ensureNotesSeeded,
   createNote as createNoteInStore,
@@ -52,7 +49,7 @@ ipcMain.handle(IPC_CHANNELS.GET_NOTE, async (_event, noteId?: string) => {
     const db = getNotesDatabase();
     if (db) {
       const ownerId = getWpnOwnerId();
-      const wpn = wpnSqliteGetNoteById(db, ownerId, noteId);
+      const wpn = wpnJsonGetNoteById(db, ownerId, noteId);
       if (wpn) {
         return {
           id: wpn.id,
@@ -166,22 +163,25 @@ ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: strin
   }
   const db = getNotesDatabase();
   const ownerId = getWpnOwnerId();
-  if (db && wpnSqliteGetNoteById(db, ownerId, id)) {
-    const before = wpnSqliteGetNoteById(db, ownerId, id);
+  if (db && wpnJsonGetNoteById(db, ownerId, id)) {
+    const before = wpnJsonGetNoteById(db, ownerId, id);
     if (!before) {
       throw new Error("Note not found");
     }
-    const run = db.transaction(() => {
-      const after = wpnSqliteUpdateNote(db, ownerId, id, { title });
+    try {
+      const after = wpnJsonUpdateNote(db, ownerId, id, { title });
       if (!after) {
         throw new Error("Note not found");
       }
       if (before.title !== after.title) {
-        wpnSqliteApplyVfsRewritesAfterTitleChange(db, ownerId, id, before.title, after.title);
+        wpnJsonApplyVfsRewritesAfterTitleChange(
+          db,
+          ownerId,
+          id,
+          before.title,
+          after.title,
+        );
       }
-    });
-    try {
-      run();
     } catch (e) {
       console.error("[RENAME_NOTE] failed (title or VFS link rewrite):", e);
       throw e instanceof Error ? e : new Error(String(e));
@@ -205,13 +205,13 @@ ipcMain.handle(
     const db = getNotesDatabase();
     if (db) {
       const ownerId = getWpnOwnerId();
-      const wpn = wpnSqliteGetNoteById(db, ownerId, noteId);
+      const wpn = wpnJsonGetNoteById(db, ownerId, noteId);
       if (wpn) {
         const err = validatePluginUiStateSize(state);
         if (err) throw new Error(err);
         const meta: Record<string, unknown> = { ...(wpn.metadata ?? {}) };
         meta[PLUGIN_UI_METADATA_KEY] = state;
-        wpnSqliteUpdateNote(db, ownerId, noteId, { metadata: meta });
+        wpnJsonUpdateNote(db, ownerId, noteId, { metadata: meta });
         return;
       }
     }
@@ -234,8 +234,8 @@ ipcMain.handle(
     }
     const db = getNotesDatabase();
     const ownerId = getWpnOwnerId();
-    if (db && wpnSqliteGetNoteById(db, ownerId, noteId)) {
-      wpnSqliteUpdateNote(db, ownerId, noteId, { content });
+    if (db && wpnJsonGetNoteById(db, ownerId, noteId)) {
+      wpnJsonUpdateNote(db, ownerId, noteId, { content });
       return;
     }
     const registeredTypes = registry.getRegisteredTypes();
@@ -258,13 +258,13 @@ ipcMain.handle(
     const db = getNotesDatabase();
     if (db) {
       const ownerId = getWpnOwnerId();
-      const wpn = wpnSqliteGetNoteById(db, ownerId, noteId);
+      const wpn = wpnJsonGetNoteById(db, ownerId, noteId);
       if (wpn) {
         const meta: Record<string, unknown> = { ...(wpn.metadata ?? {}) };
         for (const [k, v] of Object.entries(patch)) {
           meta[k] = v;
         }
-        wpnSqliteUpdateNote(db, ownerId, noteId, { metadata: meta });
+        wpnJsonUpdateNote(db, ownerId, noteId, { metadata: meta });
         return;
       }
     }

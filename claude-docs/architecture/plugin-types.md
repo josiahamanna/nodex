@@ -21,4 +21,4 @@ Implementation notes:
 - Inventory and “installed” lists for Plugin Manager only include **`user`** tier plugins.
 - **Sample seed notes** (new empty workspace): Home still follows `pickWorkspaceOverviewType` from full registered types; **child** samples use `registry.getSelectableNoteTypes()` via [`sampleChildNoteTypes`](../../src/core/notes-store-seed.ts), so **system** types (e.g. `code`) are not auto-created under Home.
 
-For end-user oriented documentation, see **[PLUGIN_SYSTEM.md](../../PLUGIN_SYSTEM.md)** (overview, ZIP import, tips). This file is the architecture reference for tiers and visibility.
+For end-user oriented documentation, see **[PLUGIN_SYSTEM.md](../../docs/repository/PLUGIN_SYSTEM.md)** (overview, ZIP import, tips). This file is the architecture reference for tiers and visibility.

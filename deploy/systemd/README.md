@@ -33,7 +33,7 @@ To **start the stack on machine boot** (after a cold stop), use a oneshot unit t
 
 **Suggested order:** `docker.service` → `nodex-docker-stack` → `cloudflared` (tunnel). The stack unit `Requires=docker.service`.
 
-**SQLite / folder-backed API (no Postgres):** this example targets **WPN + `--profile wpn-pg`**. For API + gateway + blue without Postgres, use a different `docker compose up` line (see [../ZERO-DOWNTIME.md](../ZERO-DOWNTIME.md)). Hosts that keep **only green** as the live UI with blue stopped may need a custom compose invocation; the default gateway service depends on `nodex-web-blue`.
+**Stack layout:** `docker-stack-boot.sh` runs `docker compose up` for **nodex-api**, **nodex-web-blue**, and **nodex-gateway** (see [../ZERO-DOWNTIME.md](../ZERO-DOWNTIME.md)). WPN data lives in the mounted project directory (`data/nodex-workspace.json`). Hosts that keep **only green** as the live UI with blue stopped may need a custom compose invocation; the default gateway service depends on `nodex-web-blue`.
 
 ## SSH
 

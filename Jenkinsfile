@@ -1,9 +1,9 @@
 // Release deploy: checkout → optional npm ci → full or targeted Docker deploy.
 // Prerequisites: deploy/jenkins/README.md (Docker, Node 22 or NVM, bash).
 //
-// FULL_DEPLOY runs scripts/docker-full-deploy.sh (Postgres + API + gateway + web blue/green).
-// Targeted stages run in order: Postgres → API → gateway → web (deploy:web-only).
-// Cold / first-time: prefer FULL_DEPLOY, or enable all four targets. Gateway-only can fail if
+// FULL_DEPLOY runs scripts/docker-full-deploy.sh (API + gateway + web blue/green).
+// Targeted stages run in order: API → gateway → web (deploy:web-only).
+// Cold / first-time: prefer FULL_DEPLOY, or enable all targets. Gateway-only can fail if
 // deploy/nginx-active-web.upstream.conf points at a missing web container (see deploy/jenkins/README.md).
 
 pipeline {
@@ -20,14 +20,9 @@ pipeline {
             description: 'Run full stack deploy (npm run deploy -- --stop-old). When enabled, the four checkboxes below are ignored.'
         )
         booleanParam(
-            name: 'DEPLOY_POSTGRES',
-            defaultValue: false,
-            description: 'docker compose --profile wpn-pg up -d postgres'
-        )
-        booleanParam(
             name: 'DEPLOY_API',
             defaultValue: false,
-            description: 'Rebuild/restart nodex-api (WPN: ensure Postgres is up first or select it in the same build)'
+            description: 'Rebuild/restart nodex-api'
         )
         booleanParam(
             name: 'DEPLOY_GATEWAY',
@@ -47,12 +42,11 @@ pipeline {
     }
 
     environment {
-        // Fixed project name so fixed container_name values (e.g. nodex-postgres) are not duplicated
+        // Fixed project name so fixed container_name values are not duplicated
         // when Jenkins WORKSPACE basename differs between jobs or multibranch branches.
         COMPOSE_PROJECT_NAME = 'nodex'
         // Uncomment after creating credentials (see deploy/jenkins/README.md):
         // NODEX_AUTH_JWT_SECRET = credentials('nodex-auth-jwt-secret')
-        // NODEX_PG_PASSWORD = credentials('nodex-pg-password')
     }
 
     stages {
@@ -77,9 +71,9 @@ pipeline {
             }
             steps {
                 script {
-                    def any = params.DEPLOY_POSTGRES || params.DEPLOY_API || params.DEPLOY_GATEWAY || params.DEPLOY_WEB
+                    def any = params.DEPLOY_API || params.DEPLOY_GATEWAY || params.DEPLOY_WEB
                     if (!any) {
-                        error('Uncheck FULL_DEPLOY only when at least one of DEPLOY_POSTGRES, DEPLOY_API, DEPLOY_GATEWAY, DEPLOY_WEB is enabled.')
+                        error('Uncheck FULL_DEPLOY only when at least one of DEPLOY_API, DEPLOY_GATEWAY, DEPLOY_WEB is enabled.')
                     }
                 }
             }
@@ -94,21 +88,6 @@ pipeline {
             }
         }
 
-        stage('Deploy Postgres') {
-            when {
-                allOf {
-                    expression { return !params.FULL_DEPLOY }
-                    expression { return params.DEPLOY_POSTGRES }
-                }
-            }
-            steps {
-                sh '''#!/usr/bin/env bash
-set -euo pipefail
-docker compose --profile wpn-pg up -d postgres
-'''
-            }
-        }
-
         stage('Deploy API') {
             when {
                 allOf {
@@ -119,7 +98,7 @@ docker compose --profile wpn-pg up -d postgres
             steps {
                 sh '''#!/usr/bin/env bash
 set -euo pipefail
-docker compose --profile wpn-pg up -d --build --remove-orphans nodex-api
+docker compose up -d --build --remove-orphans nodex-api
 '''
             }
         }
@@ -134,7 +113,7 @@ docker compose --profile wpn-pg up -d --build --remove-orphans nodex-api
             steps {
                 sh '''#!/usr/bin/env bash
 set -euo pipefail
-docker compose --profile wpn-pg up -d --build --remove-orphans --no-deps nodex-gateway
+docker compose up -d --build --remove-orphans --no-deps nodex-gateway
 '''
             }
         }

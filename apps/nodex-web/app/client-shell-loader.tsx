@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
+import { PwaServiceWorkerRegister } from "./pwa-register";
 
 const ClientShell = dynamic(() => import("./client-shell"), {
   ssr: false,
@@ -17,5 +18,10 @@ export default function ClientShellLoader({
 }: {
   children: ReactNode;
 }) {
-  return <ClientShell>{children}</ClientShell>;
+  return (
+    <>
+      <PwaServiceWorkerRegister />
+      <ClientShell>{children}</ClientShell>
+    </>
+  );
 }

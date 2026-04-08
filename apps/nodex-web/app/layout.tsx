@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 import ClientShellLoader from "./client-shell-loader";
@@ -20,10 +20,16 @@ const CSP = [
 export const metadata: Metadata = {
   title: "Nodex",
   description: "Programmable Knowledge System",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "Nodex" },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0f172a",
 };
 
 export default function RootLayout({

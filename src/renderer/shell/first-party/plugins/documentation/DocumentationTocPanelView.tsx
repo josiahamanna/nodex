@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react
 import { useNodexContributionRegistry } from "../../../NodexContributionContext";
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import type { ShellViewComponentProps } from "../../../views/ShellViewRegistry";
-import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import { resolveCommandApiDoc } from "../../../command-api-metadata";
 import { parseMarkdownHeadingsForToc } from "../../../../utils/markdown-heading-slugs";
 import { BUNDLED_DOC_NOTE_IDS } from "./documentationConstants";
@@ -30,8 +29,6 @@ function esc(s: string): string {
 export function DocumentationTocPanelView(_props: ShellViewComponentProps): React.ReactElement {
   const registry = useNodexContributionRegistry();
   const regs = useShellRegistries();
-  const { mountKind } = useShellProjectWorkspace();
-
   const tabDocSig = useSyncExternalStore(
     (cb) => regs.tabs.subscribe(cb),
     () => {
@@ -89,10 +86,9 @@ export function DocumentationTocPanelView(_props: ShellViewComponentProps): Reac
           return;
         }
         if (doc?.view === "bundled" && doc.noteId) {
-          const note =
-            mountKind === "wpn-postgres" || doc.noteId.startsWith("wpn-docs:")
-              ? (await window.Nodex.wpnGetNote(doc.noteId)).note
-              : await window.Nodex.getNote(doc.noteId);
+          const note = doc.noteId.startsWith("wpn-docs:")
+            ? (await window.Nodex.wpnGetNote(doc.noteId)).note
+            : await window.Nodex.getNote(doc.noteId);
           const content = typeof (note as { content?: unknown }).content === "string" ? (note as { content: string }).content : "";
           if (!cancelled) {
             setMarkdown(content);
@@ -107,7 +103,7 @@ export function DocumentationTocPanelView(_props: ShellViewComponentProps): Reac
           }
           return;
         }
-        const n = await fetchBundledDocumentationNote(BUNDLED_DOC_NOTE_IDS.hubOverview, mountKind);
+        const n = await fetchBundledDocumentationNote(BUNDLED_DOC_NOTE_IDS.hubOverview);
         if (!cancelled) {
           setMarkdown(typeof n.content === "string" ? n.content : "");
           setLoading(false);
@@ -125,7 +121,7 @@ export function DocumentationTocPanelView(_props: ShellViewComponentProps): Reac
     return () => {
       cancelled = true;
     };
-  }, [mountKind, registry, regs.tabs, tabDocSig]);
+  }, [registry, regs.tabs, tabDocSig]);
 
   const rows = useMemo(() => parseMarkdownHeadingsForToc(markdown), [markdown]);
 

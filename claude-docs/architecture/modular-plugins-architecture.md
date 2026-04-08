@@ -32,7 +32,7 @@ Legacy **HTML/string** plugin renderers (`getPluginHTML`) are superseded by this
 
 ## Cross-platform host API
 
-Plugins must **not** use Node `fs`, raw `sqlite`, or ambient `fetch` without policy. They call a **single host capability object** (aligned with `NodexRendererApi` in `src/shared/nodex-renderer-api.ts`):
+Plugins must **not** use Node `fs`, raw database access, or ambient `fetch` without policy. They call a **single host capability object** (aligned with `NodexRendererApi` in `src/shared/nodex-renderer-api.ts`):
 
 - **Electron:** preload → IPC → main process.
 - **Web:** `nodex-web-shim` → HTTP → headless API server.

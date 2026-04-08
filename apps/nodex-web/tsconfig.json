@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -11,23 +15,36 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [{ "name": "next" }],
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     "paths": {
-      "@nodex/ui-types": ["../../src/shared/nodex-preload-public-types.ts"]
+      "@nodex/ui-types": [
+        "../../src/shared/nodex-preload-public-types.ts"
+      ],
+      "@nodex/platform": [
+        "../../packages/nodex-platform/src/index.ts"
+      ]
     }
   },
   "include": [
     "next-env.d.ts",
     "nodex-globals.d.ts",
+    "../../src/renderer/store/thunk-extra.d.ts",
     "../../src/types/window.d.ts",
     "../../src/types/observable-runtime.d.ts",
     "../../src/types/observable-inspector.d.ts",
     "../../src/types/observable-stdlib.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ]
 }

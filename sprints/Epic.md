@@ -584,33 +584,29 @@ Implement per-note and global state persistence with database access for plugins
 - [ ] Storage size limits
 
 **Technical Tasks**:
-- Implement storage backend (SQLite or JSON)
+- Implement storage backend (JSON workspace file + host APIs; align with RxDB later for plugin state if needed)
 - Create storage API service
 - Add per-note storage isolation
 - Implement size limits
 - Add storage cleanup
 - Test with multiple plugins
 
-#### 6.2 Database Access Layer
+#### 6.2 Structured storage API (defer raw SQL)
 **As a** plugin developer  
-**I want** to query and store data in the database  
-**So that** I can build data-driven plugins
+**I want** to store and query structured data through the host  
+**So that** I can build data-driven plugins without bypassing sandbox rules
 
-**Acceptance Criteria**:
-- [ ] Create plugin-specific tables (prefix-based)
-- [ ] Read-only access to notes table
-- [ ] Execute SQL queries (validated)
-- [ ] Insert/update/delete in plugin tables
-- [ ] Transaction support
-- [ ] Query result pagination
+**Acceptance Criteria** (target — revise when designed):
+- [ ] Namespaced key-value or document API (no arbitrary SQL from plugins)
+- [ ] Read-only access to note metadata/content via documented host methods
+- [ ] Size limits and eviction policy
+- [ ] Optional pagination for list operations
 
 **Technical Tasks**:
-- Set up SQLite database
-- Implement table prefix isolation
-- Create query validator
-- Build database API
-- Add transaction support
-- Implement pagination
+- Design host API (IPC + HTTP shim parity)
+- Implement backing store (JSON segments or future RxDB collection — not SQLite in renderer)
+- Add validation and quotas
+- Document security model
 
 #### 6.3 State Synchronization
 **As a** plugin developer  

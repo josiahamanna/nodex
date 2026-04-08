@@ -169,7 +169,7 @@ Loading user bundles into the live registries is orchestrated by the host (manif
 
 ### 7. Host API (Electron vs web)
 
-Use `window.Nodex` for project/note/file operations (preload IPC in Electron, HTTP shim on web). Do not import Node `fs` or SQLite in renderer plugin code. See `src/shared/nodex-renderer-api.ts` and `plugin-host-capabilities.ts` in the repo.
+Use `window.Nodex` for project/note/file operations (preload IPC in Electron, HTTP shim on web). Do not import Node `fs`, raw SQL drivers, or direct workspace files in renderer plugin code. See `src/shared/nodex-renderer-api.ts` and `plugin-host-capabilities.ts` in the repo.
 
 ### 8. Checklist
 

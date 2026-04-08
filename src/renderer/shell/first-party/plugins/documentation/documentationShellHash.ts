@@ -9,8 +9,8 @@ export type DocumentationShellTabState = {
   noteId?: string;
   headingSlug?: string;
   /**
-   * WPN Postgres: logical bundled id before `fetchBundledDocumentationNote` resolves to a concrete `noteId`.
-   * Omitted once `noteId` is set. Not encoded in the URL hash (ephemeral).
+   * Logical bundled id before `fetchBundledDocumentationNote` resolves to a concrete `noteId`
+   * (legacy notes or `wpn-docs:…`). Omitted once `noteId` is set. Not encoded in the URL hash (ephemeral).
    */
   bundledResolvingLogicalId?: string;
   /** Explorer VFS path `Workspace/Project/Title`; resolved to `noteId` in the Documentation hub. */

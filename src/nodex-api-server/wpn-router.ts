@@ -1,90 +1,52 @@
 import { Router, type Request, type Response } from "express";
-import type { Database } from "better-sqlite3";
-import { getNotesDatabase } from "../core/notes-sqlite";
+import {
+  getNotesDatabase,
+  type WorkspaceStore,
+} from "../core/workspace-store";
 import { assertProjectOpen } from "./headless-bootstrap";
-import { ensureWpnPgSchema } from "../core/wpn/wpn-pg-schema";
-import { getWpnPgPool } from "../core/wpn/wpn-pg-pool";
 import type { AuthedRequest } from "./auth/auth-middleware";
 import {
-  wpnSqliteCreateProject,
-  wpnSqliteCreateWorkspace,
-  wpnSqliteDeleteProject,
-  wpnSqliteDeleteWorkspace,
-  wpnSqliteListProjects,
-  wpnSqliteListWorkspaces,
-  wpnSqliteUpdateProject,
-  wpnSqliteUpdateWorkspace,
-} from "../core/wpn/wpn-sqlite-service";
+  wpnJsonCreateProject,
+  wpnJsonCreateWorkspace,
+  wpnJsonDeleteProject,
+  wpnJsonDeleteWorkspace,
+  wpnJsonListProjects,
+  wpnJsonListWorkspaces,
+  wpnJsonUpdateProject,
+  wpnJsonUpdateWorkspace,
+} from "../core/wpn/wpn-json-service";
 import {
-  wpnPgCreateProject,
-  wpnPgCreateWorkspace,
-  wpnPgDeleteProject,
-  wpnPgDeleteWorkspace,
-  wpnPgListProjects,
-  wpnPgListWorkspaces,
-  wpnPgUpdateProject,
-  wpnPgUpdateWorkspace,
-} from "../core/wpn/wpn-pg-service";
+  wpnJsonCreateNote,
+  wpnJsonDeleteNotes,
+  wpnJsonGetExplorerExpanded,
+  wpnJsonGetNoteById,
+  wpnJsonListAllNotesWithContext,
+  wpnJsonListBacklinksToNote,
+  wpnJsonListNotesFlat,
+  wpnJsonDuplicateNoteSubtree,
+  wpnJsonMoveNote,
+  wpnJsonSetExplorerExpanded,
+  wpnJsonUpdateNote,
+} from "../core/wpn/wpn-json-notes";
 import {
-  wpnPgCreateNote,
-  wpnPgDeleteNotes,
-  wpnPgGetExplorerExpanded,
-  wpnPgGetNoteById,
-  wpnPgListAllNotesWithContext,
-  wpnPgListBacklinksToNote,
-  wpnPgListNotesFlat,
-  wpnPgDuplicateNoteSubtree,
-  wpnPgMoveNote,
-  wpnPgSetExplorerExpanded,
-  wpnPgUpdateNote,
-} from "../core/wpn/wpn-pg-notes";
-import { wpnPgEnsureBundledDocsSeeded } from "../core/wpn/wpn-pg-docs-seed";
-import {
-  wpnPgGetProjectSettings,
-  wpnPgGetWorkspaceSettings,
-  wpnPgPatchProjectSettings,
-  wpnPgPatchWorkspaceSettings,
-} from "../core/wpn/wpn-pg-settings";
-import {
-  wpnSqliteCreateNote,
-  wpnSqliteDeleteNotes,
-  wpnSqliteGetExplorerExpanded,
-  wpnSqliteGetNoteById,
-  wpnSqliteListAllNotesWithContext,
-  wpnSqliteListBacklinksToNote,
-  wpnSqliteListNotesFlat,
-  wpnSqliteDuplicateNoteSubtree,
-  wpnSqliteMoveNote,
-  wpnSqliteSetExplorerExpanded,
-  wpnSqliteUpdateNote,
-} from "../core/wpn/wpn-sqlite-notes";
-import type { Pool } from "pg";
+  wpnJsonGetProjectSettings,
+  wpnJsonGetWorkspaceSettings,
+  wpnJsonPatchProjectSettings,
+  wpnJsonPatchWorkspaceSettings,
+} from "../core/wpn/wpn-json-settings";
+import { wpnJsonApplyVfsRewritesAfterTitleChange } from "../core/wpn/wpn-rename-vfs-rewrite";
 import { headlessSelectableNoteTypes } from "./headless-bootstrap";
 import { normalizeLegacyNoteType } from "../shared/note-type-legacy";
 import { isValidNoteType } from "../shared/validators";
 import type { NoteMovePlacement } from "../shared/nodex-renderer-api";
 
-type WpnBackend =
-  | { kind: "sqlite"; db: Database }
-  | { kind: "postgres"; pool: Pool };
-
-let pgSchemaReady: Promise<void> | null = null;
-
-async function resolveBackend(): Promise<WpnBackend> {
-  const pool = getWpnPgPool();
-  if (pool) {
-    if (!pgSchemaReady) {
-      pgSchemaReady = ensureWpnPgSchema(pool);
-    }
-    await pgSchemaReady;
-    return { kind: "postgres", pool };
-  }
+async function resolveJsonStore(): Promise<WorkspaceStore> {
   assertProjectOpen();
-  const db = getNotesDatabase();
-  if (!db) {
-    throw new Error("Notes database is not open");
+  const store = getNotesDatabase();
+  if (!store) {
+    throw new Error("Workspace store is not open");
   }
-  return { kind: "sqlite", db };
+  return store;
 }
 
 function sendErr(res: Response, status: number, message: string): void {
@@ -92,7 +54,7 @@ function sendErr(res: Response, status: number, message: string): void {
 }
 
 /**
- * Workspace / project (v2) API — same JSON for SQLite (Electron project DB) and Postgres (web).
+ * Workspace / project (v2) API — JSON workspace file (`nodex-workspace.json`) under the open project.
  * Mount at `/wpn` under `/api/v1`.
  */
 export function createWpnRouter(): Router {
@@ -101,11 +63,8 @@ export function createWpnRouter(): Router {
   wpn.get("/workspaces", async (_req: Request, res: Response) => {
     try {
       const ownerId = (_req as AuthedRequest).user!.id;
-      const b = await resolveBackend();
-      const workspaces =
-        b.kind === "postgres"
-          ? await wpnPgListWorkspaces(b.pool, ownerId)
-          : wpnSqliteListWorkspaces(b.db, ownerId);
+      const store = await resolveJsonStore();
+      const workspaces = wpnJsonListWorkspaces(store, ownerId);
       res.json({ workspaces });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -116,16 +75,8 @@ export function createWpnRouter(): Router {
     try {
       const ownerId = (req as AuthedRequest).user!.id;
       const name = typeof req.body?.name === "string" ? req.body.name : "Workspace";
-      const b = await resolveBackend();
-      const workspace =
-        b.kind === "postgres"
-          ? await wpnPgCreateWorkspace(b.pool, ownerId, name)
-          : wpnSqliteCreateWorkspace(b.db, ownerId, name);
-      if (b.kind === "postgres") {
-        // Seed bundled docs into Postgres so "documentation" lives in the DB.
-        // Safe to call; no-ops if docs dir is missing.
-        await wpnPgEnsureBundledDocsSeeded(b.pool, ownerId, workspace.id);
-      }
+      const store = await resolveJsonStore();
+      const workspace = wpnJsonCreateWorkspace(store, ownerId, name);
       res.status(201).json({ workspace });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -147,11 +98,8 @@ export function createWpnRouter(): Router {
       if (body.color_token === null || typeof body.color_token === "string") {
         patch.color_token = body.color_token;
       }
-      const b = await resolveBackend();
-      const workspace =
-        b.kind === "postgres"
-          ? await wpnPgUpdateWorkspace(b.pool, ownerId, id, patch)
-          : wpnSqliteUpdateWorkspace(b.db, ownerId, id, patch);
+      const store = await resolveJsonStore();
+      const workspace = wpnJsonUpdateWorkspace(store, ownerId, id, patch);
       if (!workspace) {
         sendErr(res, 404, "Workspace not found");
         return;
@@ -166,11 +114,8 @@ export function createWpnRouter(): Router {
     try {
       const ownerId = (req as AuthedRequest).user!.id;
       const { id } = req.params;
-      const b = await resolveBackend();
-      const ok =
-        b.kind === "postgres"
-          ? await wpnPgDeleteWorkspace(b.pool, ownerId, id)
-          : wpnSqliteDeleteWorkspace(b.db, ownerId, id);
+      const store = await resolveJsonStore();
+      const ok = wpnJsonDeleteWorkspace(store, ownerId, id);
       if (!ok) {
         sendErr(res, 404, "Workspace not found");
         return;
@@ -185,11 +130,8 @@ export function createWpnRouter(): Router {
     try {
       const ownerId = (req as AuthedRequest).user!.id;
       const { workspaceId } = req.params;
-      const b = await resolveBackend();
-      const projects =
-        b.kind === "postgres"
-          ? await wpnPgListProjects(b.pool, ownerId, workspaceId)
-          : wpnSqliteListProjects(b.db, ownerId, workspaceId);
+      const store = await resolveJsonStore();
+      const projects = wpnJsonListProjects(store, ownerId, workspaceId);
       res.json({ projects });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -201,11 +143,8 @@ export function createWpnRouter(): Router {
       const ownerId = (req as AuthedRequest).user!.id;
       const { workspaceId } = req.params;
       const name = typeof req.body?.name === "string" ? req.body.name : "Project";
-      const b = await resolveBackend();
-      const project =
-        b.kind === "postgres"
-          ? await wpnPgCreateProject(b.pool, ownerId, workspaceId, name)
-          : wpnSqliteCreateProject(b.db, ownerId, workspaceId, name);
+      const store = await resolveJsonStore();
+      const project = wpnJsonCreateProject(store, ownerId, workspaceId, name);
       if (!project) {
         sendErr(res, 404, "Workspace not found");
         return;
@@ -233,11 +172,8 @@ export function createWpnRouter(): Router {
         patch.color_token = body.color_token;
       }
       if (typeof body.workspace_id === "string") patch.workspace_id = body.workspace_id;
-      const b = await resolveBackend();
-      const project =
-        b.kind === "postgres"
-          ? await wpnPgUpdateProject(b.pool, ownerId, id, patch)
-          : wpnSqliteUpdateProject(b.db, ownerId, id, patch);
+      const store = await resolveJsonStore();
+      const project = wpnJsonUpdateProject(store, ownerId, id, patch);
       if (!project) {
         sendErr(res, 404, "Project not found");
         return;
@@ -252,11 +188,8 @@ export function createWpnRouter(): Router {
     try {
       const ownerId = (req as AuthedRequest).user!.id;
       const { id } = req.params;
-      const b = await resolveBackend();
-      const ok =
-        b.kind === "postgres"
-          ? await wpnPgDeleteProject(b.pool, ownerId, id)
-          : wpnSqliteDeleteProject(b.db, ownerId, id);
+      const store = await resolveJsonStore();
+      const ok = wpnJsonDeleteProject(store, ownerId, id);
       if (!ok) {
         sendErr(res, 404, "Project not found");
         return;
@@ -271,11 +204,8 @@ export function createWpnRouter(): Router {
     try {
       const ownerId = (req as AuthedRequest).user!.id;
       const { projectId } = req.params;
-      const b = await resolveBackend();
-      const notes =
-        b.kind === "postgres"
-          ? await wpnPgListNotesFlat(b.pool, ownerId, projectId)
-          : wpnSqliteListNotesFlat(b.db, ownerId, projectId);
+      const store = await resolveJsonStore();
+      const notes = wpnJsonListNotesFlat(store, ownerId, projectId);
       res.json({ notes });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -285,11 +215,8 @@ export function createWpnRouter(): Router {
   wpn.get("/notes-with-context", async (_req: Request, res: Response) => {
     try {
       const ownerId = (_req as AuthedRequest).user!.id;
-      const b = await resolveBackend();
-      const notes =
-        b.kind === "postgres"
-          ? await wpnPgListAllNotesWithContext(b.pool, ownerId)
-          : wpnSqliteListAllNotesWithContext(b.db, ownerId);
+      const store = await resolveJsonStore();
+      const notes = wpnJsonListAllNotesWithContext(store, ownerId);
       res.json({ notes });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -300,11 +227,8 @@ export function createWpnRouter(): Router {
     try {
       const ownerId = (req as AuthedRequest).user!.id;
       const { noteId } = req.params;
-      const b = await resolveBackend();
-      const sources =
-        b.kind === "postgres"
-          ? await wpnPgListBacklinksToNote(b.pool, ownerId, noteId)
-          : wpnSqliteListBacklinksToNote(b.db, ownerId, noteId);
+      const store = await resolveJsonStore();
+      const sources = wpnJsonListBacklinksToNote(store, ownerId, noteId);
       res.json({ sources });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -315,11 +239,8 @@ export function createWpnRouter(): Router {
     try {
       const ownerId = (req as AuthedRequest).user!.id;
       const { projectId } = req.params;
-      const b = await resolveBackend();
-      const expanded_ids =
-        b.kind === "postgres"
-          ? await wpnPgGetExplorerExpanded(b.pool, ownerId, projectId)
-          : wpnSqliteGetExplorerExpanded(b.db, ownerId, projectId);
+      const store = await resolveJsonStore();
+      const expanded_ids = wpnJsonGetExplorerExpanded(store, ownerId, projectId);
       res.json({ expanded_ids });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -334,12 +255,8 @@ export function createWpnRouter(): Router {
       const expanded_ids = Array.isArray(raw)
         ? raw.filter((x: unknown): x is string => typeof x === "string")
         : [];
-      const b = await resolveBackend();
-      if (b.kind === "postgres") {
-        await wpnPgSetExplorerExpanded(b.pool, ownerId, projectId, expanded_ids);
-      } else {
-        wpnSqliteSetExplorerExpanded(b.db, ownerId, projectId, expanded_ids);
-      }
+      const store = await resolveJsonStore();
+      wpnJsonSetExplorerExpanded(store, ownerId, projectId, expanded_ids);
       res.json({ expanded_ids });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -364,23 +281,14 @@ export function createWpnRouter(): Router {
         return;
       }
       const anchorId = typeof body.anchorId === "string" ? body.anchorId : undefined;
-      const b = await resolveBackend();
-      const created =
-        b.kind === "postgres"
-          ? await wpnPgCreateNote(b.pool, ownerId, projectId, {
-              anchorId: rel === "root" ? undefined : anchorId,
-              relation: rel,
-              type,
-              content: typeof body.content === "string" ? body.content : undefined,
-              title: typeof body.title === "string" ? body.title : undefined,
-            })
-          : wpnSqliteCreateNote(b.db, ownerId, projectId, {
-              anchorId: rel === "root" ? undefined : anchorId,
-              relation: rel,
-              type,
-              content: typeof body.content === "string" ? body.content : undefined,
-              title: typeof body.title === "string" ? body.title : undefined,
-            });
+      const store = await resolveJsonStore();
+      const created = wpnJsonCreateNote(store, ownerId, projectId, {
+        anchorId: rel === "root" ? undefined : anchorId,
+        relation: rel,
+        type,
+        content: typeof body.content === "string" ? body.content : undefined,
+        title: typeof body.title === "string" ? body.title : undefined,
+      });
       res.status(201).json(created);
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -391,11 +299,8 @@ export function createWpnRouter(): Router {
     try {
       const ownerId = (req as AuthedRequest).user!.id;
       const { id } = req.params;
-      const b = await resolveBackend();
-      const note =
-        b.kind === "postgres"
-          ? await wpnPgGetNoteById(b.pool, ownerId, id)
-          : wpnSqliteGetNoteById(b.db, ownerId, id);
+      const store = await resolveJsonStore();
+      const note = wpnJsonGetNoteById(store, ownerId, id);
       if (!note) {
         sendErr(res, 404, "Note not found");
         return;
@@ -425,14 +330,31 @@ export function createWpnRouter(): Router {
       if (body.metadata === null || (body.metadata && typeof body.metadata === "object")) {
         patch.metadata = body.metadata as Record<string, unknown> | null;
       }
-      const b = await resolveBackend();
-      const note =
-        b.kind === "postgres"
-          ? await wpnPgUpdateNote(b.pool, ownerId, id, patch)
-          : wpnSqliteUpdateNote(b.db, ownerId, id, patch);
+      const store = await resolveJsonStore();
+      const before =
+        patch.title !== undefined ? wpnJsonGetNoteById(store, ownerId, id) : null;
+      const note = wpnJsonUpdateNote(store, ownerId, id, patch);
       if (!note) {
         sendErr(res, 404, "Note not found");
         return;
+      }
+      if (
+        before &&
+        patch.title !== undefined &&
+        (patch.title.trim() || before.title) !== before.title
+      ) {
+        try {
+          wpnJsonApplyVfsRewritesAfterTitleChange(
+            store,
+            ownerId,
+            id,
+            before.title,
+            note.title,
+          );
+        } catch (vfsErr) {
+          console.error("[wpn-router] VFS rewrite after title change:", vfsErr);
+          throw vfsErr;
+        }
       }
       res.json({ note });
     } catch (e) {
@@ -449,12 +371,8 @@ export function createWpnRouter(): Router {
         return;
       }
       const ids = raw.filter((x: unknown): x is string => typeof x === "string");
-      const b = await resolveBackend();
-      if (b.kind === "postgres") {
-        await wpnPgDeleteNotes(b.pool, ownerId, ids);
-      } else {
-        wpnSqliteDeleteNotes(b.db, ownerId, ids);
-      }
+      const store = await resolveJsonStore();
+      wpnJsonDeleteNotes(store, ownerId, ids);
       res.json({ ok: true as const });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -467,11 +385,8 @@ export function createWpnRouter(): Router {
       try {
         const ownerId = (req as AuthedRequest).user!.id;
         const { projectId, noteId } = req.params;
-        const b = await resolveBackend();
-        const result =
-          b.kind === "postgres"
-            ? await wpnPgDuplicateNoteSubtree(b.pool, ownerId, projectId, noteId)
-            : wpnSqliteDuplicateNoteSubtree(b.db, ownerId, projectId, noteId);
+        const store = await resolveJsonStore();
+        const result = wpnJsonDuplicateNoteSubtree(store, ownerId, projectId, noteId);
         res.status(201).json(result);
       } catch (e) {
         sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -495,26 +410,15 @@ export function createWpnRouter(): Router {
         sendErr(res, 400, "Invalid placement");
         return;
       }
-      const b = await resolveBackend();
-      if (b.kind === "postgres") {
-        await wpnPgMoveNote(
-          b.pool,
-          ownerId,
-          projectId,
-          draggedId,
-          targetId,
-          p as NoteMovePlacement,
-        );
-      } else {
-        wpnSqliteMoveNote(
-          b.db,
-          ownerId,
-          projectId,
-          draggedId,
-          targetId,
-          p as NoteMovePlacement,
-        );
-      }
+      const store = await resolveJsonStore();
+      wpnJsonMoveNote(
+        store,
+        ownerId,
+        projectId,
+        draggedId,
+        targetId,
+        p as NoteMovePlacement,
+      );
       res.json({ ok: true as const });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -525,12 +429,8 @@ export function createWpnRouter(): Router {
     try {
       const ownerId = (req as AuthedRequest).user!.id;
       const { workspaceId } = req.params;
-      const b = await resolveBackend();
-      if (b.kind !== "postgres") {
-        sendErr(res, 400, "Workspace settings are only available on Postgres");
-        return;
-      }
-      const settings = await wpnPgGetWorkspaceSettings(b.pool, ownerId, workspaceId);
+      const store = await resolveJsonStore();
+      const settings = wpnJsonGetWorkspaceSettings(store, ownerId, workspaceId);
       res.json({ settings });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -542,12 +442,8 @@ export function createWpnRouter(): Router {
       const ownerId = (req as AuthedRequest).user!.id;
       const { workspaceId } = req.params;
       const patch = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
-      const b = await resolveBackend();
-      if (b.kind !== "postgres") {
-        sendErr(res, 400, "Workspace settings are only available on Postgres");
-        return;
-      }
-      const settings = await wpnPgPatchWorkspaceSettings(b.pool, ownerId, workspaceId, patch);
+      const store = await resolveJsonStore();
+      const settings = wpnJsonPatchWorkspaceSettings(store, ownerId, workspaceId, patch);
       res.json({ settings });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -558,12 +454,8 @@ export function createWpnRouter(): Router {
     try {
       const ownerId = (req as AuthedRequest).user!.id;
       const { projectId } = req.params;
-      const b = await resolveBackend();
-      if (b.kind !== "postgres") {
-        sendErr(res, 400, "Project settings are only available on Postgres");
-        return;
-      }
-      const settings = await wpnPgGetProjectSettings(b.pool, ownerId, projectId);
+      const store = await resolveJsonStore();
+      const settings = wpnJsonGetProjectSettings(store, ownerId, projectId);
       res.json({ settings });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));
@@ -575,12 +467,8 @@ export function createWpnRouter(): Router {
       const ownerId = (req as AuthedRequest).user!.id;
       const { projectId } = req.params;
       const patch = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
-      const b = await resolveBackend();
-      if (b.kind !== "postgres") {
-        sendErr(res, 400, "Project settings are only available on Postgres");
-        return;
-      }
-      const settings = await wpnPgPatchProjectSettings(b.pool, ownerId, projectId, patch);
+      const store = await resolveJsonStore();
+      const settings = wpnJsonPatchProjectSettings(store, ownerId, projectId, patch);
       res.json({ settings });
     } catch (e) {
       sendErr(res, 503, e instanceof Error ? e.message : String(e));

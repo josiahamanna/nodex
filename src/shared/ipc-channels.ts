@@ -96,6 +96,10 @@ export const IPC_CHANNELS = {
   /** Opened project folder (notes DB + assets). */
   PROJECT_GET_STATE: "project:get-state",
   PROJECT_SELECT_FOLDER: "project:select-folder",
+  /** Ephemeral temp-dir workspace (Electron); not persisted until save-to-folder. */
+  PROJECT_START_SCRATCH_SESSION: "project:start-scratch-session",
+  PROJECT_SAVE_SCRATCH_TO_FOLDER: "project:save-scratch-to-folder",
+  PROJECT_NEW_SCRATCH_SESSION: "project:new-scratch-session",
   PROJECT_OPEN_PATH: "project:open-path",
   PROJECT_ADD_WORKSPACE_FOLDER: "project:add-workspace-folder",
   PROJECT_REVEAL_FOLDER: "project:reveal-folder",
@@ -144,6 +148,8 @@ export const IPC_CHANNELS = {
   WPN_DELETE_NOTES: "wpn:delete-notes",
   WPN_MOVE_NOTE: "wpn:move-note",
   WPN_DUPLICATE_NOTE_SUBTREE: "wpn:duplicate-note-subtree",
+  /** Main → renderer: periodic nudge to run HTTP sync (`DesktopHost.onSyncTrigger`). */
+  DESKTOP_SYNC_TRIGGER: "desktop:sync-trigger",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

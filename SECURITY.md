@@ -125,7 +125,7 @@ connect-src 'self' ws://localhost:* http://localhost:*;
 
 ## Best Practices Compliance
 
-This implementation follows the guidelines in `electron_windsurf_best_practices.md`:
+This implementation follows the guidelines in [`docs/repository/electron_windsurf_best_practices.md`](docs/repository/electron_windsurf_best_practices.md):
 
 | Practice | Status | Notes |
 |----------|--------|-------|

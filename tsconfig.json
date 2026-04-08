@@ -6,7 +6,8 @@
     "jsx": "react",
     "baseUrl": ".",
     "paths": {
-      "@nodex/ui-types": ["./src/shared/nodex-preload-public-types.ts"]
+      "@nodex/ui-types": ["./src/shared/nodex-preload-public-types.ts"],
+      "@nodex/platform": ["./packages/nodex-platform/src/index.ts"]
     },
     "strict": true,
     "esModuleInterop": true,

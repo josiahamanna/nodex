@@ -1,33 +1,17 @@
 import * as path from "path";
 import cors from "cors";
 import express from "express";
-import {
-  getHeadlessUserDataPath,
-  initHeadlessFromEnv,
-  initHeadlessPgOnlyFromEnv,
-} from "./headless-bootstrap";
+import { initHeadlessFromEnv } from "./headless-bootstrap";
 import { createNodexApiRouter } from "./api-router";
-import { getWpnPgPool } from "../core/wpn/wpn-pg-pool";
-import { ensureAuthPgSchema } from "../core/auth/auth-pg-schema";
 import {
   readMarketplaceS3ConfigFromEnv,
   streamArtifactToResponse,
 } from "./marketplace/marketplace-s3";
-import { headlessPluginsCatalogPgSyncFromDisk } from "./headless-marketplace-session";
 
 const init = initHeadlessFromEnv();
 if (!init.ok) {
-  const pgPool = getWpnPgPool();
-  if (pgPool) {
-    initHeadlessPgOnlyFromEnv();
-    // eslint-disable-next-line no-console
-    console.warn(
-      "[Nodex API] NODEX_PROJECT_ROOT is not set; running in Postgres WPN mode. Legacy /notes, assets, and routes that require an open folder project will return errors until a project root is configured.",
-    );
-  } else {
-    console.error("[Nodex API]", init.error);
-    process.exit(1);
-  }
+  console.error("[Nodex API]", init.error);
+  process.exit(1);
 }
 
 const app = express();
@@ -78,26 +62,10 @@ const PORT = Number(process.env.PORT ?? "3847");
 const host = process.env.HOST ?? "127.0.0.1";
 
 void (async () => {
-  if (getWpnPgPool()) {
-    try {
-      await ensureAuthPgSchema(getWpnPgPool()!);
-      await headlessPluginsCatalogPgSyncFromDisk(getHeadlessUserDataPath());
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        "[Nodex API] headless plugin catalog PG sync:",
-        e instanceof Error ? e.message : e,
-      );
-    }
-  }
-
   const server = app.listen(PORT, host, () => {
-    const projectLabel =
-      process.env.NODEX_PROJECT_ROOT?.trim() || "(postgres WPN only, no folder)";
+    const projectLabel = process.env.NODEX_PROJECT_ROOT?.trim() || "(unknown)";
     // eslint-disable-next-line no-console
-    console.info(
-      `[Nodex API] listening on http://${host}:${PORT} (project ${projectLabel})`,
-    );
+    console.info(`[Nodex API] listening on http://${host}:${PORT} (project ${projectLabel})`);
   });
 
   function shutdown(signal: string) {

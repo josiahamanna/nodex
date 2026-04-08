@@ -1,16 +1,11 @@
 # Nodex headless API — mount a host project directory into the container.
+# MongoDB for Fastify sync API: docker compose --profile sync up -d mongo-sync  (see apps/nodex-sync-api)
 #
 # Usage — set NODEX_HOST_PROJECT to your vault (Compose does not expand $HOME in .env files):
 #   export NODEX_HOST_PROJECT="$HOME/Documents/my-vault"   # shell expands $HOME → absolute path
 #   npm run docker:api:up
 #
-# If unset, Compose uses ./.nodex-docker-workspace (created as needed) so you can run API-only or
-# Postgres WPN without picking a real folder; legacy /notes still need a real project on disk.
-#
-# Postgres WPN (optional): start DB + set URL (password must match NODEX_PG_PASSWORD):
-#   docker compose --profile wpn-pg up -d postgres nodex-api
-#   NODEX_PG_DATABASE_URL=postgresql://nodex:nodex@postgres:5432/nodex
-# With NODEX_PG_DATABASE_URL set, the API can omit NODEX_PROJECT_ROOT (empty workspace mount is fine).
+# If unset, Compose uses ./.nodex-docker-workspace (created as needed).
 #
 # Same-origin browser UI: use nodex-gateway (e.g. :8080) so the browser calls /api/v1 on the gateway
 # (proxied to nodex-api). For Next alone, set NODEX_HEADLESS_API_ORIGIN at build/runtime, or build
@@ -22,7 +17,7 @@
 # Build image only: npm run docker:api:build
 # Detached:        npm run docker:api:up:detached
 # Stop:            npm run docker:api:down
-# Follow logs:     npm run docker:api:logs
+# Follow logs:     npm run docker:logs  (all compose services; add e.g. nodex-api to filter)
 #
 # Unified gateway (nginx on host port NODEX_GATEWAY_PORT, default 8080 for Cloudflare Tunnel):
 #   Point cloudflared to http://127.0.0.1:8080 (see deploy/ZERO-DOWNTIME.md).
@@ -41,30 +36,21 @@
 #
 # Zero-downtime UI deploy: deploy/ZERO-DOWNTIME.md and scripts/docker-web-swap.sh
 #
-# Full stack (Postgres WPN + gateway + UI) in one step:
+# Full stack (API + gateway + UI) in one step:
 #   npm run deploy
-#   Open http://127.0.0.1:8080 — WPN workspaces/notes persist in Postgres (default owner jehu).
+#   Open http://127.0.0.1:8080 — WPN workspaces/notes persist in the mounted project JSON workspace.
 
 services:
-  postgres:
-    profiles: ["wpn-pg"]
-    image: postgres:16-alpine
-    container_name: nodex-postgres
+  # MongoDB for Fastify sync API (ADR-003). Enable: docker compose --profile sync up -d mongo-sync
+  mongo-sync:
+    profiles: ["sync"]
+    image: mongo:7
+    container_name: nodex-mongo-sync
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: nodex
-      POSTGRES_PASSWORD: ${NODEX_PG_PASSWORD:-nodex}
-      POSTGRES_DB: nodex
+    ports:
+      - "${NODEX_MONGO_SYNC_PORT:-27017}:27017"
     volumes:
-      - nodex-pg-data:/var/lib/postgresql/data
-    expose:
-      - "5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nodex -d nodex"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 15s
+      - nodex-mongo-sync-data:/data
 
   nodex-web-blue:
     build:
@@ -135,15 +121,9 @@ services:
       NODEX_USER_DATA_DIR: /nodex-user-data
       # Serve marketplace artifacts from this mounted directory.
       NODEX_MARKETPLACE_DIR: /nodex-marketplace
-      # Optional: Postgres WPN when set (e.g. postgresql://nodex:nodex@postgres:5432/nodex with --profile wpn-pg)
-      NODEX_PG_DATABASE_URL: ${NODEX_PG_DATABASE_URL:-}
       NODEX_WPN_DEFAULT_OWNER: ${NODEX_WPN_DEFAULT_OWNER:-jehu}
       # Bundled Documentation guides (manifest + markdown baked into API image; see Dockerfile).
       NODEX_BUNDLED_DOCS_DIR: /app/docs/bundled-plugin-authoring
-    depends_on:
-      postgres:
-        condition: service_healthy
-        required: false
     volumes:
       # Long-form bind so paths are not mistaken for named volumes (short form treats
       # e.g. $HOME/... as a volume name because it does not start with /).
@@ -208,5 +188,5 @@ services:
 
 volumes:
   nodex-user-data:
-  nodex-pg-data:
   nodex-minio-data:
+  nodex-mongo-sync-data:

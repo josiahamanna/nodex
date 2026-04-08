@@ -43,6 +43,8 @@ Plugins add **note types** (what shows when you open a note) and related tooling
 
 For a deeper dive into how the shell talks to plugins and what is validated at the boundary, see **[SECURITY.md](./SECURITY.md)**.
 
+Architecture ADRs, plugin overview markdown, and other planning notes that used to sit at the repo root now live under **`docs/repository/`** (for example [`docs/repository/proposed-architecture.md`](docs/repository/proposed-architecture.md)).
+
 ---
 
 ## License

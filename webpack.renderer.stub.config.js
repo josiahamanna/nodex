@@ -23,6 +23,10 @@ module.exports = {
         __dirname,
         "src/shared/nodex-preload-public-types.ts",
       ),
+      "@nodex/platform": path.resolve(
+        __dirname,
+        "packages/nodex-platform/src/index.ts",
+      ),
     },
   },
   plugins: [],

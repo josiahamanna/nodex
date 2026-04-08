@@ -12,11 +12,15 @@ import {
 } from "../core/notes-store";
 import {
   activateProject,
+  activateScratchWorkspace,
   activateWorkspace,
   closeWorkspace,
   readProjectPrefs,
+  replaceScratchWithNewSession,
+  saveScratchWorkspaceToFolder,
   setWorkspaceFolderLabel,
   pruneWorkspaceLabels,
+  writeProjectPrefs,
 } from "../core/project-session";
 import { registry } from "../core/registry";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
@@ -42,6 +46,7 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
       notesDbPath: ctx.notesPersistencePath,
       workspaceRoots: [...roots],
       workspaceLabels: labels,
+      scratchSession: ctx.scratchSession,
       ...(roots.length > 0 ? { mountKind: "folder" as const } : {}),
     };
   });
@@ -79,6 +84,72 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
       return { ok: true as const, seedSampleNotes: next.seedSampleNotes };
     },
   );
+
+  ipcMain.handle(IPC_CHANNELS.PROJECT_START_SCRATCH_SESSION, async () => {
+    const res = activateScratchWorkspace(registry.getRegisteredTypes());
+    if (!res.ok) {
+      return { ok: false as const, error: res.error };
+    }
+    applyWorkspaceActivateResult(res);
+    clearNodexUndoRedo();
+    broadcastProjectRootChanged();
+    return {
+      ok: true as const,
+      rootPath: ctx.projectRootPath,
+      workspaceRoots: [...ctx.workspaceRoots],
+      scratchSession: true as const,
+    };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PROJECT_SAVE_SCRATCH_TO_FOLDER, async () => {
+    if (!ctx.scratchSession) {
+      return { ok: false as const, error: "Not in a scratch session" };
+    }
+    const r = await showOpenDialogWithParent({
+      properties: ["openDirectory", "createDirectory"],
+      title: "Choose folder to save your workspace",
+    });
+    if (r.canceled || r.filePaths.length === 0) {
+      return { ok: false as const, cancelled: true as const };
+    }
+    const chosen = path.resolve(r.filePaths[0]!);
+    const res = saveScratchWorkspaceToFolder(
+      chosen,
+      userDataPath,
+      registry.getRegisteredTypes(),
+    );
+    if (!res.ok) {
+      return { ok: false as const, error: res.error };
+    }
+    applyWorkspaceActivateResult(res);
+    clearNodexUndoRedo();
+    broadcastProjectRootChanged();
+    return {
+      ok: true as const,
+      rootPath: ctx.projectRootPath,
+      workspaceRoots: [...ctx.workspaceRoots],
+      scratchSession: false as const,
+    };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PROJECT_NEW_SCRATCH_SESSION, async () => {
+    if (!ctx.scratchSession) {
+      return { ok: false as const, error: "Not in a scratch session" };
+    }
+    const res = replaceScratchWithNewSession(userDataPath, registry.getRegisteredTypes());
+    if (!res.ok) {
+      return { ok: false as const, error: res.error };
+    }
+    applyWorkspaceActivateResult(res);
+    clearNodexUndoRedo();
+    broadcastProjectRootChanged();
+    return {
+      ok: true as const,
+      rootPath: ctx.projectRootPath,
+      workspaceRoots: [...ctx.workspaceRoots],
+      scratchSession: true as const,
+    };
+  });
 
   ipcMain.handle(IPC_CHANNELS.PROJECT_SELECT_FOLDER, async () => {
     const r = await showOpenDialogWithParent({

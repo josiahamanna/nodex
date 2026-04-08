@@ -27,6 +27,9 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Default headless API workspace when NODEX_PROJECT_ROOT is unset (`npm run start:api`)
+.nodex-headless-project/
+
 # Default empty bind mount for docker-compose when NODEX_HOST_PROJECT is unset
 .nodex-docker-workspace/
 

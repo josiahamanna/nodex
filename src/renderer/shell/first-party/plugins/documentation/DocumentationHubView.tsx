@@ -8,7 +8,6 @@ import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import { BUNDLED_DOC_NOTE_IDS, DOCS_BC, type DocsBcMessage } from "./documentationConstants";
 import { fetchBundledDocumentationNote } from "./documentationFetchBundledNote";
 import { resolvedCommandDocToMarkdown } from "./documentationCommandMarkdown";
-import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import { resolveNoteIdFromVfsPath } from "../../../../utils/resolve-note-vfs-path";
 import {
   DOCUMENTATION_SHELL_TAB_TYPE_ID,
@@ -32,7 +31,6 @@ function esc(s: string): string {
 export function DocumentationHubView(_props: { viewId: string; title: string }): React.ReactElement {
   const registry = useNodexContributionRegistry();
   const regs = useShellRegistries();
-  const { mountKind } = useShellProjectWorkspace();
   const activeTab = regs.tabs.getActiveTab();
   const docState =
     activeTab?.tabTypeId === DOCUMENTATION_SHELL_TAB_TYPE_ID
@@ -104,9 +102,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
       if (d?.type === "docs.showBundledLogical" && typeof d.logicalId === "string") {
         mergeDocumentationIntoTabState(regs.tabs, t.instanceId, {
           view: "bundled",
-          ...(mountKind === "wpn-postgres"
-            ? { bundledResolvingLogicalId: d.logicalId }
-            : { noteId: d.logicalId }),
+          bundledResolvingLogicalId: d.logicalId,
         });
       }
     };
@@ -115,12 +111,12 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
       bc.removeEventListener("message", onMsg);
       bc.close();
     };
-  }, [mountKind, regs.tabs]);
+  }, [regs.tabs]);
 
   useEffect(() => {
     if (!bundledResolvingLogicalId || bundledNoteId) return;
     let cancelled = false;
-    void fetchBundledDocumentationNote(bundledResolvingLogicalId, mountKind)
+    void fetchBundledDocumentationNote(bundledResolvingLogicalId)
       .then((n) => {
         if (cancelled) return;
         const cur = regs.tabs.getActiveTab();
@@ -131,7 +127,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     return () => {
       cancelled = true;
     };
-  }, [bundledResolvingLogicalId, bundledNoteId, mountKind, regs.tabs]);
+  }, [bundledResolvingLogicalId, bundledNoteId, regs.tabs]);
 
   useEffect(() => {
     if (!bundledVfsPathResolving || bundledNoteId) return;
@@ -162,7 +158,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     setBundledLoading(true);
     setBundledError(null);
     const load = async () => {
-      if (mountKind === "wpn-postgres" || bundledNoteId.startsWith("wpn-docs:")) {
+      if (bundledNoteId.startsWith("wpn-docs:")) {
         const r = await window.Nodex.wpnGetNote(bundledNoteId);
         return r.note as unknown as Note;
       }
@@ -177,7 +173,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
         setBundledError(e instanceof Error ? e.message : String(e));
         setBundledLoading(false);
       });
-  }, [bundledNoteId, mountKind, bundledResolvingLogicalId, bundledVfsPathResolving]);
+  }, [bundledNoteId, bundledResolvingLogicalId, bundledVfsPathResolving]);
 
   useEffect(() => {
     if (bundledNoteId || commandId || bundledResolvingLogicalId || bundledVfsPathResolving) {
@@ -191,7 +187,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     setHubError(null);
     void (async () => {
       try {
-        const n = await fetchBundledDocumentationNote(BUNDLED_DOC_NOTE_IDS.hubOverview, mountKind);
+        const n = await fetchBundledDocumentationNote(BUNDLED_DOC_NOTE_IDS.hubOverview);
         if (!cancelled) {
           setHubNote(n);
           setHubLoading(false);
@@ -207,7 +203,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
     return () => {
       cancelled = true;
     };
-  }, [bundledNoteId, commandId, mountKind, bundledResolvingLogicalId, bundledVfsPathResolving]);
+  }, [bundledNoteId, commandId, bundledResolvingLogicalId, bundledVfsPathResolving]);
 
   const scrollDocHeadingIntoView = useCallback((slug: string) => {
     const deadline = performance.now() + 900;

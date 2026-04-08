@@ -1,11 +1,196 @@
+import { createSyncBaseUrlResolver } from "@nodex/platform";
+import { PLUGIN_UI_METADATA_KEY, validatePluginUiStateSize } from "../shared/plugin-state-protocol";
 import type {
   MarketplaceListResponse,
   NodexRendererApi,
+  Note,
+  NoteListItem,
 } from "../shared/nodex-renderer-api";
-import { getAccessToken, setAccessToken } from "./auth/auth-session";
+import type { WpnNoteDetail, WpnNoteListItem } from "../shared/wpn-v2-types";
 import { authRefresh } from "./auth/auth-client";
+import { getAccessToken, setAccessToken } from "./auth/auth-session";
+import {
+  readCloudSyncRefreshToken,
+  readCloudSyncToken,
+  writeCloudSyncRefreshToken,
+  writeCloudSyncToken,
+} from "./cloud-sync/cloud-sync-storage";
 
 const noopUnsub = (): void => {};
+
+const resolveSyncApiBase = createSyncBaseUrlResolver();
+
+/** Route WPN HTTP to Fastify Mongo (`/wpn/*`) instead of headless Express (`/api/v1/wpn/*`). */
+export function syncWpnUsesSyncApi(): boolean {
+  if (typeof window !== "undefined" && window.__NODEX_WPN_USE_SYNC_API__ === true) {
+    return true;
+  }
+  try {
+    return process.env.NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Sync WPN mode with a resolved sync base: use `/wpn/*` for note data (no legacy `/api/v1/notes/*`). */
+function syncWpnNotesBackend(): boolean {
+  return syncWpnUsesSyncApi() && resolveSyncApiBase().trim().length > 0;
+}
+
+const WPN_BUILTIN_NOTE_TYPES = ["markdown", "mdx", "text", "code", "root"] as const;
+
+async function wpnAggregateAllNoteListItems(
+  headlessBaseUrl: string,
+): Promise<NoteListItem[]> {
+  const { workspaces } = await wpnHttp<{ workspaces: { id: string }[] }>(
+    headlessBaseUrl,
+    "GET",
+    "/wpn/workspaces",
+  );
+  const out: NoteListItem[] = [];
+  for (const w of workspaces ?? []) {
+    const { projects } = await wpnHttp<{ projects: { id: string }[] }>(
+      headlessBaseUrl,
+      "GET",
+      `/wpn/workspaces/${encodeURIComponent(w.id)}/projects`,
+    );
+    for (const p of projects ?? []) {
+      const { notes } = await wpnHttp<{ notes: WpnNoteListItem[] }>(
+        headlessBaseUrl,
+        "GET",
+        `/wpn/projects/${encodeURIComponent(p.id)}/notes`,
+      );
+      for (const n of notes ?? []) {
+        out.push({
+          id: n.id,
+          type: n.type,
+          title: n.title,
+          parentId: n.parent_id,
+          depth: n.depth,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+async function wpnFetchNoteDetail(
+  headlessBaseUrl: string,
+  noteId: string,
+): Promise<WpnNoteDetail | null> {
+  try {
+    const r = await wpnHttp<{ note: WpnNoteDetail }>(
+      headlessBaseUrl,
+      "GET",
+      `/wpn/notes/${encodeURIComponent(noteId)}`,
+    );
+    return r?.note ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function wpnDetailToNote(d: WpnNoteDetail): Note {
+  return {
+    id: d.id,
+    type: d.type,
+    title: d.title,
+    content: d.content,
+    metadata: d.metadata,
+  };
+}
+
+async function wpnResolveProjectIdForNote(
+  headlessBaseUrl: string,
+  noteId: string,
+): Promise<string | null> {
+  const d = await wpnFetchNoteDetail(headlessBaseUrl, noteId);
+  return d?.project_id ?? null;
+}
+
+async function syncWpnFetch<T>(
+  syncBase: string,
+  method: string,
+  apiPath: string,
+  body?: unknown,
+  attempt = 0,
+): Promise<T> {
+  const path = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+  const url = `${syncBase.replace(/\/$/, "")}${path}`;
+  const token = readCloudSyncToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const init: RequestInit = {
+    method,
+    headers,
+    credentials: "omit",
+  };
+  if (
+    body !== undefined &&
+    method !== "GET" &&
+    method !== "HEAD" &&
+    method !== "DELETE"
+  ) {
+    init.body = JSON.stringify(body);
+  }
+  let res = await fetch(url, init);
+  if (res.status === 401 && attempt < 1) {
+    const rt = readCloudSyncRefreshToken();
+    if (!rt) {
+      throw new Error(`${method} ${apiPath} failed (401)`);
+    }
+    const r2 = await fetch(`${syncBase.replace(/\/$/, "")}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: rt }),
+    });
+    if (!r2.ok) {
+      writeCloudSyncToken(null);
+      writeCloudSyncRefreshToken(null);
+      throw new Error(`${method} ${apiPath} failed (401)`);
+    }
+    const j = (await r2.json()) as { token: string; refreshToken: string };
+    writeCloudSyncToken(j.token);
+    writeCloudSyncRefreshToken(j.refreshToken);
+    return syncWpnFetch<T>(syncBase, method, apiPath, body, attempt + 1);
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    let msg = `${method} ${apiPath} failed (${res.status})`;
+    try {
+      const errObj = JSON.parse(text) as { error?: string };
+      if (typeof errObj.error === "string" && errObj.error.length > 0) {
+        msg = errObj.error;
+      }
+    } catch {
+      if (text.trim().length > 0) {
+        msg = text;
+      }
+    }
+    throw new Error(msg);
+  }
+  if (res.status === 204 || text.length === 0) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
+}
+
+async function wpnHttp<T>(
+  headlessBaseUrl: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  if (syncWpnUsesSyncApi()) {
+    const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
+    if (syncBase.length > 0) {
+      return syncWpnFetch<T>(syncBase, method, path, body);
+    }
+  }
+  return webRequest<T>(headlessBaseUrl, method, path, body);
+}
 
 /** Dispatched after headless marketplace session-install so UI refreshes note types. */
 export const NODEX_WEB_PLUGINS_CHANGED = "nodex-web-plugins-changed";
@@ -50,6 +235,10 @@ export function initHeadlessWebApiBaseFromUrlAndStorage(): void {
   }
   const q = new URLSearchParams(window.location.search);
   const web = q.get("web") === "1" || q.get("web") === "true";
+
+  if (q.get("syncWpn") === "1" || q.get("syncWpn") === "true") {
+    window.__NODEX_WPN_USE_SYNC_API__ = true;
+  }
 
   const api = q.get("api")?.trim();
   if (api) {
@@ -176,31 +365,134 @@ async function webRequest<T>(
 export function createWebNodexApi(baseUrl: string): NodexRendererApi {
   const req = <T>(method: string, path: string, body?: unknown) =>
     webRequest<T>(baseUrl, method, path, body);
+  const wpnReq = <T>(method: string, path: string, body?: unknown) =>
+    wpnHttp<T>(baseUrl, method, path, body);
 
   const impl: Partial<NodexRendererApi> = {
-    getNote: (noteId?: string) =>
-      req(
+    getNote: async (noteId?: string) => {
+      if (syncWpnNotesBackend()) {
+        if (!noteId) {
+          return null;
+        }
+        const d = await wpnFetchNoteDetail(baseUrl, noteId);
+        return d ? wpnDetailToNote(d) : null;
+      }
+      return req(
         "GET",
         noteId
           ? `/notes/detail?id=${encodeURIComponent(noteId)}`
           : "/notes/detail",
-      ),
-    getAllNotes: () => req("GET", "/notes"),
-    createNote: (payload) => req("POST", "/notes", payload),
-    renameNote: (id, title) =>
-      req("PATCH", `/notes/${encodeURIComponent(id)}`, { title }),
-    deleteNotes: (ids) => req("POST", "/notes/delete", { ids }),
-    moveNote: (draggedId, targetId, placement) =>
-      req("POST", "/notes/move", { draggedId, targetId, placement }),
-    moveNotesBulk: (ids, targetId, placement) =>
-      req("POST", "/notes/move-bulk", { ids, targetId, placement }),
-    pasteSubtree: (payload) => req("POST", "/notes/paste", payload),
-    saveNotePluginUiState: (noteId, state) =>
-      req("PATCH", `/notes/${encodeURIComponent(noteId)}`, {
+      );
+    },
+    getAllNotes: async () => {
+      if (syncWpnNotesBackend()) {
+        return wpnAggregateAllNoteListItems(baseUrl);
+      }
+      return req("GET", "/notes");
+    },
+    createNote: async (_payload) => {
+      if (syncWpnNotesBackend()) {
+        throw new Error(
+          "Legacy flat createNote is not used with sync WPN — create notes from the Notes explorer (per-project tree).",
+        );
+      }
+      return req("POST", "/notes", _payload);
+    },
+    renameNote: async (id, title) => {
+      if (syncWpnNotesBackend()) {
+        await wpnHttp(baseUrl, "PATCH", `/wpn/notes/${encodeURIComponent(id)}`, {
+          title,
+        });
+        return;
+      }
+      return req("PATCH", `/notes/${encodeURIComponent(id)}`, { title });
+    },
+    deleteNotes: async (ids) => {
+      if (syncWpnNotesBackend()) {
+        await wpnHttp(baseUrl, "POST", "/wpn/notes/delete", { ids });
+        return;
+      }
+      return req("POST", "/notes/delete", { ids });
+    },
+    moveNote: async (draggedId, targetId, placement) => {
+      if (syncWpnNotesBackend()) {
+        const pd = await wpnResolveProjectIdForNote(baseUrl, draggedId);
+        const pt = await wpnResolveProjectIdForNote(baseUrl, targetId);
+        if (!pd || !pt || pd !== pt) {
+          throw new Error(
+            "moveNote: dragged and target notes must exist in the same WPN project",
+          );
+        }
+        await wpnHttp(baseUrl, "POST", "/wpn/notes/move", {
+          projectId: pd,
+          draggedId,
+          targetId,
+          placement,
+        });
+        return;
+      }
+      return req("POST", "/notes/move", { draggedId, targetId, placement });
+    },
+    moveNotesBulk: async (ids, targetId, placement) => {
+      if (syncWpnNotesBackend()) {
+        for (const id of ids) {
+          await impl.moveNote!(id, targetId, placement);
+        }
+        return;
+      }
+      return req("POST", "/notes/move-bulk", { ids, targetId, placement });
+    },
+    pasteSubtree: async (_payload) => {
+      if (syncWpnNotesBackend()) {
+        throw new Error("pasteSubtree is not implemented for sync WPN yet");
+      }
+      return req("POST", "/notes/paste", _payload);
+    },
+    saveNotePluginUiState: async (noteId, state) => {
+      if (syncWpnNotesBackend()) {
+        const err = validatePluginUiStateSize(state);
+        if (err) {
+          throw new Error(err);
+        }
+        const cur = await wpnFetchNoteDetail(baseUrl, noteId);
+        if (!cur) {
+          throw new Error("Note not found");
+        }
+        const meta = {
+          ...(cur.metadata && typeof cur.metadata === "object" ? cur.metadata : {}),
+          [PLUGIN_UI_METADATA_KEY]: state,
+        };
+        await wpnHttp(baseUrl, "PATCH", `/wpn/notes/${encodeURIComponent(noteId)}`, {
+          metadata: meta,
+        });
+        return;
+      }
+      return req("PATCH", `/notes/${encodeURIComponent(noteId)}`, {
         pluginUiState: state,
-      }),
-    saveNoteContent: (noteId, content) =>
-      req("PATCH", `/notes/${encodeURIComponent(noteId)}`, { content }),
+      });
+    },
+    saveNoteContent: async (noteId, content) => {
+      if (syncWpnNotesBackend()) {
+        await wpnHttp(baseUrl, "PATCH", `/wpn/notes/${encodeURIComponent(noteId)}`, {
+          content,
+        });
+        return;
+      }
+      return req("PATCH", `/notes/${encodeURIComponent(noteId)}`, { content });
+    },
+    patchNoteMetadata: async (noteId, patch) => {
+      const cur = await wpnFetchNoteDetail(baseUrl, noteId);
+      if (!cur) {
+        throw new Error("patchNoteMetadata: WPN note not found");
+      }
+      const meta = {
+        ...(cur.metadata && typeof cur.metadata === "object" ? cur.metadata : {}),
+        ...patch,
+      };
+      await wpnHttp(baseUrl, "PATCH", `/wpn/notes/${encodeURIComponent(noteId)}`, {
+        metadata: meta,
+      });
+    },
     getPluginHTML: async (type, note) => {
       const r = await req<{ html: string }>("POST", "/plugins/render-html", {
         type,
@@ -209,17 +501,55 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       return r.html;
     },
     getRegisteredTypes: async () => {
+      if (syncWpnNotesBackend()) {
+        return [...WPN_BUILTIN_NOTE_TYPES];
+      }
       const r = await req<{ types: string[] }>("GET", "/notes/types/registered");
       return r.types;
     },
     getSelectableNoteTypes: async () => {
+      if (syncWpnNotesBackend()) {
+        return [...WPN_BUILTIN_NOTE_TYPES];
+      }
       const r = await req<{ types: string[] }>(
         "GET",
         "/notes/types/selectable",
       );
       return r.types;
     },
-    getProjectState: () => req("GET", "/project/state"),
+    getProjectState: async () => {
+      const emptyRoots = {
+        rootPath: null as string | null,
+        notesDbPath: null as string | null,
+        workspaceRoots: [] as string[],
+        workspaceLabels: {} as Record<string, string>,
+      };
+      if (syncWpnUsesSyncApi()) {
+        const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
+        if (syncBase.length > 0) {
+          try {
+            const r = await syncWpnFetch<{ workspaces: unknown[] }>(
+              syncBase,
+              "GET",
+              "/wpn/workspaces",
+            );
+            if (Array.isArray(r?.workspaces) && r.workspaces.length > 0) {
+              return {
+                rootPath: null,
+                notesDbPath: null,
+                workspaceRoots: ["nodex-sync-wpn"],
+                workspaceLabels: {},
+              };
+            }
+            return emptyRoots;
+          } catch {
+            return emptyRoots;
+          }
+        }
+        return emptyRoots;
+      }
+      return req("GET", "/project/state");
+    },
     getShellLayout: async () => {
       const r = await req<{ layout: unknown }>("GET", "/project/shell-layout");
       return r?.layout ?? null;
@@ -228,49 +558,49 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
     getAppPrefs: async () => ({ seedSampleNotes: true }),
     nodexUndo: () => req("POST", "/undo"),
     nodexRedo: () => req("POST", "/redo"),
-    wpnListWorkspaces: () => req("GET", "/wpn/workspaces"),
+    wpnListWorkspaces: () => wpnReq("GET", "/wpn/workspaces"),
     wpnCreateWorkspace: (name) =>
-      req("POST", "/wpn/workspaces", { name: name ?? "Workspace" }),
+      wpnReq("POST", "/wpn/workspaces", { name: name ?? "Workspace" }),
     wpnUpdateWorkspace: (id, patch) =>
-      req("PATCH", `/wpn/workspaces/${encodeURIComponent(id)}`, patch),
+      wpnReq("PATCH", `/wpn/workspaces/${encodeURIComponent(id)}`, patch),
     wpnDeleteWorkspace: (id) =>
-      req("DELETE", `/wpn/workspaces/${encodeURIComponent(id)}`),
+      wpnReq("DELETE", `/wpn/workspaces/${encodeURIComponent(id)}`),
     wpnListProjects: (workspaceId) =>
-      req(
+      wpnReq(
         "GET",
         `/wpn/workspaces/${encodeURIComponent(workspaceId)}/projects`,
       ),
     wpnCreateProject: (workspaceId, name) =>
-      req(
+      wpnReq(
         "POST",
         `/wpn/workspaces/${encodeURIComponent(workspaceId)}/projects`,
         { name: name ?? "Project" },
       ),
     wpnUpdateProject: (id, patch) =>
-      req("PATCH", `/wpn/projects/${encodeURIComponent(id)}`, patch),
+      wpnReq("PATCH", `/wpn/projects/${encodeURIComponent(id)}`, patch),
     wpnDeleteProject: (id) =>
-      req("DELETE", `/wpn/projects/${encodeURIComponent(id)}`),
+      wpnReq("DELETE", `/wpn/projects/${encodeURIComponent(id)}`),
     wpnListNotes: (projectId) =>
-      req("GET", `/wpn/projects/${encodeURIComponent(projectId)}/notes`),
-    wpnListAllNotesWithContext: () => req("GET", "/wpn/notes-with-context"),
+      wpnReq("GET", `/wpn/projects/${encodeURIComponent(projectId)}/notes`),
+    wpnListAllNotesWithContext: () => wpnReq("GET", "/wpn/notes-with-context"),
     wpnListBacklinksToNote: (targetNoteId) =>
-      req("GET", `/wpn/backlinks/${encodeURIComponent(targetNoteId)}`),
+      wpnReq("GET", `/wpn/backlinks/${encodeURIComponent(targetNoteId)}`),
     wpnGetNote: (noteId) =>
-      req("GET", `/wpn/notes/${encodeURIComponent(noteId)}`),
+      wpnReq("GET", `/wpn/notes/${encodeURIComponent(noteId)}`),
     wpnGetExplorerState: (projectId) =>
-      req("GET", `/wpn/projects/${encodeURIComponent(projectId)}/explorer-state`),
+      wpnReq("GET", `/wpn/projects/${encodeURIComponent(projectId)}/explorer-state`),
     wpnSetExplorerState: (projectId, expandedIds) =>
-      req("PATCH", `/wpn/projects/${encodeURIComponent(projectId)}/explorer-state`, {
+      wpnReq("PATCH", `/wpn/projects/${encodeURIComponent(projectId)}/explorer-state`, {
         expanded_ids: expandedIds,
       }),
     wpnCreateNoteInProject: (projectId, payload) =>
-      req("POST", `/wpn/projects/${encodeURIComponent(projectId)}/notes`, payload),
+      wpnReq("POST", `/wpn/projects/${encodeURIComponent(projectId)}/notes`, payload),
     wpnPatchNote: (noteId, patch) =>
-      req("PATCH", `/wpn/notes/${encodeURIComponent(noteId)}`, patch),
-    wpnDeleteNotes: (ids) => req("POST", "/wpn/notes/delete", { ids }),
-    wpnMoveNote: (payload) => req("POST", "/wpn/notes/move", payload),
+      wpnReq("PATCH", `/wpn/notes/${encodeURIComponent(noteId)}`, patch),
+    wpnDeleteNotes: (ids) => wpnReq("POST", "/wpn/notes/delete", { ids }),
+    wpnMoveNote: (payload) => wpnReq("POST", "/wpn/notes/move", payload),
     wpnDuplicateNoteSubtree: (projectId, noteId) =>
-      req(
+      wpnReq(
         "POST",
         `/wpn/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}/duplicate`,
         {},
@@ -406,6 +736,18 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       window.open(t, "_blank", "noopener,noreferrer");
       return { ok: true as const };
     },
+    startScratchSession: async () => ({
+      ok: false as const,
+      error: "Scratch workspace is only available in the Nodex desktop app.",
+    }),
+    saveScratchSessionToFolder: async () => ({
+      ok: false as const,
+      error: "Scratch workspace is only available in the Nodex desktop app.",
+    }),
+    newScratchSession: async () => ({
+      ok: false as const,
+      error: "Scratch workspace is only available in the Nodex desktop app.",
+    }),
     assetUrl: () => "nodex-asset:web-unsupported",
     getNativeThemeDark: async () =>
       typeof window !== "undefined" &&
@@ -478,6 +820,7 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       notesDbPath: null,
       workspaceRoots: [],
       workspaceLabels: {},
+      scratchSession: false,
     }),
     getShellLayout: async () => null,
     setShellLayout: async () => ({ ok: false as const, error: "No host" }),
@@ -529,6 +872,18 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
     }),
     addWorkspaceFolder: async () => ({ ok: false as const, cancelled: true }),
     selectProjectFolder: async () => ({ ok: false as const, cancelled: true }),
+    startScratchSession: async () => ({
+      ok: false as const,
+      error: "Desktop app only",
+    }),
+    saveScratchSessionToFolder: async () => ({
+      ok: false as const,
+      error: "Desktop app only",
+    }),
+    newScratchSession: async () => ({
+      ok: false as const,
+      error: "Desktop app only",
+    }),
     openProjectPath: async () => ({
       ok: false as const,
       error: "Not available in plain browser",
@@ -844,6 +1199,27 @@ export async function fetchHeadlessWpnSession(): Promise<{ wpnOwnerId: string } 
   if (typeof window === "undefined") {
     return null;
   }
+  if (syncWpnUsesSyncApi()) {
+    const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
+    if (syncBase.length > 0) {
+      try {
+        const token = readCloudSyncToken();
+        if (!token) {
+          return null;
+        }
+        const res = await fetch(`${syncBase}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          return null;
+        }
+        const j = (await res.json()) as { userId: string };
+        return { wpnOwnerId: j.userId };
+      } catch {
+        return null;
+      }
+    }
+  }
   const raw = window.__NODEX_WEB_API_BASE__;
   const base = typeof raw === "string" ? raw.trim() : "";
   const url =
@@ -871,6 +1247,10 @@ export function installNodexWebShimIfNeeded(): void {
   }
   if (typeof window.__NODEX_WEB_API_BASE__ === "string") {
     window.Nodex = createWebNodexApi(normalizeHeadlessApiBase(window.__NODEX_WEB_API_BASE__));
+    return;
+  }
+  if (syncWpnUsesSyncApi() && resolveSyncApiBase().trim().length > 0) {
+    window.Nodex = createWebNodexApi("");
     return;
   }
   const sameOrigin =

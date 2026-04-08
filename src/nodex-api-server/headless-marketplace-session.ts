@@ -14,15 +14,6 @@ import {
 import type { PluginManifest } from "../core/plugin-loader-types";
 import type { NoteRenderer } from "../shared/plugin-api";
 import { isSafePluginName } from "../shared/validators";
-import { getWpnPgPool } from "../core/wpn/wpn-pg-pool";
-import {
-  ensureHeadlessPluginCatalogPgSchema,
-  replaceHeadlessSessionPluginCatalog,
-  upsertHeadlessSessionPlugin,
-  readManifestVersionFromDir,
-  listHeadlessSessionLoadedPluginIdsPg,
-} from "./headless-plugin-catalog-pg";
-
 const sessionRegistry = new Registry();
 const loadedPluginIds = new Set<string>();
 
@@ -35,64 +26,10 @@ export function getHeadlessSessionLoadedPluginIds(): string[] {
   return [...loadedPluginIds].sort();
 }
 
-/**
- * When `NODEX_PG_DATABASE_URL` is set, prefer installed-plugin ids from Postgres
- * (mirrors disk after {@link headlessPluginsCatalogPgSyncFromDisk} / install).
- */
 export async function getHeadlessSessionInstalledPluginIdsResolved(): Promise<
   string[]
 > {
-  const pool = getWpnPgPool();
-  if (pool) {
-    try {
-      await ensureHeadlessPluginCatalogPgSchema(pool);
-      const fromPg = await listHeadlessSessionLoadedPluginIdsPg(pool);
-      if (fromPg.length > 0) {
-        return fromPg;
-      }
-    } catch (e) {
-      console.warn(
-        "[Headless session] PG plugin catalog read failed:",
-        e instanceof Error ? e.message : e,
-      );
-    }
-  }
   return getHeadlessSessionLoadedPluginIds();
-}
-
-/** Upsert headless session plugin rows into Postgres from current in-memory + disk state. */
-export async function headlessPluginsCatalogPgSyncFromDisk(
-  userDataPath: string,
-): Promise<void> {
-  const pool = getWpnPgPool();
-  if (!pool || !userDataPath.trim()) {
-    return;
-  }
-  await ensureHeadlessPluginCatalogPgSchema(pool);
-  const root = sessionPluginsRoot(userDataPath);
-  const rows = [...loadedPluginIds].map((id) => ({
-    plugin_id: id,
-    manifest_version: readManifestVersionFromDir(path.join(root, id)),
-    loaded: true,
-  }));
-  await replaceHeadlessSessionPluginCatalog(pool, rows);
-}
-
-async function headlessUpsertInstalledPluginPg(
-  userDataPath: string,
-  pluginId: string,
-): Promise<void> {
-  const pool = getWpnPgPool();
-  if (!pool || !userDataPath.trim()) {
-    return;
-  }
-  await ensureHeadlessPluginCatalogPgSchema(pool);
-  const dir = path.join(sessionPluginsRoot(userDataPath), pluginId);
-  await upsertHeadlessSessionPlugin(pool, {
-    plugin_id: pluginId,
-    manifest_version: readManifestVersionFromDir(dir),
-    loaded: true,
-  });
 }
 
 function assertPluginFilesExist(
@@ -316,13 +253,5 @@ export async function installHeadlessMarketplacePlugin(options: {
 
   loadedPluginIds.add(pkgMeta.name);
   console.log(`[Headless session] Installed plugin: ${pkgMeta.name}`);
-  try {
-    await headlessUpsertInstalledPluginPg(userDataPath, pkgMeta.name);
-  } catch (e) {
-    console.warn(
-      "[Headless session] PG catalog upsert failed:",
-      e instanceof Error ? e.message : e,
-    );
-  }
   return { success: true, warnings: validation.warnings };
 }

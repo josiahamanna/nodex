@@ -133,7 +133,7 @@ export function AppShellBody(props: AppShellBodyProps): React.ReactNode {
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
           <p className="text-[12px] leading-snug text-muted-foreground">
             Open a project folder to load notes (
-            <span className="font-mono text-[11px]">data/nodex.sqlite</span>)
+            <span className="font-mono text-[11px]">data/nodex-workspace.json</span>)
             and browse files under{" "}
             <span className="font-mono text-[11px]">assets/</span>.
           </p>

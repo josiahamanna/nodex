@@ -1,0 +1,27 @@
+{
+  "name": "@nodex/sync-api",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Fastify + MongoDB sync API (proposed-architecture ADR-003/005)",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "NODE_ENV=production tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "seed:wpn": "tsx scripts/seed-wpn-demo.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.0",
+    "bcryptjs": "^3.0.2",
+    "fastify": "^5.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.12.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

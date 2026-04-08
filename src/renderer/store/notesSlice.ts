@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
+import type { NodexPlatformDeps } from "@nodex/platform";
 import {
   CreateNoteRelation,
   Note,
@@ -7,6 +8,8 @@ import {
   PasteSubtreePayload,
 } from "@nodex/ui-types";
 import { PLUGIN_UI_METADATA_KEY } from "../../shared/plugin-state-protocol";
+
+type NotesThunkConfig = { extra: NodexPlatformDeps };
 
 /** Per-note monotonic save generation (dispatch order). Not in Redux so thunks can read it synchronously. */
 const nextContentSaveSeqByNoteId = new Map<string, number>();
@@ -52,109 +55,119 @@ const initialState: NotesState = {
   noteContentSaveAppliedSeq: {},
 };
 
-export const fetchNote = createAsyncThunk(
-  "notes/fetchNote",
-  async (noteId?: string) => {
-    return await window.Nodex.getNote(noteId);
-  },
-);
+export const fetchNote = createAsyncThunk<
+  Note | null,
+  string | undefined,
+  NotesThunkConfig
+>("notes/fetchNote", async (noteId, { extra }) => {
+  return await extra.localStore.notes.getNote(noteId);
+});
 
-export const fetchAllNotes = createAsyncThunk(
-  "notes/fetchAllNotes",
-  async () => {
-    return await window.Nodex.getAllNotes();
-  },
-);
+export const fetchAllNotes = createAsyncThunk<
+  NoteListItem[],
+  void,
+  NotesThunkConfig
+>("notes/fetchAllNotes", async (_, { extra }) => {
+  return await extra.localStore.notes.getAllNotes();
+});
 
-export const createNote = createAsyncThunk(
-  "notes/createNote",
-  async (payload: {
+export const createNote = createAsyncThunk<
+  { id: string },
+  {
     anchorId?: string;
     relation: CreateNoteRelation;
     type: string;
     content?: string;
     title?: string;
-  }) => {
-    return await window.Nodex.createNote(payload);
   },
-);
+  NotesThunkConfig
+>("notes/createNote", async (payload, { extra }) => {
+  return await extra.localStore.notes.createNote(payload);
+});
 
-export const renameNote = createAsyncThunk(
-  "notes/renameNote",
-  async ({ id, title }: { id: string; title: string }) => {
-    await window.Nodex.renameNote(id, title);
-    return { id, title };
-  },
-);
+export const renameNote = createAsyncThunk<
+  { id: string; title: string },
+  { id: string; title: string },
+  NotesThunkConfig
+>("notes/renameNote", async ({ id, title }, { extra }) => {
+  await extra.localStore.notes.renameNote(id, title);
+  return { id, title };
+});
 
-export const moveNoteInTree = createAsyncThunk(
-  "notes/moveNote",
-  async (payload: {
+export const moveNoteInTree = createAsyncThunk<
+  void,
+  {
     draggedId: string;
     targetId: string;
     placement: NoteMovePlacement;
-  }) => {
-    await window.Nodex.moveNote(
-      payload.draggedId,
-      payload.targetId,
-      payload.placement,
-    );
   },
-);
+  NotesThunkConfig
+>("notes/moveNote", async (payload, { extra }) => {
+  await extra.localStore.notes.moveNote(
+    payload.draggedId,
+    payload.targetId,
+    payload.placement,
+  );
+});
 
-export const moveNotesBulkInTree = createAsyncThunk(
-  "notes/moveNotesBulk",
-  async (payload: {
+export const moveNotesBulkInTree = createAsyncThunk<
+  void,
+  {
     ids: string[];
     targetId: string;
     placement: NoteMovePlacement;
-  }) => {
-    await window.Nodex.moveNotesBulk(
-      payload.ids,
-      payload.targetId,
-      payload.placement,
-    );
   },
-);
+  NotesThunkConfig
+>("notes/moveNotesBulk", async (payload, { extra }) => {
+  await extra.localStore.notes.moveNotesBulk(
+    payload.ids,
+    payload.targetId,
+    payload.placement,
+  );
+});
 
-export const deleteNotesInTree = createAsyncThunk(
+export const deleteNotesInTree = createAsyncThunk<void, string[], NotesThunkConfig>(
   "notes/deleteNotes",
-  async (ids: string[]) => {
-    await window.Nodex.deleteNotes(ids);
+  async (ids, { extra }) => {
+    await extra.localStore.notes.deleteNotes(ids);
   },
 );
 
-export const pasteSubtree = createAsyncThunk(
-  "notes/pasteSubtree",
-  async (payload: PasteSubtreePayload) => {
-    return await window.Nodex.pasteSubtree(payload);
-  },
-);
+export const pasteSubtree = createAsyncThunk<
+  unknown,
+  PasteSubtreePayload,
+  NotesThunkConfig
+>("notes/pasteSubtree", async (payload, { extra }) => {
+  return await extra.localStore.notes.pasteSubtree(payload);
+});
 
-export const saveNotePluginUiState = createAsyncThunk(
-  "notes/saveNotePluginUiState",
-  async ({ noteId, state }: { noteId: string; state: unknown }) => {
-    await window.Nodex.saveNotePluginUiState(noteId, state);
-    return { noteId, state };
-  },
-);
+export const saveNotePluginUiState = createAsyncThunk<
+  { noteId: string; state: unknown },
+  { noteId: string; state: unknown },
+  NotesThunkConfig
+>("notes/saveNotePluginUiState", async ({ noteId, state }, { extra }) => {
+  await extra.localStore.notes.saveNotePluginUiState(noteId, state);
+  return { noteId, state };
+});
 
-export const saveNoteContent = createAsyncThunk(
-  "notes/saveNoteContent",
-  async ({ noteId, content }: { noteId: string; content: string }) => {
-    const saveSeq = takeNextContentSaveSeq(noteId);
-    await window.Nodex.saveNoteContent(noteId, content);
-    return { noteId, content, saveSeq };
-  },
-);
+export const saveNoteContent = createAsyncThunk<
+  { noteId: string; content: string; saveSeq: number },
+  { noteId: string; content: string },
+  NotesThunkConfig
+>("notes/saveNoteContent", async ({ noteId, content }, { extra }) => {
+  const saveSeq = takeNextContentSaveSeq(noteId);
+  await extra.localStore.notes.saveNoteContent(noteId, content);
+  return { noteId, content, saveSeq };
+});
 
-export const patchNoteMetadata = createAsyncThunk(
-  "notes/patchNoteMetadata",
-  async ({ noteId, patch }: { noteId: string; patch: Record<string, unknown> }) => {
-    await window.Nodex.patchNoteMetadata(noteId, patch);
-    return { noteId, patch };
-  },
-);
+export const patchNoteMetadata = createAsyncThunk<
+  { noteId: string; patch: Record<string, unknown> },
+  { noteId: string; patch: Record<string, unknown> },
+  NotesThunkConfig
+>("notes/patchNoteMetadata", async ({ noteId, patch }, { extra }) => {
+  await extra.localStore.notes.patchNoteMetadata(noteId, patch);
+  return { noteId, patch };
+});
 
 const notesSlice = createSlice({
   name: "notes",

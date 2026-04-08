@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 
-export type ShellProjectMountKind = "folder" | "wpn-postgres";
+export type ShellProjectMountKind = "folder";
 
 export type ShellProjectWorkspaceState = {
   rootPath: string | null;
@@ -37,8 +37,7 @@ export function ShellProjectWorkspaceProvider({
         const s = await window.Nodex.getProjectState();
         if (cancelled || !s) return;
         const mk = s.mountKind;
-        let mountKind: ShellProjectMountKind | undefined =
-          mk === "wpn-postgres" || mk === "folder" ? mk : undefined;
+        let mountKind: ShellProjectMountKind | undefined = mk === "folder" ? mk : undefined;
         if (!mountKind && s.rootPath) {
           mountKind = "folder";
         }

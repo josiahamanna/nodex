@@ -20,14 +20,6 @@ export function getNodexUserPluginsDir(userDataPath: string): string {
   return resolved;
 }
 
-/** `userData/data/nodex.sqlite` */
-export function getNodexDatabasePath(userDataPath: string): string {
-  const base = path.resolve(userDataPath);
-  const resolved = path.resolve(base, "data", "nodex.sqlite");
-  assertUnderBase(base, resolved, "database path");
-  return resolved;
-}
-
 /** Legacy JSON notes path (migration source only). */
 export function getLegacyNotesJsonPath(userDataPath: string): string {
   return path.join(userDataPath, "notes-tree.json");

@@ -160,12 +160,11 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const dispatch = useDispatch<AppDispatch>();
   const { tabs } = useShellRegistries();
   const { openNoteById } = useShellNavigation();
-  const { workspaceRoots, rootPath, mountKind } = useShellProjectWorkspace();
+  const { workspaceRoots, rootPath } = useShellProjectWorkspace();
   const currentNoteId = useSelector((s: RootState) => s.notes.currentNote?.id);
   const noteRenameEpoch = useSelector((s: RootState) => s.notes.noteRenameEpoch);
 
-  const showFolderBasedWorkspaceCreate =
-    mountKind !== "wpn-postgres" && (isElectronUserAgent() || rootPath != null);
+  const showFolderBasedWorkspaceCreate = isElectronUserAgent() || rootPath != null;
 
   const [workspaces, setWorkspaces] = useState<WpnWorkspaceRow[]>([]);
   const [projectsByWs, setProjectsByWs] = useState<Record<string, WpnProjectRow[]>>({});
@@ -253,20 +252,19 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   }, []);
 
   useEffect(() => {
-    if (mountKind !== "wpn-postgres") {
+    if (!projectOpen) {
       setWpnOwnerLabel(null);
       return;
     }
     let cancelled = false;
     void fetchHeadlessWpnSession().then((s) => {
-      if (!cancelled && s?.wpnOwnerId) {
-        setWpnOwnerLabel(s.wpnOwnerId);
-      }
+      if (cancelled) return;
+      setWpnOwnerLabel(s?.wpnOwnerId ?? null);
     });
     return () => {
       cancelled = true;
     };
-  }, [mountKind]);
+  }, [projectOpen]);
 
   useEffect(() => {
     void loadWorkspaces();
@@ -925,10 +923,11 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
             </>
           ) : (
             <p className="max-w-[16rem] text-[11px] leading-relaxed">
-              In the browser, connect this app to a Nodex API with Postgres enabled{" "}
-              <code className="rounded bg-muted px-0.5 font-mono text-[10px] text-foreground">NODEX_PG_DATABASE_URL</code>
-              . Workspaces and projects live in the server database. Use the desktop app if you need a project folder on
-              disk.
+              In the browser, the headless API must run with{" "}
+              <code className="rounded bg-muted px-0.5 font-mono text-[10px] text-foreground">NODEX_PROJECT_ROOT</code>{" "}
+              pointing at a project folder so workspaces and notes persist in{" "}
+              <code className="rounded bg-muted px-0.5 font-mono text-[10px] text-foreground">nodex-workspace.json</code>
+              . Use the desktop app for a native folder workflow.
             </p>
           )}
         </div>

@@ -37,7 +37,7 @@ jobs:
         run: npm ci
 
       - name: Make Linux (.deb + AppImage)
-        run: npm run make:linux:deb-appimage
+        run: npm run build:linux
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
@@ -83,18 +83,11 @@ jobs:
           node-version: "22"
           cache: npm
 
-      # Native modules (e.g. better-sqlite3) may require a working Python toolchain on macOS CI.
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
       - name: Install dependencies
         run: npm ci
 
-      # `postinstall` already runs electron-rebuild, but keeping this explicit makes CI logs clearer
-      # and reduces "built but won't run on other Macs" issues caused by native-module mismatches.
       - name: Rebuild native modules for Electron
-        run: npx electron-rebuild -f -w better-sqlite3
+        run: npx electron-rebuild -f
 
       - name: Make macOS (.dmg)
         run: npm run build:mac

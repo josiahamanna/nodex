@@ -127,6 +127,12 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.APP_SET_SEED_SAMPLE_NOTES, enabled),
   selectProjectFolder: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_SELECT_FOLDER),
+  startScratchSession: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_START_SCRATCH_SESSION),
+  saveScratchSessionToFolder: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_SAVE_SCRATCH_TO_FOLDER),
+  newScratchSession: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_NEW_SCRATCH_SESSION),
   openProjectPath: (absPath) =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_OPEN_PATH, absPath),
   addWorkspaceFolder: () =>
@@ -478,3 +484,16 @@ const api: NodexRendererApi = {
 };
 
 contextBridge.exposeInMainWorld("Nodex", api);
+
+contextBridge.exposeInMainWorld("nodexDesktop", {
+  onSyncTrigger: (callback: () => void) => {
+    const channel = IPC_CHANNELS.DESKTOP_SYNC_TRIGGER;
+    const listener = (): void => {
+      callback();
+    };
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.removeListener(channel, listener);
+    };
+  },
+});

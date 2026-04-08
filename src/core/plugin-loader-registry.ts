@@ -38,10 +38,10 @@ import {
   readUserTierPluginInventory,
   syncPluginCatalogRows,
   type PluginCatalogPersistRow,
-} from "./plugin-catalog-sqlite";
+} from "./plugin-catalog-json";
 
 export class PluginLoaderRegistry extends PluginLoaderRuntime {
-  /** When set (Electron userData), plugin inventory is read from SQLite after each rescan. */
+  /** When set (Electron userData), plugin inventory is read from `plugin-catalog.json` after each rescan. */
   private pluginCatalogUserDataPath: string | null = null;
 
   setPluginCatalogUserDataPath(userDataPath: string): void {
@@ -69,7 +69,7 @@ export class PluginLoaderRegistry extends PluginLoaderRuntime {
     });
   }
 
-  private persistPluginCatalogToSqlite(): void {
+  private persistPluginCatalog(): void {
     if (!this.pluginCatalogUserDataPath) {
       return;
     }
@@ -80,7 +80,7 @@ export class PluginLoaderRegistry extends PluginLoaderRuntime {
       );
     } catch (e) {
       console.warn(
-        "[PluginLoader] plugin catalog sqlite sync failed:",
+        "[PluginLoader] plugin catalog JSON sync failed:",
         e instanceof Error ? e.message : e,
       );
     }
@@ -103,7 +103,7 @@ export class PluginLoaderRegistry extends PluginLoaderRuntime {
         }
       } catch (e) {
         console.warn(
-          "[PluginLoader] read plugin catalog sqlite failed, using scan:",
+          "[PluginLoader] read plugin catalog JSON failed, using scan:",
           e instanceof Error ? e.message : e,
         );
       }
@@ -115,7 +115,7 @@ export class PluginLoaderRegistry extends PluginLoaderRuntime {
 
   /**
    * User-tier plugins that successfully loaded (for note-type pickers, etc.).
-   * Prefers SQLite when catalog is configured and populated.
+   * Prefers `plugin-catalog.json` when catalog is configured and populated.
    */
   getUserFacingLoadedPluginsFromCatalog(): string[] {
     if (this.pluginCatalogUserDataPath) {
@@ -142,7 +142,7 @@ export class PluginLoaderRegistry extends PluginLoaderRuntime {
       this.loadPluginsInDirectory(root, registry);
     }
     this.loadUserPlugins(registry);
-    this.persistPluginCatalogToSqlite();
+    this.persistPluginCatalog();
   }
 
   /** Each immediate child directory with a manifest.json is one plugin. */

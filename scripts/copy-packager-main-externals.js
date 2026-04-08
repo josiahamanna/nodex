@@ -19,7 +19,6 @@ const SEEDS = [
   "@rollup/plugin-node-resolve",
   "@rollup/plugin-replace",
   "adm-zip",
-  "better-sqlite3",
 ];
 
 function enqueueNestedModules(srcDir, queue) {

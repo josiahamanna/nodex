@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { ensureSesLockdown } from "./shell/sandbox/sesLockdown";
 import { ChromeOnlyWorkbench } from "./shell/ChromeOnlyWorkbench";
 import { NodexCommandPalette } from "./shell/NodexCommandPalette";
@@ -13,14 +13,32 @@ import { useRegisterDocumentationPlugin } from "./shell/first-party/plugins/docu
 import { useRegisterNotesExplorerPlugin } from "./shell/first-party/plugins/notes-explorer/useRegisterNotesExplorerPlugin";
 import { useRegisterJsNoteEditor } from "./shell/first-party/plugins/js-notebook/useRegisterJsNoteEditor";
 import { useRegisterJsNotebookPlugin } from "./shell/first-party/plugins/js-notebook/useRegisterJsNotebookPlugin";
+import { useRegisterCloudSyncPlugin } from "./shell/first-party/useRegisterCloudSyncPlugin";
 import { useRegisterNotesShellPlugin } from "./shell/first-party/useRegisterNotesShellPlugin";
 import { useRegisterMarkdownNotePlugin } from "./shell/first-party/plugins/markdown/useRegisterMarkdownNotePlugin";
 import { DesktopOnlyGate } from "./shell/DesktopOnlyGate";
 import { GlobalContextMenuHost } from "./shell/GlobalContextMenuHost";
 import { AuthProvider } from "./auth/AuthContext";
 import { AuthGate } from "./auth/AuthGate";
+import { isWebScratchSession } from "./auth/web-scratch";
+import { isElectronUserAgent } from "./nodex-web-shim";
+import { store } from "./store";
+import { hydrateCloudNotesFromRxDbThunk } from "./store/cloudNotesSlice";
 
 ensureSesLockdown();
+
+function WebScratchCloudHydrator(): null {
+  useEffect(() => {
+    if (typeof window === "undefined" || isElectronUserAgent()) {
+      return;
+    }
+    if (!isWebScratchSession()) {
+      return;
+    }
+    void store.dispatch(hydrateCloudNotesFromRxDbThunk());
+  }, []);
+  return null;
+}
 
 const App: React.FC = () => {
   const shellVm = useNodexShell();
@@ -31,12 +49,14 @@ const App: React.FC = () => {
   useRegisterJsNotebookPlugin();
   useRegisterJsNoteEditor();
   useRegisterDocumentationPlugin();
+  useRegisterCloudSyncPlugin();
   useRegisterNotesShellPlugin();
   useRegisterNotesExplorerPlugin();
 
   return (
     <AuthProvider>
       <AuthGate>
+        <WebScratchCloudHydrator />
         <DesktopOnlyGate>
           <div className="flex h-screen min-h-0 flex-col">
             {/* Reserve vertical space for mode line + minibuffer so they do not overlay the workbench. */}

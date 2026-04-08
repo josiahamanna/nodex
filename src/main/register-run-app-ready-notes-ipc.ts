@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { getNotesDatabase } from "../core/notes-sqlite";
+import { getNotesDatabase } from "../core/workspace-store";
 import {
   deleteNoteSubtrees,
   duplicateSubtreeAt,
@@ -9,10 +9,10 @@ import {
 } from "../core/notes-store";
 import { getWpnOwnerId } from "../core/wpn/wpn-owner";
 import {
-  wpnSqliteDeleteNotes,
-  wpnSqliteGetNoteById,
-  wpnSqliteMoveNote,
-} from "../core/wpn/wpn-sqlite-notes";
+  wpnJsonDeleteNotes,
+  wpnJsonGetNoteById,
+  wpnJsonMoveNote,
+} from "../core/wpn/wpn-json-notes";
 import { pushNotesUndoSnapshot } from "../core/nodex-undo";
 import { registry } from "../core/registry";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
@@ -53,14 +53,14 @@ export function registerRunAppReadyNotesTreeIpc(): void {
       const wpnIds: string[] = [];
       const legacyIds: string[] = [];
       for (const id of deletable) {
-        if (db && wpnSqliteGetNoteById(db, ownerId, id)) {
+        if (db && wpnJsonGetNoteById(db, ownerId, id)) {
           wpnIds.push(id);
         } else {
           legacyIds.push(id);
         }
       }
       if (wpnIds.length > 0 && db) {
-        wpnSqliteDeleteNotes(db, ownerId, wpnIds);
+        wpnJsonDeleteNotes(db, ownerId, wpnIds);
       }
       if (legacyIds.length > 0) {
         pushNotesUndoSnapshot();
@@ -123,10 +123,10 @@ export function registerRunAppReadyNotesTreeIpc(): void {
       const db = getNotesDatabase();
       if (db) {
         const ownerId = getWpnOwnerId();
-        const a = wpnSqliteGetNoteById(db, ownerId, draggedId);
-        const b = wpnSqliteGetNoteById(db, ownerId, targetId);
+        const a = wpnJsonGetNoteById(db, ownerId, draggedId);
+        const b = wpnJsonGetNoteById(db, ownerId, targetId);
         if (a && b && a.project_id === b.project_id) {
-          wpnSqliteMoveNote(db, ownerId, a.project_id, draggedId, targetId, p);
+          wpnJsonMoveNote(db, ownerId, a.project_id, draggedId, targetId, p);
           return;
         }
       }

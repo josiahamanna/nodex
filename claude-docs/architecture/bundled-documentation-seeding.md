@@ -2,16 +2,16 @@
 
 ## Purpose
 
-Long-form **plugin authoring** and product documentation can live as **Markdown files in the repository** under `docs/bundled-plugin-authoring/`. On every **workspace notes bootstrap** (desktop project open or headless API startup after `NODEX_PROJECT_ROOT` is applied), the core layer **upserts** matching notes into the SQLite-backed notes store so the renderer can open them like any other `markdown` note.
+Long-form **plugin authoring** and product documentation can live as **Markdown files in the repository** under `docs/bundled-plugin-authoring/`. On every **workspace notes bootstrap** (desktop project open or headless API startup after `NODEX_PROJECT_ROOT` is applied), the core layer **upserts** matching notes into the **in-memory notes graph**, then persists via **`WorkspaceStore.persist()`** (writes `{project}/data/nodex-workspace.json`) so the renderer can open them like any other `markdown` note.
 
-This keeps the **file tree** as the authoring source of truth while the **database** is the runtime index for search, tree navigation, and (planned) read-only Documentation shell views.
+This keeps the **file tree** as the authoring source of truth while the **workspace JSON + in-memory store** is the runtime index for search, tree navigation, and Documentation shell views.
 
 ## Flow
 
 1. [`bootstrapWorkspaceNotes`](../../src/core/notes-persistence.ts) finishes loading or seeding the in-memory notes graph and persisting the initial state when needed.
 2. [`trySeedBundledDocsAndSave`](../../src/core/notes-persistence.ts) calls [`seedBundledDocumentationNotesFromDir`](../../src/core/bundled-docs-seed.ts).
 3. The seed module reads [`manifest.json`](../../docs/bundled-plugin-authoring/manifest.json) and each listed `.md` file, then **creates or updates** notes with **stable ids** (see manifest). Titles and bodies are overwritten from disk so **restarting the API server** or **re-opening a project** refreshes content.
-4. If any note changed, [`saveWorkspaceToDatabases`](../../src/core/notes-sqlite.ts) writes the workspace DB.
+4. If any note changed, the active [`WorkspaceStore`](../../src/core/workspace-store.ts) **`persist()`** rewrites the workspace file (legacy tree + WPN sections as applicable).
 
 ## Configuration
 
@@ -45,7 +45,7 @@ The Documentation UI can filter on `metadata.bundledDoc` to show a **read-only**
 
 ## Headless API (“server restarts”)
 
-[`src/nodex-api-server/server.ts`](../../src/nodex-api-server/server.ts) calls [`initHeadlessFromEnv`](../../src/nodex-api-server/headless-bootstrap.ts), which activates the workspace and runs `bootstrapWorkspaceNotes`. Each process start therefore re-reads local markdown files and updates the DB when content differs.
+[`src/nodex-api-server/server.ts`](../../src/nodex-api-server/server.ts) calls [`initHeadlessFromEnv`](../../src/nodex-api-server/headless-bootstrap.ts), which activates the workspace and runs `bootstrapWorkspaceNotes`. Each process start therefore re-reads local markdown files and updates persisted workspace state when content differs.
 
 ## Desktop (Electron)
 

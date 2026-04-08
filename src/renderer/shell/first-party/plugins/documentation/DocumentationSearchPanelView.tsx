@@ -14,8 +14,6 @@ import {
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import { DocumentationLinkContextMenu, type DocumentationLinkMenuModel } from "./DocumentationLinkContextMenu";
 import { DocumentationSettingsForm } from "./DocumentationSettingsForm";
-import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
-
 function esc(s: string): string {
   return String(s || "").replace(/[&<>"]/g, (ch) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch] ?? ch),
@@ -95,7 +93,6 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
   const { tabs } = useShellRegistries();
   const commands = useNodexCommands();
   const notesList = useSelector((s: RootState) => s.notes.notesList);
-  const { mountKind } = useShellProjectWorkspace();
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>("guides");
   const [q, setQ] = useState("");
   const [miniOnly, setMiniOnly] = useState(true);
@@ -119,19 +116,10 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
   }, [miniOnly, postBc]);
 
   useEffect(() => {
-    // Legacy notes list (folder-backed / bundled docs in SQLite notes tree)
-    if (mountKind === "wpn-postgres") {
-      return;
-    }
     void dispatch(fetchAllNotes());
-  }, [dispatch, mountKind]);
+  }, [dispatch]);
 
   useEffect(() => {
-    if (mountKind !== "wpn-postgres") {
-      setWpnGuides([]);
-      setWpnGuidesError(null);
-      return;
-    }
     let cancelled = false;
     setWpnGuidesError(null);
     void (async () => {
@@ -190,7 +178,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
     return () => {
       cancelled = true;
     };
-  }, [mountKind]);
+  }, []);
 
   useEffect(() => {
     const bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(DOCS_BC) : null;
@@ -209,7 +197,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
   }, []);
 
   const guideRows = useMemo(() => {
-    if (mountKind === "wpn-postgres") {
+    if (wpnGuides.length > 0) {
       return wpnGuides.map((g) => ({
         id: g.id,
         title: g.title,
@@ -227,7 +215,7 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
         if (ao !== bo) return ao - bo;
         return String(a.title).localeCompare(String(b.title));
       });
-  }, [mountKind, notesList, wpnGuides]);
+  }, [notesList, wpnGuides]);
 
   const norm = (s: string) => String(s || "").toLowerCase().trim();
   const label = (c: CommandContribution) =>
@@ -338,11 +326,9 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
           >
             {guideRows.length === 0 ? (
               <p className="px-1 py-2 text-[11px] text-muted-foreground">
-                {mountKind === "wpn-postgres"
-                  ? wpnGuidesError
-                    ? `Could not load guides from Postgres: ${wpnGuidesError}`
-                    : "No bundled guides found in the server workspace yet."
-                  : "No bundled guides in the notes database yet. Open a workspace so bundled docs can seed, then switch back here."}
+                {wpnGuidesError
+                  ? `Could not load guides from the WPN workspace: ${wpnGuidesError}`
+                  : "No bundled guides found yet. Open a project so documentation can load (legacy notes tree or WPN Documentation project)."}
               </p>
             ) : (
               groupedFilteredGuides.map(({ section, items }) => (

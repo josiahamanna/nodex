@@ -19,6 +19,18 @@ function resolveMainWindowLoadUrl(): string {
   return MAIN_WINDOW_WEBPACK_ENTRY;
 }
 
+/** Chromium net::Error codes: refused, timeout, DNS, unreachable, etc. */
+const DEV_SERVER_NET_ERRORS = new Set([-101, -102, -105, -106, -109, -118]);
+
+function devServerMissingDataUrl(expectedUrl: string): string {
+  const safe = expectedUrl
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Nodex — dev UI unavailable</title><style>body{font-family:system-ui,sans-serif;padding:24px;max-width:560px;line-height:1.5;color:#111;background:#fafafa}code{background:#eee;padding:2px 6px;border-radius:4px;font-size:.9em}kbd{font-family:inherit;border:1px solid #ccc;border-radius:4px;padding:1px 6px}</style></head><body><h1 style="font-size:1.25rem;margin-top:0">Cannot reach the Nodex web UI</h1><p>In development, this window loads <code>${safe}</code>, but nothing is accepting connections there.</p><p>From the repo root, run:</p><pre style="background:#eee;padding:12px;border-radius:6px;overflow:auto">npm run dev:web</pre><p>Then press <kbd>Ctrl+R</kbd> (or <kbd>Cmd+R</kbd> on macOS) to reload.</p><p>To use another URL, set <code>NODEX_WEB_DEV_URL</code>.</p></body></html>`;
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
 export function createMainWindow(): void {
   ctx.mainWindow = new BrowserWindow({
     width: 1200,
@@ -95,7 +107,46 @@ export function createMainWindow(): void {
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 
-  ctx.mainWindow.loadURL(resolveMainWindowLoadUrl());
+  const initialLoadUrl = resolveMainWindowLoadUrl();
+  ctx.mainWindow.loadURL(initialLoadUrl);
+
+  if (process.env.NODE_ENV === "development") {
+    ctx.mainWindow.webContents.on("did-fail-load", (_e, errorCode, _desc, validatedURL, isMainFrame) => {
+      if (!isMainFrame || validatedURL.startsWith("data:")) {
+        return;
+      }
+      if (!DEV_SERVER_NET_ERRORS.has(errorCode)) {
+        return;
+      }
+      let expected: URL;
+      let got: URL;
+      try {
+        expected = new URL(initialLoadUrl);
+        got = new URL(validatedURL);
+      } catch {
+        return;
+      }
+      if (got.origin !== expected.origin) {
+        return;
+      }
+      const win = ctx.mainWindow;
+      if (!win || win.isDestroyed()) {
+        return;
+      }
+      void win.loadURL(devServerMissingDataUrl(initialLoadUrl));
+    });
+  }
+
+  /** Nudge renderer to run HTTP sync while online (`@nodex/platform` DesktopHost). */
+  const SYNC_TRIGGER_MS = 30_000;
+  ctx.mainWindow.webContents.once("did-finish-load", () => {
+    setInterval(() => {
+      const win = ctx.mainWindow;
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(IPC_CHANNELS.DESKTOP_SYNC_TRIGGER);
+      }
+    }, SYNC_TRIGGER_MS);
+  });
 
   if (process.env.NODE_ENV === "development") {
     ctx.mainWindow.webContents.openDevTools();

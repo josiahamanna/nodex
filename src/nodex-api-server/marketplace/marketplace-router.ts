@@ -1,9 +1,13 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import * as crypto from "crypto";
 import * as path from "path";
-import type { Database } from "better-sqlite3";
 import { getHeadlessUserDataPath } from "../headless-bootstrap";
-import { openMarketplaceDb } from "./marketplace-db";
+import {
+  allocId,
+  loadMarketplaceState,
+  saveMarketplaceState,
+  type MarketplaceState,
+} from "./marketplace-json";
 import {
   hashPassword,
   signAccessToken,
@@ -13,16 +17,20 @@ import {
 import { presignPutArtifact, readMarketplaceS3ConfigFromEnv, headArtifact } from "./marketplace-s3";
 import type { MarketplaceIndexEntry } from "../../shared/marketplace-index";
 
-function resolveMarketplaceDbPath(): string {
+function resolveMarketplaceJsonPath(): string {
   const raw = process.env.NODEX_MARKET_DB_PATH?.trim();
   if (raw) {
     return path.resolve(raw);
   }
-  return path.join(getHeadlessUserDataPath(), "marketplace.sqlite");
+  return path.join(getHeadlessUserDataPath(), "marketplace.json");
 }
 
-function withDb(): Database {
-  return openMarketplaceDb(resolveMarketplaceDbPath());
+function withMarketplace<T>(fn: (state: MarketplaceState) => T): T {
+  const p = resolveMarketplaceJsonPath();
+  const state = loadMarketplaceState(p);
+  const out = fn(state);
+  saveMarketplaceState(p, state);
+  return out;
 }
 
 type AuthedRequest = Request & { marketplaceUser?: { id: number; email: string } };
@@ -61,7 +69,6 @@ function isSafePluginId(name: string): boolean {
 }
 
 function isSafeVersion(v: string): boolean {
-  // lenient semver-ish; avoid path separators etc.
   return /^[0-9A-Za-z][0-9A-Za-z.+-]{0,39}$/.test(v);
 }
 
@@ -89,18 +96,20 @@ export function createMarketplaceRouter(): Router {
     try {
       const hash = await hashPassword(password);
       const now = new Date().toISOString();
-      const db = withDb();
-      try {
-        const info = db
-          .prepare(
-            "INSERT INTO marketplace_users (email, password_hash, created_at) VALUES (?, ?, ?)",
-          )
-          .run(email, hash, now);
-        const id = Number(info.lastInsertRowid);
-        res.json({ token: signAccessToken({ id, email }), user: { id, email } });
-      } finally {
-        db.close();
-      }
+      const id = withMarketplace((state) => {
+        if (state.users.some((u) => u.email === email)) {
+          throw new Error("UNIQUE");
+        }
+        const nid = allocId(state);
+        state.users.push({
+          id: nid,
+          email,
+          password_hash: hash,
+          created_at: now,
+        });
+        return nid;
+      });
+      res.json({ token: signAccessToken({ id, email }), user: { id, email } });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("UNIQUE")) {
@@ -119,24 +128,22 @@ export function createMarketplaceRouter(): Router {
       res.status(400).json({ error: "Missing email/password" });
       return;
     }
-    const db = withDb();
-    try {
-      const row = db
-        .prepare("SELECT id, email, password_hash FROM marketplace_users WHERE email = ?")
-        .get(email) as { id: number; email: string; password_hash: string } | undefined;
-      if (!row) {
-        res.status(401).json({ error: "Invalid credentials" });
-        return;
-      }
-      const ok = await verifyPassword(password, row.password_hash);
-      if (!ok) {
-        res.status(401).json({ error: "Invalid credentials" });
-        return;
-      }
-      res.json({ token: signAccessToken({ id: row.id, email: row.email }), user: { id: row.id, email: row.email } });
-    } finally {
-      db.close();
+    const p = resolveMarketplaceJsonPath();
+    const state = loadMarketplaceState(p);
+    const row = state.users.find((u) => u.email === email);
+    if (!row) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
     }
+    const ok = await verifyPassword(password, row.password_hash);
+    if (!ok) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
+    res.json({
+      token: signAccessToken({ id: row.id, email: row.email }),
+      user: { id: row.id, email: row.email },
+    });
   });
 
   router.post("/publish/init", async (req, res) => {
@@ -183,55 +190,58 @@ export function createMarketplaceRouter(): Router {
 
     const objectKey = `plugins/${encodeURIComponent(name)}/${encodeURIComponent(version)}/${name}-${version}.nodexplugin`;
     const finalizeToken = generateFinalizeToken();
-    const db = withDb();
+
     try {
-      // Ensure plugin ownership row exists (first publish claims ownership).
-      const existingPlugin = db
-        .prepare("SELECT id, owner_user_id FROM marketplace_plugins WHERE name = ?")
-        .get(name) as { id: number; owner_user_id: number } | undefined;
-
-      let pluginId = existingPlugin?.id ?? 0;
-      if (existingPlugin) {
-        if (existingPlugin.owner_user_id !== u.id) {
-          res.status(403).json({ error: "You do not own this plugin id" });
-          return;
+      withMarketplace((state) => {
+        let existingPlugin = state.plugins.find((pl) => pl.name === name);
+        let pluginId = existingPlugin?.id ?? 0;
+        if (existingPlugin) {
+          if (existingPlugin.owner_user_id !== u.id) {
+            throw new Error("FORBIDDEN_PLUGIN");
+          }
+        } else {
+          pluginId = allocId(state);
+          state.plugins.push({
+            id: pluginId,
+            name,
+            owner_user_id: u.id,
+            created_at: nowIso(),
+          });
         }
-      } else {
-        const info = db
-          .prepare(
-            "INSERT INTO marketplace_plugins (name, owner_user_id, created_at) VALUES (?, ?, ?)",
-          )
-          .run(name, u.id, nowIso());
-        pluginId = Number(info.lastInsertRowid);
-      }
 
-      // Ensure no existing release.
-      const rel = db
-        .prepare("SELECT id FROM marketplace_releases WHERE plugin_id = ? AND version = ?")
-        .get(pluginId, version) as { id: number } | undefined;
-      if (rel) {
+        const rel = state.releases.find(
+          (r) => r.plugin_id === pluginId && r.version === version,
+        );
+        if (rel) {
+          throw new Error("VERSION_EXISTS");
+        }
+
+        state.intents.push({
+          id: allocId(state),
+          user_id: u.id,
+          plugin_name: name,
+          version,
+          object_key: objectKey,
+          sha256,
+          content_type: contentType,
+          size_bytes: Math.trunc(sizeBytes),
+          finalize_token: finalizeToken,
+          created_at: nowIso(),
+          expires_at: utcPlusMinutes(30),
+        });
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === "FORBIDDEN_PLUGIN") {
+        res.status(403).json({ error: "You do not own this plugin id" });
+        return;
+      }
+      if (msg === "VERSION_EXISTS") {
         res.status(409).json({ error: "Version already published" });
         return;
       }
-
-      db.prepare(
-        `INSERT INTO marketplace_publish_intents
-         (user_id, plugin_name, version, object_key, sha256, content_type, size_bytes, finalize_token, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        u.id,
-        name,
-        version,
-        objectKey,
-        sha256,
-        contentType,
-        Math.trunc(sizeBytes),
-        finalizeToken,
-        nowIso(),
-        utcPlusMinutes(30),
-      );
-    } finally {
-      db.close();
+      res.status(400).json({ error: msg });
+      return;
     }
 
     const { uploadUrl } = await presignPutArtifact({
@@ -282,44 +292,25 @@ export function createMarketplaceRouter(): Router {
       return;
     }
 
-    const db = withDb();
-    let intent:
-      | {
-          id: number;
-          user_id: number;
-          plugin_name: string;
-          version: string;
-          object_key: string;
-          sha256: string;
-          content_type: string;
-          size_bytes: number;
-          expires_at: string;
-        }
-      | undefined;
-    try {
-      intent = db
-        .prepare(
-          "SELECT * FROM marketplace_publish_intents WHERE finalize_token = ?",
-        )
-        .get(finalizeToken) as typeof intent;
-      if (!intent) {
-        res.status(404).json({ error: "Publish intent not found" });
-        return;
-      }
-      if (intent.user_id !== u.id) {
-        res.status(403).json({ error: "Publish intent does not belong to you" });
-        return;
-      }
-      if (intent.object_key !== objectKey) {
-        res.status(400).json({ error: "objectKey mismatch" });
-        return;
-      }
-      if (intent.expires_at < nowIso()) {
-        res.status(410).json({ error: "Publish intent expired" });
-        return;
-      }
-    } finally {
-      db.close();
+    const p = resolveMarketplaceJsonPath();
+    const state = loadMarketplaceState(p);
+    const intentIdx = state.intents.findIndex((i) => i.finalize_token === finalizeToken);
+    if (intentIdx < 0) {
+      res.status(404).json({ error: "Publish intent not found" });
+      return;
+    }
+    const intent = state.intents[intentIdx]!;
+    if (intent.user_id !== u.id) {
+      res.status(403).json({ error: "Publish intent does not belong to you" });
+      return;
+    }
+    if (intent.object_key !== objectKey) {
+      res.status(400).json({ error: "objectKey mismatch" });
+      return;
+    }
+    if (intent.expires_at < nowIso()) {
+      res.status(410).json({ error: "Publish intent expired" });
+      return;
     }
 
     const head = await headArtifact({ cfg, objectKey });
@@ -332,60 +323,50 @@ export function createMarketplaceRouter(): Router {
       return;
     }
 
-    const db2 = withDb();
-    try {
-      const pluginRow = db2
-        .prepare("SELECT id, owner_user_id FROM marketplace_plugins WHERE name = ?")
-        .get(intent.plugin_name) as { id: number; owner_user_id: number } | undefined;
-      if (!pluginRow) {
-        res.status(500).json({ error: "Plugin row missing" });
-        return;
-      }
-      if (pluginRow.owner_user_id !== u.id) {
-        res.status(403).json({ error: "You do not own this plugin id" });
-        return;
-      }
-
-      db2.prepare(
-        `INSERT INTO marketplace_releases
-         (plugin_id, version, object_key, sha256, content_type, size_bytes, created_at, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        pluginRow.id,
-        intent.version,
-        intent.object_key,
-        intent.sha256,
-        intent.content_type,
-        intent.size_bytes,
-        nowIso(),
-        "published",
-      );
-
-      db2.prepare("DELETE FROM marketplace_publish_intents WHERE id = ?").run(intent.id);
-
-      const packageFile = path.basename(intent.object_key);
-      const entry: MarketplaceIndexEntry = {
-        name: intent.plugin_name,
-        version: intent.version,
-        displayName: displayName || undefined,
-        description: description || undefined,
-        packageFile,
-        markdownFile: markdownFile && markdownFile.length ? markdownFile : null,
-      };
-      res.json({ success: true, plugin: entry });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("UNIQUE")) {
-        res.status(409).json({ error: "Version already published" });
-        return;
-      }
-      res.status(400).json({ error: msg });
-    } finally {
-      db2.close();
+    const pluginRow = state.plugins.find((pl) => pl.name === intent.plugin_name);
+    if (!pluginRow) {
+      res.status(500).json({ error: "Plugin row missing" });
+      return;
     }
+    if (pluginRow.owner_user_id !== u.id) {
+      res.status(403).json({ error: "You do not own this plugin id" });
+      return;
+    }
+
+    const dup = state.releases.some(
+      (r) => r.plugin_id === pluginRow.id && r.version === intent.version,
+    );
+    if (dup) {
+      res.status(409).json({ error: "Version already published" });
+      return;
+    }
+
+    state.releases.push({
+      id: allocId(state),
+      plugin_id: pluginRow.id,
+      version: intent.version,
+      object_key: intent.object_key,
+      sha256: intent.sha256,
+      content_type: intent.content_type,
+      size_bytes: intent.size_bytes,
+      created_at: nowIso(),
+      status: "published",
+    });
+    state.intents.splice(intentIdx, 1);
+    saveMarketplaceState(p, state);
+
+    const packageFile = path.basename(intent.object_key);
+    const entry: MarketplaceIndexEntry = {
+      name: intent.plugin_name,
+      version: intent.version,
+      displayName: displayName || undefined,
+      description: description || undefined,
+      packageFile,
+      markdownFile: markdownFile && markdownFile.length ? markdownFile : null,
+    };
+    res.json({ success: true, plugin: entry });
   });
 
-  // Minimal helper for later flows (token generation).
   router.get("/auth/me", (req, res) => {
     const u = (req as AuthedRequest).marketplaceUser;
     if (!u) {
@@ -401,4 +382,3 @@ export function createMarketplaceRouter(): Router {
 export function generateFinalizeToken(): string {
   return crypto.randomBytes(24).toString("hex");
 }
-

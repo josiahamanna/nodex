@@ -1,12 +1,9 @@
 # Headless Nodex HTTP API only (no Electron UI in this image).
-# Native module: better-sqlite3 is rebuilt for Linux inside the image.
 
 FROM node:22-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -18,9 +15,8 @@ ENV npm_config_fetch_retries=5 \
 
 COPY package.json package-lock.json ./
 
-# postinstall runs electron-rebuild — skip (no Electron in container), then compile sqlite for Node.
-RUN npm ci --ignore-scripts \
-    && npm rebuild better-sqlite3
+# Skip postinstall (electron-rebuild); headless API has no Electron native addons required at runtime.
+RUN npm ci --ignore-scripts
 
 COPY tsconfig.json ./
 COPY src ./src
@@ -29,7 +25,7 @@ COPY scripts ./scripts
 # Build bundled marketplace artifacts into dist/plugins (marketplace-index.json + .nodexplugin zips)
 RUN npm run build:plugins
 
-# Plugin-authoring guides for Documentation (seeded into workspace SQLite on API startup).
+# Plugin-authoring guides for Documentation (seeded into workspace JSON on API startup).
 # Placed after build:plugins so editing markdown does not invalidate the heavy plugin build layer.
 COPY docs/bundled-plugin-authoring ./docs/bundled-plugin-authoring
 
