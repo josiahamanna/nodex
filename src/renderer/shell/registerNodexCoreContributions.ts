@@ -1,6 +1,11 @@
 import type { NodexContributionRegistry } from "./nodex-contribution-registry";
 import type { ShellRegistries } from "./registries/ShellRegistriesContext";
 import type { ShellKeyBinding } from "./registries/ShellKeymapRegistry";
+import {
+  runClearAllDev,
+  runClearDbDev,
+  runClearUiDev,
+} from "../dev/clear-local-dev-state";
 import { emitNodexMinibarOutput } from "./minibarEcho";
 import { NODEX_REPL_TOGGLE_EVENT } from "./NodexReplOverlay";
 import { closeShellTabInstance } from "./shellTabClose";
@@ -526,6 +531,132 @@ export function registerNodexCoreContributions(
       }),
     );
   }
+
+  disposers.push(
+    registry.registerCommand({
+      id: "nodex.dev.clearUi",
+      title: "Dev: Clear UI session (localStorage, caches, reload)",
+      category: "Nodex",
+      sourcePluginId: null,
+      palette: true,
+      miniBar: true,
+      doc: "Clears Nodex local/session storage, Cache Storage, and unregisters service workers, then reloads. Does not delete IndexedDB databases.",
+      api: {
+        summary: "Clear browser UI session and frontend caches; reload the page.",
+        args: [
+          {
+            name: "confirm",
+            type: "boolean",
+            required: false,
+            description: "If true, skip the confirmation dialog.",
+          },
+        ],
+        exampleInvoke: { confirm: true },
+        returns: { type: "Promise<void>", description: "Reloads the window." },
+      },
+      handler: async (args) => {
+        const skip =
+          args &&
+          typeof args === "object" &&
+          (args as { confirm?: unknown }).confirm === true;
+        if (
+          !skip &&
+          typeof window !== "undefined" &&
+          !window.confirm(
+            "Clear UI session (localStorage, session storage, caches) and reload? IndexedDB is kept.",
+          )
+        ) {
+          return;
+        }
+        setTransientStatus("Clearing UI…", 2000);
+        await runClearUiDev();
+      },
+    }),
+  );
+
+  disposers.push(
+    registry.registerCommand({
+      id: "nodex.dev.clearDb",
+      title: "Dev: Clear local DB (IndexedDB RxDB + scratch WPN, reload)",
+      category: "Nodex",
+      sourcePluginId: null,
+      palette: true,
+      miniBar: true,
+      doc: "Deletes cloud-notes RxDB and browser-local WPN scratch IndexedDB, then reloads.",
+      api: {
+        summary: "Clear IndexedDB databases used by Nodex in this browser profile.",
+        args: [
+          {
+            name: "confirm",
+            type: "boolean",
+            required: false,
+            description: "If true, skip the confirmation dialog.",
+          },
+        ],
+        exampleInvoke: { confirm: true },
+        returns: { type: "Promise<void>", description: "Reloads the window." },
+      },
+      handler: async (args) => {
+        const skip =
+          args &&
+          typeof args === "object" &&
+          (args as { confirm?: unknown }).confirm === true;
+        if (
+          !skip &&
+          typeof window !== "undefined" &&
+          !window.confirm(
+            "Delete local IndexedDB data (RxDB cloud notes + scratch WPN) and reload? UI session storage is kept.",
+          )
+        ) {
+          return;
+        }
+        setTransientStatus("Clearing local DB…", 2000);
+        await runClearDbDev();
+      },
+    }),
+  );
+
+  disposers.push(
+    registry.registerCommand({
+      id: "nodex.dev.clearAll",
+      title: "Dev: Clear UI + local DB (full local reset, reload)",
+      category: "Nodex",
+      sourcePluginId: null,
+      palette: true,
+      miniBar: true,
+      doc: "Runs clear-db then clear-ui: removes IndexedDB and session/cache state, then reloads.",
+      api: {
+        summary: "Full local reset: IndexedDB + UI session/caches, then reload.",
+        args: [
+          {
+            name: "confirm",
+            type: "boolean",
+            required: false,
+            description: "If true, skip the confirmation dialog.",
+          },
+        ],
+        exampleInvoke: { confirm: true },
+        returns: { type: "Promise<void>", description: "Reloads the window." },
+      },
+      handler: async (args) => {
+        const skip =
+          args &&
+          typeof args === "object" &&
+          (args as { confirm?: unknown }).confirm === true;
+        if (
+          !skip &&
+          typeof window !== "undefined" &&
+          !window.confirm(
+            "Full local reset: delete IndexedDB (notes DBs) AND clear session/caches, then reload?",
+          )
+        ) {
+          return;
+        }
+        setTransientStatus("Clearing all local data…", 2000);
+        await runClearAllDev();
+      },
+    }),
+  );
 
   return disposers;
 }

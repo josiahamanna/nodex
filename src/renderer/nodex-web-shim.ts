@@ -15,6 +15,10 @@ import {
   writeCloudSyncRefreshToken,
   writeCloudSyncToken,
 } from "./cloud-sync/cloud-sync-storage";
+import {
+  useWebScratchLocalFirst,
+  webScratchPlainStubOverrides,
+} from "./wpnscratch/web-scratch-nodex-api";
 
 const noopUnsub = (): void => {};
 
@@ -806,6 +810,10 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       window.matchMedia("(prefers-color-scheme: dark)").matches,
   };
 
+  if (useWebScratchLocalFirst()) {
+    Object.assign(impl, webScratchPlainStubOverrides());
+  }
+
   return new Proxy(impl as NodexRendererApi, {
     get(target, prop, receiver) {
       if (prop === "then") {
@@ -1218,6 +1226,10 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       newRootId: "00000000-0000-4000-8000-000000000000",
     }),
   };
+
+  if (useWebScratchLocalFirst()) {
+    Object.assign(impl, webScratchPlainStubOverrides());
+  }
 
   return new Proxy(impl as NodexRendererApi, {
     get(target, prop, receiver) {

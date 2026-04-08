@@ -1,0 +1,211 @@
+/**
+ * When {@link isWebScratchSession} is on and the user has no access token, route WPN + note
+ * APIs to browser-local IndexedDB instead of HTTP.
+ */
+import { PLUGIN_UI_METADATA_KEY, validatePluginUiStateSize } from "../../shared/plugin-state-protocol";
+import type { NodexRendererApi, PasteSubtreePayload } from "../../shared/nodex-renderer-api";
+import { getAccessToken } from "../auth/auth-session";
+import { isWebScratchSession } from "../auth/web-scratch";
+
+const WPN_BUILTIN_NOTE_TYPES = ["markdown", "mdx", "text", "code", "root"] as const;
+
+import {
+  scratchDeleteNotes,
+  scratchGetAllNoteListItems,
+  scratchGetNoteForEditor,
+  scratchRenameNote,
+  scratchSaveNoteContent,
+  scratchWpnCreateNoteInProject,
+  scratchWpnCreateProject,
+  scratchWpnCreateWorkspace,
+  scratchWpnDeleteNotes,
+  scratchWpnDeleteProject,
+  scratchWpnDeleteWorkspace,
+  scratchWpnDuplicateNoteSubtree,
+  scratchWpnGetExplorerState,
+  scratchWpnGetNote,
+  scratchWpnListAllNotesWithContext,
+  scratchWpnListBacklinksToNote,
+  scratchWpnListNotes,
+  scratchWpnListProjects,
+  scratchWpnListWorkspaces,
+  scratchWpnMoveNote,
+  scratchWpnPatchNote,
+  scratchWpnSetExplorerState,
+  scratchWpnUpdateProject,
+  scratchWpnUpdateWorkspace,
+} from "./wpn-scratch-store";
+import { resolveWpnProjectIdForRootNote } from "../shell/wpnScratchProject";
+
+export function useWebScratchLocalFirst(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  try {
+    return isWebScratchSession() && !getAccessToken();
+  } catch {
+    return false;
+  }
+}
+
+async function scratchResolveProjectIdForNote(noteId: string): Promise<string | null> {
+  const r = await scratchWpnGetNote(noteId);
+  return r?.note.project_id ?? null;
+}
+
+/** Partial `window.Nodex` overrides merged into the plain-browser stub when scratch is active. */
+export function webScratchPlainStubOverrides(): Partial<NodexRendererApi> {
+  return {
+    getNote: (noteId) => scratchGetNoteForEditor(noteId),
+    getAllNotes: () => scratchGetAllNoteListItems(),
+    getProjectState: async () => ({
+      rootPath: null,
+      notesDbPath: null,
+      workspaceRoots: ["nodex-web-scratch"],
+      workspaceLabels: {},
+    }),
+    getRegisteredTypes: async () => [...WPN_BUILTIN_NOTE_TYPES],
+    getSelectableNoteTypes: async () =>
+      [...WPN_BUILTIN_NOTE_TYPES].filter((t) => t !== "root"),
+    createNote: async (payload) => {
+      const projectId = await resolveWpnProjectIdForRootNote();
+      if (!projectId) {
+        throw new Error("No WPN project — create a workspace and project in Notes first.");
+      }
+      return scratchWpnCreateNoteInProject(projectId, payload);
+    },
+    renameNote: (id, title) => scratchRenameNote(id, title),
+    deleteNotes: (ids) => scratchDeleteNotes(ids),
+    moveNote: async (draggedId, targetId, placement) => {
+      const pd = await scratchResolveProjectIdForNote(draggedId);
+      const pt = await scratchResolveProjectIdForNote(targetId);
+      if (!pd || !pt || pd !== pt) {
+        throw new Error(
+          "moveNote: dragged and target notes must exist in the same WPN project",
+        );
+      }
+      await scratchWpnMoveNote({ projectId: pd, draggedId, targetId, placement });
+    },
+    moveNotesBulk: async (ids, targetId, placement) => {
+      for (const id of ids) {
+        const pd = await scratchResolveProjectIdForNote(id);
+        const pt = await scratchResolveProjectIdForNote(targetId);
+        if (!pd || !pt || pd !== pt) {
+          throw new Error("moveNotesBulk: notes must be in the same WPN project");
+        }
+        await scratchWpnMoveNote({ projectId: pd, draggedId: id, targetId, placement });
+      }
+    },
+    pasteSubtree: async (payload: PasteSubtreePayload) => {
+      const { sourceId, targetId, mode, placement } = payload;
+      const projectId = await scratchResolveProjectIdForNote(sourceId);
+      const pt = await scratchResolveProjectIdForNote(targetId);
+      if (!projectId || !pt || projectId !== pt) {
+        throw new Error("pasteSubtree: source and target notes must be in the same WPN project");
+      }
+      if (mode === "cut") {
+        await scratchWpnMoveNote({ projectId, draggedId: sourceId, targetId, placement });
+        return {};
+      }
+      const dup = await scratchWpnDuplicateNoteSubtree(projectId, sourceId);
+      await scratchWpnMoveNote({
+        projectId,
+        draggedId: dup.newRootId,
+        targetId,
+        placement,
+      });
+      return { newRootId: dup.newRootId };
+    },
+    saveNotePluginUiState: async (noteId, state) => {
+      const err = validatePluginUiStateSize(state);
+      if (err) {
+        throw new Error(err);
+      }
+      const cur = await scratchWpnGetNote(noteId);
+      if (!cur) {
+        throw new Error("Note not found");
+      }
+      const meta = {
+        ...(cur.note.metadata && typeof cur.note.metadata === "object" ? cur.note.metadata : {}),
+        [PLUGIN_UI_METADATA_KEY]: state,
+      };
+      await scratchWpnPatchNote(noteId, { metadata: meta });
+    },
+    saveNoteContent: (noteId, content) => scratchSaveNoteContent(noteId, content),
+    patchNoteMetadata: async (noteId, patch) => {
+      const cur = await scratchWpnGetNote(noteId);
+      if (!cur) {
+        throw new Error("patchNoteMetadata: WPN note not found");
+      }
+      const meta = {
+        ...(cur.note.metadata && typeof cur.note.metadata === "object" ? cur.note.metadata : {}),
+        ...patch,
+      };
+      await scratchWpnPatchNote(noteId, { metadata: meta });
+    },
+    wpnListWorkspaces: () => scratchWpnListWorkspaces(),
+    wpnCreateWorkspace: (name) => scratchWpnCreateWorkspace(name),
+    wpnUpdateWorkspace: async (id, patch) => {
+      const r = await scratchWpnUpdateWorkspace(id, patch);
+      if (!r) {
+        throw new Error("Workspace not found");
+      }
+      return r;
+    },
+    wpnDeleteWorkspace: async (id) => {
+      const r = await scratchWpnDeleteWorkspace(id);
+      if (!r) {
+        throw new Error("Workspace not found");
+      }
+      return r;
+    },
+    wpnListProjects: (workspaceId) => scratchWpnListProjects(workspaceId),
+    wpnCreateProject: async (workspaceId, name) => {
+      const r = await scratchWpnCreateProject(workspaceId, name);
+      if (!r) {
+        throw new Error("Workspace not found");
+      }
+      return r;
+    },
+    wpnUpdateProject: async (id, patch) => {
+      const r = await scratchWpnUpdateProject(id, patch);
+      if (!r) {
+        throw new Error("Project not found");
+      }
+      return r;
+    },
+    wpnDeleteProject: async (id) => {
+      const r = await scratchWpnDeleteProject(id);
+      if (!r) {
+        throw new Error("Project not found");
+      }
+      return r;
+    },
+    wpnListNotes: (projectId) => scratchWpnListNotes(projectId),
+    wpnListAllNotesWithContext: () => scratchWpnListAllNotesWithContext(),
+    wpnListBacklinksToNote: (targetNoteId) => scratchWpnListBacklinksToNote(targetNoteId),
+    wpnGetNote: async (noteId) => {
+      const r = await scratchWpnGetNote(noteId);
+      if (!r) {
+        throw new Error("Note not found");
+      }
+      return r;
+    },
+    wpnGetExplorerState: (projectId) => scratchWpnGetExplorerState(projectId),
+    wpnSetExplorerState: (projectId, expandedIds) =>
+      scratchWpnSetExplorerState(projectId, expandedIds),
+    wpnCreateNoteInProject: (projectId, payload) =>
+      scratchWpnCreateNoteInProject(projectId, payload),
+    wpnPatchNote: async (noteId, patch) => {
+      const r = await scratchWpnPatchNote(noteId, patch);
+      if (!r) {
+        throw new Error("Note not found");
+      }
+      return r;
+    },
+    wpnDeleteNotes: (ids) => scratchWpnDeleteNotes(ids),
+    wpnMoveNote: (payload) => scratchWpnMoveNote(payload),
+    wpnDuplicateNoteSubtree: (projectId, noteId) =>
+      scratchWpnDuplicateNoteSubtree(projectId, noteId),
+  };
+}
