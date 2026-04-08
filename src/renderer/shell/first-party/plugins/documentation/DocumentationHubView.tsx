@@ -163,7 +163,7 @@ export function DocumentationHubView(_props: { viewId: string; title: string }):
         const r = await getNodex().wpnGetNote(bundledNoteId);
         return r.note as unknown as Note;
       }
-      return await getNodex().getNote(bundledNoteId);
+      return await fetchBundledDocumentationNote(bundledNoteId);
     };
     void load()
       .then((n) => {

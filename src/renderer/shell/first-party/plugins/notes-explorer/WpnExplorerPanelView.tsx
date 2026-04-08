@@ -29,6 +29,10 @@ import { NODEX_SHELL_NOTE_TAB_CLOSED_EVENT } from "../../../shellTabUrlSync";
 import { SHELL_TAB_NOTE, SHELL_TAB_SCRATCH_MARKDOWN } from "../../shellWorkspaceIds";
 import { InlineSingleLineEditable } from "../../../../components/InlineSingleLineEditable";
 import { dropAllowedOne, placementFromPointer } from "../../../../notes-sidebar/notes-sidebar-panel-dnd";
+import {
+  runWpnNoteTitleRenameWithVfsDependentsFlow,
+  useVfsDependentTitleRenameChoice,
+} from "../../../wpn/vfsDependentTitleRenameChoice";
 
 type ShellViewComponentProps = {
   viewId: string;
@@ -190,6 +194,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const [menu, setMenu] = useState<MenuState>(null);
   const [typePicker, setTypePicker] = useState<TypePickerState>(null);
   const [renaming, setRenaming] = useState<RenamingState>(null);
+  const vfsRenameChoice = useVfsDependentTitleRenameChoice();
   const noteClipboardRef = useRef<NoteClipboard | null>(null);
   const explorerNoteDragRef = useRef<{ projectId: string; noteId: string } | null>(null);
   const noteOpenTimerRef = useRef<number | null>(null);
@@ -651,6 +656,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const commitRename = useCallback(async () => {
     if (!renaming) return;
     const name = renaming.draft.trim();
+    let clearRenaming = true;
     try {
       if (renaming.kind === "ws") {
         await getNodex().wpnUpdateWorkspace(renaming.id, { name: name || "Workspace" });
@@ -660,22 +666,51 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         await loadWorkspaces();
       } else if (renaming.kind === "note" && renaming.projectId) {
         const title = name || "Untitled";
-        await getNodex().wpnPatchNote(renaming.id, { title });
-        await loadProjectTree(renaming.projectId);
-        const tabInst =
-          tabs.findNoteTabByNoteId(renaming.id, SHELL_TAB_NOTE) ??
-          tabs.findNoteTabByNoteId(renaming.id, SHELL_TAB_SCRATCH_MARKDOWN);
-        if (tabInst) {
-          tabs.updateTabPresentation(tabInst.instanceId, { title });
+        const noteRow = notes.find((n) => n.id === renaming.id);
+        const outcome = await runWpnNoteTitleRenameWithVfsDependentsFlow({
+          noteId: renaming.id,
+          currentTitle: noteRow?.title ?? "",
+          newTitle: title,
+          prompt: vfsRenameChoice.prompt,
+          rename: async (updateVfsDependentLinks) => {
+            await getNodex().wpnPatchNote(renaming.id, {
+              title,
+              updateVfsDependentLinks,
+            });
+          },
+        });
+        if (outcome === "cancelled") {
+          clearRenaming = false;
+          return;
         }
-        if (currentNoteId === renaming.id) {
-          void dispatch(fetchNote(renaming.id));
+        if (outcome === "renamed") {
+          await loadProjectTree(renaming.projectId);
+          const tabInst =
+            tabs.findNoteTabByNoteId(renaming.id, SHELL_TAB_NOTE) ??
+            tabs.findNoteTabByNoteId(renaming.id, SHELL_TAB_SCRATCH_MARKDOWN);
+          if (tabInst) {
+            tabs.updateTabPresentation(tabInst.instanceId, { title });
+          }
+          if (currentNoteId === renaming.id) {
+            void dispatch(fetchNote(renaming.id));
+          }
         }
       }
     } finally {
-      setRenaming(null);
+      if (clearRenaming) {
+        setRenaming(null);
+      }
     }
-  }, [renaming, loadWorkspaces, loadProjectTree, tabs, currentNoteId, dispatch]);
+  }, [
+    renaming,
+    notes,
+    vfsRenameChoice.prompt,
+    loadWorkspaces,
+    loadProjectTree,
+    tabs,
+    currentNoteId,
+    dispatch,
+  ]);
 
   const scheduleOpenNote = useCallback(
     (id: string) => {
@@ -989,11 +1024,13 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const clip = noteClipboardRef.current;
 
   return (
-    <div
-      className="flex h-full min-h-0 min-w-0 w-full flex-col bg-sidebar text-sidebar-foreground"
-      data-nodex-own-contextmenu
-      onClick={() => closeAllMenus()}
-    >
+    <>
+      {vfsRenameChoice.portal}
+      <div
+        className="flex h-full min-h-0 min-w-0 w-full flex-col bg-sidebar text-sidebar-foreground"
+        data-nodex-own-contextmenu
+        onClick={() => closeAllMenus()}
+      >
       <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border bg-muted/10 px-2 py-1">
         {wpnOwnerLabel ? (
           <span
@@ -1566,6 +1603,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         </div>
       ) : null}
       {renderTypePicker()}
-    </div>
+      </div>
+    </>
   );
 }

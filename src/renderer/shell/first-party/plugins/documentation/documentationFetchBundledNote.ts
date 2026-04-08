@@ -4,6 +4,41 @@ import type { Note } from "@nodex/ui-types";
 
 const resolveSyncApiBaseForBundled = createSyncBaseUrlResolver();
 
+export type BundledGuideIndexEntry = { id: string; title: string; section: string };
+
+/**
+ * Lists bundled guide ids/titles from sync-api (web: WPN has no seeded Documentation project).
+ */
+export async function fetchBundledGuideIndexFromSyncPublic(): Promise<BundledGuideIndexEntry[]> {
+  const base = resolveSyncApiBaseForBundled().trim().replace(/\/$/, "");
+  if (!base) {
+    return [];
+  }
+  try {
+    const url = `${base}/public/bundled-docs/guide-index`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      return [];
+    }
+    const j = (await res.json()) as {
+      guides?: Array<{ id?: string; title?: string; section?: string }>;
+    };
+    const guides = j.guides;
+    if (!Array.isArray(guides)) {
+      return [];
+    }
+    return guides
+      .filter((g) => typeof g?.id === "string" && typeof g?.title === "string")
+      .map((g) => ({
+        id: g.id as string,
+        title: g.title as string,
+        section: typeof g.section === "string" && g.section.trim() ? g.section : "Guides",
+      }));
+  } catch {
+    return [];
+  }
+}
+
 async function fetchBundledDocFromSyncPublic(logicalId: string): Promise<Note | null> {
   const base = resolveSyncApiBaseForBundled().trim().replace(/\/$/, "");
   if (!base) {

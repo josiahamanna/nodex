@@ -1,5 +1,29 @@
 import type { WpnNoteWithContextListItem } from "./wpn-v2-types";
 
+/** Same-project-relative links use a leading `./` segment (e.g. `./OtherNote`). */
+export function isSameProjectRelativeVfsPath(vfsPath: string): boolean {
+  const t = vfsPath.trim();
+  return t === "." || t.startsWith("./");
+}
+
+/**
+ * Maps `./Title` (same project as `base`) to canonical `Workspace/Project/Title`.
+ */
+export function resolveSameProjectRelativeVfsToCanonical(
+  vfsPath: string,
+  base: Pick<WpnNoteWithContextListItem, "workspace_name" | "project_name">,
+): string | null {
+  const t = vfsPath.trim();
+  if (!isSameProjectRelativeVfsPath(t)) {
+    return null;
+  }
+  const rest = t === "." ? "" : t.slice(2).trim();
+  const titleSeg = normalizeVfsSegment(rest.length > 0 ? rest : "Untitled", "Untitled");
+  const ws = normalizeVfsSegment(base.workspace_name, "Workspace");
+  const proj = normalizeVfsSegment(base.project_name, "Project");
+  return `${ws}/${proj}/${titleSeg}`;
+}
+
 /** Single path segment: no raw `/` (replaced) so joined paths stay unambiguous. */
 export function normalizeVfsSegment(raw: string, fallback: string): string {
   const t = raw.trim();
@@ -47,6 +71,15 @@ export function markdownVfsNoteHref(canonicalPath: string, markdownHeadingSlug?:
     : `#/w/${enc}`;
 }
 
+/** VFS link to another note in the same project using `./Title` (shorter than full Workspace/Project/Title). */
+export function markdownVfsNoteHrefSameProjectRelative(
+  titleSegment: string,
+  markdownHeadingSlug?: string,
+): string {
+  const seg = normalizeVfsSegment(titleSegment, "Untitled");
+  return markdownVfsNoteHref(`./${seg}`, markdownHeadingSlug);
+}
+
 export type ParsedVfsNoteHash = {
   vfsPath: string;
   markdownHeadingSlug?: string;
@@ -66,6 +99,13 @@ export function parseVfsNoteHashPath(pathAfterW: string): ParsedVfsNoteHash | nu
     });
   if (parts.length === 0) return null;
   const last = parts[parts.length - 1]!;
+  const isRel = parts[0] === ".";
+  if (isRel) {
+    if (parts.length >= 3 && /^[a-z0-9-]+$/i.test(last)) {
+      return { vfsPath: parts.slice(0, -1).join("/"), markdownHeadingSlug: last };
+    }
+    return { vfsPath: parts.join("/") };
+  }
   if (parts.length >= 2 && /^[a-z0-9-]+$/i.test(last)) {
     return { vfsPath: parts.slice(0, -1).join("/"), markdownHeadingSlug: last };
   }

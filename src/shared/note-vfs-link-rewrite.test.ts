@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { markdownVfsNoteHref } from "./note-vfs-path.ts";
+import { normalizeVfsSegment } from "./note-vfs-path.ts";
 import {
+  rewriteMarkdownForWpnNoteTitleChange,
   rewriteVfsCanonicalLinksInMarkdown,
   vfsCanonicalPathsForTitleChange,
 } from "./note-vfs-link-rewrite.ts";
@@ -69,5 +71,39 @@ test("rewriteVfsCanonicalLinksInMarkdown updates DocLink to= string", () => {
 test("rewriteVfsCanonicalLinksInMarkdown does not change note-id links", () => {
   const md = `[n](#/n/abc-123-def)`;
   const out = rewriteVfsCanonicalLinksInMarkdown(md, "W/P/Old.note", "W/P/New.note");
+  assert.equal(out, md);
+});
+
+test("rewriteMarkdownForWpnNoteTitleChange updates same-project ./Title links", () => {
+  const oldC = "W/P/Old.note";
+  const newC = "W/P/New.note";
+  const href = markdownVfsNoteHref("./Old.note");
+  const md = `[x](${href})`;
+  const out = rewriteMarkdownForWpnNoteTitleChange(
+    md,
+    "proj1",
+    "proj1",
+    oldC,
+    newC,
+    normalizeVfsSegment("Old.note", "Untitled"),
+    normalizeVfsSegment("New.note", "Untitled"),
+  );
+  assert.ok(out.includes(markdownVfsNoteHref("./New.note")));
+});
+
+test("rewriteMarkdownForWpnNoteTitleChange skips ./ links in other projects", () => {
+  const oldC = "W/P/Old.note";
+  const newC = "W/P/New.note";
+  const href = markdownVfsNoteHref("./Old.note");
+  const md = `[x](${href})`;
+  const out = rewriteMarkdownForWpnNoteTitleChange(
+    md,
+    "other",
+    "proj1",
+    oldC,
+    newC,
+    normalizeVfsSegment("Old.note", "Untitled"),
+    normalizeVfsSegment("New.note", "Untitled"),
+  );
   assert.equal(out, md);
 });

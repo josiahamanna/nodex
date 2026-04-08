@@ -153,7 +153,9 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: string) => {
+ipcMain.handle(
+  IPC_CHANNELS.RENAME_NOTE,
+  async (_event, id: string, title: string, options?: { updateVfsDependentLinks?: boolean }) => {
   assertProjectOpenForNotes();
   if (!isValidNoteId(id)) {
     throw new Error("Invalid note id");
@@ -161,6 +163,7 @@ ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: strin
   if (typeof title !== "string") {
     throw new Error("Invalid title");
   }
+  const updateVfsDependentLinks = options?.updateVfsDependentLinks !== false;
   const db = getNotesDatabase();
   const ownerId = getWpnOwnerId();
   if (db && wpnJsonGetNoteById(db, ownerId, id)) {
@@ -173,7 +176,10 @@ ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: strin
       if (!after) {
         throw new Error("Note not found");
       }
-      if (before.title !== after.title) {
+      if (
+        updateVfsDependentLinks &&
+        before.title !== after.title
+      ) {
         wpnJsonApplyVfsRewritesAfterTitleChange(
           db,
           ownerId,
@@ -193,7 +199,8 @@ ipcMain.handle(IPC_CHANNELS.RENAME_NOTE, async (_event, id: string, title: strin
   pushNotesUndoSnapshot();
   renameNoteInStore(id, title);
   persistNotes();
-});
+  },
+);
 
 ipcMain.handle(
   IPC_CHANNELS.SAVE_NOTE_PLUGIN_UI_STATE,

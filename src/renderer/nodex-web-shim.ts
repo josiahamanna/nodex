@@ -466,14 +466,22 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       }
       return req("POST", "/notes", _payload);
     },
-    renameNote: async (id, title) => {
+    renameNote: async (id, title, options) => {
       if (syncWpnNotesBackend()) {
         await wpnHttp(baseUrl, "PATCH", `/wpn/notes/${encodeURIComponent(id)}`, {
           title,
+          ...(options?.updateVfsDependentLinks === false
+            ? { updateVfsDependentLinks: false }
+            : {}),
         });
         return;
       }
-      return req("PATCH", `/notes/${encodeURIComponent(id)}`, { title });
+      return req("PATCH", `/notes/${encodeURIComponent(id)}`, {
+        title,
+        ...(options?.updateVfsDependentLinks === false
+          ? { updateVfsDependentLinks: false }
+          : {}),
+      });
     },
     deleteNotes: async (ids) => {
       if (syncWpnNotesBackend()) {
@@ -746,6 +754,25 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       }),
     wpnCreateNoteInProject: (projectId, payload) =>
       wpnReq("POST", `/wpn/projects/${encodeURIComponent(projectId)}/notes`, payload),
+    wpnPreviewNoteTitleVfsImpact: async (noteId, newTitle) => {
+      try {
+        const j = await wpnReq<{
+          dependentNoteCount?: number;
+          dependentNoteIds?: string[];
+        }>(
+          "POST",
+          `/wpn/notes/${encodeURIComponent(noteId)}/preview-title-change`,
+          { title: newTitle },
+        );
+        const n = typeof j?.dependentNoteCount === "number" ? j.dependentNoteCount : 0;
+        const ids = Array.isArray(j?.dependentNoteIds)
+          ? j!.dependentNoteIds!.filter((x): x is string => typeof x === "string")
+          : [];
+        return { dependentNoteCount: n, dependentNoteIds: ids };
+      } catch {
+        return { dependentNoteCount: 0, dependentNoteIds: [] as string[] };
+      }
+    },
     wpnPatchNote: (noteId, patch) =>
       wpnReq("PATCH", `/wpn/notes/${encodeURIComponent(noteId)}`, patch),
     wpnDeleteNotes: (ids) => wpnReq("POST", "/wpn/notes/delete", { ids }),
@@ -1378,6 +1405,10 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
         "Not available in plain browser — use Electron or ?web=1&api=…",
       );
     },
+    wpnPreviewNoteTitleVfsImpact: async () => ({
+      dependentNoteCount: 0,
+      dependentNoteIds: [] as string[],
+    }),
     wpnPatchNote: async () => {
       throw new Error(
         "Not available in plain browser — use Electron or ?web=1&api=…",

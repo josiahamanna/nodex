@@ -34,7 +34,10 @@ import {
   wpnJsonPatchProjectSettings,
   wpnJsonPatchWorkspaceSettings,
 } from "../core/wpn/wpn-json-settings";
-import { wpnJsonApplyVfsRewritesAfterTitleChange } from "../core/wpn/wpn-rename-vfs-rewrite";
+import {
+  wpnJsonApplyVfsRewritesAfterTitleChange,
+  wpnJsonPreviewVfsRewritesAfterTitleChange,
+} from "../core/wpn/wpn-rename-vfs-rewrite";
 import { headlessSelectableNoteTypes } from "./headless-bootstrap";
 import { normalizeLegacyNoteType } from "../shared/note-type-legacy";
 import { isValidNoteType } from "../shared/validators";
@@ -295,6 +298,34 @@ export function createWpnRouter(): Router {
     }
   });
 
+  wpn.post("/notes/:id/preview-title-change", async (req: Request, res: Response) => {
+    try {
+      const ownerId = (req as AuthedRequest).user!.id;
+      const { id } = req.params;
+      const rawTitle = typeof req.body?.title === "string" ? req.body.title : "";
+      const store = await resolveJsonStore();
+      const before = wpnJsonGetNoteById(store, ownerId, id);
+      if (!before) {
+        sendErr(res, 404, "Note not found");
+        return;
+      }
+      const nextTitle = rawTitle.trim() ? rawTitle.trim() : before.title;
+      const preview = wpnJsonPreviewVfsRewritesAfterTitleChange(
+        store,
+        ownerId,
+        id,
+        before.title,
+        nextTitle,
+      );
+      res.json({
+        dependentNoteCount: preview.dependentNoteCount,
+        dependentNoteIds: preview.dependentNoteIds,
+      });
+    } catch (e) {
+      sendErr(res, 503, e instanceof Error ? e.message : String(e));
+    }
+  });
+
   wpn.get("/notes/:id", async (req: Request, res: Response) => {
     try {
       const ownerId = (req as AuthedRequest).user!.id;
@@ -316,6 +347,7 @@ export function createWpnRouter(): Router {
       const ownerId = (req as AuthedRequest).user!.id;
       const { id } = req.params;
       const body = req.body ?? {};
+      const updateVfsDependentLinks = body.updateVfsDependentLinks !== false;
       const patch: {
         title?: string;
         content?: string;
@@ -339,6 +371,7 @@ export function createWpnRouter(): Router {
         return;
       }
       if (
+        updateVfsDependentLinks &&
         before &&
         patch.title !== undefined &&
         (patch.title.trim() || before.title) !== before.title

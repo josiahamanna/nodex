@@ -518,8 +518,8 @@ export function wpnJsonGetNoteWithContextById(
 export function wpnJsonListAllNoteContentsForOwner(
   store: WorkspaceStore,
   ownerId: string,
-): { id: string; content: string }[] {
-  const out: { id: string; content: string }[] = [];
+): { id: string; content: string; project_id: string }[] {
+  const out: { id: string; content: string; project_id: string }[] = [];
   for (const slot of store.slots) {
     for (const n of slot.notes) {
       const p = slot.projects.find((x) => x.id === n.project_id);
@@ -530,7 +530,7 @@ export function wpnJsonListAllNoteContentsForOwner(
       if (!w || w.owner_id !== ownerId) {
         continue;
       }
-      out.push({ id: n.id, content: n.content ?? "" });
+      out.push({ id: n.id, content: n.content ?? "", project_id: n.project_id });
     }
   }
   return out;

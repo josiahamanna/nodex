@@ -28,13 +28,21 @@ export class ShellTabsRegistry {
   private instances: ShellTabInstance[] = [];
   private activeInstanceId: string | null = null;
   private readonly listeners = new Set<Listener>();
+  /** Bumps on every mutation (including `updateTabPresentation`) so subscribers can detect tab state/title changes. */
+  private changeEpoch = 0;
 
   subscribe(cb: Listener): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
   }
 
+  /** For `useSyncExternalStore` snapshots when instance ids/active tab are unchanged but tab state/title updated. */
+  getChangeEpoch(): number {
+    return this.changeEpoch;
+  }
+
   private emit(): void {
+    this.changeEpoch += 1;
     for (const l of this.listeners) l();
   }
 

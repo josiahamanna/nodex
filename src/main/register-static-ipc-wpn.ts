@@ -26,6 +26,10 @@ import {
   wpnJsonSetExplorerExpanded,
   wpnJsonUpdateNote,
 } from "../core/wpn/wpn-json-notes";
+import {
+  wpnJsonApplyVfsRewritesAfterTitleChange,
+  wpnJsonPreviewVfsRewritesAfterTitleChange,
+} from "../core/wpn/wpn-rename-vfs-rewrite";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import type { NoteMovePlacement } from "../shared/nodex-renderer-api";
 import { isValidNoteId, isValidNoteType } from "../shared/validators";
@@ -278,16 +282,65 @@ export function registerStaticIpcWpnHandlers(): void {
             content?: string;
             type?: string;
             metadata?: Record<string, unknown> | null;
+            updateVfsDependentLinks?: boolean;
           })
         : {};
+    const updateVfsDependentLinks = p.updateVfsDependentLinks !== false;
+    const { updateVfsDependentLinks: _drop, ...notePatch } = p;
     const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
-    const note = wpnJsonUpdateNote(db, ownerId, noteId, p);
+    const before =
+      notePatch.title !== undefined ? wpnJsonGetNoteById(db, ownerId, noteId) : null;
+    const note = wpnJsonUpdateNote(db, ownerId, noteId, notePatch);
     if (!note) {
       throw new Error("Note not found");
     }
+    if (
+      updateVfsDependentLinks &&
+      before &&
+      notePatch.title !== undefined &&
+      (notePatch.title.trim() || before.title) !== before.title
+    ) {
+      try {
+        wpnJsonApplyVfsRewritesAfterTitleChange(db, ownerId, noteId, before.title, note.title);
+      } catch (err) {
+        console.error("[WPN_PATCH_NOTE] VFS rewrite after title change:", err);
+        throw err instanceof Error ? err : new Error(String(err));
+      }
+    }
     return { note };
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.WPN_PREVIEW_NOTE_TITLE_VFS_IMPACT,
+    async (e, noteId: unknown, newTitle: unknown) => {
+      assertElectronFileVaultWindow(e);
+      if (typeof noteId !== "string" || !noteId) {
+        throw new Error("Invalid note id");
+      }
+      if (typeof newTitle !== "string") {
+        throw new Error("Invalid title");
+      }
+      const db = requireWorkspaceStore();
+      const ownerId = getWpnOwnerId();
+      const before = wpnJsonGetNoteById(db, ownerId, noteId);
+      if (!before) {
+        throw new Error("Note not found");
+      }
+      const nextTitle = newTitle.trim() ? newTitle.trim() : before.title;
+      const preview = wpnJsonPreviewVfsRewritesAfterTitleChange(
+        db,
+        ownerId,
+        noteId,
+        before.title,
+        nextTitle,
+      );
+      return {
+        dependentNoteCount: preview.dependentNoteCount,
+        dependentNoteIds: preview.dependentNoteIds,
+      };
+    },
+  );
 
   ipcMain.handle(IPC_CHANNELS.WPN_DELETE_NOTES, async (e, ids: unknown) => {
     assertElectronFileVaultWindow(e);

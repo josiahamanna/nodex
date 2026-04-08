@@ -87,10 +87,10 @@ export const createNote = createAsyncThunk<
 
 export const renameNote = createAsyncThunk<
   { id: string; title: string },
-  { id: string; title: string },
+  { id: string; title: string; updateVfsDependentLinks?: boolean },
   NotesThunkConfig
->("notes/renameNote", async ({ id, title }, { extra }) => {
-  await extra.localStore.notes.renameNote(id, title);
+>("notes/renameNote", async ({ id, title, updateVfsDependentLinks }, { extra }) => {
+  await extra.localStore.notes.renameNote(id, title, { updateVfsDependentLinks });
   return { id, title };
 });
 

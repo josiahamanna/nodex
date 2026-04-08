@@ -45,8 +45,8 @@ const api: NodexRendererApi = {
   getAllNotes: () => ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_NOTES),
   createNote: (payload) =>
     ipcRenderer.invoke(IPC_CHANNELS.CREATE_NOTE, payload),
-  renameNote: (id, title) =>
-    ipcRenderer.invoke(IPC_CHANNELS.RENAME_NOTE, id, title),
+  renameNote: (id, title, options) =>
+    ipcRenderer.invoke(IPC_CHANNELS.RENAME_NOTE, id, title, options),
   deleteNotes: (ids) => ipcRenderer.invoke(IPC_CHANNELS.DELETE_NOTES, ids),
   moveNote: (draggedId, targetId, placement) =>
     ipcRenderer.invoke(IPC_CHANNELS.MOVE_NOTE, {
@@ -498,6 +498,8 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.WPN_SET_EXPLORER_STATE, projectId, expandedIds),
   wpnCreateNoteInProject: (projectId, payload) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_CREATE_NOTE_IN_PROJECT, projectId, payload),
+  wpnPreviewNoteTitleVfsImpact: (noteId, newTitle) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_PREVIEW_NOTE_TITLE_VFS_IMPACT, noteId, newTitle),
   wpnPatchNote: (noteId, patch) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_PATCH_NOTE, noteId, patch),
   wpnDeleteNotes: (ids) =>

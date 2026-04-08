@@ -239,7 +239,13 @@ function applyShellHashVfsNoteTarget(
   openNoteById: (id: string, opts?: { markdownHeadingSlug?: string }) => void,
   parsed: { vfsPath: string; markdownHeadingSlug?: string },
 ): void {
-  void resolveNoteIdFromVfsPath(parsed.vfsPath).then((id) => {
+  const active = tabs.getActiveTab();
+  let baseNoteId: string | undefined;
+  if (active && isShellNoteEditorTabType(active.tabTypeId)) {
+    const st = active.state as ShellNoteTabState | undefined;
+    baseNoteId = st?.noteId;
+  }
+  void resolveNoteIdFromVfsPath(parsed.vfsPath, baseNoteId).then((id) => {
     if (!id) return;
     applyShellHashNoteTarget(tabs, openNoteById, {
       kind: "note",
@@ -376,7 +382,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     () => {
       const list = tabs.listOpenTabs();
       const active = tabs.getActiveTab()?.instanceId ?? "";
-      return `${list.length}:${list.map((t) => t.instanceId).join(",")}:${active}`;
+      return `${list.length}:${list.map((t) => t.instanceId).join(",")}:${active}:${tabs.getChangeEpoch()}`;
     },
     () => "0::",
   );

@@ -37,6 +37,7 @@ const ELECTRON_CLOUD_WPN_DELEGATE_KEYS = new Set<keyof NodexRendererApi>([
   "wpnGetExplorerState",
   "wpnSetExplorerState",
   "wpnCreateNoteInProject",
+  "wpnPreviewNoteTitleVfsImpact",
   "wpnPatchNote",
   "wpnDeleteNotes",
   "wpnMoveNote",

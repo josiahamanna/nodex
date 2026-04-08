@@ -176,7 +176,50 @@ function buildNoteResponse(
  * Read-only bundled documentation from disk (same sources as core `bundled-docs-seed`).
  * No auth — content is public product docs. Hosts should not expose internal paths.
  */
+export type BundledGuideIndexRow = {
+  id: string;
+  title: string;
+  section: string;
+  order: number;
+};
+
+/**
+ * Lightweight catalog for Documentation → Guides in the web shell (no WPN seed required).
+ * Matches `bundledDocRole: "page"` rows from the manifest; same ids as `/public/bundled-docs/notes/:id`.
+ */
+export function buildBundledGuideIndex(dir: string, manifest: BundledManifest): BundledGuideIndexRow[] {
+  const out: BundledGuideIndexRow[] = manifest.pages.map((page, i) => ({
+    id: page.id,
+    title: page.title,
+    section: page.section ?? "Guides",
+    order: i,
+  }));
+  const aboutPath = path.join(path.dirname(dir), "about-nodex.md");
+  if (fs.existsSync(aboutPath)) {
+    out.push({
+      id: "nodex-docs:about-nodex",
+      title: "About Nodex",
+      section: "Reference",
+      order: 10_000,
+    });
+  }
+  out.sort((a, b) => (a.order !== b.order ? a.order - b.order : a.title.localeCompare(b.title)));
+  return out;
+}
+
 export function registerBundledDocsPublicRoutes(app: FastifyInstance): void {
+  app.get("/public/bundled-docs/guide-index", async (_request, reply) => {
+    const dir = resolveBundledDocsDir();
+    if (!fs.existsSync(dir)) {
+      return reply.status(404).send({ error: "Bundled documentation directory not found" });
+    }
+    const manifest = readManifest(dir);
+    if (!manifest) {
+      return reply.status(404).send({ error: "Bundled documentation manifest missing" });
+    }
+    return reply.send({ guides: buildBundledGuideIndex(dir, manifest) });
+  });
+
   app.get("/public/bundled-docs/notes/:id", async (request, reply) => {
     const id = decodeURIComponent((request.params as { id: string }).id);
     const dir = resolveBundledDocsDir();

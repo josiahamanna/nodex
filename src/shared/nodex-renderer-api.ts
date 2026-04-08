@@ -98,7 +98,11 @@ export type NodexRendererApi = {
     content?: string;
     title?: string;
   }) => Promise<{ id: string }>;
-  renameNote: (id: string, title: string) => Promise<void>;
+  renameNote: (
+    id: string,
+    title: string,
+    options?: { updateVfsDependentLinks?: boolean },
+  ) => Promise<void>;
   deleteNotes: (ids: string[]) => Promise<void>;
   moveNote: (
     draggedId: string,
@@ -593,6 +597,10 @@ export type NodexRendererApi = {
       title?: string;
     },
   ) => Promise<{ id: string }>;
+  wpnPreviewNoteTitleVfsImpact: (
+    noteId: string,
+    newTitle: string,
+  ) => Promise<{ dependentNoteCount: number; dependentNoteIds: string[] }>;
   wpnPatchNote: (
     noteId: string,
     patch: {
@@ -600,6 +608,8 @@ export type NodexRendererApi = {
       content?: string;
       type?: string;
       metadata?: Record<string, unknown> | null;
+      /** When `false`, skip rewriting `#/w/...` / `./...` links in other notes after a title change. Default true. */
+      updateVfsDependentLinks?: boolean;
     },
   ) => Promise<{ note: WpnNoteDetail }>;
   wpnDeleteNotes: (ids: string[]) => Promise<{ ok: true }>;

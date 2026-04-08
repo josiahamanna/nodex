@@ -4,6 +4,10 @@ import NoteViewer from "../../components/NoteViewer";
 import { workspaceFolderPathForNote } from "../../../shared/note-workspace";
 import type { AppDispatch, RootState } from "../../store";
 import { fetchAllNotes, fetchNote, renameNote } from "../../store/notesSlice";
+import {
+  runWpnNoteTitleRenameWithVfsDependentsFlow,
+  useVfsDependentTitleRenameChoice,
+} from "../wpn/vfsDependentTitleRenameChoice";
 import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import { useShellActiveMainTab } from "../ShellActiveTabContext";
 import { useShellProjectWorkspace } from "../useShellProjectWorkspace";
@@ -16,6 +20,7 @@ export function NoteEditorShellView(_props: ShellViewComponentProps): React.Reac
   const tab = useShellActiveMainTab();
   const { tabs } = useShellRegistries();
   const dispatch = useDispatch<AppDispatch>();
+  const vfsRenameChoice = useVfsDependentTitleRenameChoice();
   const currentNote = useSelector((s: RootState) => s.notes.currentNote);
   const detailLoading = useSelector((s: RootState) => s.notes.detailLoading);
   const error = useSelector((s: RootState) => s.notes.error);
@@ -63,24 +68,38 @@ export function NoteEditorShellView(_props: ShellViewComponentProps): React.Reac
 
   if (currentNote?.id === noteId) {
     return (
-      <NoteViewer
-        note={currentNote}
-        assetProjectRoot={assetProjectRoot}
-        onTitleCommit={(title) => {
-          void (async () => {
-            const id = currentNote.id;
-            await dispatch(renameNote({ id, title })).unwrap();
-            await dispatch(fetchAllNotes());
-            const tabInst =
-              tabs.findNoteTabByNoteId(id, SHELL_TAB_NOTE) ??
-              tabs.findNoteTabByNoteId(id, SHELL_TAB_SCRATCH_MARKDOWN);
-            if (tabInst) {
-              const label = title.replace(/\s+/g, " ").trim() || "Untitled";
-              tabs.updateTabPresentation(tabInst.instanceId, { title: label });
-            }
-          })();
-        }}
-      />
+      <>
+        {vfsRenameChoice.portal}
+        <NoteViewer
+          note={currentNote}
+          assetProjectRoot={assetProjectRoot}
+          onTitleCommit={(title) => {
+            void (async () => {
+              const id = currentNote.id;
+              const outcome = await runWpnNoteTitleRenameWithVfsDependentsFlow({
+                noteId: id,
+                currentTitle: currentNote.title ?? "",
+                newTitle: title,
+                prompt: vfsRenameChoice.prompt,
+                rename: async (updateVfsDependentLinks) => {
+                  await dispatch(renameNote({ id, title, updateVfsDependentLinks })).unwrap();
+                },
+              });
+              if (outcome === "cancelled") {
+                return;
+              }
+              await dispatch(fetchAllNotes());
+              const tabInst =
+                tabs.findNoteTabByNoteId(id, SHELL_TAB_NOTE) ??
+                tabs.findNoteTabByNoteId(id, SHELL_TAB_SCRATCH_MARKDOWN);
+              if (tabInst) {
+                const label = title.replace(/\s+/g, " ").trim() || "Untitled";
+                tabs.updateTabPresentation(tabInst.instanceId, { title: label });
+              }
+            })();
+          }}
+        />
+      </>
     );
   }
 

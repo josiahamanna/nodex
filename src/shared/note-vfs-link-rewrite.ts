@@ -1,5 +1,10 @@
 import { parseInternalMarkdownNoteLink } from "./markdown-internal-note-href";
-import { canonicalVfsPathFromLinkRow, markdownVfsNoteHref } from "./note-vfs-path";
+import {
+  canonicalVfsPathFromLinkRow,
+  isSameProjectRelativeVfsPath,
+  markdownVfsNoteHref,
+  normalizeVfsSegment,
+} from "./note-vfs-path";
 import type { WpnNoteWithContextListItem } from "./wpn-v2-types";
 
 /**
@@ -35,6 +40,23 @@ function replaceInternalHref(
   return markdownVfsNoteHref(newCanonical, p.markdownHeadingSlug);
 }
 
+function replaceRelativeSameProjectTitleHref(
+  href: string,
+  oldTitleSeg: string,
+  newTitleSeg: string,
+): string | null {
+  const p = parseInternalMarkdownNoteLink(href);
+  if (p?.kind !== "vfs" || !isSameProjectRelativeVfsPath(p.vfsPath)) {
+    return null;
+  }
+  const rest = p.vfsPath.trim() === "." ? "" : p.vfsPath.trim().slice(2).trim();
+  const seg = normalizeVfsSegment(rest.length > 0 ? rest : "Untitled", "Untitled");
+  if (seg !== oldTitleSeg) {
+    return null;
+  }
+  return markdownVfsNoteHref(`./${newTitleSeg}`, p.markdownHeadingSlug);
+}
+
 /**
  * Apply rewrites outside ``` fenced ``` blocks only (inline `code` is not skipped).
  */
@@ -59,6 +81,90 @@ function rewriteVfsLinksInPlainSegment(
 ): string {
   let s = rewriteMarkdownLinkHrefs(segment, oldCanonical, newCanonical);
   s = rewriteDocLinkToAttrs(s, oldCanonical, newCanonical);
+  return s;
+}
+
+/**
+ * When a note title changes within a project, rewrite `./OldTitle` links in notes that live in that project.
+ */
+export function rewriteRelativeSameProjectTitleLinksInMarkdown(
+  content: string,
+  oldTitleSeg: string,
+  newTitleSeg: string,
+): string {
+  if (oldTitleSeg === newTitleSeg) return content;
+  const parts = content.split(/(```[\s\S]*?```)/g);
+  return parts
+    .map((chunk, i) =>
+      i % 2 === 1
+        ? chunk
+        : rewriteRelativeTitleInPlainSegment(chunk, oldTitleSeg, newTitleSeg),
+    )
+    .join("");
+}
+
+function rewriteRelativeTitleInPlainSegment(
+  segment: string,
+  oldTitleSeg: string,
+  newTitleSeg: string,
+): string {
+  let s = rewriteMarkdownLinkHrefsRelativeTitle(segment, oldTitleSeg, newTitleSeg);
+  s = rewriteDocLinkRelativeTitle(s, oldTitleSeg, newTitleSeg);
+  return s;
+}
+
+function rewriteMarkdownLinkHrefsRelativeTitle(
+  segment: string,
+  oldTitleSeg: string,
+  newTitleSeg: string,
+): string {
+  return segment.replace(
+    /(!?)\[([^\]]*)\]\(([^)\s]+)(\s+["'][^"']*["'])?\)/g,
+    (match, bang, label, href, titlePart) => {
+      const nh = replaceRelativeSameProjectTitleHref(
+        String(href).trim(),
+        oldTitleSeg,
+        newTitleSeg,
+      );
+      return nh === null ? match : `${bang}[${label}](${nh}${titlePart ?? ""})`;
+    },
+  );
+}
+
+function rewriteDocLinkRelativeTitle(
+  segment: string,
+  oldTitleSeg: string,
+  newTitleSeg: string,
+): string {
+  return segment.replace(
+    /<DocLink\b([\s\S]*?)(\/>|>)/gi,
+    (full: string, inner: string, end: string) => {
+      const m = /\bto=(?:"([^"]*)"|'([^']*)')/.exec(inner);
+      if (!m) return full;
+      const q = m[0].includes('"') ? '"' : "'";
+      const raw = (m[1] ?? m[2] ?? "").trim();
+      const nh = replaceRelativeSameProjectTitleHref(raw, oldTitleSeg, newTitleSeg);
+      if (nh === null) return full;
+      const nextInner = inner.replace(/\bto=(?:"[^"]*"|'[^']*')/, `to=${q}${nh}${q}`);
+      return `<DocLink${nextInner}${end}`;
+    },
+  );
+}
+
+/** Applies canonical path rewrites plus same-project `./title` rewrites when `rowProjectId` matches `renamedProjectId`. */
+export function rewriteMarkdownForWpnNoteTitleChange(
+  content: string,
+  rowProjectId: string,
+  renamedProjectId: string,
+  oldCanonical: string,
+  newCanonical: string,
+  oldTitleSeg: string,
+  newTitleSeg: string,
+): string {
+  let s = rewriteVfsCanonicalLinksInMarkdown(content, oldCanonical, newCanonical);
+  if (rowProjectId === renamedProjectId) {
+    s = rewriteRelativeSameProjectTitleLinksInMarkdown(s, oldTitleSeg, newTitleSeg);
+  }
   return s;
 }
 

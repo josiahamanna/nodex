@@ -150,6 +150,7 @@ export const IPC_CHANNELS = {
   WPN_GET_EXPLORER_STATE: "wpn:get-explorer-state",
   WPN_SET_EXPLORER_STATE: "wpn:set-explorer-state",
   WPN_CREATE_NOTE_IN_PROJECT: "wpn:create-note-in-project",
+  WPN_PREVIEW_NOTE_TITLE_VFS_IMPACT: "wpn:preview-note-title-vfs-impact",
   WPN_PATCH_NOTE: "wpn:patch-note",
   WPN_DELETE_NOTES: "wpn:delete-notes",
   WPN_MOVE_NOTE: "wpn:move-note",

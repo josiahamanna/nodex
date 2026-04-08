@@ -8,7 +8,11 @@ import { patchNoteMetadata, saveNoteContent } from "../../../../store/notesSlice
 import { MdxRenderer } from "../../../../components/renderers/MdxRenderer";
 import { useAuth } from "../../../../auth/AuthContext";
 import { useTheme } from "../../../../theme/ThemeContext";
-import { canonicalVfsPathFromLinkRow, markdownVfsNoteHref } from "../../../../../shared/note-vfs-path";
+import {
+  canonicalVfsPathFromLinkRow,
+  markdownVfsNoteHref,
+  markdownVfsNoteHrefSameProjectRelative,
+} from "../../../../../shared/note-vfs-path";
 import { MarkdownNoteLinkPickerModal } from "./MarkdownNoteLinkPickerModal";
 import { MarkdownNoteLinkAutocompletePopover } from "./MarkdownNoteLinkAutocompletePopover";
 import { NODEX_MARKDOWN_OPEN_NOTE_LINK_PICKER_EVENT } from "./markdownNoteLinkEvents";
@@ -417,7 +421,14 @@ export function MdxNoteEditor({
     (row: WpnNoteLinkRow, replaceRange?: { start: number; end: number }) => {
       const label = row.title.trim() || "Untitled";
       const vfsPath = canonicalVfsPathFromLinkRow(row);
-      const href = markdownVfsNoteHref(vfsPath);
+      const selfRow = wikiRows.find((r) => r.noteId === note.id);
+      const sameProject =
+        selfRow &&
+        selfRow.workspaceName === row.workspaceName &&
+        selfRow.projectName === row.projectName;
+      const href = sameProject
+        ? markdownVfsNoteHrefSameProjectRelative(row.title)
+        : markdownVfsNoteHref(vfsPath);
       const md = `[${label}](${href})`;
       const view = cmViewRef.current;
       const text = latestRef.current;
@@ -465,7 +476,7 @@ export function MdxNoteEditor({
         });
       }
     },
-    [readOnly, scheduleBatchedFlush],
+    [readOnly, scheduleBatchedFlush, wikiRows, note.id],
   );
 
   const filteredWikiRows = useMemo(() => {

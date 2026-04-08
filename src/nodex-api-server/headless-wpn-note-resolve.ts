@@ -1,7 +1,9 @@
 import { getNotesDatabase } from "../core/workspace-store";
 import { getWpnOwnerId } from "../core/wpn/wpn-owner";
 import { wpnJsonGetNoteById, wpnJsonUpdateNote } from "../core/wpn/wpn-json-notes";
-import { wpnJsonApplyVfsRewritesAfterTitleChange } from "../core/wpn/wpn-rename-vfs-rewrite";
+import {
+  wpnJsonApplyVfsRewritesAfterTitleChange,
+} from "../core/wpn/wpn-rename-vfs-rewrite";
 import type { WpnNoteDetail } from "../shared/wpn-v2-types";
 
 /**
@@ -27,6 +29,7 @@ export async function headlessPatchWpnNote(
     title?: string;
     content?: string;
     metadata?: Record<string, unknown> | null;
+    updateVfsDependentLinks?: boolean;
   },
   wpnOwnerId?: string,
 ): Promise<WpnNoteDetail | null> {
@@ -35,14 +38,17 @@ export async function headlessPatchWpnNote(
   if (!store) {
     return null;
   }
+  const updateVfsDependentLinks = patch.updateVfsDependentLinks !== false;
+  const { updateVfsDependentLinks: _u, ...notePatch } = patch;
   const before =
-    patch.title !== undefined ? wpnJsonGetNoteById(store, ownerId, noteId) : null;
-  const after = wpnJsonUpdateNote(store, ownerId, noteId, patch);
+    notePatch.title !== undefined ? wpnJsonGetNoteById(store, ownerId, noteId) : null;
+  const after = wpnJsonUpdateNote(store, ownerId, noteId, notePatch);
   if (
+    updateVfsDependentLinks &&
     after &&
     before &&
-    patch.title !== undefined &&
-    (patch.title.trim() || before.title) !== before.title
+    notePatch.title !== undefined &&
+    (notePatch.title.trim() || before.title) !== before.title
   ) {
     try {
       wpnJsonApplyVfsRewritesAfterTitleChange(

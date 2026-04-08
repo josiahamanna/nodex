@@ -15,6 +15,7 @@ import {
 import { useShellRegistries } from "../../../registries/ShellRegistriesContext";
 import { DocumentationLinkContextMenu, type DocumentationLinkMenuModel } from "./DocumentationLinkContextMenu";
 import { DocumentationSettingsForm } from "./DocumentationSettingsForm";
+import { fetchBundledGuideIndexFromSyncPublic } from "./documentationFetchBundledNote";
 function esc(s: string): string {
   return String(s || "").replace(/[&<>"]/g, (ch) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch] ?? ch),
@@ -124,56 +125,60 @@ export function DocumentationSearchPanelView(_props: ShellViewComponentProps): R
     let cancelled = false;
     setWpnGuidesError(null);
     void (async () => {
+      let pages: Array<{ id: string; title: string; section: string }> = [];
+      let err: string | null = null;
       try {
         const { workspaces } = await getNodex().wpnListWorkspaces();
         const ws0 = workspaces[0];
-        if (!ws0) {
-          if (!cancelled) setWpnGuides([]);
-          return;
+        if (ws0) {
+          const { projects } = await getNodex().wpnListProjects(ws0.id);
+          const docsProject = projects.find((p) => p.name === "Documentation");
+          if (docsProject) {
+            const { notes } = await getNodex().wpnListNotes(docsProject.id);
+            const details = await Promise.all(
+              notes.map(async (n) => {
+                try {
+                  const r = await getNodex().wpnGetNote(n.id);
+                  return r.note;
+                } catch {
+                  return null;
+                }
+              }),
+            );
+            pages = details
+              .filter((n): n is NonNullable<typeof n> => !!n)
+              .filter((n) => n.metadata?.bundledDoc === true && n.metadata?.bundledDocRole === "page")
+              .map((n) => {
+                const meta = n.metadata as Record<string, unknown> | undefined;
+                const sec = meta?.bundledDocSection;
+                const section = typeof sec === "string" && sec.trim() ? sec : "Guides";
+                return { id: n.id, title: n.title, section };
+              });
+            pages.sort((a, b) => {
+              const ao = (details.find((x) => x?.id === a.id)?.metadata as Record<string, unknown> | undefined)
+                ?.bundledDocOrder;
+              const bo = (details.find((x) => x?.id === b.id)?.metadata as Record<string, unknown> | undefined)
+                ?.bundledDocOrder;
+              const an = typeof ao === "number" ? ao : 9999;
+              const bn = typeof bo === "number" ? bo : 9999;
+              if (an !== bn) return an - bn;
+              return a.title.localeCompare(b.title);
+            });
+          }
         }
-        const { projects } = await getNodex().wpnListProjects(ws0.id);
-        const docsProject = projects.find((p) => p.name === "Documentation");
-        if (!docsProject) {
-          if (!cancelled) setWpnGuides([]);
-          return;
-        }
-        const { notes } = await getNodex().wpnListNotes(docsProject.id);
-        // Fetch details for each note so we can filter bundledDocRole/pages.
-        const details = await Promise.all(
-          notes.map(async (n) => {
-            try {
-              const r = await getNodex().wpnGetNote(n.id);
-              return r.note;
-            } catch {
-              return null;
-            }
-          }),
-        );
-        const pages = details
-          .filter((n): n is NonNullable<typeof n> => !!n)
-          .filter((n) => n.metadata?.bundledDoc === true && n.metadata?.bundledDocRole === "page")
-          .map((n) => {
-            const meta = n.metadata as Record<string, unknown> | undefined;
-            const sec = meta?.bundledDocSection;
-            const section = typeof sec === "string" && sec.trim() ? sec : "Guides";
-            return { id: n.id, title: n.title, section };
-          });
-        pages.sort((a, b) => {
-          const ao = (details.find((x) => x?.id === a.id)?.metadata as Record<string, unknown> | undefined)
-            ?.bundledDocOrder;
-          const bo = (details.find((x) => x?.id === b.id)?.metadata as Record<string, unknown> | undefined)
-            ?.bundledDocOrder;
-          const an = typeof ao === "number" ? ao : 9999;
-          const bn = typeof bo === "number" ? bo : 9999;
-          if (an !== bn) return an - bn;
-          return a.title.localeCompare(b.title);
-        });
-        if (!cancelled) setWpnGuides(pages);
       } catch (e) {
-        if (!cancelled) {
-          setWpnGuides([]);
-          setWpnGuidesError(e instanceof Error ? e.message : String(e));
+        err = e instanceof Error ? e.message : String(e);
+      }
+      if (pages.length === 0) {
+        const fromSyncPublic = await fetchBundledGuideIndexFromSyncPublic();
+        if (fromSyncPublic.length > 0) {
+          pages = fromSyncPublic;
+          err = null;
         }
+      }
+      if (!cancelled) {
+        setWpnGuides(pages);
+        setWpnGuidesError(err);
       }
     })();
     return () => {

@@ -5,6 +5,7 @@ import {
   markdownVfsNoteHref,
   parseVfsNoteHashPath,
   resolveNoteIdByCanonicalVfsPath,
+  resolveSameProjectRelativeVfsToCanonical,
 } from "./note-vfs-path.ts";
 import type { WpnNoteWithContextListItem } from "./wpn-v2-types.ts";
 
@@ -34,6 +35,25 @@ test("markdownVfsNoteHref includes heading slug when valid", () => {
   assert.equal(href, "#/w/A/B/my-section");
   const parsed = parseVfsNoteHashPath("A/B/my-section");
   assert.deepEqual(parsed, { vfsPath: "A/B", markdownHeadingSlug: "my-section" });
+});
+
+test("parseVfsNoteHashPath: same-project relative ./Note (two segments) has no false heading slug", () => {
+  const href = markdownVfsNoteHref("./Sibling");
+  const tail = href.replace(/^#\/w\//, "");
+  assert.deepEqual(parseVfsNoteHashPath(tail), { vfsPath: "./Sibling" });
+});
+
+test("parseVfsNoteHashPath: relative with heading slug uses three+ segments", () => {
+  const parsed = parseVfsNoteHashPath("./Sibling/my-h2");
+  assert.deepEqual(parsed, { vfsPath: "./Sibling", markdownHeadingSlug: "my-h2" });
+});
+
+test("resolveSameProjectRelativeVfsToCanonical expands ./Title with base context", () => {
+  const base = {
+    workspace_name: "W",
+    project_name: "P",
+  };
+  assert.equal(resolveSameProjectRelativeVfsToCanonical("./T", base), "W/P/T");
 });
 
 test("resolveNoteIdByCanonicalVfsPath finds first match", () => {

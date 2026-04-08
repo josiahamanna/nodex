@@ -32,6 +32,7 @@ import {
   scratchWpnListWorkspaces,
   scratchWpnMoveNote,
   scratchWpnPatchNote,
+  scratchWpnPreviewNoteTitleVfsImpact,
   scratchWpnSetExplorerState,
   scratchWpnUpdateProject,
   scratchWpnUpdateWorkspace,
@@ -81,7 +82,7 @@ export function webScratchPlainStubOverrides(): Partial<NodexRendererApi> {
       }
       return scratchWpnCreateNoteInProject(projectId, payload);
     },
-    renameNote: (id, title) => scratchRenameNote(id, title),
+    renameNote: (id, title, options) => scratchRenameNote(id, title, options),
     deleteNotes: (ids) => scratchDeleteNotes(ids),
     moveNote: async (draggedId, targetId, placement) => {
       const pd = await scratchResolveProjectIdForNote(draggedId);
@@ -203,6 +204,8 @@ export function webScratchPlainStubOverrides(): Partial<NodexRendererApi> {
       scratchWpnSetExplorerState(projectId, expandedIds),
     wpnCreateNoteInProject: (projectId, payload) =>
       scratchWpnCreateNoteInProject(projectId, payload),
+    wpnPreviewNoteTitleVfsImpact: (noteId, newTitle) =>
+      scratchWpnPreviewNoteTitleVfsImpact(noteId, newTitle),
     wpnPatchNote: async (noteId, patch) => {
       const r = await scratchWpnPatchNote(noteId, patch);
       if (!r) {

@@ -4,6 +4,11 @@
  */
 import Dexie, { type Table } from "dexie";
 import { collectReferencedNoteIdsFromMarkdown } from "../../shared/markdown-internal-note-href";
+import {
+  rewriteMarkdownForWpnNoteTitleChange,
+  vfsCanonicalPathsForTitleChange,
+} from "../../shared/note-vfs-link-rewrite";
+import { normalizeVfsSegment } from "../../shared/note-vfs-path";
 import { normalizeLegacyNoteType } from "../../shared/note-type-legacy";
 import type { NoteMovePlacement } from "../../shared/nodex-renderer-api";
 import type {
@@ -33,6 +38,33 @@ type ScratchBundle = {
 
 function emptyBundle(): ScratchBundle {
   return { workspaces: [], projects: [], notes: [], explorer: [] };
+}
+
+function noteWithContextFromBundle(
+  b: ScratchBundle,
+  noteId: string,
+): WpnNoteWithContextListItem | null {
+  const n = b.notes.find((x) => x.id === noteId);
+  if (!n) {
+    return null;
+  }
+  const p = b.projects.find((x) => x.id === n.project_id);
+  if (!p) {
+    return null;
+  }
+  const w = b.workspaces.find((x) => x.id === p.workspace_id);
+  if (!w) {
+    return null;
+  }
+  return {
+    id: n.id,
+    type: normalizeLegacyNoteType(n.type),
+    title: n.title,
+    project_id: n.project_id,
+    project_name: p.name,
+    workspace_id: p.workspace_id,
+    workspace_name: w.name,
+  };
 }
 
 class WpnScratchDexie extends Dexie {
@@ -572,6 +604,7 @@ export async function scratchWpnPatchNote(
     content?: string;
     type?: string;
     metadata?: Record<string, unknown> | null;
+    updateVfsDependentLinks?: boolean;
   },
 ): Promise<{ note: WpnNoteDetail } | null> {
   const b = await loadBundle();
@@ -580,27 +613,106 @@ export async function scratchWpnPatchNote(
   const n = b.notes.find((x) => x.id === noteId);
   if (!n) return null;
 
-  const title = patch.title !== undefined ? patch.title.trim() || cur.title : cur.title;
-  const content = patch.content !== undefined ? patch.content : cur.content;
-  const type = normalizeLegacyNoteType(patch.type !== undefined ? patch.type : cur.type);
+  const updateVfs = patch.updateVfsDependentLinks !== false;
+  const { updateVfsDependentLinks: _vfsOpt, ...cleanPatch } = patch;
+
+  const oldTitle = n.title;
+  const title =
+    cleanPatch.title !== undefined ? cleanPatch.title.trim() || cur.title : cur.title;
+  const content = cleanPatch.content !== undefined ? cleanPatch.content : cur.content;
+  const type = normalizeLegacyNoteType(cleanPatch.type !== undefined ? cleanPatch.type : cur.type);
   let metadata_json: string | null =
     cur.metadata && Object.keys(cur.metadata).length > 0
       ? JSON.stringify(cur.metadata)
       : null;
-  if (patch.metadata !== undefined) {
+  if (cleanPatch.metadata !== undefined) {
     metadata_json =
-      patch.metadata && Object.keys(patch.metadata).length > 0
-        ? JSON.stringify(patch.metadata)
+      cleanPatch.metadata && Object.keys(cleanPatch.metadata).length > 0
+        ? JSON.stringify(cleanPatch.metadata)
         : null;
   }
   n.title = title;
   n.content = content;
   n.metadata_json = metadata_json;
   n.type = type;
+
+  if (
+    updateVfs &&
+    cleanPatch.title !== undefined &&
+    oldTitle !== title
+  ) {
+    const ctx = noteWithContextFromBundle(b, noteId);
+    if (ctx) {
+      const paths = vfsCanonicalPathsForTitleChange(ctx, oldTitle, title);
+      if (paths) {
+        const oldSeg = normalizeVfsSegment(oldTitle, "Untitled");
+        const newSeg = normalizeVfsSegment(title, "Untitled");
+        const { oldCanonical, newCanonical } = paths;
+        const tms = nowMs();
+        for (const o of b.notes) {
+          const c0 = o.content ?? "";
+          const c1 = rewriteMarkdownForWpnNoteTitleChange(
+            c0,
+            o.project_id,
+            ctx.project_id,
+            oldCanonical,
+            newCanonical,
+            oldSeg,
+            newSeg,
+          );
+          if (c1 !== c0) {
+            o.content = c1;
+            o.updated_at_ms = tms;
+          }
+        }
+      }
+    }
+  }
+
   n.updated_at_ms = nowMs();
   await saveBundle(b);
   const next = getNoteDetail(b, noteId);
   return next ? { note: next } : null;
+}
+
+export async function scratchWpnPreviewNoteTitleVfsImpact(
+  noteId: string,
+  newTitle: string,
+): Promise<{ dependentNoteCount: number; dependentNoteIds: string[] }> {
+  const b = await loadBundle();
+  const ctx = noteWithContextFromBundle(b, noteId);
+  if (!ctx) {
+    return { dependentNoteCount: 0, dependentNoteIds: [] };
+  }
+  const n = b.notes.find((x) => x.id === noteId);
+  if (!n) {
+    return { dependentNoteCount: 0, dependentNoteIds: [] };
+  }
+  const nextTitle = newTitle.trim() ? newTitle.trim() : n.title;
+  const paths = vfsCanonicalPathsForTitleChange(ctx, n.title, nextTitle);
+  if (!paths) {
+    return { dependentNoteCount: 0, dependentNoteIds: [] };
+  }
+  const oldSeg = normalizeVfsSegment(n.title, "Untitled");
+  const newSeg = normalizeVfsSegment(nextTitle, "Untitled");
+  const { oldCanonical, newCanonical } = paths;
+  const dependentNoteIds: string[] = [];
+  for (const o of b.notes) {
+    const c0 = o.content ?? "";
+    const c1 = rewriteMarkdownForWpnNoteTitleChange(
+      c0,
+      o.project_id,
+      ctx.project_id,
+      oldCanonical,
+      newCanonical,
+      oldSeg,
+      newSeg,
+    );
+    if (c1 !== c0) {
+      dependentNoteIds.push(o.id);
+    }
+  }
+  return { dependentNoteCount: dependentNoteIds.length, dependentNoteIds };
 }
 
 export async function scratchWpnDeleteNotes(ids: string[]): Promise<{ ok: true }> {
@@ -754,8 +866,12 @@ export async function scratchSaveNoteContent(noteId: string, content: string): P
   await scratchWpnPatchNote(noteId, { content });
 }
 
-export async function scratchRenameNote(noteId: string, title: string): Promise<void> {
-  await scratchWpnPatchNote(noteId, { title });
+export async function scratchRenameNote(
+  noteId: string,
+  title: string,
+  options?: { updateVfsDependentLinks?: boolean },
+): Promise<void> {
+  await scratchWpnPatchNote(noteId, { title, ...options });
 }
 
 export async function scratchDeleteNotes(ids: string[]): Promise<void> {

@@ -608,6 +608,7 @@ export function createNodexApiRouter(): Router {
         title?: string;
         content?: string;
         pluginUiState?: unknown;
+        updateVfsDependentLinks?: boolean;
       };
       if (!body || typeof body !== "object") {
         res.status(400).json({ error: "Invalid body" });
@@ -640,6 +641,7 @@ export function createNodexApiRouter(): Router {
             title?: string;
             content?: string;
             metadata?: Record<string, unknown> | null;
+            updateVfsDependentLinks?: boolean;
           } = {};
           if (body.title !== undefined) patch.title = body.title;
           if (body.content !== undefined) patch.content = body.content;
@@ -648,6 +650,9 @@ export function createNodexApiRouter(): Router {
               ...(wpn.metadata ?? {}),
               [PLUGIN_UI_METADATA_KEY]: body.pluginUiState,
             };
+          }
+          if (body.updateVfsDependentLinks === false) {
+            patch.updateVfsDependentLinks = false;
           }
           if (
             patch.title === undefined &&

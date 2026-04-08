@@ -74,7 +74,11 @@ export interface NotesPersistencePort {
     content?: string;
     title?: string;
   }) => Promise<{ id: string }>;
-  renameNote: (id: string, title: string) => Promise<void>;
+  renameNote: (
+    id: string,
+    title: string,
+    options?: { updateVfsDependentLinks?: boolean },
+  ) => Promise<void>;
   moveNote: (
     draggedId: string,
     targetId: string,
