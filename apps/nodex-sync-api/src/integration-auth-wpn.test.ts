@@ -110,8 +110,8 @@ test(
         }),
       });
       assert.strictEqual(note.statusCode, 201, note.body);
-      const noteRow = JSON.parse(note.body) as { note: { id: string } };
-      assert.ok(noteRow.note?.id);
+      const noteRow = JSON.parse(note.body) as { id: string };
+      assert.ok(noteRow.id);
 
       const meta = await app.inject({
         method: "GET",
@@ -127,7 +127,7 @@ test(
         payload: JSON.stringify({
           type: "markdown",
           note: {
-            id: noteRow.note.id,
+            id: noteRow.id,
             type: "markdown",
             title: "Hello",
             content: "# Rendered",

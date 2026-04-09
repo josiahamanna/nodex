@@ -79,23 +79,25 @@ const App: React.FC = () => {
 
   return (
     <AuthProvider>
-      <AuthGate>
-        <CloudRuntimeBootstrap />
-        <WebScratchCloudHydrator />
-        <ElectronScratchCloudHydrator />
-        <div className="flex h-screen min-h-0 flex-col">
-          {/* Reserve vertical space for mode line + minibuffer so they do not overlay the workbench. */}
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <ChromeOnlyWorkbench />
+      <div className="min-h-screen w-full" data-testid="nodex-app-root">
+        <AuthGate>
+          <CloudRuntimeBootstrap />
+          <WebScratchCloudHydrator />
+          <ElectronScratchCloudHydrator />
+          <div className="flex h-screen min-h-0 flex-col">
+            {/* Reserve vertical space for mode line + minibuffer so they do not overlay the workbench. */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <ChromeOnlyWorkbench />
+            </div>
+            {/* Emacs order: mode line above minibuffer; minibuffer sits on the bottom edge. */}
+            {layout.visible.modeLine ? <NodexModeLineHost /> : null}
+            <NodexCommandPalette vm={shellVm} />
+            {layout.visible.miniBar ? <NodexMiniBar vm={shellVm} /> : null}
+            <NodexReplOverlay />
+            <GlobalContextMenuHost />
           </div>
-          {/* Emacs order: mode line above minibuffer; minibuffer sits on the bottom edge. */}
-          {layout.visible.modeLine ? <NodexModeLineHost /> : null}
-          <NodexCommandPalette vm={shellVm} />
-          {layout.visible.miniBar ? <NodexMiniBar vm={shellVm} /> : null}
-          <NodexReplOverlay />
-          <GlobalContextMenuHost />
-        </div>
-      </AuthGate>
+        </AuthGate>
+      </div>
     </AuthProvider>
   );
 };

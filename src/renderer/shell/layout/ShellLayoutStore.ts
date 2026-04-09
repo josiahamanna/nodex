@@ -84,9 +84,14 @@ export class ShellLayoutStore {
     }
     try {
       const r = await getNodex().setShellLayout(this.state);
-      if ("ok" in r && r.ok === false) {
+      if (
+        r &&
+        typeof r === "object" &&
+        "ok" in r &&
+        (r as { ok: boolean }).ok === false
+      ) {
         // eslint-disable-next-line no-console
-        console.warn("[ShellLayoutStore] persist failed:", r.error);
+        console.warn("[ShellLayoutStore] persist failed:", (r as { error?: string }).error);
       }
     } catch (e) {
       // eslint-disable-next-line no-console

@@ -1,8 +1,12 @@
 import { getNodex } from "../../shared/nodex-host-access";
-import { syncWpnNotesBackend } from "../nodex-web-shim";
 import { store } from "../store";
 import { createNote, fetchAllNotes } from "../store/notesSlice";
-import { resolveWpnProjectIdForRootNote } from "./wpnScratchProject";
+import {
+  ensureScratchMarkdownProjectId,
+  findRootNoteIdWithTitle,
+  scratchNotesUseWpnPath,
+} from "./wpnScratchProject";
+import { dispatchWpnTreeChanged } from "./first-party/plugins/notes-explorer/wpnExplorerEvents";
 import {
   NOTES_EXPLORER_VIEW_SIDEBAR,
   SHELL_TAB_SCRATCH_MARKDOWN,
@@ -29,39 +33,6 @@ function messageFromCaught(e: unknown): string {
     }
   }
   return String(e);
-}
-
-/** True when `wpnListWorkspaces` works (browser scratch store, sync API, or headless with auth). */
-async function wpnNotesApiAvailable(): Promise<boolean> {
-  try {
-    await getNodex().wpnListWorkspaces();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Prefer last-selected project; otherwise first project; otherwise create workspace + project so Scratch can create a note.
- */
-async function ensureProjectIdForScratchMarkdown(): Promise<string> {
-  const fromExplorer = await resolveWpnProjectIdForRootNote();
-  if (fromExplorer) {
-    return fromExplorer;
-  }
-  const { workspaces } = await getNodex().wpnListWorkspaces();
-  if (!workspaces.length) {
-    const { workspace } = await getNodex().wpnCreateWorkspace("Workspace");
-    const { project } = await getNodex().wpnCreateProject(workspace.id, "Project");
-    return project.id;
-  }
-  const w = workspaces[0]!;
-  const { projects } = await getNodex().wpnListProjects(w.id);
-  if (!projects.length) {
-    const { project } = await getNodex().wpnCreateProject(w.id, "Project");
-    return project.id;
-  }
-  return projects[0]!.id;
 }
 
 /**
@@ -92,18 +63,23 @@ export async function openScratchMarkdownTabInShell(deps: ShellNavigationDeps): 
   }
 
   if (!noteId) {
-    const useWpnPath = syncWpnNotesBackend() || (await wpnNotesApiAvailable());
+    const useWpnPath = await scratchNotesUseWpnPath();
     try {
       let id: string;
       if (useWpnPath) {
-        const projectId = await ensureProjectIdForScratchMarkdown();
-        const created = await getNodex().wpnCreateNoteInProject(projectId, {
-          relation: "root",
-          type: "markdown",
-          title: "Scratch",
-          content: "",
-        });
-        id = created.id;
+        const projectId = await ensureScratchMarkdownProjectId();
+        const existing = await findRootNoteIdWithTitle(projectId, "Scratch");
+        if (existing) {
+          id = existing;
+        } else {
+          const created = await getNodex().wpnCreateNoteInProject(projectId, {
+            relation: "root",
+            type: "markdown",
+            title: "Scratch",
+            content: "",
+          });
+          id = created.id;
+        }
       } else {
         const r = await store
           .dispatch(
@@ -124,6 +100,7 @@ export async function openScratchMarkdownTabInShell(deps: ShellNavigationDeps): 
         /* ignore */
       }
       await store.dispatch(fetchAllNotes()).unwrap();
+      dispatchWpnTreeChanged();
     } catch (e) {
       const msg = messageFromCaught(e);
       window.alert(`Could not open Scratch markdown: ${msg}`);

@@ -6,10 +6,14 @@ import { openNoteInShell } from "../openNoteInShell";
 import { openScratchMarkdownTabInShell } from "../openScratchMarkdownTabInShell";
 import { useShellRegistries } from "../registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "../views/ShellViewContext";
-import { syncWpnNotesBackend } from "../../nodex-web-shim";
 import { store } from "../../store";
 import { createNote, fetchAllNotes } from "../../store/notesSlice";
-import { resolveWpnProjectIdForRootNote } from "../wpnScratchProject";
+import { dispatchWpnTreeChanged } from "./plugins/notes-explorer/wpnExplorerEvents";
+import {
+  nextScratchBufferTitle,
+  scratchNotesUseWpnPath,
+  ensureScratchMarkdownProjectId,
+} from "../wpnScratchProject";
 import { NoteEditorShellView } from "./NoteEditorShellView";
 import { MarkdownTocShellView } from "./MarkdownTocShellView";
 import { NODEX_MARKDOWN_OPEN_NOTE_LINK_PICKER_EVENT } from "./plugins/markdown/markdownNoteLinkEvents";
@@ -145,7 +149,7 @@ export function useRegisterNotesShellPlugin(): void {
         title: "Notes: New scratch markdown",
         category: "Notes",
         sourcePluginId: NOTES_SHELL_PLUGIN_ID,
-        doc: "Creates a new root markdown note titled “Scratch” and opens it in a new editor tab.",
+        doc: "Creates a new root markdown scratch buffer (Scratch, then Scratch-1, …) and opens it in a new tab.",
         api: {
           summary: "Create a root markdown note and open it with a fresh tab.",
           args: [],
@@ -155,18 +159,13 @@ export function useRegisterNotesShellPlugin(): void {
         handler: async () => {
           try {
             let id: string;
-            if (syncWpnNotesBackend()) {
-              const projectId = await resolveWpnProjectIdForRootNote();
-              if (!projectId) {
-                window.alert(
-                  "Select a project in the Notes explorer (or create a workspace with a project) before creating a new note.",
-                );
-                return;
-              }
+            if (await scratchNotesUseWpnPath()) {
+              const projectId = await ensureScratchMarkdownProjectId();
+              const title = await nextScratchBufferTitle(projectId);
               const created = await getNodex().wpnCreateNoteInProject(projectId, {
                 relation: "root",
                 type: "markdown",
-                title: "Scratch",
+                title,
                 content: "",
               });
               id = created.id;
@@ -184,6 +183,7 @@ export function useRegisterNotesShellPlugin(): void {
               id = r.id;
             }
             await store.dispatch(fetchAllNotes()).unwrap();
+            dispatchWpnTreeChanged();
             openNoteInShell(
               id,
               { tabs: regs.tabs, views, layout, menuRail: regs.menuRail },

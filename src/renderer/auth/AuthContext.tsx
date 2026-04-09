@@ -1,7 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { authLogin, authLogout, authRefresh, authSignup } from "./auth-client";
 import { setAccessToken, type AuthUser } from "./auth-session";
-import { isElectronUserAgent } from "../nodex-web-shim";
+import {
+  isElectronUserAgent,
+  nodexWebBackendSyncOnly,
+  syncWpnUsesSyncApi,
+} from "../nodex-web-shim";
 import { isWebScratchSession } from "./web-scratch";
 import {
   clearElectronRunMode,
@@ -97,6 +101,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     if (isElectronUserAgent()) {
       return;
     }
+    if (nodexWebBackendSyncOnly() || syncWpnUsesSyncApi()) {
+      setAccessToken(null);
+      setState({ status: "anon", user: null });
+      return;
+    }
     setState({ status: "loading", user: null });
     try {
       const u = await authRefresh();
@@ -111,6 +120,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     void (async () => {
       if (typeof window === "undefined") return;
       if (isElectronUserAgent()) {
+        return;
+      }
+      if (nodexWebBackendSyncOnly() || syncWpnUsesSyncApi()) {
+        setState({ status: "anon", user: null });
         return;
       }
       try {

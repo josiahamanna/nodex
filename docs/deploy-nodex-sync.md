@@ -9,7 +9,9 @@ Signed-in **web** and **Electron cloud windows** use the Fastify service in `app
 3. Start web: `npm run dev:web` (sets `NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API=1` and `NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only`)
 4. Register / sign in via the app (tokens required for WPN mutations, `/me/shell-layout`, builtin plugin render)
 5. Bundled Documentation: served anonymously from sync-api at `GET /public/bundled-docs/notes/:id` when `docs/bundled-plugin-authoring` is present in the image or `NODEX_BUNDLED_DOCS_DIR` is set
-6. **Automated tests:** `npm run test -w @nodex/sync-api` includes an HTTP integration test (`integration-auth-wpn.test.ts`) that exercises register → shell layout → WPN note → built-in plugin render. It **skips** when Mongo is unreachable (uses `serverSelectionTimeoutMS=2500`). In CI, start Mongo first (same profile as above) so the test **runs** instead of skipping.
+6. **Automated tests:** Root `npm test` runs Node unit tests under `src/` plus `npm run test -w @nodex/sync-api`. The sync-api suite includes `integration-auth-wpn.test.ts` (register → shell layout → WPN note → built-in markdown render). It **skips** when Mongo is unreachable (`serverSelectionTimeoutMS=2500`). **CI:** start Mongo so that test runs instead of skipping.
+   - **GitHub Actions:** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — `services: mongo` on `127.0.0.1:27017`, `MONGODB_URI=mongodb://127.0.0.1:27017`, then `npm ci`, `npm run lint`, `npm run test`. A follow-up job runs **Playwright** web smoke (`npm run test:e2e`) after tests pass: same Mongo service, `npx playwright install --with-deps chromium`, then the script builds `@nodex/web`, starts sync-api + Next on non-default ports (see `scripts/e2e-run-web.sh`).
+   - **Drone:** [`.drone.yml`](../.drone.yml) — `services: mongo:7` with `MONGODB_URI=mongodb://mongo:27017` on the test step (hostname is the service name), then `npm ci`, `npm run lint`, `npm run test`. (Browser E2E is not wired in Drone; use GHA or run `npm run test:e2e` locally with Mongo up.)
 
 See also: [`docs/web-backend-modes.md`](web-backend-modes.md).
 

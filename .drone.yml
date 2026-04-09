@@ -1,5 +1,6 @@
 # Drone pipelines for Nodex (local drone-runner-docker; GitHub as Git + OAuth provider).
 # Default: lint + unit tests on push/PR to main.
+# Mongo service: sync-api integration test (integration-auth-wpn.test.ts) runs instead of skipping.
 # Tags v*: same CI gate; full multi-OS releases stay in .github/workflows/release.yml unless you add runners.
 
 kind: pipeline
@@ -14,11 +15,20 @@ trigger:
     - main
     - master
 
+services:
+  - name: mongo
+    image: mongo:7
+    ports:
+      - 27017
+
 steps:
   - name: install-lint-test
     image: node:22-bookworm
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
     commands:
       - apt-get update && apt-get install -y --no-install-recommends python3 make g++ ca-certificates git
+      - sleep 5
       - npm ci
       - npm run lint
       - npm run test
@@ -34,11 +44,20 @@ trigger:
   ref:
     - refs/tags/v*
 
+services:
+  - name: mongo
+    image: mongo:7
+    ports:
+      - 27017
+
 steps:
   - name: install-lint-test
     image: node:22-bookworm
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
     commands:
       - apt-get update && apt-get install -y --no-install-recommends python3 make g++ ca-certificates git
+      - sleep 5
       - npm ci
       - npm run lint
       - npm run test

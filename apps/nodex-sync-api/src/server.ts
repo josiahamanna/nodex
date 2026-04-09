@@ -38,6 +38,14 @@ await app.register(cors, {
       ? true
       : corsOrigin.split(",").map((o) => o.trim()),
   credentials: true,
+  /** Required for browser PUT/PATCH to `/me/shell-layout`, `/wpn/*`, etc. from Next (e.g. localhost:3000 → 127.0.0.1:4010). */
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Accept",
+    "X-Requested-With",
+  ],
 });
 
 await connectMongo(mongoUri, mongoDb);

@@ -146,6 +146,12 @@ function projectOwned(b: ScratchBundle, projectId: string): WpnProjectRow | null
   return w ? p : null;
 }
 
+/** True if `projectId` exists in the local scratch bundle (unlike HTTP WPN, list-notes never 404s). */
+export async function scratchWpnProjectExists(projectId: string): Promise<boolean> {
+  const b = await loadBundle();
+  return projectOwned(b, projectId.trim()) != null;
+}
+
 function loadRows(b: ScratchBundle, projectId: string): WpnNoteRow[] {
   return b.notes
     .filter((r) => r.project_id === projectId)

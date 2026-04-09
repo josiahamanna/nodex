@@ -9,6 +9,7 @@ import type {
   WpnBacklinkSourceItem,
   WpnNoteDetail,
   WpnNoteListItem,
+  WpnNoteRow,
   WpnNoteWithContextListItem,
   WpnProjectPatch,
   WpnProjectRow,
@@ -236,6 +237,18 @@ export type NodexRendererApi = {
     | { ok: false; cancelled: true }
     | { ok: false; error: string }
   >;
+  /** Electron: enter scratch-only (IndexedDB) mode. Web: stub returns `ok: false`. */
+  startScratchSession: () => Promise<
+    | {
+        ok: true;
+        rootPath: string | null;
+        workspaceRoots: string[];
+        scratchSession: false;
+      }
+    | { ok: false; error: string }
+  >;
+  saveScratchSessionToFolder: () => Promise<{ ok: false; error: string }>;
+  newScratchSession: () => Promise<{ ok: false; error: string }>;
   /**
    * One-shot: main had an in-memory legacy temp-dir scratch session; pull WPN rows for IndexedDB merge.
    * Electron only; returns `none` when there is nothing to migrate.

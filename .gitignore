@@ -35,3 +35,8 @@ npm-debug.log*
 
 # Local Drone / Gitea (docker-compose.drone.yml)
 deploy/drone/.env
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

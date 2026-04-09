@@ -2,6 +2,7 @@ import { getNodex } from "../../shared/nodex-host-access";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { store } from "../store";
 import { fetchAllNotes } from "../store/notesSlice";
+import { NODEX_WPN_TREE_CHANGED_EVENT } from "./first-party/plugins/notes-explorer/wpnExplorerEvents";
 
 export type ShellProjectMountKind = "folder";
 
@@ -59,6 +60,13 @@ export function ShellProjectWorkspaceProvider({
       }
     };
     void tick();
+
+    const onWpnTreeChanged = (): void => {
+      void tick();
+      void store.dispatch(fetchAllNotes());
+    };
+    window.addEventListener(NODEX_WPN_TREE_CHANGED_EVENT, onWpnTreeChanged);
+
     const unsub = getNodex().onProjectRootChanged(() => {
       void tick();
       void store.dispatch(fetchAllNotes());
@@ -66,6 +74,7 @@ export function ShellProjectWorkspaceProvider({
     const id = window.setInterval(() => void tick(), 8000);
     return () => {
       cancelled = true;
+      window.removeEventListener(NODEX_WPN_TREE_CHANGED_EVENT, onWpnTreeChanged);
       window.clearInterval(id);
       unsub();
     };

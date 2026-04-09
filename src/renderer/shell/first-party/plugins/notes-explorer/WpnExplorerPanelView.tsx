@@ -25,6 +25,7 @@ import { closeShellTabsForNoteIds } from "../../../shellTabClose";
 import { useShellNavigation } from "../../../useShellNavigation";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import { rememberWpnProjectIdForScratch } from "../../../wpnScratchProject";
+import { NODEX_WPN_TREE_CHANGED_EVENT } from "./wpnExplorerEvents";
 import { NODEX_SHELL_NOTE_TAB_CLOSED_EVENT } from "../../../shellTabUrlSync";
 import { SHELL_TAB_NOTE, SHELL_TAB_SCRATCH_MARKDOWN } from "../../shellWorkspaceIds";
 import { InlineSingleLineEditable } from "../../../../components/InlineSingleLineEditable";
@@ -205,34 +206,43 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
 
   const projectOpen = workspaceRoots.length > 0;
 
-  const loadWorkspaces = useCallback(async () => {
-    if (!projectOpen) return;
-    setBusy(true);
-    try {
-      const { workspaces: ws } = await getNodex().wpnListWorkspaces();
-      setWorkspaces(ws);
-      const entries = await Promise.all(
-        ws.map(async (w) => {
-          const { projects } = await getNodex().wpnListProjects(w.id);
-          // Bundled plugin docs live in a dedicated project; browse them from Documentation, not Notes explorer.
-          return [w.id, projects.filter((p) => p.name !== "Documentation")] as const;
-        }),
-      );
-      const nextProj: Record<string, WpnProjectRow[]> = {};
-      for (const [id, projects] of entries) {
-        nextProj[id] = projects;
+  const loadWorkspaces = useCallback(
+    async (opts?: { force?: boolean }) => {
+      /**
+       * Without `force`, skip while `projectOpen` is false so we do not hit WPN before the shell
+       * reports a virtual root. After Scratch auto-provisions WPN, {@link dispatchWpnTreeChanged}
+       * may run before the first `getProjectState` tick completes — `force` still loads so the tree
+       * appears without a full page refresh.
+       */
+      if (!opts?.force && !projectOpen) return;
+      setBusy(true);
+      try {
+        const { workspaces: ws } = await getNodex().wpnListWorkspaces();
+        setWorkspaces(ws);
+        const entries = await Promise.all(
+          ws.map(async (w) => {
+            const { projects } = await getNodex().wpnListProjects(w.id);
+            // Bundled plugin docs live in a dedicated project; browse them from Documentation, not Notes explorer.
+            return [w.id, projects.filter((p) => p.name !== "Documentation")] as const;
+          }),
+        );
+        const nextProj: Record<string, WpnProjectRow[]> = {};
+        for (const [id, projects] of entries) {
+          nextProj[id] = projects;
+        }
+        setProjectsByWs(nextProj);
+        setSelectedProjectId((prev) => {
+          if (!prev) return prev;
+          const visible = Object.values(nextProj).some((arr) => arr.some((p) => p.id === prev));
+          return visible ? prev : null;
+        });
+        setExpandedWs(new Set(ws.map((w) => w.id)));
+      } finally {
+        setBusy(false);
       }
-      setProjectsByWs(nextProj);
-      setSelectedProjectId((prev) => {
-        if (!prev) return prev;
-        const visible = Object.values(nextProj).some((arr) => arr.some((p) => p.id === prev));
-        return visible ? prev : null;
-      });
-      setExpandedWs(new Set(ws.map((w) => w.id)));
-    } finally {
-      setBusy(false);
-    }
-  }, [projectOpen]);
+    },
+    [projectOpen],
+  );
 
   useEffect(() => {
     rememberWpnProjectIdForScratch(selectedProjectId);
@@ -284,6 +294,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
 
   useEffect(() => {
     void loadWorkspaces();
+  }, [loadWorkspaces]);
+
+  useEffect(() => {
+    const onWpnTreeChanged = (): void => {
+      void loadWorkspaces({ force: true });
+    };
+    window.addEventListener(NODEX_WPN_TREE_CHANGED_EVENT, onWpnTreeChanged);
+    return () => window.removeEventListener(NODEX_WPN_TREE_CHANGED_EVENT, onWpnTreeChanged);
   }, [loadWorkspaces]);
 
   const loadProjectTree = useCallback(async (projectId: string) => {

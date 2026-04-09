@@ -37,7 +37,7 @@ import {
   scratchWpnUpdateProject,
   scratchWpnUpdateWorkspace,
 } from "./wpn-scratch-store";
-import { resolveWpnProjectIdForRootNote } from "../shell/wpnScratchProject";
+import { ensureScratchMarkdownProjectId } from "../shell/wpnScratchProject";
 
 /** Web-only: `nodex.web.scratchSession` + no sync token → WPN in IndexedDB. */
 export function useWebTryoutWpnIndexedDb(): boolean {
@@ -76,10 +76,7 @@ export function webScratchPlainStubOverrides(): Partial<NodexRendererApi> {
     getSelectableNoteTypes: async () =>
       [...WPN_BUILTIN_NOTE_TYPES].filter((t) => t !== "root"),
     createNote: async (payload) => {
-      const projectId = await resolveWpnProjectIdForRootNote();
-      if (!projectId) {
-        throw new Error("No WPN project — create a workspace and project in Notes first.");
-      }
+      const projectId = await ensureScratchMarkdownProjectId();
       return scratchWpnCreateNoteInProject(projectId, payload);
     },
     renameNote: (id, title, options) => scratchRenameNote(id, title, options),

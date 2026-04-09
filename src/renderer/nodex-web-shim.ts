@@ -644,24 +644,17 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       if (syncWpnUsesSyncApi()) {
         const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
         if (syncBase.length > 0) {
-          try {
-            const r = await syncWpnFetch<{ workspaces: unknown[] }>(
-              syncBase,
-              "GET",
-              "/wpn/workspaces",
-            );
-            if (Array.isArray(r?.workspaces) && r.workspaces.length > 0) {
-              return {
-                rootPath: null,
-                notesDbPath: null,
-                workspaceRoots: ["nodex-sync-wpn"],
-                workspaceLabels: {},
-              };
-            }
-            return emptyRoots;
-          } catch {
-            return emptyRoots;
-          }
+          /**
+           * Always report a virtual root when sync WPN is configured so the Notes explorer mounts
+           * and can list/create workspaces (including auto-created Scratch). Previously we waited
+           * until `/wpn/workspaces` was non-empty, which blocked the first scratch provision.
+           */
+          return {
+            rootPath: null,
+            notesDbPath: null,
+            workspaceRoots: ["nodex-sync-wpn"],
+            workspaceLabels: {},
+          };
         }
         return emptyRoots;
       }
@@ -671,6 +664,11 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       if (syncWpnUsesSyncApi()) {
         const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
         if (syncBase.length > 0) {
+          const hasCloudSession =
+            !!readCloudSyncToken() || !!readCloudSyncRefreshToken();
+          if (!hasCloudSession) {
+            return null;
+          }
           try {
             const r = await syncWpnFetch<{ layout: unknown }>(
               syncBase,
@@ -690,11 +688,27 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       if (syncWpnUsesSyncApi()) {
         const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
         if (syncBase.length > 0) {
-          await syncWpnFetch(syncBase, "PUT", "/me/shell-layout", { layout });
-          return;
+          const hasCloudSession =
+            !!readCloudSyncToken() || !!readCloudSyncRefreshToken();
+          if (!hasCloudSession) {
+            return { ok: true as const };
+          }
+          try {
+            await syncWpnFetch(syncBase, "PUT", "/me/shell-layout", { layout });
+            return { ok: true as const };
+          } catch {
+            /* Unreachable sync API (e.g. dev:web without nodex-sync-api on 4010) — keep layout in memory only. */
+            return { ok: true as const };
+          }
         }
       }
-      await req("POST", "/project/shell-layout", { layout });
+      try {
+        await req("POST", "/project/shell-layout", { layout });
+        return { ok: true as const };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { ok: false as const, error: msg };
+      }
     },
     getAppPrefs: async () => ({ seedSampleNotes: true }),
     nodexUndo: async () => {

@@ -1,4 +1,5 @@
-import React, { createPortal, useCallback, useState } from "react";
+import React, { useCallback, useState } from "react";
+import { createPortal } from "react-dom";
 import { getNodex } from "../../../shared/nodex-host-access";
 
 export type VfsDependentTitleRenameChoice = "rewrite" | "skip" | "cancel";
