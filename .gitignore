@@ -14,7 +14,7 @@ data/
 
 # Plugin zips (generated)
 plugin-sources/**/*.zip
-
+.env
 # OS files
 .DS_Store
 Thumbs.db

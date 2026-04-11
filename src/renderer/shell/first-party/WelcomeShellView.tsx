@@ -68,7 +68,7 @@ ${persistence}
 - [Documentation](#/welcome/documentation) — command search, keyboard reference, API shape, and plugin authoring guide
 - [Notes explorer](#/welcome/notes-explorer) — project notes tree in the sidebar; open a note to edit in the main area
 
-Tip: use \`#/n/<noteId>\` or a workspace path hash \`#/w/Workspace/Project/Title\` to open or focus a note. Welcome shortcuts use \`#/welcome/…\` (shareable; runs the same actions as the links above).
+Tip: the address bar prefers \`#/w/Workspace/Project/Title\` once the notes tree has been loaded. Welcome shortcuts use \`#/welcome/…\` (shareable; runs the same actions as the links above).
 `;
 }
 

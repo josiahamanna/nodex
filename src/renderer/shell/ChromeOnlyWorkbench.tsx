@@ -26,6 +26,7 @@ import React, {
   useSyncExternalStore,
 } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { getNodex } from "../../shared/nodex-host-access";
 import {
   Panel,
   PanelGroup,
@@ -40,6 +41,11 @@ import {
   replaceWindowHash,
   type ShellNoteTabState,
 } from "./shellTabUrlSync";
+import {
+  getCachedCanonicalVfsPathForNoteId,
+  setNoteIdVfsPathCacheFromWpnNotes,
+  subscribeNoteVfsPathCacheInvalidated,
+} from "./noteIdVfsPathCache";
 import { resolveNoteIdFromVfsPath } from "../utils/resolve-note-vfs-path";
 import { applyShellTabFromUrlHash, applyShellWelcomeHash } from "./shellRailNavigation";
 import { useShellNavigation } from "./useShellNavigation";
@@ -247,10 +253,9 @@ function applyShellHashVfsNoteTarget(
   }
   void resolveNoteIdFromVfsPath(parsed.vfsPath, baseNoteId).then((id) => {
     if (!id) return;
-    applyShellHashNoteTarget(tabs, openNoteById, {
-      kind: "note",
-      noteId: id,
+    openNoteById(id, {
       markdownHeadingSlug: parsed.markdownHeadingSlug,
+      canonicalVfsPath: parsed.vfsPath,
     });
   });
 }
@@ -264,9 +269,15 @@ function applyShellHashNoteTarget(
   const st = active?.state as ShellNoteTabState | undefined;
   const slug = parsed.markdownHeadingSlug;
   if (active && isShellNoteEditorTabType(active.tabTypeId) && st?.noteId === parsed.noteId) {
+    const vfs =
+      getCachedCanonicalVfsPathForNoteId(parsed.noteId) ?? st.canonicalVfsPath;
     if (slug) {
       tabs.updateTabPresentation(active.instanceId, {
-        state: { noteId: parsed.noteId, markdownHeadingSlug: slug },
+        state: {
+          noteId: parsed.noteId,
+          markdownHeadingSlug: slug,
+          ...(vfs ? { canonicalVfsPath: vfs } : {}),
+        },
       });
       window.dispatchEvent(
         new CustomEvent("nodex:markdown-scroll-to-heading", {
@@ -275,18 +286,27 @@ function applyShellHashNoteTarget(
       );
     } else {
       tabs.updateTabPresentation(active.instanceId, {
-        state: { noteId: parsed.noteId },
+        state: {
+          noteId: parsed.noteId,
+          ...(vfs ? { canonicalVfsPath: vfs } : {}),
+        },
       });
     }
     return;
   }
-  openNoteById(parsed.noteId, slug ? { markdownHeadingSlug: slug } : undefined);
+  const cachedPath = getCachedCanonicalVfsPathForNoteId(parsed.noteId);
+  openNoteById(parsed.noteId, {
+    ...(slug ? { markdownHeadingSlug: slug } : {}),
+    ...(cachedPath ? { canonicalVfsPath: cachedPath } : {}),
+  });
 }
 
 export function ChromeOnlyWorkbench(): React.ReactElement {
   const auth = useAuth();
   const dispatch = useDispatch<AppDispatch>();
   const cloudAuth = useSelector((s: RootState) => s.cloudAuth);
+  const noteRenameEpoch = useSelector((s: RootState) => s.notes.noteRenameEpoch);
+  const notesListLength = useSelector((s: RootState) => s.notes.notesList.length);
   const isElectronScratchWorkbench =
     isElectronUserAgent() && auth.electronRunMode === "scratch";
   const isElectronNotesWorkbench =
@@ -486,29 +506,55 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
     return () => document.removeEventListener("mousedown", onDocDown);
   }, [appMenuOpen]);
 
+  const pushHashForActiveTab = useCallback((): void => {
+    if (shouldSkipDurableChromePersistence()) {
+      return;
+    }
+    const a = tabs.getActiveTab();
+    const h = hashForActiveTab(a);
+    if (!h) {
+      if (lastSyncedHash.current !== "") {
+        replaceWindowHash("");
+        lastSyncedHash.current = "";
+      }
+      return;
+    }
+    if (typeof window !== "undefined" && window.location.hash === h) {
+      lastSyncedHash.current = h;
+      return;
+    }
+    if (h === lastSyncedHash.current) return;
+    replaceWindowHash(h);
+    lastSyncedHash.current = h;
+  }, [tabs]);
+
+  useEffect(() => {
+    const nodex = getNodex();
+    if (typeof nodex.wpnListAllNotesWithContext !== "function") {
+      return;
+    }
+    let cancelled = false;
+    void nodex.wpnListAllNotesWithContext().then((res) => {
+      if (cancelled) return;
+      const list = Array.isArray(res?.notes) ? res.notes : [];
+      setNoteIdVfsPathCacheFromWpnNotes(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [noteRenameEpoch, notesListLength]);
+
+  useEffect(() => {
+    return subscribeNoteVfsPathCacheInvalidated(() => {
+      pushHashForActiveTab();
+    });
+  }, [pushHashForActiveTab]);
+
   useEffect(() => {
     return tabs.subscribe(() => {
-      if (shouldSkipDurableChromePersistence()) {
-        return;
-      }
-      const a = tabs.getActiveTab();
-      const h = hashForActiveTab(a);
-      if (!h) {
-        if (lastSyncedHash.current !== "") {
-          replaceWindowHash("");
-          lastSyncedHash.current = "";
-        }
-        return;
-      }
-      if (typeof window !== "undefined" && window.location.hash === h) {
-        lastSyncedHash.current = h;
-        return;
-      }
-      if (h === lastSyncedHash.current) return;
-      replaceWindowHash(h);
-      lastSyncedHash.current = h;
+      pushHashForActiveTab();
     });
-  }, [tabs]);
+  }, [tabs, pushHashForActiveTab]);
 
   useEffect(() => {
     const onHash = (): void => {

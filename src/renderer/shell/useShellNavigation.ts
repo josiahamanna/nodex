@@ -12,7 +12,11 @@ export function useShellNavigation(): {
   openFromRailItem: (item: ShellMenuRailItem) => void;
   openNoteById: (
     noteId: string,
-    opts?: { markdownHeadingSlug?: string; newTab?: boolean },
+    opts?: {
+      markdownHeadingSlug?: string;
+      newTab?: boolean;
+      canonicalVfsPath?: string;
+    },
   ) => void;
   invokeCommand: (commandId: string, args?: Record<string, unknown>) => unknown;
 } {

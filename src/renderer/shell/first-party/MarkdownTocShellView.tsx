@@ -10,6 +10,7 @@ import type { ShellViewComponentProps } from "../views/ShellViewRegistry";
 import { useShellNavigation } from "../useShellNavigation";
 import { isShellNoteEditorTabType } from "./shellWorkspaceIds";
 import type { ShellNoteTabState } from "../shellTabUrlSync";
+import { getCachedCanonicalVfsPathForNoteId } from "../noteIdVfsPathCache";
 
 export function MarkdownTocShellView(_props: ShellViewComponentProps): React.ReactElement {
   const tab = useShellActiveMainTab();
@@ -17,10 +18,11 @@ export function MarkdownTocShellView(_props: ShellViewComponentProps): React.Rea
   const { openNoteById } = useShellNavigation();
   const currentNote = useSelector((s: RootState) => s.notes.currentNote);
 
-  const noteId =
+  const noteTabState: ShellNoteTabState | undefined =
     tab && typeof tab.state === "object" && tab.state !== null
-      ? (tab.state as ShellNoteTabState).noteId
+      ? (tab.state as ShellNoteTabState)
       : undefined;
+  const noteId = noteTabState?.noteId;
 
   const isMarkdown =
     currentNote != null &&
@@ -94,8 +96,10 @@ export function MarkdownTocShellView(_props: ShellViewComponentProps): React.Rea
                     title={r.text}
                     onClick={() => {
                       if (tab?.instanceId && currentNote && isShellNoteEditorTabType(tab.tabTypeId)) {
+                        const prev = noteTabState ?? { noteId: currentNote.id };
                         tabs.updateTabPresentation(tab.instanceId, {
                           state: {
+                            ...prev,
                             noteId: currentNote.id,
                             markdownHeadingSlug: r.slug,
                           },
@@ -132,7 +136,10 @@ export function MarkdownTocShellView(_props: ShellViewComponentProps): React.Rea
                     type="button"
                     className="w-full truncate rounded-md px-2 py-1.5 text-left text-[12px] text-foreground outline-none hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring"
                     title={b.title}
-                    onClick={() => openNoteById(b.id)}
+                    onClick={() => {
+                      const cached = getCachedCanonicalVfsPathForNoteId(b.id);
+                      openNoteById(b.id, cached ? { canonicalVfsPath: cached } : undefined);
+                    }}
                   >
                     {b.title.trim() || "Untitled"}
                   </button>

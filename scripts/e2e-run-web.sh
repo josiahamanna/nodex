@@ -15,17 +15,54 @@ export PORT="${PORT:-${E2E_SYNC_API_PORT:-4010}}"
 export HOST="${HOST:-127.0.0.1}"
 WEB_PORT="${E2E_WEB_PORT:-3456}"
 
-cleanup() {
-  if [ -n "${WEB_PID:-}" ] && kill -0 "$WEB_PID" 2>/dev/null; then
-    kill "$WEB_PID" 2>/dev/null || true
-    wait "$WEB_PID" 2>/dev/null || true
-  fi
-  if [ -n "${API_PID:-}" ] && kill -0 "$API_PID" 2>/dev/null; then
-    kill "$API_PID" 2>/dev/null || true
-    wait "$API_PID" 2>/dev/null || true
-  fi
+# PIDs with LISTEN on $1 (best-effort; Linux + macOS via lsof).
+pids_listening_on_port() {
+  local port=$1
+  command -v lsof >/dev/null 2>&1 || return 0
+  {
+    lsof -ti ":${port}" -sTCP:LISTEN 2>/dev/null || true
+    lsof -nP -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null || true
+  } | sort -u
 }
-trap cleanup EXIT
+
+# Kill a process and any direct children (npx often leaves a node child).
+kill_tree() {
+  local root=$1
+  [ -z "$root" ] && return 0
+  kill -0 "$root" 2>/dev/null || return 0
+  local c
+  c=$(pgrep -P "$root" 2>/dev/null || true)
+  for child in $c; do
+    kill_tree "$child"
+  done
+  kill -TERM "$root" 2>/dev/null || true
+}
+
+cleanup() {
+  set +e
+  # Stop what we started by PID (subshell may be npx; children keep ports open).
+  for pid in "${WEB_PID:-}" "${API_PID:-}"; do
+    [ -n "$pid" ] && kill_tree "$pid"
+  done
+  sleep 0.4
+  # Anything still bound to our ports (orphan node, etc.)
+  for port in "${PORT}" "${WEB_PORT}"; do
+    for p in $(pids_listening_on_port "$port"); do
+      kill -TERM "$p" 2>/dev/null || true
+    done
+  done
+  sleep 0.4
+  for port in "${PORT}" "${WEB_PORT}"; do
+    for p in $(pids_listening_on_port "$port"); do
+      kill -KILL "$p" 2>/dev/null || true
+    done
+  done
+  wait "${WEB_PID:-}" 2>/dev/null || true
+  wait "${API_PID:-}" 2>/dev/null || true
+  set -e
+}
+
+trap cleanup EXIT INT TERM
 
 (
   cd apps/nodex-sync-api

@@ -218,7 +218,10 @@ export function GlobalContextMenuHost(): React.ReactElement | null {
                 }
                 void resolveNoteIdFromVfsPath(internal.vfsPath).then((id) => {
                   if (!id) return;
-                  openNoteById(id, { markdownHeadingSlug: internal.markdownHeadingSlug });
+                  openNoteById(id, {
+                    markdownHeadingSlug: internal.markdownHeadingSlug,
+                    canonicalVfsPath: internal.vfsPath,
+                  });
                 });
               }}
             >
@@ -243,6 +246,7 @@ export function GlobalContextMenuHost(): React.ReactElement | null {
                   openNoteById(id, {
                     markdownHeadingSlug: internal.markdownHeadingSlug,
                     newTab: true,
+                    canonicalVfsPath: internal.vfsPath,
                   });
                 });
               }}

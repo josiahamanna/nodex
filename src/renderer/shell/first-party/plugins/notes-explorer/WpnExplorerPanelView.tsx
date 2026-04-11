@@ -34,6 +34,7 @@ import {
   runWpnNoteTitleRenameWithVfsDependentsFlow,
   useVfsDependentTitleRenameChoice,
 } from "../../../wpn/vfsDependentTitleRenameChoice";
+import { canonicalVfsPathFromLinkRow } from "../../../../../shared/note-vfs-path";
 
 type ShellViewComponentProps = {
   viewId: string;
@@ -43,6 +44,26 @@ type ShellViewComponentProps = {
 const DND_NOTE_MIME = "application/nodex-wpn-note";
 
 const NOTE_OPEN_DELAY_MS = 260;
+
+function explorerCanonicalVfsPath(
+  projectId: string,
+  noteTitle: string,
+  workspaces: WpnWorkspaceRow[],
+  projectsByWs: Record<string, WpnProjectRow[]>,
+): string | undefined {
+  for (const w of workspaces) {
+    const projs = projectsByWs[w.id] ?? [];
+    const p = projs.find((x) => x.id === projectId);
+    if (p) {
+      return canonicalVfsPathFromLinkRow({
+        workspaceName: w.name,
+        projectName: p.name,
+        title: noteTitle,
+      });
+    }
+  }
+  return undefined;
+}
 
 function preorderIndex(notes: WpnNoteListItem[], id: string): number {
   return notes.findIndex((x) => x.id === id);
@@ -539,7 +560,8 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     });
     await loadProjectTree(projectId);
     closeAllMenus();
-    openNoteById(id, { newTab: true });
+    const vfsPath = explorerCanonicalVfsPath(projectId, "Untitled", workspaces, projectsByWs);
+    openNoteById(id, { newTab: true, ...(vfsPath ? { canonicalVfsPath: vfsPath } : {}) });
   };
 
   const onDeleteNotes = async (projectId: string, ids: string[]) => {
@@ -731,16 +753,17 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   ]);
 
   const scheduleOpenNote = useCallback(
-    (id: string) => {
+    (id: string, projectId: string, title: string) => {
       if (noteOpenTimerRef.current != null) window.clearTimeout(noteOpenTimerRef.current);
       pendingOpenNoteIdRef.current = id;
       noteOpenTimerRef.current = window.setTimeout(() => {
         noteOpenTimerRef.current = null;
         pendingOpenNoteIdRef.current = null;
-        openNoteById(id);
+        const vfsPath = explorerCanonicalVfsPath(projectId, title, workspaces, projectsByWs);
+        openNoteById(id, vfsPath ? { canonicalVfsPath: vfsPath } : undefined);
       }, NOTE_OPEN_DELAY_MS);
     },
-    [openNoteById],
+    [openNoteById, workspaces, projectsByWs],
   );
 
   const cancelScheduledOpen = useCallback(() => {
@@ -853,7 +876,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
             if (isRenamingNote) return;
             const el = e.target as HTMLElement;
             if (el.closest("[data-wpn-note-drag-handle]") || el.closest("[data-wpn-tree-chevron]")) return;
-            scheduleOpenNote(n.id);
+            scheduleOpenNote(n.id, projectId, n.title);
           }}
           onDoubleClick={(e) => {
             if (isRenamingNote) return;
@@ -1558,7 +1581,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
               <button
                 type="button"
                 className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
-                onClick={() => openNoteById(menu.id)}
+                onClick={() => {
+                  const row = notes.find((x) => x.id === menu.id);
+                  const vfsPath =
+                    menu.projectId && row
+                      ? explorerCanonicalVfsPath(menu.projectId, row.title, workspaces, projectsByWs)
+                      : undefined;
+                  openNoteById(menu.id, vfsPath ? { canonicalVfsPath: vfsPath } : undefined);
+                }}
               >
                 Open note
               </button>

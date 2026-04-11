@@ -8,7 +8,8 @@ import {
   hashDocumentationPathFromState,
   type DocumentationShellTabState,
 } from "./first-party/plugins/documentation/documentationShellHash";
-import { parseVfsNoteHashPath } from "../../shared/note-vfs-path";
+import { markdownVfsNoteHref, parseVfsNoteHashPath } from "../../shared/note-vfs-path";
+import { getCachedCanonicalVfsPathForNoteId } from "./noteIdVfsPathCache";
 import {
   type ShellWelcomeTabState,
   tryParseWelcomeShellHash,
@@ -20,7 +21,12 @@ export type { ShellWelcomeTabState, WelcomeShellUrlSegment } from "./shellWelcom
 /** State stored on shell note tabs (standard note tab and scratch markdown tab). */
 export type ShellNoteTabState = {
   noteId: string;
-  /** When set, URL hash includes `#/n/<noteId>/<slug>` and preview scrolls to heading. */
+  /**
+   * Canonical or same-project-relative VFS string for `#/w/...` hashes (Workspace/Project/Title or ./Title).
+   * Populated when opening from the explorer or a path hash so the address bar does not fall back to `#/n/<id>`.
+   */
+  canonicalVfsPath?: string;
+  /** When set, URL hash includes a heading segment and preview scrolls to heading. */
   markdownHeadingSlug?: string;
 };
 
@@ -96,6 +102,11 @@ export function hashForActiveTab(tab: ShellTabInstance | null): string {
   const st = tab.state as ShellNoteTabState | undefined;
   if (isShellNoteEditorTabType(tab.tabTypeId) && st?.noteId) {
     const slug = st.markdownHeadingSlug;
+    const vfs =
+      getCachedCanonicalVfsPathForNoteId(st.noteId) ?? st.canonicalVfsPath;
+    if (vfs) {
+      return markdownVfsNoteHref(vfs, slug);
+    }
     return slug ? `#/n/${st.noteId}/${slug}` : `#/n/${st.noteId}`;
   }
   if (tab.tabTypeId === SHELL_TAB_WELCOME_TYPE_ID) {

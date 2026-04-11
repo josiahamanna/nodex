@@ -3,6 +3,7 @@ import {
   NOTES_EXPLORER_VIEW_SIDEBAR,
   SHELL_TAB_NOTE,
 } from "./first-party/shellWorkspaceIds";
+import { getCachedCanonicalVfsPathForNoteId } from "./noteIdVfsPathCache";
 import type { ShellNavigationDeps } from "./shellRailNavigation";
 import type { ShellNoteTabState } from "./shellTabUrlSync";
 
@@ -10,7 +11,31 @@ export type OpenNoteInShellOptions = {
   markdownHeadingSlug?: string;
   /** Always add a new note tab instead of focusing an existing tab for this note. */
   newTab?: boolean;
+  /** Workspace/Project/Title or ./Title — used for `#/w/...` in the address bar. */
+  canonicalVfsPath?: string;
 };
+
+function buildShellNoteTabState(
+  noteId: string,
+  options: OpenNoteInShellOptions | undefined,
+  previous: ShellNoteTabState | undefined,
+): ShellNoteTabState {
+  const hasSlug =
+    options?.markdownHeadingSlug !== undefined && options.markdownHeadingSlug !== "";
+  const explicitPath = options?.canonicalVfsPath?.trim();
+  const vfs =
+    explicitPath ||
+    getCachedCanonicalVfsPathForNoteId(noteId) ||
+    previous?.canonicalVfsPath;
+  const st: ShellNoteTabState = { noteId };
+  if (hasSlug) {
+    st.markdownHeadingSlug = options!.markdownHeadingSlug;
+  }
+  if (vfs) {
+    st.canonicalVfsPath = vfs;
+  }
+  return st;
+}
 
 export function openNoteInShell(
   noteId: string,
@@ -23,15 +48,14 @@ export function openNoteInShell(
   deps.layout.setVisible("menuRail", true);
   deps.layout.setVisible("sidebarPanel", true);
   deps.views.openView(NOTES_EXPLORER_VIEW_SIDEBAR, "primarySidebar");
-  const state: ShellNoteTabState =
-    options?.markdownHeadingSlug !== undefined && options.markdownHeadingSlug !== ""
-      ? { noteId, markdownHeadingSlug: options.markdownHeadingSlug }
-      : { noteId };
   if (options?.newTab) {
+    const state = buildShellNoteTabState(noteId, options, undefined);
     deps.tabs.openTab(SHELL_TAB_NOTE, title, state);
     return;
   }
   const existing = deps.tabs.findNoteTabByNoteId(noteId, SHELL_TAB_NOTE);
+  const prevSt = existing?.state as ShellNoteTabState | undefined;
+  const state = buildShellNoteTabState(noteId, options, prevSt);
   if (existing) {
     deps.tabs.setActiveTab(existing.instanceId);
     deps.tabs.updateTabPresentation(existing.instanceId, { title, state });
