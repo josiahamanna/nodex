@@ -1,4 +1,5 @@
 import { BrowserWindow, Menu, app, type MenuItemConstructorOptions } from "electron";
+import { readPrimaryWpnBackend } from "./electron-launch-profile";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import {
   createCloudWpnWindow,
@@ -17,6 +18,7 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 export { resolveMainWindowLoadUrl } from "./main-window-url";
 
 export function createMainWindow(): void {
+  const primaryBackend = readPrimaryWpnBackend(app.getPath("userData"));
   ctx.mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -26,12 +28,12 @@ export function createMainWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      additionalArguments: ["--nodex-electron-wpn-backend=file"],
+      additionalArguments: [`--nodex-electron-wpn-backend=${primaryBackend}`],
       /** Never disable DevTools; production debugging uses F12 / Ctrl+Shift+I / (macOS) Cmd+Opt+I. */
       devTools: true,
     },
   });
-  registerWebContentsWpnBackend(ctx.mainWindow.webContents, "file");
+  registerWebContentsWpnBackend(ctx.mainWindow.webContents, primaryBackend);
   /**
    * `runAppReady` clears the app menu (`Menu.setApplicationMenu(null)`). Without a replacement,
    * Linux/Windows lose menu accelerators; macOS keeps no menu at all — restore a minimal menu with

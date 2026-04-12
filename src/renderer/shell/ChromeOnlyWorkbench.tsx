@@ -310,8 +310,9 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const notesListLength = useSelector((s: RootState) => s.notes.notesList.length);
   const isElectronScratchWorkbench =
     isElectronUserAgent() && auth.electronRunMode === "scratch";
-  const isElectronNotesWorkbench =
-    isElectronUserAgent() && auth.electronRunMode === "notes";
+  const isElectronVaultWorkbench =
+    isElectronUserAgent() &&
+    (auth.electronRunMode === "local" || auth.electronRunMode === "cloud");
   const layout = useShellLayoutState();
   const store = useShellLayoutStore();
   const views = useShellViewRegistry();
@@ -369,7 +370,6 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
 
   const showMenuRail = layout.visible.menuRail;
   const showSidebarPanel = layout.visible.sidebarPanel;
-  const showLeft = showMenuRail || showSidebarPanel;
   const showCompanion = layout.visible.companion;
   const showBottom = layout.visible.bottomArea;
 
@@ -897,7 +897,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 </button>
               </>
             ) : null}
-            {isElectronNotesWorkbench ? (
+            {isElectronVaultWorkbench ? (
               <button
                 type="button"
                 className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
@@ -907,7 +907,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 Close
               </button>
             ) : null}
-            {isElectronNotesWorkbench && cloudAuth.status === "signedOut" ? (
+            {isElectronVaultWorkbench && cloudAuth.status === "signedOut" ? (
               <button
                 type="button"
                 className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
@@ -917,7 +917,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 Sync
               </button>
             ) : null}
-            {isElectronNotesWorkbench && cloudAuth.status === "signedIn" ? (
+            {isElectronVaultWorkbench && cloudAuth.status === "signedIn" ? (
               <button
                 type="button"
                 className="mr-1 rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"

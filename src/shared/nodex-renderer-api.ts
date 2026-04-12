@@ -16,6 +16,7 @@ import type {
   WpnWorkspacePatch,
   WpnWorkspaceRow,
 } from "./wpn-v2-types";
+import type { WorkspaceRxdbMirrorPayloadV1 } from "./workspace-rxdb-mirror-payload";
 
 export interface Note {
   id: string;
@@ -158,6 +159,14 @@ export type NodexRendererApi = {
   toggleDeveloperTools: () => Promise<{ success: boolean }>;
   quitApp: () => Promise<{ success: boolean }>;
   reloadWindow: () => Promise<{ success: boolean }>;
+  /**
+   * Electron: persist which WPN backend the next (or current after relaunch) primary window uses
+   * (`file` = IPC vault, `cloud` = sync-api HTTP). When `relaunch` is true the app exits and restarts.
+   */
+  applyElectronPrimaryWpnBackend: (args: {
+    backend: "file" | "cloud";
+    relaunch: boolean;
+  }) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Open http(s) or mailto in the system browser (Electron); web shim uses `window.open`. */
   openExternalUrl: (
     url: string,
@@ -636,4 +645,12 @@ export type NodexRendererApi = {
     projectId: string,
     noteId: string,
   ) => Promise<{ newRootId: string }>;
+  /** ADR-016: read current `nodex-workspace.json` bodies from disk (Electron file vault). */
+  pullWorkspaceRxdbMirrorPayload: () => Promise<
+    { ok: true; payload: WorkspaceRxdbMirrorPayloadV1 } | { ok: false; error: string }
+  >;
+  /** ADR-016 Phase 4: persist mirror payload from renderer when main JSON writes are gated. */
+  flushWorkspaceRxdbMirrorToDisk: (
+    payload: WorkspaceRxdbMirrorPayloadV1,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
 };

@@ -798,6 +798,14 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
         `/wpn/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}/duplicate`,
         {},
       ),
+    pullWorkspaceRxdbMirrorPayload: async () => ({
+      ok: false as const,
+      error: "Workspace mirror is only available in Electron with a file vault.",
+    }),
+    flushWorkspaceRxdbMirrorToDisk: async () => ({
+      ok: false as const,
+      error: "Workspace mirror flush is only available in Electron with a file vault.",
+    }),
     listMarketplacePlugins: () => {
       if (syncWpnNotesBackend()) {
         return Promise.resolve({
@@ -1005,6 +1013,10 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
     getNativeThemeDark: async () =>
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-color-scheme: dark)").matches,
+    applyElectronPrimaryWpnBackend: async () => ({
+      ok: false as const,
+      error: "Electron only",
+    }),
   };
 
   if (useWebTryoutWpnIndexedDb()) {
@@ -1176,6 +1188,10 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
     toggleDeveloperTools: async () => ({ success: false }),
     quitApp: async () => ({ success: false }),
     reloadWindow: async () => ({ success: false }),
+    applyElectronPrimaryWpnBackend: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
     openExternalUrl: async (url: string) => {
       const t = typeof url === "string" ? url.trim() : "";
       if (!t) {
@@ -1433,6 +1449,14 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
     wpnMoveNote: async () => ({ ok: true as const }),
     wpnDuplicateNoteSubtree: async () => ({
       newRootId: "00000000-0000-4000-8000-000000000000",
+    }),
+    pullWorkspaceRxdbMirrorPayload: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser — use Electron or ?web=1&api=…",
+    }),
+    flushWorkspaceRxdbMirrorToDisk: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser — use Electron or ?web=1&api=…",
     }),
   };
 

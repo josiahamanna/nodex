@@ -547,6 +547,11 @@ flowchart LR
 
 **Consequences**: Large touch surface (`register-static-ipc-wpn.ts`, `notes-persistence.ts`, `project-session.ts`, web shim). Track as a **milestone**, not a single PR.
 
+**Implementation progress (repo, April 2026)**:
+- **Phases 1–3 (initial slice)**: Renderer module [`workspace-wpn-rxdb.ts`](../../src/renderer/workspace-rxdb/workspace-wpn-rxdb.ts) defines an IndexedDB-backed RxDB collection `workspace_snapshots` and helpers `importWorkspaceJsonSnapshot` / `readLatestWorkspaceJsonSnapshot`. Enable with **`NODEX_LOCAL_RXDB_WPN=1`** (see [`.env.example`](../../.env.example)). [`project-root-sync.ts`](../../src/renderer/workspace-rxdb/project-root-sync.ts) opens the mirror when the project root changes (Electron bootstrap after `window.Nodex` is ready).
+- **Phase 2 (ongoing)**: JSON `nodex-workspace.json` and main-process IPC remain authoritative; the mirror is a **parallel import path** until reads/writes are routed per phase 2 bullets above.
+- **Phase 4 (pending)**: Thin main / RxDB-only local vault — env gate stub [`phase4-thin-main.ts`](../../src/renderer/workspace-rxdb/phase4-thin-main.ts) (`NODEX_WORKSPACE_RXDB_AUTHORITY`); follow-up work removes dual-write and shrinks IPC.
+
 ### ADR-017 — MongoDB as server source of truth: web authoritative-first, Electron offline-first + sync
 
 **Status**: Accepted (April 2026)  

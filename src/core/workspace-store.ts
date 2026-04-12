@@ -6,6 +6,8 @@ import {
   ROOT_KEY,
   type SerializedNotesState,
 } from "./notes-store";
+import { isWorkspaceRxdbAuthorityEnvEnabled } from "../shared/workspace-rxdb-env";
+import type { WorkspaceRxdbMirrorPayloadV1 } from "../shared/workspace-rxdb-mirror-payload";
 import { WPN_SCHEMA_VERSION } from "./wpn/wpn-types";
 import type {
   WpnNoteRow,
@@ -146,6 +148,46 @@ function writeJsonAtomic(filePath: string, data: unknown): void {
   const tmp = `${filePath}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(data), "utf8");
   fs.renameSync(tmp, filePath);
+}
+
+/** Validate JSON and persist raw UTF-8 (ADR-016 renderer → disk flush). */
+export function writeWorkspaceJsonFileRawUtf8(filePath: string, utf8: string): void {
+  JSON.parse(utf8);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmp = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, utf8, "utf8");
+  fs.renameSync(tmp, filePath);
+}
+
+type WorkspacePersistHook = () => void;
+
+let workspacePersistHook: WorkspacePersistHook | null = null;
+
+/** Main registers ADR-016 mirror broadcast (debounced) after JSON persist. */
+export function setWorkspaceStorePersistHook(hook: WorkspacePersistHook | null): void {
+  workspacePersistHook = hook;
+}
+
+/**
+ * ADR-016 Phase 4: apply a renderer-built mirror payload to disk and reload in-memory slots.
+ * Caller must hold the same `WorkspaceStore` instance as `getNotesDatabase()`.
+ */
+export function flushWorkspaceStoreFromMirrorPayload(
+  store: WorkspaceStore,
+  payload: WorkspaceRxdbMirrorPayloadV1,
+): void {
+  for (let i = 0; i < payload.slots.length && i < store.roots.length; i++) {
+    const s = payload.slots[i]!;
+    if (path.resolve(s.root) !== path.resolve(store.roots[i]!)) {
+      throw new Error(`Workspace mirror flush: root mismatch at slot ${i}`);
+    }
+    const fp = store.filePathForSlot(i);
+    if (path.resolve(s.path) !== path.resolve(fp)) {
+      throw new Error(`Workspace mirror flush: path mismatch at slot ${i}`);
+    }
+    writeWorkspaceJsonFileRawUtf8(fp, s.json);
+    store.slots[i] = readSlotFile(fp);
+  }
 }
 
 function readSlotFile(filePath: string): WorkspacePersistedSlot {
@@ -305,6 +347,9 @@ export class WorkspaceStore {
     if (!this.diskPersistence) {
       return;
     }
+    if (isWorkspaceRxdbAuthorityEnvEnabled()) {
+      return;
+    }
     const state = exportSerializedState();
     for (let i = 0; i < this.slots.length; i++) {
       const slot = this.slots[i]!;
@@ -353,6 +398,13 @@ export class WorkspaceStore {
         wpnWorkspaceSettings: { ...slot.wpnWorkspaceSettings },
         wpnProjectSettings: { ...slot.wpnProjectSettings },
       });
+    }
+    if (workspacePersistHook) {
+      try {
+        workspacePersistHook();
+      } catch {
+        /* ignore */
+      }
     }
   }
 }

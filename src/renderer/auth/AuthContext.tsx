@@ -73,10 +73,10 @@ function initialAuthState(): AuthState {
   }
   if (isElectronUserAgent()) {
     const mode = readElectronRunMode();
-    if (mode === "notes") {
+    if (mode === "local") {
       return { status: "authed", user: LOCAL_AUTH_USER };
     }
-    if (mode === "scratch") {
+    if (mode === "scratch" || mode === "cloud") {
       return { status: "anon", user: null };
     }
     return { status: "anon", user: null };
@@ -149,17 +149,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   }, []);
 
   const chooseElectronRunMode = useCallback((mode: ElectronRunModeChoice) => {
-    if (mode === "scratch") {
-      void store.dispatch(cloudLogoutThunk());
-    }
-    writeElectronRunMode(mode);
-    setElectronRunModeState(mode);
-    setAccessToken(null);
-    if (mode === "notes") {
-      setState({ status: "authed", user: LOCAL_AUTH_USER });
-      return;
-    }
-    setState({ status: "anon", user: null });
+    void (async () => {
+      if (mode === "scratch") {
+        void store.dispatch(cloudLogoutThunk());
+      }
+      writeElectronRunMode(mode);
+      setElectronRunModeState(mode);
+      setAccessToken(null);
+
+      if (mode === "local") {
+        setState({ status: "authed", user: LOCAL_AUTH_USER });
+      } else if (mode === "cloud") {
+        setState({ status: "anon", user: null });
+      } else {
+        setState({ status: "anon", user: null });
+      }
+
+      const { getNodex } = await import("../../shared/nodex-host-access");
+      const nodex = getNodex();
+      const winBackend =
+        typeof window !== "undefined" && window.__NODEX_ELECTRON_WPN_BACKEND__ === "cloud"
+          ? "cloud"
+          : "file";
+      const wantsCloud = mode === "cloud";
+      if (wantsCloud && winBackend !== "cloud") {
+        await nodex.applyElectronPrimaryWpnBackend({ backend: "cloud", relaunch: true });
+        return;
+      }
+      if (!wantsCloud && winBackend === "cloud") {
+        await nodex.applyElectronPrimaryWpnBackend({ backend: "file", relaunch: true });
+        return;
+      }
+      await nodex.applyElectronPrimaryWpnBackend({
+        backend: wantsCloud ? "cloud" : "file",
+        relaunch: false,
+      });
+    })();
   }, []);
 
   const mergeWebScratchCloudNotesAfterAuth = useCallback(async (userId: string) => {
@@ -281,6 +306,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       setAccessToken(null);
       setElectronSyncOverlay(null);
       setState({ status: "anon", user: null });
+      const { getNodex } = await import("../../shared/nodex-host-access");
+      const nodex = getNodex();
+      if (typeof window !== "undefined" && window.__NODEX_ELECTRON_WPN_BACKEND__ === "cloud") {
+        await nodex.applyElectronPrimaryWpnBackend({ backend: "file", relaunch: true });
+        return;
+      }
+      await nodex.applyElectronPrimaryWpnBackend({ backend: "file", relaunch: false });
     })();
   }, []);
 

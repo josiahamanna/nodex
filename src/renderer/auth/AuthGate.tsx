@@ -22,7 +22,7 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
     if (electronRunMode === "unset") {
       return <ElectronRunModeGreet onChoose={chooseElectronRunMode} />;
     }
-    if (electronRunMode === "scratch" || electronRunMode === "notes") {
+    if (electronRunMode === "scratch" || electronRunMode === "local" || electronRunMode === "cloud") {
       if (electronSyncOverlay) {
         return (
           <>

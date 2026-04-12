@@ -1,4 +1,4 @@
-import { ipcMain, nativeTheme } from "electron";
+import { app, ipcMain, nativeTheme } from "electron";
 import {
   clearMainDebugLogBuffer,
   getMainDebugLogBuffer,
@@ -7,8 +7,26 @@ import {
 import type { ClientLogPayload } from "../shared/client-log";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { broadcastNativeThemeToRenderers } from "./main-helpers";
+import { writePrimaryWpnBackend, type ElectronPrimaryWpnBackend } from "./electron-launch-profile";
 
 export function registerRunAppReadyEarlyIpc(): void {
+  ipcMain.removeHandler(IPC_CHANNELS.ELECTRON_APPLY_PRIMARY_WPN_BACKEND);
+  ipcMain.handle(
+    IPC_CHANNELS.ELECTRON_APPLY_PRIMARY_WPN_BACKEND,
+    (_event, raw: unknown) => {
+      const p = raw as { backend?: string; relaunch?: boolean };
+      const backend: ElectronPrimaryWpnBackend =
+        p.backend === "cloud" ? "cloud" : "file";
+      const userDataPath = app.getPath("userData");
+      writePrimaryWpnBackend(userDataPath, backend);
+      if (p.relaunch === true) {
+        app.relaunch();
+        app.exit(0);
+      }
+      return { ok: true as const };
+    },
+  );
+
   ipcMain.removeHandler(IPC_CHANNELS.PLUGIN_IDE_GET_MAIN_DEBUG_LOGS);
   ipcMain.removeHandler(IPC_CHANNELS.PLUGIN_IDE_CLEAR_MAIN_DEBUG_LOGS);
   ipcMain.handle(IPC_CHANNELS.PLUGIN_IDE_GET_MAIN_DEBUG_LOGS, () =>

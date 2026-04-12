@@ -155,8 +155,16 @@ export const IPC_CHANNELS = {
   WPN_DELETE_NOTES: "wpn:delete-notes",
   WPN_MOVE_NOTE: "wpn:move-note",
   WPN_DUPLICATE_NOTE_SUBTREE: "wpn:duplicate-note-subtree",
+  /** Renderer → main: persist first-window WPN backend and optionally relaunch the app. */
+  ELECTRON_APPLY_PRIMARY_WPN_BACKEND: "electron:apply-primary-wpn-backend",
   /** Main → renderer: periodic nudge to run HTTP sync (`DesktopHost.onSyncTrigger`). */
   DESKTOP_SYNC_TRIGGER: "desktop:sync-trigger",
+  /** Main → renderer: debounced workspace JSON mirror after `WorkspaceStore.persist` (ADR-016). */
+  WORKSPACE_RXDB_MIRROR_UPDATED: "workspace:rxdb-mirror-updated",
+  /** Renderer → main: read current `nodex-workspace.json` slot files for RxDB import. */
+  WORKSPACE_RXDB_MIRROR_PULL: "workspace:rxdb-mirror-pull",
+  /** Renderer → main: write mirror payload when `NODEX_WORKSPACE_RXDB_AUTHORITY=1` (ADR-016 Phase 4). */
+  WORKSPACE_RXDB_MIRROR_FLUSH_TO_DISK: "workspace:rxdb-mirror-flush-to-disk",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

@@ -28,9 +28,11 @@ import {
   resolveBundledReadonlyPluginRoots,
   tryLoadSavedProject,
 } from "./main-helpers";
+import { registerWorkspaceRxdbMirrorIpc } from "./register-workspace-rxdb-mirror-ipc";
 import { registerRunAppReadyEarlyIpc } from "./register-run-app-ready-early-ipc";
 import { registerRunAppReadyNotesTreeIpc } from "./register-run-app-ready-notes-ipc";
 import { registerRunAppReadyProjectIpc } from "./register-run-app-ready-project-ipc";
+import { registerWorkspaceRxdbMirrorPersistHook } from "./workspace-rxdb-mirror-broadcast";
 import { registerRunAppReadyUiPluginIpc } from "./register-run-app-ready-ui-plugin-ipc";
 
 export function runAppReady(): void {
@@ -39,6 +41,8 @@ export function runAppReady(): void {
   setMainDebugLogWindow(() => ctx.mainWindow);
 
   registerRunAppReadyEarlyIpc();
+  registerWorkspaceRxdbMirrorPersistHook();
+  registerWorkspaceRxdbMirrorIpc();
 
   const userDataPath = app.getPath("userData");
   pluginCacheManager.setRoot(getNodexPluginCacheRoot(userDataPath));

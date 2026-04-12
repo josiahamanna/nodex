@@ -1,5 +1,6 @@
 import type { NodexDevtoolsShellApi } from "../renderer/shell/devtoolsShellExpose";
 import type { NodexRendererApi } from "../shared/nodex-renderer-api";
+import type { WorkspaceRxdbMirrorPayloadV1 } from "../shared/workspace-rxdb-mirror-payload";
 
 /** `window.nodex.shell` / `window.nodex.devtools` (devtools is an alias when the shell API is mounted). */
 type NodexWindowGlobal = {
@@ -10,6 +11,9 @@ type NodexWindowGlobal = {
 /** Preload `contextBridge` API for `@nodex/platform` DesktopHost (sync nudge from main). */
 type NodexDesktopBridge = {
   onSyncTrigger: (callback: () => void) => () => void;
+  onWorkspaceRxdbMirrorUpdated?: (
+    callback: (payload: WorkspaceRxdbMirrorPayloadV1) => void,
+  ) => () => void;
 };
 
 declare global {

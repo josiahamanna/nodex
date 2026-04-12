@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { ClientLogPayload } from "./shared/client-log";
 import { IPC_CHANNELS } from "./shared/ipc-channels";
+import type { WorkspaceRxdbMirrorPayloadV1 } from "./shared/workspace-rxdb-mirror-payload";
+import { isWorkspaceRxdbMirrorPayloadV1 } from "./shared/workspace-rxdb-mirror-payload";
 import { buildCanonicalNodexAssetHref } from "./shared/nodex-asset-path";
 import type { NodexRendererApi } from "./shared/nodex-renderer-api";
 
@@ -96,6 +98,8 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.UI_TOGGLE_DEVTOOLS),
   quitApp: () => ipcRenderer.invoke(IPC_CHANNELS.UI_QUIT_APP),
   reloadWindow: () => ipcRenderer.invoke(IPC_CHANNELS.UI_RELOAD_WINDOW),
+  applyElectronPrimaryWpnBackend: (args: { backend: "file" | "cloud"; relaunch: boolean }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.ELECTRON_APPLY_PRIMARY_WPN_BACKEND, args),
   openExternalUrl: (url: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.UI_OPEN_EXTERNAL_URL, url),
   getUserPluginsDirectory: () =>
@@ -508,6 +512,10 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.WPN_MOVE_NOTE, payload),
   wpnDuplicateNoteSubtree: (projectId, noteId) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_DUPLICATE_NOTE_SUBTREE, projectId, noteId),
+  pullWorkspaceRxdbMirrorPayload: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_RXDB_MIRROR_PULL),
+  flushWorkspaceRxdbMirrorToDisk: (payload: WorkspaceRxdbMirrorPayloadV1) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_RXDB_MIRROR_FLUSH_TO_DISK, payload),
 };
 
 contextBridge.exposeInMainWorld("Nodex", api);
@@ -517,6 +525,20 @@ contextBridge.exposeInMainWorld("nodexDesktop", {
     const channel = IPC_CHANNELS.DESKTOP_SYNC_TRIGGER;
     const listener = (): void => {
       callback();
+    };
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.removeListener(channel, listener);
+    };
+  },
+  onWorkspaceRxdbMirrorUpdated: (
+    callback: (payload: WorkspaceRxdbMirrorPayloadV1) => void,
+  ) => {
+    const channel = IPC_CHANNELS.WORKSPACE_RXDB_MIRROR_UPDATED;
+    const listener = (_e: unknown, raw: unknown): void => {
+      if (isWorkspaceRxdbMirrorPayloadV1(raw)) {
+        callback(raw);
+      }
     };
     ipcRenderer.on(channel, listener);
     return () => {

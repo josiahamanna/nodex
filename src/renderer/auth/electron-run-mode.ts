@@ -1,20 +1,21 @@
 /** Persisted choice on first launch (Electron only). */
 export const ELECTRON_RUN_MODE_STORAGE_KEY = "nodex.electron.runMode";
 
-export type ElectronRunModeChoice = "scratch" | "notes";
+/** User-facing profiles: Scratch (ephemeral), Local (disk vault + IPC), Cloud (sync-api WPN). */
+export type ElectronRunModeChoice = "scratch" | "local" | "cloud";
 
 export type ElectronRunMode = ElectronRunModeChoice | "unset";
 
 function normalizeAndMigrateStoredValue(raw: string | null): ElectronRunMode {
-  if (raw === "scratch" || raw === "notes") {
+  if (raw === "scratch" || raw === "local" || raw === "cloud") {
     return raw;
   }
-  /** Legacy `local` / `cloud` → single Notes path (local-first + optional sync). */
-  if (raw === "local" || raw === "cloud") {
+  /** Legacy `notes` → Local vault (same on-disk + IPC behavior as before). */
+  if (raw === "notes") {
     if (typeof localStorage !== "undefined") {
-      localStorage.setItem(ELECTRON_RUN_MODE_STORAGE_KEY, "notes");
+      localStorage.setItem(ELECTRON_RUN_MODE_STORAGE_KEY, "local");
     }
-    return "notes";
+    return "local";
   }
   return "unset";
 }

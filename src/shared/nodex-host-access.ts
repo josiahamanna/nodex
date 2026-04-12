@@ -10,12 +10,19 @@ let electronIdbScratchOverlay: NodexRendererApi | null = null;
 /** Electron cloud WPN window: merged API (HTTP WPN + host IPC for plugins/files). */
 let electronCloudWpnOverlay: NodexRendererApi | null = null;
 
+/** ADR-016: local RxDB mirror read overlay (file vault + `NODEX_LOCAL_RXDB_WPN`). */
+let electronWorkspaceRxdbOverlay: NodexRendererApi | null = null;
+
 export function setElectronIdbScratchOverlay(api: NodexRendererApi | null): void {
   electronIdbScratchOverlay = api;
 }
 
 export function setElectronCloudWpnOverlay(api: NodexRendererApi | null): void {
   electronCloudWpnOverlay = api;
+}
+
+export function setElectronWorkspaceRxdbOverlay(api: NodexRendererApi | null): void {
+  electronWorkspaceRxdbOverlay = api;
 }
 
 function activeNodexImpl(): NodexRendererApi {
@@ -26,7 +33,12 @@ function activeNodexImpl(): NodexRendererApi {
   if (!bridged) {
     throw new Error("Nodex: window.Nodex is missing — install preload or web shim before use");
   }
-  return electronCloudWpnOverlay ?? electronIdbScratchOverlay ?? bridged;
+  return (
+    electronCloudWpnOverlay ??
+    electronIdbScratchOverlay ??
+    electronWorkspaceRxdbOverlay ??
+    bridged
+  );
 }
 
 /**
