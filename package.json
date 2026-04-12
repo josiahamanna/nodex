@@ -9,7 +9,10 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "electron-rebuild -f",
+    "postinstall": "node scripts/npm-postinstall.js",
+    "rebuild:electron": "electron-rebuild -f",
+    "install:web": "node scripts/npm-web-install.js",
+    "ci:web": "node scripts/npm-web-install.js ci",
     "core:npm-install": "node scripts/core-npm-install.js",
     "pre-electron": "npm run core:npm-install",
     "electron": "ELECTRON_DISABLE_SANDBOX=1 electron-forge start",
