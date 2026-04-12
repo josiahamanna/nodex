@@ -16,19 +16,12 @@ const envHeadlessOrigin = process.env.NODEX_HEADLESS_API_ORIGIN?.trim().replace(
 );
 
 /**
- * When set, Next proxies /api/v1 and /marketplace/files to the headless API.
- * Root `npm run dev:web` sets NODEX_HEADLESS_API_ORIGIN; in development we
- * default to the same port so `next dev` from apps/nodex-web still rewrites.
- * Docker web image: set NODEX_HEADLESS_API_ORIGIN=http://nodex-api:3847 at build
- * if you hit Next on :3000 without nginx. Prefer nodex-gateway on :8080 with
- * NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1 (relative /api/v1, no rewrite in Next).
+ * When set, Next proxies /api/v1 and /marketplace/files to that origin (legacy dev only).
+ * Default web dev (`npm run dev:web`) uses sync-api + `NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only` — leave unset.
+ * Prefer nodex-gateway on :8080 with `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1` (relative /api/v1, no rewrite in Next).
  */
-/** Legacy Express headless API proxy; leave unset for sync-api-only web (default). */
-const headlessApiOrigin =
-  envHeadlessOrigin ||
-  (!staticExport && process.env.NODEX_HEADLESS_API_ORIGIN_DEV === "1"
-    ? "http://127.0.0.1:3847"
-    : "");
+/** Optional HTTP proxy target for /api/v1; leave unset for sync-api-only web (default). */
+const headlessApiOrigin = envHeadlessOrigin || "";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

@@ -8,7 +8,7 @@ export function PublishToMarketModal(props: {
   pluginName: string | null;
 }): React.ReactElement | null {
   const { open, onClose, pluginName } = props;
-  const [baseUrl, setBaseUrl] = useState<string>("http://127.0.0.1:3847");
+  const [baseUrl, setBaseUrl] = useState<string>("http://127.0.0.1:8080");
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [mode, setMode] = useState<"login" | "register">("login");

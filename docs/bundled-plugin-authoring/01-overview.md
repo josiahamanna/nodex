@@ -11,7 +11,7 @@ Nodex loads **first-party** features from the renderer shell (`src/renderer/shel
 
 ## This repository
 
-Bundled documentation notes are created from files under `docs/bundled-plugin-authoring/` whenever the workspace notes database is bootstrapped (Electron **open project**, legacy Express `npx tsx src/nodex-api-server/server.ts` with `NODEX_PROJECT_ROOT`, or **sync-api** serving `GET /public/bundled-docs/notes/:id`). Override the directory with `NODEX_BUNDLED_DOCS_DIR` if needed. The same manifest seeds a **User guide** (application usage) alongside these **Plugin authoring** pages.
+Bundled documentation notes are created from files under `docs/bundled-plugin-authoring/` whenever the workspace notes database is bootstrapped (Electron **open project** or **sync-api** serving `GET /public/bundled-docs/notes/:id`). Override the directory with `NODEX_BUNDLED_DOCS_DIR` if needed. The same manifest seeds a **User guide** (application usage) alongside these **Plugin authoring** pages.
 
 Metadata on seeded notes includes `bundledDoc: true` so the UI can filter them for a read-only Documentation experience.
 

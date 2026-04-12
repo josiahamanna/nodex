@@ -10,14 +10,17 @@ import {
 import { getWpnOwnerId } from "../core/wpn/wpn-owner";
 import {
   wpnJsonDeleteNotes,
+  wpnJsonDuplicateNoteSubtree,
   wpnJsonGetNoteById,
   wpnJsonMoveNote,
+  wpnJsonMoveNotesBulk,
 } from "../core/wpn/wpn-json-notes";
 import { pushNotesUndoSnapshot } from "../core/nodex-undo";
 import { registry } from "../core/registry";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { isWorkspaceMountNoteId } from "../shared/note-workspace";
 import { isValidNoteId } from "../shared/validators";
+import { isWpnOnlyFileVaultEnv } from "../shared/wpn-file-vault-env";
 import {
   assertProjectOpenForNotes,
   persistNotes,
@@ -63,6 +66,11 @@ export function registerRunAppReadyNotesTreeIpc(): void {
         wpnJsonDeleteNotes(db, ownerId, wpnIds);
       }
       if (legacyIds.length > 0) {
+        if (isWpnOnlyFileVaultEnv()) {
+          throw new Error(
+            "Cannot delete notes that are not in the WPN workspace (WPN-only file vault).",
+          );
+        }
         pushNotesUndoSnapshot();
         deleteNoteSubtrees(legacyIds);
         persistNotes();
@@ -76,8 +84,6 @@ export function registerRunAppReadyNotesTreeIpc(): void {
       payload: { ids: string[]; targetId: string; placement: string },
     ) => {
       assertProjectOpenForNotes();
-      const registeredTypes = registry.getRegisteredTypes();
-      ensureNotesSeeded(registeredTypes);
       if (!payload || typeof payload !== "object") {
         throw new Error("Invalid payload");
       }
@@ -97,6 +103,19 @@ export function registerRunAppReadyNotesTreeIpc(): void {
       if (p !== "before" && p !== "after" && p !== "into") {
         throw new Error("Invalid placement");
       }
+      const db = getNotesDatabase();
+      if (db && isWpnOnlyFileVaultEnv()) {
+        const ownerId = getWpnOwnerId();
+        const targetNote = wpnJsonGetNoteById(db, ownerId, targetId);
+        if (!targetNote) {
+          throw new Error("Note not found");
+        }
+        const projectId = targetNote.project_id;
+        wpnJsonMoveNotesBulk(db, ownerId, projectId, ids as string[], targetId, p);
+        return;
+      }
+      const registeredTypes = registry.getRegisteredTypes();
+      ensureNotesSeeded(registeredTypes);
       pushNotesUndoSnapshot();
       moveNotesBulkInStore(ids as string[], targetId, p);
       persistNotes();
@@ -130,6 +149,11 @@ export function registerRunAppReadyNotesTreeIpc(): void {
           return;
         }
       }
+      if (isWpnOnlyFileVaultEnv()) {
+        throw new Error(
+          "Note not found or move is not supported across projects in WPN-only file vault mode.",
+        );
+      }
       const registeredTypes = registry.getRegisteredTypes();
       ensureNotesSeeded(registeredTypes);
       pushNotesUndoSnapshot();
@@ -149,8 +173,6 @@ export function registerRunAppReadyNotesTreeIpc(): void {
       },
     ) => {
       assertProjectOpenForNotes();
-      const registeredTypes = registry.getRegisteredTypes();
-      ensureNotesSeeded(registeredTypes);
 
       if (!payload || typeof payload !== "object") {
         throw new Error("Invalid payload");
@@ -158,6 +180,9 @@ export function registerRunAppReadyNotesTreeIpc(): void {
       const { sourceId, targetId, mode, placement } = payload;
       if (!isValidNoteId(sourceId) || !isValidNoteId(targetId)) {
         throw new Error("Invalid id");
+      }
+      if (isWorkspaceMountNoteId(sourceId)) {
+        throw new Error("Cannot paste workspace folder headers");
       }
       if (mode !== "cut" && mode !== "copy") {
         throw new Error("Invalid mode");
@@ -169,6 +194,35 @@ export function registerRunAppReadyNotesTreeIpc(): void {
       ) {
         throw new Error("Invalid placement");
       }
+      const db = getNotesDatabase();
+      if (db && isWpnOnlyFileVaultEnv()) {
+        const ownerId = getWpnOwnerId();
+        const src = wpnJsonGetNoteById(db, ownerId, sourceId);
+        const tgt = wpnJsonGetNoteById(db, ownerId, targetId);
+        if (!src || !tgt) {
+          throw new Error("Note not found");
+        }
+        if (src.project_id !== tgt.project_id) {
+          throw new Error(
+            "Paste across WPN projects is not supported in WPN-only file vault mode.",
+          );
+        }
+        const projectId = src.project_id;
+        if (mode === "cut") {
+          wpnJsonMoveNote(db, ownerId, projectId, sourceId, targetId, placement);
+          return {};
+        }
+        const { newRootId } = wpnJsonDuplicateNoteSubtree(
+          db,
+          ownerId,
+          projectId,
+          sourceId,
+        );
+        wpnJsonMoveNote(db, ownerId, projectId, newRootId, targetId, placement);
+        return { newRootId };
+      }
+      const registeredTypes = registry.getRegisteredTypes();
+      ensureNotesSeeded(registeredTypes);
       if (mode === "cut") {
         pushNotesUndoSnapshot();
         moveNoteInStore(sourceId, targetId, placement);

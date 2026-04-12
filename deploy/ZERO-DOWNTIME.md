@@ -2,8 +2,6 @@
 
 The default stack uses **Mongo** (`mongo-sync`), **`nodex-sync-api`** (Fastify on 4010), **`nodex-gateway`** (nginx), and **two UI containers** (`nodex-web-blue`, `nodex-web-green`) so you can rebuild and swap the web tier without dropping the tunnel upstream.
 
-Optional **legacy** headless Express (`nodex-api`, JSON workspace on port 3847) is available with `docker compose --profile legacy` — do not run two `nodex-api` replicas against the same **`NODEX_HOST_PROJECT`** mount.
-
 ## Stable URL for `cloudflared`
 
 Point your tunnel at the **gateway**, not at a single web container:
@@ -43,13 +41,6 @@ npm run docker:api:up:detached
 ```
 
 This starts the default services above. Traffic to `/` uses `deploy/nginx-active-web.upstream.conf` (starts on **blue**). **`/api/v1/*`** (and **`GET /health`**) are proxied to **nodex-sync-api** by the gateway.
-
-**Legacy headless API + bind mount (optional):**
-
-```bash
-export NODEX_HOST_PROJECT=/absolute/path/to/project
-docker compose --profile legacy up -d nodex-api
-```
 
 ## Zero-downtime UI update (blue/green)
 
@@ -114,4 +105,4 @@ docker compose down --remove-orphans
 
 ## API graceful shutdown
 
-`nodex-sync-api` and legacy **`nodex-api`** handle **SIGTERM** / **SIGINT** by closing the HTTP server so in-flight requests can finish (within the stop timeout Docker gives the container). Align Docker `stop_grace_period` if you need longer drains.
+`nodex-sync-api` handles **SIGTERM** / **SIGINT** by closing the HTTP server so in-flight requests can finish (within the stop timeout Docker gives the container). Align Docker `stop_grace_period` if you need longer drains.

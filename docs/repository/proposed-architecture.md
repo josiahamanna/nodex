@@ -10,7 +10,7 @@
 
 Nodex is a **multi-client knowledge workspace**: **web (Next.js PWA)** for users who want immediate access with **server-held data**; **Electron** for **desktop UX** and **offline-first** local persistence, still syncing to the **same HTTP API** when online. **Redux** remains the UI/session layer; **platform ports** (`RemoteApi`, `LocalStore`, `DesktopHost`) isolate HTTP vs IPC vs local persistence. **Mobile (Expo)** is **phase 2** — share `RemoteApi` contracts and types from [`packages/nodex-platform`](packages/nodex-platform).
 
-Target **MongoDB + Fastify** sync API and **RxDB (Dexie) in the Electron renderer** remain the north-star for full offline sync; the legacy **Express** headless API (**JSON workspace + file auth**, no `pg`) coexists during incremental migration. **ADR-017** commits the **hosted** path to **Mongo as server source of truth**, **web server-authoritative first**, and **Electron offline-first + sync**.
+Target **MongoDB + Fastify** sync API and **RxDB (Dexie) in the Electron renderer** remain the north-star for full offline sync. The legacy **Express** headless API has been **removed** from this repository; **ADR-017** commits the **hosted** path to **Mongo as server source of truth**, **web server-authoritative first**, and **Electron offline-first + sync**.
 
 ---
 
@@ -28,8 +28,7 @@ nodex/
 ├── src/
 │   ├── main/               Electron main (incl. 30s DESKTOP_SYNC_TRIGGER → renderer)
 │   ├── preload.ts          contextBridge: Nodex + nodexDesktop.onSyncTrigger
-│   ├── renderer/           React + Redux; registerDesktopSyncNudge(platformDeps)
-│   └── nodex-api-server/   Legacy headless API (Express, JSON workspace, :3847)
+│   └── renderer/           React + Redux; registerDesktopSyncNudge(platformDeps)
 ├── forge.config.js
 ├── package.json            workspaces: apps/nodex-web, apps/nodex-sync-api, packages/*
 └── docs/repository/        ADR + planning markdown (this file, PLUGIN_SYSTEM, etc.)
@@ -419,8 +418,6 @@ npm run dev:web            # http://127.0.0.1:3000
 # 5. Electron desktop
 npm start                  # after `npm run dev:web` is up
 
-# Legacy headless Express (optional): npx tsx src/nodex-api-server/server.ts — see src/nodex-api-server/README.md
-
 # Client env: NEXT_PUBLIC_NODEX_SYNC_API_URL=http://127.0.0.1:4010/api/v1 (optional in dev — resolve-sync-base defaults when NODE_ENV=development)
 # Or set window.__NODEX_SYNC_API_BASE__ at runtime.
 # After authLogin / authRegister, call platformDeps.remoteApi.setAuthToken(token) so syncPull/syncPush run.
@@ -440,7 +437,7 @@ npm start                  # after `npm run dev:web` is up
 | Offline indicator | Web + Desktop only | Add to mobile via NetInfo |
 | Note types | `markdown`, `text`, `code` | Extensible type registry (plugin system) |
 | Sync collections | `notes` only | Extend to `tags`, `attachments`, etc. |
-| Local workspace JSON ↔ Mongo sync | Separate stacks | **Cloud** tab uses Fastify/Mongo sync API + RxDB; legacy headless API uses project JSON on disk |
+| Local workspace JSON ↔ Mongo sync | Separate stacks | **Cloud** tab uses Fastify/Mongo sync API + RxDB; Electron file vault uses workspace JSON on disk |
 
 ### 11.4 Cloud tab (implemented)
 
@@ -511,7 +508,7 @@ flowchart LR
 ### ADR-013 — Web `LocalStore` depth
 
 **Status**: Accepted  
-**Decision**: **Option A — thin local store** for the PWA: `LocalStore.profile === "web-thin"`. Notes flow through **`window.Nodex` web shim** (headless HTTP API); **no full RxDB on web** for v1.  
+**Decision**: **Option A — thin local store** for the PWA: `LocalStore.profile === "web-thin"`. Notes flow through **`window.Nodex` web shim** (HTTP to **sync-api** / same-origin `/api/v1`); **no full RxDB on web** for v1.  
 **Rationale**: Matches “data on our servers,” fastest path, and clear PWA offline expectations (**manifest + `public/sw.js`** = installability and minimal asset fallback — not full note replication).  
 **Consequences**: Option B (full RxDB on web) remains a documented future ADR if strong web-offline is required.
 
@@ -529,9 +526,8 @@ flowchart LR
 
 **Status**: Accepted (revised April 2026)  
 **Context (current)**:
-- **Workspace + WPN + legacy tree** persist in **`{project}/data/nodex-workspace.json`** via [`WorkspaceStore`](../../src/core/workspace-store.ts), Electron main + headless API (`getNotesDatabase()`).
-- **Headless auth** uses JSON files under user data (`auth/users.json`, etc.), not SQL.
-- **Plugin catalog** and **marketplace index** for the headless API use **JSON** modules ([`plugin-catalog-json.ts`](../../src/core/plugin-catalog-json.ts), [`marketplace-json.ts`](../../src/nodex-api-server/marketplace/marketplace-json.ts)).
+- **Workspace + WPN + legacy tree** persist in **`{project}/data/nodex-workspace.json`** via [`WorkspaceStore`](../../src/core/workspace-store.ts), Electron main (`getNotesDatabase()`).
+- **Plugin catalog** uses **JSON** modules ([`plugin-catalog-json.ts`](../../src/core/plugin-catalog-json.ts)).
 - **Cloud notes** use **RxDB + IndexedDB** in the renderer (`cloud-notes-rxdb.ts`) and optional **Mongo** via **`RemoteApi`** / **`nodex-sync-api`** — a different product slice.
 
 **Decision (direction)**: **Workspace + WPN** should eventually converge on **RxDB in the Chromium renderer** (Dexie / IndexedDB) with the same durability model as cloud notes, so the UI reads/writes through a single reactive local store. **Optional sync** extends the Fastify/Mongo protocol (or a sibling stream) to **WPN-shaped documents**, not only the flat `CloudNoteDoc` shape.
@@ -541,13 +537,14 @@ flowchart LR
 1. **Schema + port** — Define RxDB collections (or one JSON-document model) isomorphic to workspace/WPN types in [`wpn-types.ts`](../../src/core/wpn/wpn-types.ts) / [`wpn-v2-types.ts`](../../src/shared/wpn-v2-types.ts). Reimplement reads/writes currently in **`wpn-json-*.ts`** / IPC against RxDB behind the same **`NodexRendererApi`** where practical.
 2. **Wire `LocalStore.notes` + WPN** — Route **`NotesPersistencePort`** and **`WPN_*` IPC** consumers to RxDB under a **feature flag**; keep **`WorkspaceStore` JSON** as fallback until parity tests pass.
 3. **Migration** — One-time **JSON workspace (or legacy sqlite export) → RxDB** import per vault so existing users keep data.
-4. **Thin main** — When RxDB holds authoritative WPN state in the renderer, main becomes a thinner I/O or sync bridge; headless API may remain JSON-file-based for single-tenant deploys or delegate to sync later.
+4. **Thin main** — When RxDB holds authoritative WPN state in the renderer, main becomes a thinner I/O or sync bridge.
 
-**Rationale**: Aligns desktop offline storage with **RxDB + optional Mongo**, keeps **Redux** as the UI layer (`ADR-015`), and avoids reintroducing **Postgres** or **better-sqlite3** for core workspace data. Headless **`nodex-api-server`** remains **single-writer JSON** per project mount until a multi-tenant replicated backend is explicitly designed.
+**Rationale**: Aligns desktop offline storage with **RxDB + optional Mongo**, keeps **Redux** as the UI layer (`ADR-015`), and avoids reintroducing **Postgres** or **better-sqlite3** for core workspace data. The legacy Express headless stack has been **removed**; self-hosted web uses **sync-api** (or Electron for local folders).
 
 **Consequences**: Large touch surface (`register-static-ipc-wpn.ts`, `notes-persistence.ts`, `project-session.ts`, web shim). Track as a **milestone**, not a single PR.
 
 **Implementation progress (repo, April 2026)**:
+- **Legacy removal (Track B)**: The **Express headless** package (`nodex-api` / port 3847) has been **deleted**; web defaults to **sync-api** (`NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only` in `npm run dev:web`). **Track A** (flat `legacy` → WPN migration, optional `NODEX_WPN_ONLY_FILE_VAULT=1`) is implemented in [`legacy-flat-to-wpn-migrate.ts`](../../src/core/wpn/legacy-flat-to-wpn-migrate.ts) and IPC gates in [`register-static-ipc-notes-registry.ts`](../../src/main/register-static-ipc-notes-registry.ts).
 - **Phases 1–3 (initial slice)**: Renderer module [`workspace-wpn-rxdb.ts`](../../src/renderer/workspace-rxdb/workspace-wpn-rxdb.ts) defines an IndexedDB-backed RxDB collection `workspace_snapshots` and helpers `importWorkspaceJsonSnapshot` / `readLatestWorkspaceJsonSnapshot`. Enable with **`NODEX_LOCAL_RXDB_WPN=1`** (see [`.env.example`](../../.env.example)). [`project-root-sync.ts`](../../src/renderer/workspace-rxdb/project-root-sync.ts) opens the mirror when the project root changes (Electron bootstrap after `window.Nodex` is ready).
 - **Phase 2 (ongoing)**: JSON `nodex-workspace.json` and main-process IPC remain authoritative; the mirror is a **parallel import path** until reads/writes are routed per phase 2 bullets above.
 - **Phase 4 (pending)**: Thin main / RxDB-only local vault — env gate stub [`phase4-thin-main.ts`](../../src/renderer/workspace-rxdb/phase4-thin-main.ts) (`NODEX_WORKSPACE_RXDB_AUTHORITY`); follow-up work removes dual-write and shrinks IPC.
@@ -555,7 +552,7 @@ flowchart LR
 ### ADR-017 — MongoDB as server source of truth: web authoritative-first, Electron offline-first + sync
 
 **Status**: Accepted (April 2026)  
-**Context**: The **browser** may use the **headless Express API** and **`NODEX_PROJECT_ROOT`** for single-tenant on-disk workflows. The **hosted product** treats **WPN Mongo** (`wpn_workspaces`, `wpn_projects`, `wpn_notes`, …) as **authoritative** for workspace notes. A separate **`POST /sync/push`** / **`GET /sync/pull`** path for flat **`notes`** documents still exists and is consumed by **RxDB `cloudNotesSlice`** in the renderer — see **Flat `notes` sync (experimental)** below. **Electron** stays **offline-first** with **RxDB** and sync when online (ADRs 004, 005, 007).
+**Context**: The **browser** uses **Fastify sync-api** and Mongo for signed-in workflows. The **hosted product** treats **WPN Mongo** (`wpn_workspaces`, `wpn_projects`, `wpn_notes`, …) as **authoritative** for workspace notes. A separate **`POST /sync/push`** / **`GET /sync/pull`** path for flat **`notes`** documents still exists and is consumed by **RxDB `cloudNotesSlice`** in the renderer — see **Flat `notes` sync (experimental)** below. **Electron** stays **offline-first** with **RxDB** and sync when online (ADRs 004, 005, 007).
 
 **Decision**:
 1. **MongoDB (via `nodex-sync-api` or a clearly bounded extension of it)** becomes the **canonical store** for the **cloud / multi-user** product path: authenticated users, durable notes and (as schemas land) **WPN-aligned** workspace data.
@@ -563,7 +560,6 @@ flowchart LR
 3. **Electron** remains **offline-first**: **local durability** in the renderer (**RxDB / IndexedDB**, and/or existing workspace JSON during transition per ADR-016), with **sync** to the same Mongo-backed service using the existing **last-write-wins** model (ADR-006) and **main-process sync nudge** (ADR-007).
 
 **Non-goals (for this ADR)**:
-- Replacing the **headless Express** stack in one PR for **self-hosted, single-folder** workflows — it may **coexist** until a **parity** milestone or explicit deprecation.
 - **CRDT / merge UI** for conflicts — still **LWW by `updatedAt`** unless a future ADR changes it.
 
 **Implementation phases (incremental)**:
@@ -573,7 +569,7 @@ flowchart LR
 | **P1 — Schema + HTTP read path** | Extend Mongo models (and Zod) for **everything the web shell must render** without `nodex-workspace.json`: at minimum **tree/hierarchy** (or **WPN collections**: workspaces, projects, notes) and indexes `{ userId, … }`. Add **authenticated GET routes** (list/tree/detail) alongside existing **`/sync/*`**. | **Done in repo:** `apps/nodex-sync-api` — collections `wpn_workspaces`, `wpn_projects`, `wpn_notes`, `wpn_explorer_state` (`src/db.ts`); read routes `GET /wpn/*` (`src/wpn-routes.ts`); optional `npm run seed:wpn -- <userHexId>` (`scripts/seed-wpn-demo.ts`). Wire web client in P2. |
 | **P2 — Web write path** | **POST/PATCH/DELETE** (or sync-only writes with immediate pull — prefer explicit REST for simpler “authoritative server” mental model) for create/rename/move/delete matching [`NotesPersistencePort`](../../packages/nodex-platform/src/ports.ts) / WPN operations. | **`nodex-web` shim** targets sync-api base URL; **no `NODEX_PROJECT_ROOT`** for this SKU. |
 | **P3 — Electron RxDB parity** | Reuse or extend **`cloud-notes-rxdb`** / **`LocalStore`** so **desktop** mirrors the same document shapes; **push/pull** (or batched writes) keeps Mongo and local in sync. | Offline edits; online reconciliation; same API as web. |
-| **P4 — Strangler** | Feature-flag **JSON headless** vs **Mongo path**; docs and `docker-compose` env for “local Mongo + sync-api only” quickstart. | Single story for new users: **sign in → data in Mongo**. |
+| **P4 — Strangler** | Docs and `docker-compose` env for “local Mongo + sync-api only” quickstart; legacy Express removed. | Single story for new users: **sign in → data in Mongo**. |
 
 **Rationale**:
 - One **source of truth** on the server avoids split-brain between **file workspace** and **cloud sync** for the hosted product.

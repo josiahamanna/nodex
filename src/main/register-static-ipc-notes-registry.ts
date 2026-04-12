@@ -1,8 +1,15 @@
 import { ipcMain } from "electron";
 import { getNotesDatabase } from "../core/workspace-store";
 import { getWpnOwnerId } from "../core/wpn/wpn-owner";
-import { wpnJsonGetNoteById, wpnJsonUpdateNote } from "../core/wpn/wpn-json-notes";
+import {
+  wpnJsonCreateNote,
+  wpnJsonGetDefaultProjectIdForOwner,
+  wpnJsonGetNoteById,
+  wpnJsonListAllNotesAsNoteListItems,
+  wpnJsonUpdateNote,
+} from "../core/wpn/wpn-json-notes";
 import { wpnJsonApplyVfsRewritesAfterTitleChange } from "../core/wpn/wpn-rename-vfs-rewrite";
+import { isWpnOnlyFileVaultEnv } from "../shared/wpn-file-vault-env";
 import {
   ensureNotesSeeded,
   createNote as createNoteInStore,
@@ -59,6 +66,9 @@ ipcMain.handle(IPC_CHANNELS.GET_NOTE, async (_event, noteId?: string) => {
           metadata: wpn.metadata,
         };
       }
+      if (isWpnOnlyFileVaultEnv()) {
+        throw new Error("Note not found");
+      }
     }
     const note = getNoteById(noteId);
     if (!note) {
@@ -66,6 +76,26 @@ ipcMain.handle(IPC_CHANNELS.GET_NOTE, async (_event, noteId?: string) => {
     }
     const { id, type, title, content, metadata } = note;
     return { id, type, title, content, metadata };
+  }
+
+  const db = getNotesDatabase();
+  if (db && isWpnOnlyFileVaultEnv()) {
+    const ownerId = getWpnOwnerId();
+    const list = wpnJsonListAllNotesAsNoteListItems(db, ownerId);
+    if (list.length === 0) {
+      return null;
+    }
+    const wpn = wpnJsonGetNoteById(db, ownerId, list[0]!.id);
+    if (!wpn) {
+      return null;
+    }
+    return {
+      id: wpn.id,
+      type: wpn.type,
+      title: wpn.title,
+      content: wpn.content,
+      metadata: wpn.metadata,
+    };
   }
 
   const first = getFirstNote();
@@ -79,6 +109,10 @@ ipcMain.handle(IPC_CHANNELS.GET_NOTE, async (_event, noteId?: string) => {
 ipcMain.handle(IPC_CHANNELS.GET_ALL_NOTES, async () => {
   if (!ctx.projectRootPath) {
     return [];
+  }
+  const db = getNotesDatabase();
+  if (db && isWpnOnlyFileVaultEnv()) {
+    return wpnJsonListAllNotesAsNoteListItems(db, getWpnOwnerId());
   }
   const registeredTypes = registry.getRegisteredTypes();
   ensureNotesSeeded(registeredTypes);
@@ -141,6 +175,22 @@ ipcMain.handle(
       }
     }
     pushNotesUndoSnapshot();
+    const db = getNotesDatabase();
+    if (db && isWpnOnlyFileVaultEnv()) {
+      const ownerId = getWpnOwnerId();
+      const projectId = wpnJsonGetDefaultProjectIdForOwner(db, ownerId);
+      if (!projectId) {
+        throw new Error("No WPN project; create a workspace first.");
+      }
+      const created = wpnJsonCreateNote(db, ownerId, projectId, {
+        anchorId,
+        relation: rel,
+        type,
+        content: payload.content,
+        title: payload.title,
+      });
+      return { id: created.id };
+    }
     const created = createNoteInStore({
       anchorId,
       relation: rel,
@@ -194,6 +244,9 @@ ipcMain.handle(
     }
     return;
   }
+  if (isWpnOnlyFileVaultEnv()) {
+    throw new Error("Note not found");
+  }
   const registeredTypes = registry.getRegisteredTypes();
   ensureNotesSeeded(registeredTypes);
   pushNotesUndoSnapshot();
@@ -221,6 +274,11 @@ ipcMain.handle(
         wpnJsonUpdateNote(db, ownerId, noteId, { metadata: meta });
         return;
       }
+      if (isWpnOnlyFileVaultEnv()) {
+        throw new Error("Note not found");
+      }
+    } else if (isWpnOnlyFileVaultEnv()) {
+      throw new Error("Notes workspace not initialized");
     }
     const registeredTypes = registry.getRegisteredTypes();
     ensureNotesSeeded(registeredTypes);
@@ -244,6 +302,9 @@ ipcMain.handle(
     if (db && wpnJsonGetNoteById(db, ownerId, noteId)) {
       wpnJsonUpdateNote(db, ownerId, noteId, { content });
       return;
+    }
+    if (isWpnOnlyFileVaultEnv()) {
+      throw new Error("Note not found");
     }
     const registeredTypes = registry.getRegisteredTypes();
     ensureNotesSeeded(registeredTypes);
@@ -274,6 +335,11 @@ ipcMain.handle(
         wpnJsonUpdateNote(db, ownerId, noteId, { metadata: meta });
         return;
       }
+      if (isWpnOnlyFileVaultEnv()) {
+        throw new Error("Note not found");
+      }
+    } else if (isWpnOnlyFileVaultEnv()) {
+      throw new Error("Notes workspace not initialized");
     }
     const registeredTypes = registry.getRegisteredTypes();
     ensureNotesSeeded(registeredTypes);

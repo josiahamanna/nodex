@@ -1,6 +1,6 @@
 # Deploying `nodex-sync-api` (Mongo WPN + auth)
 
-Signed-in **web** and **Electron cloud windows** use the Fastify service in `apps/nodex-sync-api` as WPN source of truth (`/wpn/*`, `/auth/*`). The legacy **headless Express** API (`nodex-api`, `/api/v1/wpn/*` JSON file) is **deprecated** — see `src/nodex-api-server/README.md`.
+Signed-in **web** and **Electron cloud windows** use the Fastify service in `apps/nodex-sync-api` as WPN source of truth (`/wpn/*`, `/auth/*`). The legacy **headless Express** stack (`nodex-api` on port 3847) has been **removed** from the repository; use this service or Electron for all supported deployments.
 
 ## Web + API dev checklist
 
@@ -55,8 +55,6 @@ npm run sync-api
 
 **Production (remote Mongo, no `mongo:7` image):** set `MONGODB_URI` in the repo root `.env` to your Atlas / host URI (must not use hostname `mongo-sync`). `npm run deploy` and `docker-stack-boot.sh` then default **`NODEX_LOCAL_MONGO=0`** and skip `mongo-sync`. Override with explicit `NODEX_LOCAL_MONGO=1` if you still want the compose Mongo container.
 
-Legacy headless Express (`Dockerfile` on port 3847) is opt-in: `docker compose --profile legacy up -d nodex-api`. It is not part of the default gateway stack.
-
 ## Nginx gateway (optional same-origin path)
 
 The default Docker **`nodex-gateway`** ([`deploy/nginx-gateway.conf`](../deploy/nginx-gateway.conf)) proxies **`GET /health`** to sync-api’s root probe and **`/api/v1/`** to **`nodex-sync-api`**. Build the web image with **`NEXT_PUBLIC_NODEX_SYNC_API_URL`** including **`/api/v1`** (default in Compose: `http://127.0.0.1:8080/api/v1`).
@@ -83,9 +81,5 @@ location /backend/sync/ {
 Then set:
 
 `NEXT_PUBLIC_NODEX_SYNC_API_URL` to the **browser-visible** origin + path prefix (e.g. `https://your.domain/backend/sync` — no trailing slash).
-
-## Legacy headless Express
-
-Manual run: `npx tsx src/nodex-api-server/server.ts`. Prefer sync-api for web; see `src/nodex-api-server/README.md`.
 
 See also: `docs/wpn-storage-modes.md`.

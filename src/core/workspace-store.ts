@@ -6,6 +6,7 @@ import {
   ROOT_KEY,
   type SerializedNotesState,
 } from "./notes-store";
+import { isWpnOnlyFileVaultEnv } from "../shared/wpn-file-vault-env";
 import { isWorkspaceRxdbAuthorityEnvEnabled } from "../shared/workspace-rxdb-env";
 import type { WorkspaceRxdbMirrorPayloadV1 } from "../shared/workspace-rxdb-mirror-payload";
 import { WPN_SCHEMA_VERSION } from "./wpn/wpn-types";
@@ -353,7 +354,9 @@ export class WorkspaceStore {
     const state = exportSerializedState();
     for (let i = 0; i < this.slots.length; i++) {
       const slot = this.slots[i]!;
-      if (i === 0) {
+      if (isWpnOnlyFileVaultEnv()) {
+        slot.legacy = { v: 1, records: [], order: {} };
+      } else if (i === 0) {
         const mainRecs = state.records.filter((r) => !/^r\d+_/.test(r.id));
         const mainOrder = filterOrderForMain(state.order);
         slot.legacy = {

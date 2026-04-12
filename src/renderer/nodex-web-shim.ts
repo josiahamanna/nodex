@@ -270,13 +270,10 @@ export function normalizeHeadlessApiBase(url: string): string {
 
 /** Presets for the web UI dropdown (call from client components so dev proxy uses current host). */
 export function getHeadlessApiPresetOptions(): HeadlessApiPreset[] {
-  const opts: HeadlessApiPreset[] = [
-    { label: "127.0.0.1:3847", value: "http://127.0.0.1:3847" },
-    { label: "localhost:3847", value: "http://localhost:3847" },
-  ];
+  const opts: HeadlessApiPreset[] = [];
   if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
     const origin = normalizeHeadlessApiBase(window.location.origin);
-    opts.unshift({
+    opts.push({
       label: `${window.location.host} (dev proxy)`,
       value: origin,
     });
@@ -286,7 +283,7 @@ export function getHeadlessApiPresetOptions(): HeadlessApiPreset[] {
 
 /**
  * Resolve `window.__NODEX_WEB_API_BASE__` before `installNodexWebShimIfNeeded` (Next / plain browser only).
- * Order: `api` query → localStorage → if `?web=1`: dev same-origin (proxy) or http://127.0.0.1:3847.
+ * Order: `api` query → localStorage → if `?web=1`: dev same-origin (proxy), else unset.
  * Without `web=1` and no saved `api`, leaves unset so the Market tab can prompt via dropdown.
  */
 export function initHeadlessWebApiBaseFromUrlAndStorage(): void {
@@ -332,8 +329,6 @@ export function initHeadlessWebApiBaseFromUrlAndStorage(): void {
     window.__NODEX_WEB_API_BASE__ = normalizeHeadlessApiBase(
       window.location.origin,
     );
-  } else {
-    window.__NODEX_WEB_API_BASE__ = "http://127.0.0.1:3847";
   }
 }
 
@@ -417,7 +412,7 @@ async function webRequest<T>(
     }
     const isHtml = /<\s*html[\s>]/i.test(text) || /<\s*!doctype/i.test(text);
     if (isHtml && /cannot\s+post/i.test(msg)) {
-      msg = `${msg.trim()}\n\nThe server has no route for this request. Use nodex-sync-api (\`npm run sync-api\`) or unset NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only if you still rely on the legacy headless Express API.`;
+      msg = `${msg.trim()}\n\nThe server has no route for this request. Run nodex-sync-api (\`npm run sync-api\`) with Mongo and use \`NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only\` (see \`npm run dev:web\`).`;
     }
     throw new Error(msg);
   }
@@ -428,8 +423,8 @@ async function webRequest<T>(
 }
 
 /**
- * Minimal `window.Nodex` for browser dev: talks to the headless API (`src/nodex-api-server`) over HTTP.
- * Set `window.__NODEX_WEB_API_BASE__` via `initHeadlessWebApiBaseFromUrlAndStorage()` or the web API bar before the bundle runs.
+ * Minimal `window.Nodex` for browser dev: HTTP to `/api/v1` (same-origin or `__NODEX_WEB_API_BASE__`) or sync-api WPN when configured.
+ * Set `window.__NODEX_WEB_API_BASE__` via `initHeadlessWebApiBaseFromUrlAndStorage()` when not using `NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only`.
  */
 export function createWebNodexApi(baseUrl: string): NodexRendererApi {
   const req = <T>(method: string, path: string, body?: unknown) =>
@@ -1307,7 +1302,7 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       generatedAt: "",
       plugins: [],
       indexError:
-        "Start nodex-sync-api (npm run sync-api) and Mongo, sign in, or set NEXT_PUBLIC_NODEX_SYNC_API_URL. Legacy headless: npx tsx src/nodex-api-server/server.ts if needed.",
+        "Start nodex-sync-api (npm run sync-api) and Mongo, sign in, or set NEXT_PUBLIC_NODEX_SYNC_API_URL.",
     }),
     installMarketplacePlugin: async () => ({
       success: false,
@@ -1482,7 +1477,7 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       return (..._args: unknown[]) =>
         Promise.reject(
           new Error(
-            `[Nodex] ${key} is only available in Electron or with ?web=1&api=… (headless API).`,
+            `[Nodex] ${key} is only available in Electron or with a configured web backend (?web=1 and sync-api or same-origin /api/v1).`,
           ),
         );
     },

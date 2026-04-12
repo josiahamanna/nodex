@@ -8,8 +8,8 @@
 # Bare git server (mirror to GitHub + tag-triggered deploy): deploy/git-server/MIGRATION.md (full steps), SERVER-LAYOUT.md (layout)
 #
 # What it does:
-#   1. Ensures dist/plugins exists (compose bind mount for optional legacy nodex-api profile).
-#   2. Ensures ./.nodex-docker-workspace exists (default bind mount when using --profile legacy).
+#   1. Ensures dist/plugins exists (used by optional marketplace profile / plugin builds).
+#   2. Ensures ./.nodex-docker-workspace exists (local scratch path for scripts that expect it).
 #   3. Brings up nodex-sync-api, nodex-web-blue, nodex-gateway (and mongo-sync when NODEX_LOCAL_MONGO=1).
 #      Then always runs `compose up --no-deps nodex-gateway` so :8080 is listening after partial stacks.
 #   4. Runs scripts/docker-web-deploy.sh to build the web image, blue/green swap, and prune dangling images.

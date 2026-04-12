@@ -22,7 +22,7 @@
     "web": "npm run dev:web",
     "dev:web": "node scripts/sync-iframe-tokens-raw.js && node scripts/sync-video-js-iframe-css.js && NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API=1 NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only npm run dev -w @nodex/web",
     "build:web:static": "node scripts/sync-iframe-tokens-raw.js && node scripts/sync-video-js-iframe-css.js && node scripts/sync-pdf-worker-to-web-public.js && node scripts/build-web-static.js",
-    "docker:api:build": "docker build -t nodex-api:local -f Dockerfile .",
+    "docker:api:build": "docker build -t nodex-sync-api:local -f Dockerfile.sync-api .",
     "docker:api:up": "docker compose --profile local-mongo up --build",
     "docker:api:up:detached": "docker compose --profile local-mongo up -d --build",
     "docker:api:down": "docker compose down",
@@ -58,7 +58,8 @@
     "lint": "eslint e2e",
     "test:node-unit": "bash scripts/run-node-unit-tests.sh",
     "test:vfs-link-rewrite": "tsx --test src/shared/note-vfs-link-rewrite.test.ts",
-    "test": "npm run test:node-unit && npm run test:vfs-link-rewrite && npm run test -w @nodex/sync-api",
+    "test:legacy-wpn-migrate": "tsx --test src/core/wpn/legacy-flat-to-wpn-migrate.test.ts",
+    "test": "npm run test:node-unit && npm run test:vfs-link-rewrite && npm run test:legacy-wpn-migrate && npm run test -w @nodex/sync-api",
     "test:e2e": "bash scripts/e2e-run-web.sh",
     "test:e2e:ci": "npx playwright install --with-deps chromium && npm run test:e2e"
   },

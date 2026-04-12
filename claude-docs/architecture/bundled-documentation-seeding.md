@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Long-form **plugin authoring** and product documentation can live as **Markdown files in the repository** under `docs/bundled-plugin-authoring/`. On every **workspace notes bootstrap** (desktop project open or headless API startup after `NODEX_PROJECT_ROOT` is applied), the core layer **upserts** matching notes into the **in-memory notes graph**, then persists via **`WorkspaceStore.persist()`** (writes `{project}/data/nodex-workspace.json`) so the renderer can open them like any other `markdown` note.
+Long-form **plugin authoring** and product documentation can live as **Markdown files in the repository** under `docs/bundled-plugin-authoring/`. On every **workspace notes bootstrap** (desktop project open) or when **sync-api** serves bundled docs from `NODEX_BUNDLED_DOCS_DIR`, the core layer **upserts** matching notes into the **in-memory notes graph** (Electron), then persists via **`WorkspaceStore.persist()`** when applicable so the renderer can open them like any other `markdown` note.
 
 This keeps the **file tree** as the authoring source of truth while the **workspace JSON + in-memory store** is the runtime index for search, tree navigation, and Documentation shell views.
 
@@ -17,7 +17,7 @@ This keeps the **file tree** as the authoring source of truth while the **worksp
 
 | Input | Meaning |
 |--------|---------|
-| Default directory | `docs/bundled-plugin-authoring` relative to `process.cwd()` (repo root when running `npm run start:api`). |
+| Default directory | `docs/bundled-plugin-authoring` relative to `process.cwd()` (repo root when running Electron or sync-api from the monorepo). |
 | `NODEX_BUNDLED_DOCS_DIR` | Absolute path to a folder that contains `manifest.json` and markdown pages. |
 
 If the directory or manifest is missing, seeding is a no-op (no error).
@@ -43,9 +43,9 @@ Seeded notes include:
 
 The Documentation UI can filter on `metadata.bundledDoc` to show a **read-only** markdown view separate from user-editable notes.
 
-## Headless API (“server restarts”)
+## Sync-api
 
-[`src/nodex-api-server/server.ts`](../../src/nodex-api-server/server.ts) calls [`initHeadlessFromEnv`](../../src/nodex-api-server/headless-bootstrap.ts), which activates the workspace and runs `bootstrapWorkspaceNotes`. Each process start therefore re-reads local markdown files and updates persisted workspace state when content differs.
+When the Fastify image includes `docs/bundled-plugin-authoring`, anonymous **`GET /public/bundled-docs/notes/:id`** serves page bodies for the web Documentation shell without mutating a local workspace file.
 
 ## Desktop (Electron)
 

@@ -1,6 +1,7 @@
 import * as crypto from "crypto";
 import { normalizeLegacyNoteType } from "../../shared/note-type-legacy";
-import type { NoteMovePlacement } from "../../shared/nodex-renderer-api";
+import type { NoteListItem, NoteMovePlacement } from "../../shared/nodex-renderer-api";
+import { isWorkspaceMountNoteId } from "../../shared/note-workspace";
 import { collectReferencedNoteIdsFromMarkdown } from "../../shared/markdown-internal-note-href";
 import type {
   WpnBacklinkSourceItem,
@@ -363,6 +364,127 @@ export function wpnJsonMoveNote(
   persist(store);
 }
 
+function wpnIsDescendantOf(
+  store: WorkspaceStore,
+  ownerId: string,
+  ancestorId: string,
+  nodeId: string,
+): boolean {
+  let cur: string | null =
+    wpnJsonGetNoteById(store, ownerId, nodeId)?.parent_id ?? null;
+  const seen = new Set<string>();
+  while (cur) {
+    if (cur === ancestorId) {
+      return true;
+    }
+    if (seen.has(cur)) {
+      break;
+    }
+    seen.add(cur);
+    cur = wpnJsonGetNoteById(store, ownerId, cur)?.parent_id ?? null;
+  }
+  return false;
+}
+
+/**
+ * Same-project bulk move (mirrors flat `moveNotesBulk` ordering and guards).
+ * Persists once per inner `wpnJsonMoveNote` (acceptable for typical selection sizes).
+ */
+export function wpnJsonMoveNotesBulk(
+  store: WorkspaceStore,
+  ownerId: string,
+  projectId: string,
+  noteIds: string[],
+  targetId: string,
+  placement: NoteMovePlacement,
+): void {
+  const filtered = noteIds.filter((id) => !isWorkspaceMountNoteId(id));
+  const idSet = new Set(filtered);
+  const minimal: string[] = [];
+  for (const id of filtered) {
+    const d = wpnJsonGetNoteById(store, ownerId, id);
+    if (!d) {
+      throw new Error("Note not found");
+    }
+    if (d.project_id !== projectId) {
+      throw new Error(
+        "Cannot move selection that spans multiple WPN projects at once",
+      );
+    }
+    let underSelected = false;
+    let p: string | null = d.parent_id;
+    const walked = new Set<string>();
+    while (p) {
+      if (idSet.has(p)) {
+        underSelected = true;
+        break;
+      }
+      if (walked.has(p)) {
+        break;
+      }
+      walked.add(p);
+      const parent = wpnJsonGetNoteById(store, ownerId, p);
+      p = parent?.parent_id ?? null;
+    }
+    if (!underSelected) {
+      minimal.push(id);
+    }
+  }
+
+  const uniqueMinimal = [...new Set(minimal)];
+  if (uniqueMinimal.length === 0) {
+    return;
+  }
+
+  const flat = wpnJsonListNotesFlat(store, ownerId, projectId);
+  const indexById = new Map(flat.map((r, i) => [r.id, i]));
+  uniqueMinimal.sort(
+    (a, b) => (indexById.get(a) ?? 0) - (indexById.get(b) ?? 0),
+  );
+
+  const target = wpnJsonGetNoteById(store, ownerId, targetId);
+  if (!target) {
+    throw new Error("Note not found");
+  }
+  if (target.project_id !== projectId) {
+    throw new Error("Cannot move notes across WPN projects");
+  }
+
+  for (const r of uniqueMinimal) {
+    if (r === targetId) {
+      throw new Error("Invalid move target");
+    }
+    if (wpnIsDescendantOf(store, ownerId, r, targetId)) {
+      throw new Error("Cannot move relative to node inside dragged subtree");
+    }
+  }
+
+  if (placement === "into") {
+    for (const r of uniqueMinimal) {
+      if (wpnIsDescendantOf(store, ownerId, targetId, r)) {
+        throw new Error("Cannot move into own subtree");
+      }
+    }
+    for (const r of uniqueMinimal) {
+      wpnJsonMoveNote(store, ownerId, projectId, r, targetId, "into");
+    }
+    return;
+  }
+
+  if (placement === "before") {
+    for (const r of uniqueMinimal) {
+      wpnJsonMoveNote(store, ownerId, projectId, r, targetId, "before");
+    }
+    return;
+  }
+
+  let anchor = targetId;
+  for (const r of uniqueMinimal) {
+    wpnJsonMoveNote(store, ownerId, projectId, r, anchor, "after");
+    anchor = r;
+  }
+}
+
 function collectSubtreePreorder(rows: WpnNoteRow[], rootId: string): string[] {
   const cm = childrenMapFromRows(rows);
   const out: string[] = [];
@@ -531,6 +653,52 @@ export function wpnJsonListAllNoteContentsForOwner(
         continue;
       }
       out.push({ id: n.id, content: n.content ?? "", project_id: n.project_id });
+    }
+  }
+  return out;
+}
+
+export function wpnJsonGetDefaultProjectIdForOwner(
+  store: WorkspaceStore,
+  ownerId: string,
+): string | null {
+  for (const slot of store.slots) {
+    const wsList = slot.workspaces
+      .filter((w) => w.owner_id === ownerId)
+      .sort((a, b) => a.sort_index - b.sort_index || a.name.localeCompare(b.name));
+    for (const w of wsList) {
+      const projs = slot.projects
+        .filter((p) => p.workspace_id === w.id)
+        .sort((a, b) => a.sort_index - b.sort_index || a.name.localeCompare(b.name));
+      if (projs[0]) {
+        return projs[0]!.id;
+      }
+    }
+  }
+  return null;
+}
+
+/** Flat list across all WPN projects for the owner (legacy `GET_ALL_NOTES` shape). */
+export function wpnJsonListAllNotesAsNoteListItems(
+  store: WorkspaceStore,
+  ownerId: string,
+): NoteListItem[] {
+  const out: NoteListItem[] = [];
+  for (const slot of store.slots) {
+    for (const p of slot.projects) {
+      const w = slot.workspaces.find((x) => x.id === p.workspace_id);
+      if (!w || w.owner_id !== ownerId) {
+        continue;
+      }
+      for (const it of wpnJsonListNotesFlat(store, ownerId, p.id)) {
+        out.push({
+          id: it.id,
+          type: it.type,
+          title: it.title,
+          parentId: it.parent_id,
+          depth: it.depth,
+        });
+      }
     }
   }
   return out;

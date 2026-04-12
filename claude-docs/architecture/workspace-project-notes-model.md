@@ -46,7 +46,7 @@ Hash routes (static-export friendly), aligned with shell work:
 
 ## HTTP API (shared contract)
 
-Mounted under **`/api/v1/wpn/…`** (see [`src/nodex-api-server/wpn-router.ts`](../../src/nodex-api-server/wpn-router.ts)).
+Mounted under **`/wpn/…`** on **`apps/nodex-sync-api`** (Fastify; see `apps/nodex-sync-api/src/wpn-routes.ts`). The same paths are proxied at **`/api/v1/wpn/…`** when the gateway prefixes sync-api with `/api/v1`.
 
 Surface:
 
@@ -60,15 +60,15 @@ Surface:
 - `POST /wpn/notes/move` — body `{ projectId, draggedId, targetId, placement }`
 - `GET/PATCH /wpn/workspaces/:workspaceId/settings` and `GET/PATCH /wpn/projects/:projectId/settings` — JSON settings merged into the workspace file
 
-**Session (headless)** — `GET /api/v1/session` returns `{ wpnOwnerId: string }` from `NODEX_WPN_DEFAULT_OWNER` (default `jehu`) so the web shell can label the active WPN owner without duplicating env in the client.
+**Session (sync-api)** — use **`GET /auth/me`** (JWT) for the signed-in user; WPN rows are scoped per account in Mongo.
 
 On Electron, the same operations are available over IPC (`WPN_*` channels); **note body** reads/writes also go through existing `getNote` / `saveNoteContent` / `renameNote` / `saveNotePluginUiState` when the id exists in `wpn_note`.
 
 Responses use JSON; errors use `{ error: string }` or `{ ok: false, error }` where aligned with existing API style.
 
-## Authentication (headless)
+## Authentication (web)
 
-Signup, login, refresh, and logout use **JSON files** under `{NODEX_USER_DATA_DIR or ~/.nodex-headless-data}/auth/` (`users.json`, `refresh_sessions.json`) — see [`auth-json-store.ts`](../../src/nodex-api-server/auth/auth-json-store.ts). No database driver is required.
+Signup, login, refresh, and logout use **Mongo-backed** routes on **`nodex-sync-api`** (`apps/nodex-sync-api/src/auth.ts`).
 
 ## Code map
 
@@ -78,7 +78,7 @@ Signup, login, refresh, and logout use **JSON files** under `{NODEX_USER_DATA_DI
 | Types (canonical) | [`src/shared/wpn-v2-types.ts`](../../src/shared/wpn-v2-types.ts) — re-exported from [`src/core/wpn/wpn-types.ts`](../../src/core/wpn/wpn-types.ts) |
 | JSON WPN service | [`src/core/wpn/wpn-json-service.ts`](../../src/core/wpn/wpn-json-service.ts), notes: [`wpn-json-notes.ts`](../../src/core/wpn/wpn-json-notes.ts), settings: [`wpn-json-settings.ts`](../../src/core/wpn/wpn-json-settings.ts) |
 | VFS rewrites after rename | [`src/core/wpn/wpn-rename-vfs-rewrite.ts`](../../src/core/wpn/wpn-rename-vfs-rewrite.ts) |
-| Express routes | [`src/nodex-api-server/wpn-router.ts`](../../src/nodex-api-server/wpn-router.ts), mounted in [`api-router.ts`](../../src/nodex-api-server/api-router.ts) as `/wpn` |
+| Fastify WPN routes | [`apps/nodex-sync-api/src/wpn-routes.ts`](../../apps/nodex-sync-api/src/wpn-routes.ts) |
 | Electron IPC | [`src/main/register-static-ipc-wpn.ts`](../../src/main/register-static-ipc-wpn.ts) (`IPC_CHANNELS.WPN_*`) |
 | Renderer contract | [`nodex-renderer-api.ts`](../../src/shared/nodex-renderer-api.ts) (`wpnListWorkspaces` … `wpnDeleteProject`), [`preload.ts`](../../src/preload.ts), web: [`nodex-web-shim.ts`](../../src/renderer/nodex-web-shim.ts) |
 
@@ -86,19 +86,18 @@ Signup, login, refresh, and logout use **JSON files** under `{NODEX_USER_DATA_DI
 
 | Variable | Purpose |
 |----------|---------|
-| `NODEX_PROJECT_ROOT` | **Required** for headless API: absolute path to the open project folder (`/workspace` in Docker). WPN + legacy routes use the workspace JSON and project `data/` tree. |
-| `NODEX_USER_DATA_DIR` | Headless prefs, session plugins on disk, and **`auth/`** JSON files for `/api/v1/auth/*`. |
-| `NODEX_WPN_DEFAULT_OWNER` | String owner id for WPN rows when unauthenticated (default **`jehu`**). |
-| `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN` | When `1` or `true`, the Next/web bundle uses **relative** `/api/v1/...` (same origin as the page). Use with **nginx gateway** (or Next rewrites via `NODEX_HEADLESS_API_ORIGIN`) so the browser does not need `?api=` / localStorage API base. |
+| `NODEX_PROJECT_ROOT` | **Electron / tooling:** absolute path to the open project folder. Web signed-in mode does not use this for WPN (Mongo is SoT). |
+| `NEXT_PUBLIC_NODEX_SYNC_API_URL` | Web: sync-api base including **`/api/v1`**. |
+| `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN` | When `1` or `true`, the Next/web bundle uses **relative** `/api/v1/...` (same origin as the page). Use with **nginx gateway** so the browser does not need a separate API origin. |
 
 ## Docker / gateway
 
-- **`docker-compose.yml`** — **`nodex-api`** binds `./.nodex-docker-workspace` (or `NODEX_HOST_PROJECT`) to `/workspace`, **`NODEX_WPN_DEFAULT_OWNER`**, optional marketplace mounts. **No Postgres service.**
+- **`docker-compose.yml`** — default stack: **`mongo-sync`**, **`nodex-sync-api`**, **`nodex-web-blue`**, **`nodex-gateway`**.
 - **`nodex-gateway`** — recommended access: UI + **`/api/v1/`** on one origin (e.g. port 8080) so `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1` works without per-browser API configuration.
 
 ## Risks
 
-- **Single-writer JSON** — do not run multiple `nodex-api` replicas against the same mounted project directory.
+- **Single-writer JSON (Electron)** — treat **`nodex-workspace.json`** as one writer per vault directory; do not run two mains against the same folder.
 - **Legacy coexistence** — Legacy `notes` / `legacy` block in the workspace file remains for existing features until the explorer fully switches to WPN APIs everywhere.
 - **Assets** — Binary attachments still need a clear **project-scoped** storage story (out of scope for the first schema slice).
 

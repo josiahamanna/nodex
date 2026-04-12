@@ -48,8 +48,8 @@ Confirm the machine or container that runs the job has:
 
 Compose uses fixed `container_name` values (see [`docker-compose.yml`](../../docker-compose.yml)). Docker allows each name only once per daemon.
 
-- **Stopped leftovers** — [`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh) can remove **stopped** `nodex-gateway`, `nodex-mongo-sync`, `nodex-sync-api`, `nodex-api` (legacy), or web slots when they block a recreate.
-- **Wrong Compose project** — Compose labels each container with `com.docker.compose.project` (default: checkout directory basename, e.g. `nodex-studio`). If the [`Jenkinsfile`](../../Jenkinsfile) sets **`COMPOSE_PROJECT_NAME=nodex`** but old containers still belong to `nodex-studio`, Compose tries to **create** new containers and hits a name conflict. The deploy script **removes** gateway, Mongo, sync-api, legacy API, and web slots whose project label **does not** match the current `COMPOSE_PROJECT_NAME`, then recreates them under the correct project (named volumes such as `nodex-user-data` and `nodex-mongo-sync-data` are unchanged).
+- **Stopped leftovers** — [`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh) can remove **stopped** `nodex-gateway`, `nodex-mongo-sync`, `nodex-sync-api`, or web slots when they block a recreate.
+- **Wrong Compose project** — Compose labels each container with `com.docker.compose.project` (default: checkout directory basename, e.g. `nodex-studio`). If the [`Jenkinsfile`](../../Jenkinsfile) sets **`COMPOSE_PROJECT_NAME=nodex`** but old containers still belong to `nodex-studio`, Compose tries to **create** new containers and hits a name conflict. The deploy script **removes** gateway, Mongo, sync-api, and web slots whose project label **does not** match the current `COMPOSE_PROJECT_NAME`, then recreates them under the correct project (named volumes such as `nodex-mongo-sync-data` are unchanged).
 - **Local dev** — If you do not set `COMPOSE_PROJECT_NAME`, the script defaults it to the repo directory basename, matching Compose’s usual behavior.
 
 ## Why a naive `sh` + hard-coded NVM path fails
@@ -76,7 +76,7 @@ Docker’s **HEALTHCHECK** runs **`docker exec`** into the UI container on a tim
 
 The web image runs `npm ci` inside [`Dockerfile.web`](../../Dockerfile.web). If the build fails with **ECONNRESET** or similar, the Jenkins host or Docker’s network path to the npm registry dropped mid-download — not an application bug.
 
-- Images set **npm fetch retries** (see `Dockerfile.web` / `Dockerfile`) to ride out brief blips.
+- Images set **npm fetch retries** (see `Dockerfile.web` / `Dockerfile.sync-api`) to ride out brief blips.
 - If it keeps failing: check outbound HTTPS from the agent, corporate **proxy** (set `HTTP_PROXY` / `HTTPS_PROXY` as Docker **build args** or daemon config), registry mirrors, or re-run the job.
 
 ## Optional `npm ci`

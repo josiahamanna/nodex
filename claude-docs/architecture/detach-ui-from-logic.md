@@ -323,12 +323,12 @@ At **runtime**, a given process uses **one** path: Electron **or** browser+Node,
 
 To keep **product semantics** aligned across both hosts while supporting **local-first** desktop usage and **hosted** web, define a single persistence boundary (repositories/services) and treat the **workspace JSON file** as the canonical on-disk store for WPN + legacy tree in the current stack:
 
-- **Local / desktop / dev** — **JSON workspace** under `{project}/data/nodex-workspace.json` (single-writer). Offline vaults and headless API both use this file when a project folder is open.
-- **Cloud / multi-user** — **North star**: MongoDB + Fastify sync API (`apps/nodex-sync-api`) and **RxDB** in clients for replication; the legacy Express headless API does not replace that with Postgres.
+- **Local / desktop / dev** — **JSON workspace** under `{project}/data/nodex-workspace.json` (single-writer). Electron uses this file when a project folder is open.
+- **Cloud / multi-user** — **North star**: MongoDB + Fastify sync API (`apps/nodex-sync-api`) and **RxDB** in clients for replication.
 
 Rules of thumb:
 
-- **One API writer per project mount.** Do not run multiple `nodex-api` replicas against the same `NODEX_HOST_PROJECT` / workspace bind.
+- **One writer per JSON vault directory.** Do not run two Electron mains or tools that both persist the same `nodex-workspace.json` without coordination.
 - **Attachments and marketplace** — use object storage (e.g. S3/MinIO) for large artifacts; keep the workspace file for structured notes metadata and content as designed.
 - If a user needs both “local and cloud”, model it as **sync** (explicit conflict + merge policy) via the sync API + RxDB rather than multiple writers on one JSON file.
 
@@ -353,27 +353,16 @@ Implementation notes: shared components stay in **`src/renderer/`** (imported in
 
 ---
 
-## Headless E2E (browser + Node API)
+## Web + sync-api (browser)
 
-Implemented wiring:
-
-- **Server:** `src/nodex-api-server/server.ts` — Express on `PORT` (default **3847**), `HOST` (default **127.0.0.1**). Initializes the workspace with `activateWorkspace` from `NODEX_PROJECT_ROOT` (required) and `NODEX_USER_DATA_DIR` (defaults to `~/.nodex-headless-data`). Note types are fixed to **markdown / text / root** (no Electron plugin loader).
-- **Routes:** `src/nodex-api-server/api-router.ts` — `GET /api/v1/health`, `GET /api/v1/project/state`, notes CRUD/tree actions, `POST /api/v1/undo` / `redo`, and `GET|POST /api/v1/commands/...` (see OpenAPI sketch).
-- **Browser shim:** `src/renderer/nodex-web-shim.ts` — if `window.Nodex` is missing and `window.__NODEX_WEB_API_BASE__` is set, installs an HTTP-backed `Nodex` before React mounts. **`apps/nodex-web/app/client-shell.tsx`** sets that base from the query string when `web=1` and `api=…` are present.
+- **Server:** `apps/nodex-sync-api` — Fastify + Mongo (`npm run sync-api`). See `docs/deploy-nodex-sync.md`.
+- **Browser shim:** `src/renderer/nodex-web-shim.ts` — HTTP to sync-api WPN routes when `NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API=1` and a sync base URL is configured (default in `npm run dev:web`).
 
 **Run locally**
 
-1. Use a **Node version compatible with the repo** (see `package.json` / CI). After changing Node, run **`npm install`**; Electron native addons are rebuilt via root **`postinstall`** (`electron-rebuild`). The headless API uses **`tsx`** and persists to **`nodex-workspace.json`** — no separate SQL native module for workspace data.
-2. Start the API, pointing at an existing project directory:
-
-   `NODEX_PROJECT_ROOT=/path/to/project npm run start:api`
-
-3. Start the Next UI: **`npm run dev:web`** (port **3000**).
-4. Open the app with query params, for example:
-
-   `http://localhost:3000/?web=1&api=http://127.0.0.1:3847`
-
-   (Use the same **`web=1`** and **`api`** base as the headless API port.)
+1. `docker compose --profile local-mongo up -d mongo-sync` (or set `MONGODB_URI`).
+2. `npm run sync-api`
+3. `npm run dev:web` — open `http://127.0.0.1:3000` and sign in.
 
 ---
 

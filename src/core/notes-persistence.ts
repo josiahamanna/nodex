@@ -16,6 +16,7 @@ import {
   initWorkspaceNotesDatabase,
   type WorkspaceStore,
 } from "./workspace-store";
+import { migrateLegacyFlatToWpnInPrimarySlot } from "./wpn/legacy-flat-to-wpn-migrate";
 
 function trySeedBundledDocsAndSave(store: WorkspaceStore | null): void {
   if (!store) {
@@ -98,6 +99,11 @@ export function bootstrapWorkspaceNotes(
   resetNotesStore();
 
   const mainEmpty = store.countLegacyNotesInSlot(0) === 0;
+  const slot0 = store.slots[0]!;
+  const primaryWpnEmpty =
+    slot0.workspaces.length === 0 &&
+    slot0.projects.length === 0 &&
+    slot0.notes.length === 0;
   let allAttachedEmpty = true;
   for (let i = 1; i < roots.length; i++) {
     const st = store.readSerializedFromSlot(i);
@@ -106,7 +112,7 @@ export function bootstrapWorkspaceNotes(
     }
   }
 
-  if (mainEmpty && allAttachedEmpty) {
+  if (mainEmpty && allAttachedEmpty && primaryWpnEmpty) {
     ensureNotesSeeded(registeredTypes, {
       homeMarkdown: store.getHomeWelcomeMarkdown(0),
     });
@@ -117,12 +123,18 @@ export function bootstrapWorkspaceNotes(
   }
 
   if (!store.loadPrimaryLegacyIntoMemory()) {
+    if (primaryWpnEmpty) {
+      resetNotesStore();
+      ensureNotesSeeded(registeredTypes, {
+        homeMarkdown: store.getHomeWelcomeMarkdown(0),
+      });
+      mergeMultipleRootsIfNeeded();
+      store.persist();
+      trySeedBundledDocsAndSave(store);
+      return;
+    }
     resetNotesStore();
-    ensureNotesSeeded(registeredTypes, {
-      homeMarkdown: store.getHomeWelcomeMarkdown(0),
-    });
     mergeMultipleRootsIfNeeded();
-    store.persist();
     trySeedBundledDocsAndSave(store);
     return;
   }
@@ -153,6 +165,19 @@ export function bootstrapWorkspaceNotes(
 
   mergeMultipleRootsIfNeeded();
   trySeedBundledDocsAndSave(store);
+  let legacyFlatMigrated = false;
+  try {
+    legacyFlatMigrated = migrateLegacyFlatToWpnInPrimarySlot(store);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[Nodex] legacy→WPN migration:",
+      e instanceof Error ? e.message : String(e),
+    );
+  }
+  if (!legacyFlatMigrated) {
+    trySeedBundledDocsAndSave(store);
+  }
 }
 
 /**
