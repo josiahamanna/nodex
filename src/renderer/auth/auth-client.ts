@@ -2,6 +2,25 @@ import { getAccessToken, setAccessToken, type AuthUser } from "./auth-session";
 
 type AuthResponse = { token: string; user: AuthUser };
 
+function errorMessageFromBody(status: number, text: string): string {
+  const raw = text.trim();
+  if (!raw) {
+    return `Request failed (${status})`;
+  }
+  if (/<\s*!doctype/i.test(raw) || /<\s*html[\s>]/i.test(raw)) {
+    return `Request failed (${status}): the server returned a web page instead of JSON. For local dev, either run the legacy headless API with Next proxying (set NODEX_HEADLESS_API_ORIGIN or NODEX_HEADLESS_API_ORIGIN_DEV=1), or use nodex-sync-api and sign up with sync mode enabled (NEXT_PUBLIC_NODEX_SYNC_API_URL / sync WPN env).`;
+  }
+  try {
+    const j = JSON.parse(raw) as { error?: string };
+    if (typeof j.error === "string" && j.error.trim()) {
+      return j.error.trim();
+    }
+  } catch {
+    /* plain text */
+  }
+  return raw.length > 500 ? `${raw.slice(0, 500)}…` : raw;
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api/v1${path}`, {
     credentials: "include",
@@ -13,14 +32,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const text = await res.text();
   if (!res.ok) {
-    let msg = `Request failed (${res.status})`;
-    try {
-      const j = JSON.parse(text) as { error?: string };
-      if (typeof j.error === "string" && j.error.trim()) msg = j.error;
-    } catch {
-      if (text.trim()) msg = text.trim();
-    }
-    throw new Error(msg);
+    throw new Error(errorMessageFromBody(res.status, text));
   }
   return (text ? (JSON.parse(text) as T) : (undefined as T));
 }

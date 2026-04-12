@@ -21,7 +21,10 @@ export {
   createWebThinLocalStore,
 } from "./implementations";
 export { createFetchRemoteApi } from "./remote-fetch";
-export { createSyncBaseUrlResolver } from "./resolve-sync-base";
+export {
+  createSyncBaseUrlResolver,
+  normalizeSyncApiBaseUrl,
+} from "./resolve-sync-base";
 export { withSyncRetry } from "./sync-retry";
 export {
   NODEX_SYNC_ACCESS_TOKEN_KEY,

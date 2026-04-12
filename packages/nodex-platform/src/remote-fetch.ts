@@ -14,7 +14,32 @@ function joinUrl(base: string, path: string): string {
 async function readErrorBody(res: Response): Promise<string> {
   try {
     const t = await res.text();
-    return t || res.statusText;
+    const raw = t?.trim() ? t.trim() : res.statusText;
+    if (!raw) {
+      return res.statusText;
+    }
+    try {
+      const j = JSON.parse(raw) as {
+        message?: unknown;
+        error?: unknown;
+        statusCode?: unknown;
+      };
+      const msg =
+        (typeof j.message === "string" && j.message.trim()) ||
+        (typeof j.error === "string" && j.error.trim());
+      if (msg) {
+        const code =
+          typeof j.statusCode === "number"
+            ? ` (${j.statusCode})`
+            : typeof j.statusCode === "string" && j.statusCode
+              ? ` (${j.statusCode})`
+              : "";
+        return `${msg}${code}`;
+      }
+    } catch {
+      /* not JSON */
+    }
+    return raw;
   } catch {
     return res.statusText;
   }

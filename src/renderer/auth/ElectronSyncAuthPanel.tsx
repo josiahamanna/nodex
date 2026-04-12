@@ -61,9 +61,6 @@ export function ElectronSyncAuthPanel({
         unchanged. API base:{" "}
         <span className="font-mono text-[11px] text-foreground/90">{apiBase}</span>
       </p>
-      {auth.error ? (
-        <p className="mt-3 text-[12px] text-destructive">{auth.error}</p>
-      ) : null}
       <div className="mt-5 space-y-3">
         <div className="flex gap-2 text-[11px]">
           <button

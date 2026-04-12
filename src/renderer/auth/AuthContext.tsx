@@ -15,7 +15,11 @@ import {
   type ElectronRunModeChoice,
 } from "./electron-run-mode";
 import { store } from "../store";
-import { cloudLogoutThunk } from "../store/cloudAuthSlice";
+import {
+  cloudLoginThunk,
+  cloudLogoutThunk,
+  cloudRegisterThunk,
+} from "../store/cloudAuthSlice";
 
 const LOCAL_AUTH_USER: AuthUser = {
   id: "local",
@@ -78,6 +82,13 @@ function initialAuthState(): AuthState {
     return { status: "anon", user: null };
   }
   return { status: "loading", user: null };
+}
+
+function webUsesSyncServiceAuth(): boolean {
+  if (typeof window === "undefined" || isElectronUserAgent()) {
+    return false;
+  }
+  return nodexWebBackendSyncOnly() || syncWpnUsesSyncApi();
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }): React.ReactElement {
@@ -171,6 +182,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
   const login = useCallback(
     async (email: string, password: string) => {
+      if (webUsesSyncServiceAuth()) {
+        const result = await store.dispatch(cloudLoginThunk({ email, password }));
+        if (cloudLoginThunk.rejected.match(result)) {
+          throw new Error(result.error.message ?? "Login failed");
+        }
+        const { userId, email: e } = result.payload;
+        await mergeWebScratchCloudNotesAfterAuth(userId);
+        const localPart = e.includes("@") ? e.slice(0, e.indexOf("@")) : e;
+        setState({
+          status: "authed",
+          user: { id: userId, email: e, username: localPart || "user" },
+        });
+        return;
+      }
       const u = await authLogin({ email, password });
       await mergeWebScratchCloudNotesAfterAuth(u.id);
       setState({ status: "authed", user: u });
@@ -180,6 +205,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
   const signup = useCallback(
     async (email: string, username: string, password: string) => {
+      if (webUsesSyncServiceAuth()) {
+        const result = await store.dispatch(cloudRegisterThunk({ email, password }));
+        if (cloudRegisterThunk.rejected.match(result)) {
+          throw new Error(result.error.message ?? "Signup failed");
+        }
+        const { userId, email: e } = result.payload;
+        await mergeWebScratchCloudNotesAfterAuth(userId);
+        const name = username.trim() || (e.includes("@") ? e.slice(0, e.indexOf("@")) : e) || "user";
+        setState({
+          status: "authed",
+          user: { id: userId, email: e, username: name },
+        });
+        return;
+      }
       const u = await authSignup({ email, username, password });
       await mergeWebScratchCloudNotesAfterAuth(u.id);
       setState({ status: "authed", user: u });
@@ -192,7 +231,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     if (isElectronUserAgent()) {
       return;
     }
-    await authLogout();
+    if (webUsesSyncServiceAuth()) {
+      await store.dispatch(cloudLogoutThunk());
+    } else {
+      await authLogout();
+    }
     setState({ status: "anon", user: null });
   }, []);
 
