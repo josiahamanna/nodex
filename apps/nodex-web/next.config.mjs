@@ -1,9 +1,10 @@
 import path from "path";
 import { fileURLToPath } from "url";
-// @next/env is CJS — use default import so `next build` (ESM next.config) works in Docker.
-import nextEnv from "@next/env";
+import { createRequire } from "node:module";
 
-const { loadEnvConfig } = nextEnv.default ?? nextEnv;
+// @next/env is CJS; `createRequire` avoids ESM named/default import mismatches in Docker `next build`.
+const require = createRequire(import.meta.url);
+const { loadEnvConfig } = require("@next/env");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 loadEnvConfig(repoRoot, process.env.NODE_ENV !== "production");
