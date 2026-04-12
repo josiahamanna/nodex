@@ -4,13 +4,22 @@
   "version": "0.0.0",
   "description": "Fastify + MongoDB sync API (proposed-architecture ADR-003/005)",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
+    "build:lib": "tsc -p tsconfig.build.json",
     "dev": "tsx watch src/server.ts",
     "start": "NODE_ENV=production tsx src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/integration-auth-wpn.test.ts src/marked-smoke.test.ts src/repo-bundled-docs-path.test.ts",
     "seed:wpn": "tsx scripts/seed-wpn-demo.ts"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "dependencies": {
     "dotenv": "^16.4.7",
     "@fastify/cors": "^11.0.0",

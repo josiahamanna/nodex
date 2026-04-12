@@ -93,7 +93,7 @@ export async function touchWorkspaceRxDbForVaultKey(vaultKey: string): Promise<b
   });
   await ensureNoStartupErrors(db);
   const desiredCollections: Record<string, { schema: RxJsonSchema<unknown> }> = {
-    workspace_snapshots: { schema: workspaceSnapshotRxSchema },
+    workspace_snapshots: { schema: workspaceSnapshotRxSchema as RxJsonSchema<unknown> },
     ...(LOCAL_WPN_MIRROR_COLLECTIONS as unknown as Record<string, { schema: RxJsonSchema<unknown> }>),
   };
   const toAdd = Object.fromEntries(

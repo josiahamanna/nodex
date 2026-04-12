@@ -1,6 +1,6 @@
 # Deploying `nodex-sync-api` (Mongo WPN + auth)
 
-Signed-in **web** and **Electron cloud windows** use the Fastify service in `apps/nodex-sync-api` as WPN source of truth (`/wpn/*`, `/auth/*`). The legacy **headless Express** stack (`nodex-api` on port 3847) has been **removed** from the repository; use this service or Electron for all supported deployments.
+Signed-in **web** and **Electron cloud windows** use the same HTTP contract for WPN + auth (`/api/v1/wpn/*`, `/api/v1/auth/*`, …). That surface is implemented either by the **standalone Fastify** app in [`apps/nodex-sync-api`](../apps/nodex-sync-api) (Docker / `npm run sync-api`) or by **Next.js Route Handlers** in [`apps/nodex-web`](../apps/nodex-web) (`/api/v1/[[...path]]`, same Fastify app via `app.inject`). The legacy **headless Express** stack has been **removed**; use one of these paths or Electron for all supported deployments.
 
 ## Web + API dev checklist
 
@@ -17,6 +17,24 @@ Use **one env file** at the **repo root**: copy [`.env.example`](../.env.example
 
 See also: [`docs/web-backend-modes.md`](web-backend-modes.md).
 
+## Local dev: three ways to run the API
+
+1. **Standalone Fastify (default for API-focused work)** — `npm run sync-api` on port **4010**; web points at `http://127.0.0.1:4010/api/v1` (or gateway **8080**). Matches [`Dockerfile.sync-api`](../Dockerfile.sync-api).
+2. **Full-stack Next (same as Vercel)** — `npm run dev:web` with **`NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1`** (or `NEXT_PUBLIC_NODEX_SYNC_API_URL=http://127.0.0.1:3000/api/v1`). Requires **`MONGODB_URI`**, **`MONGODB_DB`**, and **`JWT_SECRET`** in repo root `.env` so the Next server can run `ensureMongoConnected()` on `/api/v1/*`. No separate `sync-api` process.
+3. **Vercel CLI parity** — from repo root: `cd apps/nodex-web && vercel dev` (after `vercel link`) to exercise the same routing and env as production.
+
+`npm run build -w @nodex/web` runs **`npm run build:lib -w @nodex/sync-api`** (compiles `apps/nodex-sync-api/dist`) and copies **`docs/bundled-plugin-authoring`** into `apps/nodex-web/bundled-plugin-authoring` for bundled docs routes.
+
+**Electron static export** (`scripts/build-web-static.js`, `NODEX_NEXT_STATIC_EXPORT=1`) temporarily moves `app/api` and `app/health` out of the Next app tree — Route Handlers are incompatible with `output: "export"`; packaged Electron still talks to a **remote** sync base (`NEXT_PUBLIC_NODEX_SYNC_API_URL`).
+
+## Vercel (Next full-stack)
+
+1. Create a Vercel project with **Root Directory** `apps/nodex-web` (monorepo). The included [`apps/nodex-web/vercel.json`](../apps/nodex-web/vercel.json) runs **`npm ci` from the repo root** so workspace packages resolve, then **`npm run build`** in the web app (prebuild compiles sync-api + copies bundled docs).
+2. Set **environment variables** in the Vercel project: `MONGODB_URI`, `MONGODB_DB`, `JWT_SECRET` (≥32 chars), optional `CORS_ORIGIN` (`true` for permissive dev-style CORS). For public browser + packaged Electron, set **`NEXT_PUBLIC_NODEX_SYNC_API_URL`** to `https://<your-deployment>/api/v1` and **`NEXT_PUBLIC_NODEX_SITE_URL`** to `https://<your-deployment>` (see [`.env.example`](../.env.example)).
+3. **`VERCEL=1`** enables shorter Mongo pool sizing inside the driver (`apps/nodex-sync-api` `db.ts`). Optional: `NODEX_SYNC_API_VERBOSE=1` for Fastify request logging on serverless.
+
+`GET /health` is served by Next at the deployment root for probes (same JSON as standalone sync-api).
+
 ## Environment variables
 
 | Variable | Where | Purpose |
@@ -26,8 +44,9 @@ See also: [`docs/web-backend-modes.md`](web-backend-modes.md).
 | `NEXT_PUBLIC_NODEX_WEB_BACKEND` | Web | `sync-only` — disable legacy headless `/api/v1` calls in the shim |
 | `NODEX_SYNC_API_URL` | Electron webpack / Node | Same as above when `window.__NODEX_SYNC_API_BASE__` is unset |
 | `JWT_SECRET` | sync-api (≥32 chars in prod) | Signs access + refresh tokens |
-| `MONGODB_URI` / `MONGODB_DB` | sync-api | Mongo connection (defaults in `server.ts`) |
-| `NODEX_BUNDLED_DOCS_DIR` | sync-api | Optional absolute path to bundled markdown (default: packaged `docs/bundled-plugin-authoring`) |
+| `MONGODB_URI` / `MONGODB_DB` | sync-api **or** Next server (colocated `/api/v1`) | Mongo connection (defaults in `server.ts`; Next route handler calls the same `ensureMongoConnected()`) |
+| `NODEX_BUNDLED_DOCS_DIR` | sync-api / Next | Optional absolute path to bundled markdown (default: packaged `docs/bundled-plugin-authoring`; Next prebuild copies into `apps/nodex-web/bundled-plugin-authoring`) |
+| `NODEX_SYNC_API_SERVERLESS` | sync-api | Set automatically when `VERCEL=1`; lowers Mongo `maxPoolSize` for serverless |
 
 Dev: `resolve-sync-base` falls back to `http://127.0.0.1:4010/api/v1` when `NODE_ENV=development` and nothing else is set.
 

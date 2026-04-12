@@ -1,23 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { buildContentSecurityPolicy } from "../lib/csp";
+import { resolveMetadataBase } from "../lib/metadata-base";
 import "./globals.css";
 import ClientShellLoader from "./client-shell-loader";
 
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
-  "script-src-elem 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: nodex-asset:",
-  "media-src 'self' data: blob: nodex-asset:",
-  "font-src 'self' data:",
-  "connect-src 'self' nodex-pdf-worker: ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:* blob:",
-  "worker-src 'self' blob: nodex-pdf-worker:",
-  "frame-src 'self' nodex-asset: blob: data: about: https://observablehq.com https://*.observablehq.com",
-  "object-src 'self' nodex-asset: blob: data:",
-].join("; ");
+const csp = buildContentSecurityPolicy();
 
 export const metadata: Metadata = {
+  metadataBase: resolveMetadataBase(),
   title: "Nodex",
   description: "Programmable Knowledge System",
   manifest: "/manifest.webmanifest",
@@ -40,8 +31,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta httpEquiv="Content-Security-Policy" content={CSP} />
+        <meta httpEquiv="Content-Security-Policy" content={csp} />
       </head>
       <body className="h-full min-h-0" suppressHydrationWarning>
         <ClientShellLoader>

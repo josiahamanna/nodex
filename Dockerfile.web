@@ -29,6 +29,7 @@ COPY package.json package-lock.json ./
 COPY apps ./apps
 COPY packages ./packages
 COPY src ./src
+COPY docs/bundled-plugin-authoring ./docs/bundled-plugin-authoring
 COPY tsconfig.json ./
 
 RUN npm ci --ignore-scripts \

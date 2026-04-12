@@ -1,4 +1,10 @@
-import { MongoClient, type Collection, type Db, type ObjectId } from "mongodb";
+import {
+  MongoClient,
+  type Collection,
+  type Db,
+  type MongoClientOptions,
+  type ObjectId,
+} from "mongodb";
 
 export type SyncNoteDoc = {
   id: string;
@@ -67,17 +73,52 @@ export type UserPrefsDoc = {
 
 let client: MongoClient | null = null;
 let db: Db | null = null;
+let connectInFlight: Promise<Db> | null = null;
+
+function mongoClientOptions(): MongoClientOptions {
+  const serverless =
+    process.env.VERCEL === "1" || process.env.NODEX_SYNC_API_SERVERLESS === "1";
+  return {
+    maxPoolSize: serverless ? 10 : 100,
+    minPoolSize: serverless ? 0 : undefined,
+    serverSelectionTimeoutMS: 10_000,
+  };
+}
 
 export async function connectMongo(uri: string, dbName: string): Promise<Db> {
   if (db) {
     return db;
   }
-  const c = new MongoClient(uri);
-  await c.connect();
-  client = c;
-  db = c.db(dbName);
-  await ensureIndexes(db);
-  return db;
+  connectInFlight ??= (async () => {
+    const c = new MongoClient(uri, mongoClientOptions());
+    await c.connect();
+    client = c;
+    const database = c.db(dbName);
+    await ensureIndexes(database);
+    db = database;
+    return database;
+  })();
+  try {
+    return await connectInFlight;
+  } finally {
+    connectInFlight = null;
+  }
+}
+
+/**
+ * Idempotent Mongo connect using `MONGODB_URI` / `MONGODB_DB` (or dev defaults).
+ * Safe for serverless: concurrent invocations share one in-flight connect.
+ */
+export async function ensureMongoConnected(): Promise<Db> {
+  const uri =
+    typeof process.env.MONGODB_URI === "string" && process.env.MONGODB_URI.trim()
+      ? process.env.MONGODB_URI.trim()
+      : "mongodb://127.0.0.1:27017";
+  const dbName =
+    typeof process.env.MONGODB_DB === "string" && process.env.MONGODB_DB.trim()
+      ? process.env.MONGODB_DB.trim()
+      : "nodex_sync";
+  return connectMongo(uri, dbName);
 }
 
 async function ensureIndexes(database: Db): Promise<void> {

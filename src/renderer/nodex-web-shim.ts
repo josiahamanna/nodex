@@ -365,7 +365,7 @@ async function webRequest<T>(
 ): Promise<T> {
   if (nodexWebBackendSyncOnly()) {
     throw new Error(
-      "[Nodex] Headless API calls are disabled (NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only). Run nodex-sync-api and use sync routes only.",
+      "[Nodex] Headless API calls are disabled (NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only). Run sync routes: `npm run sync-api` (Fastify on :4010) or serve `/api/v1` from Next with Mongo + JWT (see docs/deploy-nodex-sync.md).",
     );
   }
   const path = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
@@ -412,7 +412,7 @@ async function webRequest<T>(
     }
     const isHtml = /<\s*html[\s>]/i.test(text) || /<\s*!doctype/i.test(text);
     if (isHtml && /cannot\s+post/i.test(msg)) {
-      msg = `${msg.trim()}\n\nThe server has no route for this request. Run nodex-sync-api (\`npm run sync-api\`) with Mongo and use \`NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only\` (see \`npm run dev:web\`).`;
+      msg = `${msg.trim()}\n\nThe server has no route for this request. Use sync WPN: \`npm run sync-api\` + Mongo, or Next colocated \`/api/v1\` with \`NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1\` and Mongo in \`.env\`, and \`NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only\` (see \`npm run dev:web\`, docs/deploy-nodex-sync.md).`;
     }
     throw new Error(msg);
   }
@@ -1302,7 +1302,7 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       generatedAt: "",
       plugins: [],
       indexError:
-        "Start nodex-sync-api (npm run sync-api) and Mongo, sign in, or set NEXT_PUBLIC_NODEX_SYNC_API_URL.",
+        "Start the sync API (`npm run sync-api` or Next `/api/v1` with Mongo + JWT), sign in, or set NEXT_PUBLIC_NODEX_SYNC_API_URL.",
     }),
     installMarketplacePlugin: async () => ({
       success: false,

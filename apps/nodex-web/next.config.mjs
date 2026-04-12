@@ -23,9 +23,22 @@ const envHeadlessOrigin = process.env.NODEX_HEADLESS_API_ORIGIN?.trim().replace(
 /** Optional HTTP proxy target for /api/v1; leave unset for sync-api-only web (default). */
 const headlessApiOrigin = envHeadlessOrigin || "";
 
+const securityHeaders =
+  process.env.VERCEL === "1"
+    ? [
+        {
+          key: "Strict-Transport-Security",
+          value: "max-age=63072000; includeSubDomains; preload",
+        },
+      ]
+    : [];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   ...(staticExport ? { output: "export", assetPrefix: "./" } : {}),
+  /** Precompiled workspace package — keep external to avoid tracing the whole repo via bundled-docs `path` usage. */
+  serverExternalPackages: ["@nodex/sync-api"],
+  poweredByHeader: false,
   /**
    * Electron and some browsers load `http://127.0.0.1:3000` while dev defaults to `localhost`;
    * without this, Next 16 blocks `/_next/*` dev assets and the app can break or show wrong UI.
@@ -33,6 +46,27 @@ const nextConfig = {
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   transpilePackages: ["@nodex/platform", "rxdb", "dexie"],
   images: { unoptimized: true },
+  async headers() {
+    if (staticExport) {
+      return [];
+    }
+    const base = [
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      {
+        key: "Permissions-Policy",
+        value: "camera=(), microphone=(), geolocation=()",
+      },
+      { key: "X-Frame-Options", value: "SAMEORIGIN" },
+      { key: "X-DNS-Prefetch-Control", value: "on" },
+    ];
+    return [
+      {
+        source: "/:path*",
+        headers: [...securityHeaders, ...base],
+      },
+    ];
+  },
   async rewrites() {
     if (staticExport || !headlessApiOrigin) {
       return [];

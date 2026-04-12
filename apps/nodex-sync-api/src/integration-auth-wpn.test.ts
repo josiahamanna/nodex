@@ -2,10 +2,10 @@ import "./load-root-env.js";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { test } from "node:test";
-import Fastify from "fastify";
+import type { FastifyInstance } from "fastify";
 import { NODEX_SYNC_API_V1_PREFIX } from "./api-v1-prefix.js";
+import { buildSyncApiApp } from "./build-app.js";
 import { closeMongo, connectMongo } from "./db.js";
-import { registerRoutes } from "./routes.js";
 
 const jwtSecret = "dev-only-nodex-sync-secret-min-32-chars!!";
 
@@ -26,7 +26,7 @@ test(
   { timeout: 20_000 },
   async (t) => {
     const dbName = `nodex_sync_it_${randomBytes(8).toString("hex")}`;
-    let app: Awaited<ReturnType<typeof Fastify>> | undefined;
+    let app: FastifyInstance | undefined;
 
     const uri = mongoUriForTest();
     try {
@@ -37,17 +37,11 @@ test(
     }
 
     try {
-      app = Fastify({ logger: false });
-      await app.register(
-        async (scoped) => {
-          registerRoutes(scoped, { jwtSecret });
-        },
-        { prefix: NODEX_SYNC_API_V1_PREFIX },
-      );
-      app.get("/health", async (_request, reply) => {
-        return reply.send({ ok: true, service: "nodex-sync-api" });
+      app = await buildSyncApiApp({
+        jwtSecret,
+        corsOrigin: "true",
+        logger: false,
       });
-      await app.ready();
 
       const email = `it-${Date.now()}@nodex-integration.test`;
       const password = "password12345";
