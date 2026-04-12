@@ -19,10 +19,13 @@ export function ElectronSyncAuthPanel({
   initialMode,
   onBack,
   onSignedIn,
+  backLabel = "Back",
 }: {
   initialMode: Mode;
   onBack: () => void;
   onSignedIn: () => void;
+  /** Cloud WPN window uses "Return to home" (exits to Electron welcome). */
+  backLabel?: string;
 }): React.ReactElement {
   const dispatch = useDispatch<AppDispatch>();
   const auth = useSelector((s: RootState) => s.cloudAuth);
@@ -53,7 +56,7 @@ export function ElectronSyncAuthPanel({
           className="text-[12px] text-muted-foreground underline decoration-muted-foreground/50 underline-offset-2 hover:text-foreground"
           onClick={onBack}
         >
-          Back
+          {backLabel}
         </button>
       </div>
       <p className="mt-3 text-[12px] leading-5 text-muted-foreground">

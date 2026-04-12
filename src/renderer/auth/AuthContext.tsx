@@ -7,6 +7,7 @@ import {
   syncWpnUsesSyncApi,
 } from "../nodex-web-shim";
 import { isWebScratchSession } from "./web-scratch";
+import { syncElectronCloudWpnOverlayFromRunMode } from "../bootstrap/electron-cloud-wpn-bootstrap";
 import {
   clearElectronRunMode,
   readElectronRunMode,
@@ -107,6 +108,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     }
   }, [state.status]);
 
+  /** Align main-process vault guards + HTTP WPN overlay with persisted run mode (e.g. cloud on file-argv). */
+  useEffect(() => {
+    if (typeof window === "undefined" || !isElectronUserAgent()) {
+      return;
+    }
+    void (async () => {
+      const { getNodex } = await import("../../shared/nodex-host-access");
+      const nodex = getNodex();
+      if (readElectronRunMode() === "cloud") {
+        await nodex.setElectronWpnBackendForSession("cloud");
+      } else {
+        await nodex.setElectronWpnBackendForSession("file");
+      }
+      syncElectronCloudWpnOverlayFromRunMode();
+    })();
+  }, []);
+
   const refreshSession = useCallback(async () => {
     if (typeof window === "undefined") return;
     if (isElectronUserAgent()) {
@@ -167,19 +185,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
       const { getNodex } = await import("../../shared/nodex-host-access");
       const nodex = getNodex();
-      const winBackend =
-        typeof window !== "undefined" && window.__NODEX_ELECTRON_WPN_BACKEND__ === "cloud"
-          ? "cloud"
-          : "file";
+      const argvCloud =
+        typeof window !== "undefined" && window.__NODEX_ELECTRON_WPN_BACKEND__ === "cloud";
       const wantsCloud = mode === "cloud";
-      if (wantsCloud && winBackend !== "cloud") {
-        await nodex.applyElectronPrimaryWpnBackend({ backend: "cloud", relaunch: true });
+      if (wantsCloud && !argvCloud) {
+        await nodex.setElectronWpnBackendForSession("cloud");
+        syncElectronCloudWpnOverlayFromRunMode();
+        await nodex.applyElectronPrimaryWpnBackend({ backend: "file", relaunch: false });
         return;
       }
-      if (!wantsCloud && winBackend === "cloud") {
-        await nodex.applyElectronPrimaryWpnBackend({ backend: "file", relaunch: true });
+      if (!wantsCloud && argvCloud) {
+        await nodex.openFileWpnWindowCloseSender();
         return;
       }
+      await nodex.setElectronWpnBackendForSession(wantsCloud ? "cloud" : "file");
+      syncElectronCloudWpnOverlayFromRunMode();
       await nodex.applyElectronPrimaryWpnBackend({
         backend: wantsCloud ? "cloud" : "file",
         relaunch: false,
@@ -309,9 +329,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       const { getNodex } = await import("../../shared/nodex-host-access");
       const nodex = getNodex();
       if (typeof window !== "undefined" && window.__NODEX_ELECTRON_WPN_BACKEND__ === "cloud") {
-        await nodex.applyElectronPrimaryWpnBackend({ backend: "file", relaunch: true });
+        await nodex.openFileWpnWindowCloseSender();
         return;
       }
+      await nodex.setElectronWpnBackendForSession("file");
+      syncElectronCloudWpnOverlayFromRunMode();
       await nodex.applyElectronPrimaryWpnBackend({ backend: "file", relaunch: false });
     })();
   }, []);

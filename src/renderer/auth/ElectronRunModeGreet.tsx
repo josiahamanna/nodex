@@ -30,8 +30,8 @@ export function ElectronRunModeGreet({
           <p className="mt-2 max-w-xl text-pretty text-[12px] leading-5 text-muted-foreground">
             <span className="font-medium text-foreground">Scratch</span> is a throwaway session (IndexedDB, no folder on
             disk). <span className="font-medium text-foreground">Local</span> is your private vault on disk (and
-            optional sync from the top bar). <span className="font-medium text-foreground">Cloud</span> matches the web
-            app: workspaces and notes live on your configured sync API (sign in from Sync when prompted).
+            optional sync from the top bar).             <span className="font-medium text-foreground">Cloud</span> matches the web app: workspaces and
+            notes live on your configured sync API. You will be prompted to register or sign in when you enter.
           </p>
         </div>
 
@@ -54,8 +54,8 @@ export function ElectronRunModeGreet({
           <button type="button" className={card} onClick={() => onChoose("cloud")}>
             <span className="text-[13px] font-semibold">Cloud</span>
             <span className="mt-2 text-left text-[12px] leading-5 text-muted-foreground">
-              Same WPN path as the browser: Mongo-backed workspaces via the sync API. Sign in from Sync after you enter
-              the app.
+              Same WPN path as the browser: Mongo-backed workspaces via the sync API. Register or sign in is shown
+              automatically when you open this mode.
             </span>
           </button>
         </div>

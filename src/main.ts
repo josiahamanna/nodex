@@ -1,4 +1,8 @@
 import "./main/ensure-safe-cwd";
+import { loadRepoRootEnvOnce } from "./main/load-repo-root-env";
+
+loadRepoRootEnvOnce();
+
 import * as fs from "fs";
 import * as path from "path";
 import { app, BrowserWindow, protocol } from "electron";

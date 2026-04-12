@@ -1,0 +1,25 @@
+{
+  "name": "@nodex/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "description": "MCP server (stdio) for Nodex WPN over HTTP — cloud sync-api or Electron loopback",
+  "type": "module",
+  "bin": {
+    "nodex-mcp": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/resolve-note.test.ts src/find-wpn.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

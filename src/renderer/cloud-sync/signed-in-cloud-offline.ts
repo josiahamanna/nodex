@@ -4,6 +4,7 @@
  * and durable chrome persistence are blocked (read-only until online).
  */
 import { createSyncBaseUrlResolver } from "@nodex/platform";
+import { isElectronCloudWpnSession } from "../auth/electron-cloud-session";
 import { readCloudSyncToken } from "./cloud-sync-storage";
 
 function syncWpnUsesSyncApiEnv(): boolean {
@@ -14,10 +15,7 @@ function syncWpnUsesSyncApiEnv(): boolean {
   ) {
     return true;
   }
-  if (
-    typeof window !== "undefined" &&
-    window.__NODEX_ELECTRON_WPN_BACKEND__ === "cloud"
-  ) {
+  if (typeof window !== "undefined" && isElectronCloudWpnSession()) {
     return true;
   }
   try {

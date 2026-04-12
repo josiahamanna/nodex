@@ -9,6 +9,7 @@ import type {
 import type { WpnNoteDetail, WpnNoteListItem } from "../shared/wpn-v2-types";
 import { authRefresh } from "./auth/auth-client";
 import { getAccessToken, setAccessToken } from "./auth/auth-session";
+import { readElectronRunMode } from "./auth/electron-run-mode";
 import { isWebScratchSession } from "./auth/web-scratch";
 import {
   readCloudSyncRefreshToken,
@@ -32,6 +33,9 @@ export function syncWpnUsesSyncApi(): boolean {
     return true;
   }
   if (typeof window !== "undefined" && window.__NODEX_ELECTRON_WPN_BACKEND__ === "cloud") {
+    return true;
+  }
+  if (typeof window !== "undefined" && isElectronUserAgent() && readElectronRunMode() === "cloud") {
     return true;
   }
   try {
@@ -1012,6 +1016,18 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       ok: false as const,
       error: "Electron only",
     }),
+    openCloudWpnWindowCloseSender: async () => ({
+      ok: false as const,
+      error: "Electron only",
+    }),
+    openFileWpnWindowCloseSender: async () => ({
+      ok: false as const,
+      error: "Electron only",
+    }),
+    setElectronWpnBackendForSession: async () => ({
+      ok: false as const,
+      error: "Electron only",
+    }),
   };
 
   if (useWebTryoutWpnIndexedDb()) {
@@ -1184,6 +1200,18 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
     quitApp: async () => ({ success: false }),
     reloadWindow: async () => ({ success: false }),
     applyElectronPrimaryWpnBackend: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    openCloudWpnWindowCloseSender: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    openFileWpnWindowCloseSender: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    setElectronWpnBackendForSession: async () => ({
       ok: false as const,
       error: "Not available in plain browser",
     }),

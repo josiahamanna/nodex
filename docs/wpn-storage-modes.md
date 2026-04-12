@@ -29,8 +29,8 @@ This document records **agreed defaults** for open product questions from the Mo
 
 | UX | **File → New cloud WPN window** (`Cmd/Ctrl+Shift+N`) vs **New local window** |
 |----|-------------------------------------------------------------------------------|
-| Backend | Cloud windows use `__NODEX_ELECTRON_WPN_BACKEND__ === "cloud"` and HTTP WPN; local windows use file IPC. |
-| Isolation | Cloud windows **cannot** open a folder project or touch file-vault WPN via IPC (main blocks those IPCs). |
+| Backend | Dedicated argv-cloud windows use `__NODEX_ELECTRON_WPN_BACKEND__ === "cloud"` and HTTP WPN. The primary window usually stays **file** argv; choosing **Cloud** on the welcome screen uses **run mode** `cloud` plus renderer HTTP WPN overlay and main `setWebContentsWpnBackend` so vault IPC stays blocked without opening a second window. |
+| Isolation | Cloud sessions (argv or run mode) **cannot** open a folder project or touch file-vault WPN via IPC (main blocks those IPCs). |
 
 ## Single active session (401 on refresh)
 

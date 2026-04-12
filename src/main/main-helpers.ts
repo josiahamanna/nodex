@@ -15,6 +15,7 @@ import { saveNotesState } from "../core/notes-persistence";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { isSafePluginName } from "../shared/validators";
 import { ctx, getPluginLoader } from "./main-context";
+import { syncWpnLocalHttpBridgeState } from "./wpn-local-http-bridge";
 import { parseAssetIpcPayload } from "./parse-asset-ipc-payload";
 import { relativeAssetPathFromNodexAssetUrl } from "../shared/nodex-asset-path";
 import { NODEX_PDF_WORKER_PROTOCOL_URL } from "../shared/nodex-pdf-worker-url";
@@ -492,12 +493,14 @@ export function applyWorkspaceActivateResult(res: {
     ctx.notesPersistencePath = null;
     ctx.workspaceRoots = [];
     ctx.scratchSession = false;
+    syncWpnLocalHttpBridgeState();
     return;
   }
   ctx.projectRootPath = res.root;
   ctx.notesPersistencePath = res.dbPath;
   ctx.workspaceRoots = res.workspaceRoots;
   ctx.scratchSession = res.scratch === true;
+  syncWpnLocalHttpBridgeState();
 }
 
 export function tryLoadSavedProject(

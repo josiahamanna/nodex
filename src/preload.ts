@@ -100,6 +100,12 @@ const api: NodexRendererApi = {
   reloadWindow: () => ipcRenderer.invoke(IPC_CHANNELS.UI_RELOAD_WINDOW),
   applyElectronPrimaryWpnBackend: (args: { backend: "file" | "cloud"; relaunch: boolean }) =>
     ipcRenderer.invoke(IPC_CHANNELS.ELECTRON_APPLY_PRIMARY_WPN_BACKEND, args),
+  openCloudWpnWindowCloseSender: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.ELECTRON_OPEN_CLOUD_WPN_WINDOW_CLOSE_SENDER),
+  openFileWpnWindowCloseSender: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.ELECTRON_OPEN_FILE_WPN_WINDOW_CLOSE_SENDER),
+  setElectronWpnBackendForSession: (mode: "file" | "cloud") =>
+    ipcRenderer.invoke(IPC_CHANNELS.ELECTRON_SET_WPN_BACKEND_FOR_SENDER, { mode }),
   openExternalUrl: (url: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.UI_OPEN_EXTERNAL_URL, url),
   getUserPluginsDirectory: () =>

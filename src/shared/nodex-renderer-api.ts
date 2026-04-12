@@ -167,6 +167,14 @@ export type NodexRendererApi = {
     backend: "file" | "cloud";
     relaunch: boolean;
   }) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Electron: dedicated cloud WPN window; closes sender after load (no process relaunch). */
+  openCloudWpnWindowCloseSender: () => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Electron: file-backend window (welcome/vault); closes sender after load (no process relaunch). */
+  openFileWpnWindowCloseSender: () => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Electron: sync main-process vault IPC guards with logical cloud vs file session (single-window cloud). */
+  setElectronWpnBackendForSession: (
+    mode: "file" | "cloud",
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Open http(s) or mailto in the system browser (Electron); web shim uses `window.open`. */
   openExternalUrl: (
     url: string,

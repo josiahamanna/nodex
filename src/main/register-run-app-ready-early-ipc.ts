@@ -1,4 +1,4 @@
-import { app, ipcMain, nativeTheme } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
 import {
   clearMainDebugLogBuffer,
   getMainDebugLogBuffer,
@@ -7,9 +7,12 @@ import {
 import type { ClientLogPayload } from "../shared/client-log";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { broadcastNativeThemeToRenderers } from "./main-helpers";
+import { registerElectronWpnWindowHandoffIpc } from "./electron-wpn-window-handoff-ipc";
+import { setWebContentsWpnBackend } from "./electron-wpn-backend";
 import { writePrimaryWpnBackend, type ElectronPrimaryWpnBackend } from "./electron-launch-profile";
 
 export function registerRunAppReadyEarlyIpc(): void {
+  registerElectronWpnWindowHandoffIpc();
   ipcMain.removeHandler(IPC_CHANNELS.ELECTRON_APPLY_PRIMARY_WPN_BACKEND);
   ipcMain.handle(
     IPC_CHANNELS.ELECTRON_APPLY_PRIMARY_WPN_BACKEND,
@@ -26,6 +29,18 @@ export function registerRunAppReadyEarlyIpc(): void {
       return { ok: true as const };
     },
   );
+
+  ipcMain.removeHandler(IPC_CHANNELS.ELECTRON_SET_WPN_BACKEND_FOR_SENDER);
+  ipcMain.handle(IPC_CHANNELS.ELECTRON_SET_WPN_BACKEND_FOR_SENDER, (event, raw: unknown) => {
+    const p = raw as { mode?: string };
+    const mode: "file" | "cloud" = p.mode === "cloud" ? "cloud" : "file";
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) {
+      return { ok: false as const, error: "No sender window" };
+    }
+    setWebContentsWpnBackend(win.webContents, mode);
+    return { ok: true as const };
+  });
 
   ipcMain.removeHandler(IPC_CHANNELS.PLUGIN_IDE_GET_MAIN_DEBUG_LOGS);
   ipcMain.removeHandler(IPC_CHANNELS.PLUGIN_IDE_CLEAR_MAIN_DEBUG_LOGS);

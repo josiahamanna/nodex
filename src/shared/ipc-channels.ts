@@ -157,6 +157,12 @@ export const IPC_CHANNELS = {
   WPN_DUPLICATE_NOTE_SUBTREE: "wpn:duplicate-note-subtree",
   /** Renderer → main: persist first-window WPN backend and optionally relaunch the app. */
   ELECTRON_APPLY_PRIMARY_WPN_BACKEND: "electron:apply-primary-wpn-backend",
+  /** Renderer → main: spawn cloud WPN window, focus it, then close sender (no relaunch). */
+  ELECTRON_OPEN_CLOUD_WPN_WINDOW_CLOSE_SENDER: "electron:open-cloud-wpn-window-close-sender",
+  /** Renderer → main: spawn file-backend window, focus it, then close sender (no relaunch). */
+  ELECTRON_OPEN_FILE_WPN_WINDOW_CLOSE_SENDER: "electron:open-file-wpn-window-close-sender",
+  /** Renderer → main: set this webContents WPN backend for vault IPC guards (single-window cloud session). */
+  ELECTRON_SET_WPN_BACKEND_FOR_SENDER: "electron:set-wpn-backend-for-sender",
   /** Main → renderer: periodic nudge to run HTTP sync (`DesktopHost.onSyncTrigger`). */
   DESKTOP_SYNC_TRIGGER: "desktop:sync-trigger",
   /** Main → renderer: debounced workspace JSON mirror after `WorkspaceStore.persist` (ADR-016). */

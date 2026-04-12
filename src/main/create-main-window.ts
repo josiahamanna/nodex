@@ -208,7 +208,10 @@ export function createMainWindow(): void {
     win.webContents.reload();
   });
 
-  ctx.mainWindow.on("closed", () => {
-    ctx.mainWindow = null;
+  const mainWin = ctx.mainWindow;
+  mainWin.on("closed", () => {
+    if (ctx.mainWindow === mainWin) {
+      ctx.mainWindow = null;
+    }
   });
 }

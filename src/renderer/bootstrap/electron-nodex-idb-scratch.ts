@@ -1,16 +1,10 @@
 import type { NodexRendererApi } from "../../shared/nodex-renderer-api";
 import { setElectronIdbScratchOverlay } from "../../shared/nodex-host-access";
+import { isElectronCloudWpnSession } from "../auth/electron-cloud-session";
 import { webScratchPlainStubOverrides } from "../wpnscratch/web-scratch-nodex-api";
 
 function isElectronRenderer(): boolean {
   return typeof navigator !== "undefined" && navigator.userAgent.includes("Electron");
-}
-
-function isElectronCloudWpnWindow(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.__NODEX_ELECTRON_WPN_BACKEND__ === "cloud"
-  );
 }
 
 /**
@@ -28,7 +22,7 @@ export function installElectronNodexIdbScratchProxy(): void {
   }
 
   const recompute = async (): Promise<void> => {
-    if (isElectronCloudWpnWindow()) {
+    if (isElectronCloudWpnSession()) {
       setElectronIdbScratchOverlay(null);
       return;
     }

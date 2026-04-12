@@ -1,5 +1,6 @@
 import { getNodex } from "../../shared/nodex-host-access";
 import React from "react";
+import { isElectronCloudWpnSession } from "./electron-cloud-session";
 import { isElectronUserAgent } from "../nodex-web-shim";
 
 const btn =
@@ -9,10 +10,7 @@ const btn =
  * Welcome screen only: reload the window. Workbench actions (Close, Sync, Exit session) live on the shell top bar.
  */
 export function ElectronHomeChromeBar(): React.ReactElement {
-  const cloudWpn =
-    isElectronUserAgent() &&
-    typeof window !== "undefined" &&
-    window.__NODEX_ELECTRON_WPN_BACKEND__ === "cloud";
+  const cloudWpn = isElectronUserAgent() && typeof window !== "undefined" && isElectronCloudWpnSession();
   return (
     <div className="pointer-events-auto absolute right-3 top-3 z-30 flex flex-wrap justify-end gap-1 sm:right-4 sm:top-4">
       {cloudWpn ? (

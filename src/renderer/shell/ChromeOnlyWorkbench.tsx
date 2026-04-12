@@ -65,6 +65,7 @@ import {
   SHELL_SIDEBAR_MIN_EXPANDED_PX,
 } from "./shellResponsiveConstants";
 import { useAuth } from "../auth/AuthContext";
+import { isElectronCloudWpnSession } from "../auth/electron-cloud-session";
 import { resetElectronScratchClearData } from "../auth/electron-scratch";
 import {
   exitWebScratchKeepData,
@@ -897,7 +898,8 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 </button>
               </>
             ) : null}
-            {isElectronVaultWorkbench ? (
+            {isElectronVaultWorkbench &&
+            !(isElectronCloudWpnSession() && cloudAuth.status === "signedIn") ? (
               <button
                 type="button"
                 className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
@@ -921,8 +923,18 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
               <button
                 type="button"
                 className="mr-1 rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
-                onClick={() => void dispatch(cloudLogoutThunk())}
-                title="Logout: end sync on this device. Server-side data stays in the cloud."
+                onClick={() => {
+                  if (isElectronCloudWpnSession()) {
+                    auth.exitElectronSessionToWelcome();
+                  } else {
+                    void dispatch(cloudLogoutThunk());
+                  }
+                }}
+                title={
+                  isElectronCloudWpnSession()
+                    ? "Sign out and return to the welcome screen. Your cloud data stays on the server."
+                    : "Logout: end sync on this device. Server-side data stays in the cloud."
+                }
               >
                 Logout
               </button>

@@ -1,11 +1,14 @@
-import React from "react";
+import React, { useEffect } from "react";
+import { useSelector } from "react-redux";
 import { useAuth } from "./AuthContext";
 import { AuthScreen } from "./AuthScreen";
 import { EntryScreen } from "./EntryScreen";
 import { ElectronRunModeGreet } from "./ElectronRunModeGreet";
 import { ElectronSyncAuthPanel } from "./ElectronSyncAuthPanel";
 import { isElectronUserAgent } from "../nodex-web-shim";
+import { isElectronCloudWpnSession } from "./electron-cloud-session";
 import { isWebScratchSession } from "./web-scratch";
+import type { RootState } from "../store";
 
 export function AuthGate({ children }: { children: React.ReactNode }): React.ReactElement {
   const {
@@ -16,7 +19,32 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
     closeWebAuth,
     electronSyncOverlay,
     closeElectronSyncAuth,
+    openElectronSyncAuth,
+    exitElectronSessionToWelcome,
   } = useAuth();
+  const cloudAuth = useSelector((s: RootState) => s.cloudAuth);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isElectronUserAgent()) {
+      return;
+    }
+    if (electronRunMode !== "cloud") {
+      return;
+    }
+    if (cloudAuth.status !== "signedOut" || cloudAuth.busy) {
+      return;
+    }
+    if (electronSyncOverlay !== null) {
+      return;
+    }
+    openElectronSyncAuth("signup");
+  }, [
+    cloudAuth.busy,
+    cloudAuth.status,
+    electronRunMode,
+    electronSyncOverlay,
+    openElectronSyncAuth,
+  ]);
 
   if (typeof window !== "undefined" && isElectronUserAgent()) {
     if (electronRunMode === "unset") {
@@ -30,7 +58,10 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
             <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-background/90 px-4 py-10 backdrop-blur-sm">
               <ElectronSyncAuthPanel
                 initialMode={electronSyncOverlay}
-                onBack={closeElectronSyncAuth}
+                onBack={
+                  isElectronCloudWpnSession() ? exitElectronSessionToWelcome : closeElectronSyncAuth
+                }
+                backLabel={isElectronCloudWpnSession() ? "Return to home" : "Back"}
                 onSignedIn={closeElectronSyncAuth}
               />
             </div>
