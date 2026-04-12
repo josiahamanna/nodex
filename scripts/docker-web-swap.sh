@@ -6,7 +6,7 @@
 # Optional: --stop-old  remove the inactive container after reload (saves RAM; allows image prune).
 #
 # Prerequisites:
-#   - Stack running: nodex-api, nodex-web-blue, nodex-gateway
+#   - Stack running: mongo-sync, nodex-sync-api, nodex-web-blue, nodex-gateway
 #   - For green: docker compose --profile green up -d nodex-web-green (or this script starts it)
 
 set -euo pipefail
@@ -38,7 +38,6 @@ done
 if ! docker container inspect "$GATEWAY" &>/dev/null; then
   echo "Error: container '$GATEWAY' does not exist." >&2
   echo "The swap script reloads nginx inside the gateway; start the full stack first:" >&2
-  echo "  export NODEX_HOST_PROJECT=/absolute/path/to/project" >&2
   echo "  npm run docker:api:up:detached" >&2
   echo "  # or: docker compose up -d" >&2
   exit 1

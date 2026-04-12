@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full stack + zero-downtime UI deploy (API, gateway, web; WPN in mounted project JSON).
+# Full stack + zero-downtime UI deploy (Mongo, sync-api, gateway, web; WPN in Mongo).
 #
 # Usage:
 #   npm run deploy
@@ -8,18 +8,15 @@
 # Bare git server (mirror to GitHub + tag-triggered deploy): deploy/git-server/MIGRATION.md (full steps), SERVER-LAYOUT.md (layout)
 #
 # What it does:
-#   1. Ensures dist/plugins exists (compose bind mount).
-#   2. Ensures ./.nodex-docker-workspace exists (default API workspace bind).
-#   3. Brings up nodex-api, nodex-web-blue, nodex-gateway.
+#   1. Ensures dist/plugins exists (compose bind mount for optional legacy nodex-api profile).
+#   2. Ensures ./.nodex-docker-workspace exists (default bind mount when using --profile legacy).
+#   3. Brings up mongo-sync, nodex-sync-api, nodex-web-blue, nodex-gateway.
 #      Then always runs `compose up --no-deps nodex-gateway` so :8080 is listening after partial stacks.
 #   4. Runs scripts/docker-web-deploy.sh to build the web image, blue/green swap, and prune dangling images.
 #
-# Bundled Documentation (Guides): docs/bundled-plugin-authoring/ is copied into the nodex-api image
-# (Dockerfile) and NODEX_BUNDLED_DOCS_DIR points there. Each deploy rebuilds/restarts the API when
-# sources change; startup runs workspace bootstrap, which upserts those markdown notes into the
-# workspace JSON (`data/nodex-workspace.json`) under the bind mount (default ./.nodex-docker-workspace).
+# Bundled Documentation (Guides): baked into the sync-api image (`NODEX_BUNDLED_DOCS_DIR`).
 #
-# Override URL or password via environment or a .env file in the repo root (compose loads .env).
+# Override URL or secrets via environment or a .env file in the repo root (compose loads .env).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,10 +29,10 @@ export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$REPO_ROOT")}"
 
 export NODEX_WPN_DEFAULT_OWNER="${NODEX_WPN_DEFAULT_OWNER:-jehu}"
 
-if [[ -z "${NODEX_AUTH_JWT_SECRET:-}" ]]; then
-  NODEX_AUTH_JWT_SECRET="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))")"
-  export NODEX_AUTH_JWT_SECRET
-  echo "[nodex] Generated NODEX_AUTH_JWT_SECRET for this deploy (export it to persist sessions across restarts)."
+if [[ -z "${JWT_SECRET:-}" ]]; then
+  JWT_SECRET="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))")"
+  export JWT_SECRET
+  echo "[nodex] Generated JWT_SECRET for sync-api (export it to persist auth across container recreates)."
 fi
 
 mkdir -p dist/plugins
@@ -60,6 +57,8 @@ remove_if_not_this_compose_project() {
 
 clear_foreign_compose_containers() {
   remove_if_not_this_compose_project nodex-gateway
+  remove_if_not_this_compose_project nodex-mongo-sync
+  remove_if_not_this_compose_project nodex-sync-api
   remove_if_not_this_compose_project nodex-api
   remove_if_not_this_compose_project nodex-web-blue
   remove_if_not_this_compose_project nodex-web-green
@@ -70,7 +69,7 @@ clear_foreign_compose_containers
 # Stopped nodex-web-blue / nodex-web-green still hold fixed container_name values; compose then
 # errors with "already in use". Remove only slots that are not serving traffic: always remove if
 # stopped; if running, remove only when not the active upstream in deploy/nginx-active-web.upstream.conf
-# (same source the gateway uses). Running api/gateway are only removed above when their
+# (same source the gateway uses). Running gateway/sync/mongo are only removed above when their
 # compose project differs from COMPOSE_PROJECT_NAME.
 ACTIVE_FILE="${REPO_ROOT}/deploy/nginx-active-web.upstream.conf"
 
@@ -169,7 +168,7 @@ remove_docker_run_web_slot() {
 remove_docker_run_web_slot nodex-web-blue
 remove_docker_run_web_slot nodex-web-green
 
-echo "[nodex] Starting API + web (blue) + gateway..."
+echo "[nodex] Starting mongo-sync + nodex-sync-api + web (blue) + gateway..."
 active_is_docker_run=false
 if [[ -n "$active_line" ]]; then
   active_proj="$(docker container inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$active_line" 2>/dev/null || true)"
@@ -181,10 +180,10 @@ fi
 compose_up() {
   if [[ "$active_is_docker_run" == "true" ]]; then
     # Avoid pulling in nodex-web-blue via depends_on (would conflict with an active docker-run slot).
-    docker compose up -d --build --remove-orphans nodex-api
+    docker compose up -d --build --remove-orphans mongo-sync nodex-sync-api
     docker compose up -d --build --remove-orphans --no-deps nodex-gateway
   else
-    docker compose up -d --build --remove-orphans nodex-api nodex-web-blue nodex-gateway
+    docker compose up -d --build --remove-orphans mongo-sync nodex-sync-api nodex-web-blue nodex-gateway
   fi
 }
 

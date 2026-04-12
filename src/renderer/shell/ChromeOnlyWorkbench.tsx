@@ -47,6 +47,7 @@ import {
   subscribeNoteVfsPathCacheInvalidated,
 } from "./noteIdVfsPathCache";
 import { resolveNoteIdFromVfsPath } from "../utils/resolve-note-vfs-path";
+import type { OpenNoteInShellOptions } from "./openNoteInShell";
 import { applyShellTabFromUrlHash, applyShellWelcomeHash } from "./shellRailNavigation";
 import { useShellNavigation } from "./useShellNavigation";
 import { ShellViewHost } from "./views/ShellViewHost";
@@ -242,7 +243,7 @@ function SortableTabRow({
 
 function applyShellHashVfsNoteTarget(
   tabs: ShellTabsRegistry,
-  openNoteById: (id: string, opts?: { markdownHeadingSlug?: string }) => void,
+  openNoteById: (id: string, opts?: OpenNoteInShellOptions) => void,
   parsed: { vfsPath: string; markdownHeadingSlug?: string },
 ): void {
   const active = tabs.getActiveTab();
@@ -262,7 +263,7 @@ function applyShellHashVfsNoteTarget(
 
 function applyShellHashNoteTarget(
   tabs: ShellTabsRegistry,
-  openNoteById: (id: string, opts?: { markdownHeadingSlug?: string }) => void,
+  openNoteById: (id: string, opts?: OpenNoteInShellOptions) => void,
   parsed: { kind: "note"; noteId: string; markdownHeadingSlug?: string },
 ): void {
   const active = tabs.getActiveTab();

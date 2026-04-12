@@ -369,7 +369,7 @@ The sync engine catches fetch errors per collection, accumulates them, and rethr
 ### `apps/web` / client (sync URL)
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `NEXT_PUBLIC_NODEX_SYNC_API_URL` | No | — | Sync API base (no trailing slash); dev defaults to `http://127.0.0.1:4010` when `NODE_ENV=development` |
+| `NEXT_PUBLIC_NODEX_SYNC_API_URL` | No | — | Sync API base including `/api/v1` (no trailing slash); dev defaults to `http://127.0.0.1:4010/api/v1` when `NODE_ENV=development` |
 | `NODEX_SYNC_API_URL` | No | — | Electron/webpack can inject this at build time |
 
 ### `apps/api/.env` (reference / future consolidated API)
@@ -406,11 +406,11 @@ The sync engine catches fetch errors per collection, accumulates them, and rethr
 # 1. Install all dependencies
 npm install
 
-# 2. MongoDB for sync API (Compose profile `sync`, or any mongo:7 on 27017)
-docker compose --profile sync up -d mongo-sync
+# 2. MongoDB for sync API (default Compose stack, or any mongo:7 on 27017)
+docker compose up -d mongo-sync
 # Copy env: cp apps/nodex-sync-api/.env.example apps/nodex-sync-api/.env  → set JWT_SECRET (≥32 chars in production)
 
-# 3. Fastify sync API (default http://127.0.0.1:4010)
+# 3. Fastify sync API (default http://127.0.0.1:4010/api/v1 for versioned routes; GET /health at root)
 npm run sync-api
 
 # 4. Next.js UI (sync WPN + sync-only shim; Electron loads this in dev)
@@ -421,7 +421,7 @@ npm start                  # after `npm run dev:web` is up
 
 # Legacy headless Express (optional): npx tsx src/nodex-api-server/server.ts — see src/nodex-api-server/README.md
 
-# Client env: NEXT_PUBLIC_NODEX_SYNC_API_URL=http://127.0.0.1:4010 (optional in dev — defaults to :4010 when NODE_ENV=development)
+# Client env: NEXT_PUBLIC_NODEX_SYNC_API_URL=http://127.0.0.1:4010/api/v1 (optional in dev — resolve-sync-base defaults when NODE_ENV=development)
 # Or set window.__NODEX_SYNC_API_BASE__ at runtime.
 # After authLogin / authRegister, call platformDeps.remoteApi.setAuthToken(token) so syncPull/syncPush run.
 ```

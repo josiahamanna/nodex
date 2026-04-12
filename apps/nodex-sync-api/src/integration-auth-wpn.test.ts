@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { test } from "node:test";
 import Fastify from "fastify";
+import { NODEX_SYNC_API_V1_PREFIX } from "./api-v1-prefix.js";
 import { closeMongo, connectMongo } from "./db.js";
 import { registerRoutes } from "./routes.js";
 
@@ -36,7 +37,15 @@ test(
 
     try {
       app = Fastify({ logger: false });
-      registerRoutes(app, { jwtSecret });
+      await app.register(
+        async (scoped) => {
+          registerRoutes(scoped, { jwtSecret });
+        },
+        { prefix: NODEX_SYNC_API_V1_PREFIX },
+      );
+      app.get("/health", async (_request, reply) => {
+        return reply.send({ ok: true, service: "nodex-sync-api" });
+      });
       await app.ready();
 
       const email = `it-${Date.now()}@nodex-integration.test`;
@@ -44,7 +53,7 @@ test(
 
       const reg = await app.inject({
         method: "POST",
-        url: "/auth/register",
+        url: `${NODEX_SYNC_API_V1_PREFIX}/auth/register`,
         payload: { email, password },
       });
       assert.strictEqual(reg.statusCode, 200, reg.body);
@@ -54,7 +63,7 @@ test(
 
       const layout0 = await app.inject({
         method: "GET",
-        url: "/me/shell-layout",
+        url: `${NODEX_SYNC_API_V1_PREFIX}/me/shell-layout`,
         headers: authHeader,
       });
       assert.strictEqual(layout0.statusCode, 200);
@@ -63,7 +72,7 @@ test(
 
       const putLayout = await app.inject({
         method: "PUT",
-        url: "/me/shell-layout",
+        url: `${NODEX_SYNC_API_V1_PREFIX}/me/shell-layout`,
         headers: { ...authHeader, "content-type": "application/json" },
         payload: JSON.stringify({ layout: { panels: ["a"], v: 1 } }),
       });
@@ -71,7 +80,7 @@ test(
 
       const layout1 = await app.inject({
         method: "GET",
-        url: "/me/shell-layout",
+        url: `${NODEX_SYNC_API_V1_PREFIX}/me/shell-layout`,
         headers: authHeader,
       });
       assert.strictEqual(layout1.statusCode, 200);
@@ -82,7 +91,7 @@ test(
 
       const ws = await app.inject({
         method: "POST",
-        url: "/wpn/workspaces",
+        url: `${NODEX_SYNC_API_V1_PREFIX}/wpn/workspaces`,
         headers: { ...authHeader, "content-type": "application/json" },
         payload: JSON.stringify({ name: "IT Workspace" }),
       });
@@ -91,7 +100,7 @@ test(
 
       const proj = await app.inject({
         method: "POST",
-        url: `/wpn/workspaces/${wsId}/projects`,
+        url: `${NODEX_SYNC_API_V1_PREFIX}/wpn/workspaces/${wsId}/projects`,
         headers: { ...authHeader, "content-type": "application/json" },
         payload: JSON.stringify({ name: "IT Project" }),
       });
@@ -100,7 +109,7 @@ test(
 
       const note = await app.inject({
         method: "POST",
-        url: `/wpn/projects/${projectId}/notes`,
+        url: `${NODEX_SYNC_API_V1_PREFIX}/wpn/projects/${projectId}/notes`,
         headers: { ...authHeader, "content-type": "application/json" },
         payload: JSON.stringify({
           type: "markdown",
@@ -115,14 +124,14 @@ test(
 
       const meta = await app.inject({
         method: "GET",
-        url: "/plugins/builtin-renderer-meta?type=markdown",
+        url: `${NODEX_SYNC_API_V1_PREFIX}/plugins/builtin-renderer-meta?type=markdown`,
         headers: authHeader,
       });
       assert.strictEqual(meta.statusCode, 200, meta.body);
 
       const render = await app.inject({
         method: "POST",
-        url: "/plugins/builtin-render",
+        url: `${NODEX_SYNC_API_V1_PREFIX}/plugins/builtin-render`,
         headers: { ...authHeader, "content-type": "application/json" },
         payload: JSON.stringify({
           type: "markdown",

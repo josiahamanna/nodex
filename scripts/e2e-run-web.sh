@@ -85,7 +85,7 @@ if ! curl -sf "http://127.0.0.1:${PORT}/health" >/dev/null; then
   exit 1
 fi
 
-export NEXT_PUBLIC_NODEX_SYNC_API_URL="http://127.0.0.1:${PORT}"
+export NEXT_PUBLIC_NODEX_SYNC_API_URL="http://127.0.0.1:${PORT}/api/v1"
 export NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API=1
 export NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only
 

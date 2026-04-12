@@ -1,53 +1,37 @@
-# Nodex headless API — mount a host project directory into the container.
+# Default stack: Mongo + nodex-sync-api + nodex-web-blue + nodex-gateway (WPN in Mongo).
+# See docs/deploy-nodex-sync.md
 #
-# MongoDB + Fastify sync API (cloud WPN / auth): see docs/deploy-nodex-sync.md
-#   docker compose --profile sync up -d mongo-sync
-#   npm run sync-api   # host: http://127.0.0.1:4010 (not in this compose file by default)
-# Web/Electron cloud: set NEXT_PUBLIC_NODEX_SYNC_API_URL (and optional nginx /backend/sync/ proxy).
-#
-# Usage — set NODEX_HOST_PROJECT to your vault (Compose does not expand $HOME in .env files):
-#   export NODEX_HOST_PROJECT="$HOME/Documents/my-vault"   # shell expands $HOME → absolute path
+# Usage (gateway on host port NODEX_GATEWAY_PORT, default 8080):
 #   npm run docker:api:up
 #
-# If unset, Compose uses ./.nodex-docker-workspace (created as needed).
+# Optional: legacy headless Express (JSON workspace on bind mount, port 3847):
+#   docker compose --profile legacy up -d nodex-api
+#   Set NODEX_HOST_PROJECT to your vault (Compose does not expand $HOME in .env files):
+#     export NODEX_HOST_PROJECT="$HOME/Documents/my-vault"
 #
-# Same-origin browser UI: use nodex-gateway (e.g. :8080) so the browser calls /api/v1 on the gateway
-# (proxied to nodex-api). For Next alone, set NODEX_HEADLESS_API_ORIGIN at build/runtime, or build
-# nodex-web with NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1 when the app is only served behind that proxy.
+# If unset for legacy, Compose uses ./.nodex-docker-workspace (created as needed).
 #
-# Or use an absolute path directly:
-#   NODEX_HOST_PROJECT=/home/you/Documents/my-vault npm run docker:api:up
-#
-# Build image only: npm run docker:api:build
+# Build image only (legacy API): npm run docker:api:build
 # Detached:        npm run docker:api:up:detached
 # Stop:            npm run docker:api:down
-# Follow logs:     npm run docker:logs  (all compose services; add e.g. nodex-api to filter)
+# Follow logs:     npm run docker:logs
 #
-# Unified gateway (nginx on host port NODEX_GATEWAY_PORT, default 8080 for Cloudflare Tunnel):
-#   Point cloudflared to http://127.0.0.1:8080 (see deploy/ZERO-DOWNTIME.md).
+# Unified gateway (nginx, default 8080 — see deploy/ZERO-DOWNTIME.md):
 #   - / → Next UI (active nodex-web-blue or nodex-web-green)
-#   - /backend/api/ → /api/v1/
-#   - /backend/market/ → /marketplace/files/
-#   - /api/v1/ and /marketplace/files/ are also proxied for compatibility
+#   - /api/v1/* → nodex-sync-api:4010; GET /health → sync-api root probe
 #
-# API-only (no nginx): docker compose up nodex-api
-#
-# Direct API (bypass gateway): http://127.0.0.1:3847/api/v1/health
-# If 3847 is already in use: NODEX_API_PORT=3848 npm run docker:api:up
+# Direct sync-api (bypass gateway): http://127.0.0.1:4010/health and http://127.0.0.1:4010/api/v1/…
+# Legacy headless (profile legacy): http://127.0.0.1:3847/api/v1/health
 #
 # Single-writer JSON workspace: do not run multiple nodex-api replicas against the same NODEX_HOST_PROJECT mount.
-# Blue/green applies to nodex-web only; a single nodex-api serves both.
+# Blue/green applies to nodex-web only.
 #
-# Zero-downtime UI deploy: deploy/ZERO-DOWNTIME.md and scripts/docker-web-swap.sh
-#
-# Full stack (API + gateway + UI) in one step:
+# Full stack + UI deploy:
 #   npm run deploy
-#   Open http://127.0.0.1:8080 — WPN workspaces/notes persist in the mounted project JSON workspace.
+#   Open http://127.0.0.1:8080 — WPN data in Mongo (compose service mongo-sync).
 
 services:
-  # MongoDB for Fastify sync API (ADR-003). Enable: docker compose --profile sync up -d mongo-sync
   mongo-sync:
-    profiles: ["sync"]
     image: mongo:7
     container_name: nodex-mongo-sync
     restart: unless-stopped
@@ -56,9 +40,7 @@ services:
     volumes:
       - nodex-mongo-sync-data:/data
 
-  # Fastify + Mongo (web / cloud WPN). Build: docker compose --profile sync build nodex-sync-api
   nodex-sync-api:
-    profiles: ["sync"]
     build:
       context: .
       dockerfile: Dockerfile.sync-api
@@ -77,13 +59,28 @@ services:
     depends_on:
       mongo-sync:
         condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:4010/health',(r)=>{r.resume();r.on('end',()=>process.exit(r.statusCode===200?0:1));}).on('error',()=>process.exit(1));",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
 
   nodex-web-blue:
     build:
       context: .
       dockerfile: Dockerfile.web
       args:
-        NEXT_PUBLIC_NODEX_API_SAME_ORIGIN: ${NEXT_PUBLIC_NODEX_API_SAME_ORIGIN:-1}
+        NEXT_PUBLIC_NODEX_API_SAME_ORIGIN: ${NEXT_PUBLIC_NODEX_API_SAME_ORIGIN:-0}
+        NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API: ${NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API:-1}
+        NEXT_PUBLIC_NODEX_WEB_BACKEND: ${NEXT_PUBLIC_NODEX_WEB_BACKEND:-sync-only}
+        NEXT_PUBLIC_NODEX_SYNC_API_URL: ${NEXT_PUBLIC_NODEX_SYNC_API_URL:-http://127.0.0.1:8080/api/v1}
     image: nodex-web:local
     container_name: nodex-web-blue
     restart: unless-stopped
@@ -108,7 +105,10 @@ services:
       context: .
       dockerfile: Dockerfile.web
       args:
-        NEXT_PUBLIC_NODEX_API_SAME_ORIGIN: ${NEXT_PUBLIC_NODEX_API_SAME_ORIGIN:-1}
+        NEXT_PUBLIC_NODEX_API_SAME_ORIGIN: ${NEXT_PUBLIC_NODEX_API_SAME_ORIGIN:-0}
+        NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API: ${NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API:-1}
+        NEXT_PUBLIC_NODEX_WEB_BACKEND: ${NEXT_PUBLIC_NODEX_WEB_BACKEND:-sync-only}
+        NEXT_PUBLIC_NODEX_SYNC_API_URL: ${NEXT_PUBLIC_NODEX_SYNC_API_URL:-http://127.0.0.1:8080/api/v1}
     image: nodex-web:local
     container_name: nodex-web-green
     restart: unless-stopped
@@ -128,6 +128,7 @@ services:
       start_period: 60s
 
   nodex-api:
+    profiles: ["legacy"]
     build:
       context: .
       dockerfile: Dockerfile
@@ -191,7 +192,9 @@ services:
         target: /etc/nginx/active-web.upstream.conf
         read_only: false
     depends_on:
-      nodex-api:
+      mongo-sync:
+        condition: service_started
+      nodex-sync-api:
         condition: service_healthy
       nodex-web-blue:
         condition: service_healthy

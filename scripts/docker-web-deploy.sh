@@ -16,7 +16,7 @@
 #
 # Notes:
 #   - This is zero-downtime for the UI tier: old stays live until new is healthy.
-#   - It does not attempt blue/green for nodex-api (shared JSON workspace mount is not replica-safe).
+#   - It does not attempt blue/green for nodex-sync-api (single replica; scale-out is not supported here).
 #   - After a successful switch, `docker image prune -f` removes untagged parents from rebuilds.
 #   - With --stop-old, the inactive container is removed (not only stopped) so old image layers can be pruned.
 
@@ -47,8 +47,8 @@ fi
 if ! docker container inspect "$GATEWAY" &>/dev/null; then
   echo "Error: container '$GATEWAY' does not exist." >&2
   echo "Start the stack first:" >&2
-  echo "  npm run deploy                    # Postgres WPN + API + gateway + UI" >&2
-  echo "  npm run docker:api:up:detached   # compose only (set NODEX_HOST_PROJECT if needed)" >&2
+  echo "  npm run deploy                    # Mongo + sync-api + gateway + UI" >&2
+  echo "  npm run docker:api:up:detached   # compose only (set NODEX_HOST_PROJECT if using --profile legacy)" >&2
   exit 1
 fi
 
@@ -129,8 +129,7 @@ for _ in $(seq 1 90); do
     sleep 2
     continue
   fi
-  # Probes 127.0.0.1 from inside the web container. HTTP from nodex-api to the container hostname
-  # often fails (embedded DNS / IPv6) even when Next is bound to 0.0.0.0:3000.
+  # Probes 127.0.0.1 from inside the web container (avoids embedded DNS / IPv6 quirks vs container hostname).
   if docker exec "$target_container" node -e 'const http=require("http");const r=http.get("http://127.0.0.1:3000/",(res)=>{res.resume();res.on("end",()=>process.exit(res.statusCode>=200&&res.statusCode<500?0:1));});r.on("error",()=>process.exit(1));r.setTimeout(8000,()=>{r.destroy();process.exit(1);});' &>/dev/null; then
     healthy=true
     break

@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { NODEX_SYNC_API_V1_PREFIX } from "./api-v1-prefix.js";
 import { connectMongo, closeMongo } from "./db.js";
 import { registerRoutes } from "./routes.js";
 
@@ -38,7 +39,7 @@ await app.register(cors, {
       ? true
       : corsOrigin.split(",").map((o) => o.trim()),
   credentials: true,
-  /** Required for browser PUT/PATCH to `/me/shell-layout`, `/wpn/*`, etc. from Next (e.g. localhost:3000 → 127.0.0.1:4010). */
+  /** Required for browser calls to `/api/v1/*` (e.g. Next on :3000 → sync-api on :4010). */
   methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
@@ -49,7 +50,18 @@ await app.register(cors, {
 });
 
 await connectMongo(mongoUri, mongoDb);
-registerRoutes(app, { jwtSecret });
+
+await app.register(
+  async (scoped) => {
+    registerRoutes(scoped, { jwtSecret });
+  },
+  { prefix: NODEX_SYNC_API_V1_PREFIX },
+);
+
+/** Liveness/readiness outside versioned API (Docker healthcheck, simple probes). */
+app.get("/health", async (_request, reply) => {
+  return reply.send({ ok: true, service: "nodex-sync-api" });
+});
 
 const close = async (): Promise<void> => {
   await app.close();

@@ -3,21 +3,14 @@ import { useNodexContributionRegistry } from "./NodexContributionContext";
 import { useShellLayoutStore } from "./layout/ShellLayoutContext";
 import { useShellRegistries } from "./registries/ShellRegistriesContext";
 import { useShellViewRegistry } from "./views/ShellViewContext";
-import { openNoteInShell } from "./openNoteInShell";
+import { openNoteInShell, type OpenNoteInShellOptions } from "./openNoteInShell";
 import { runShellMenuRailAction, type ShellNavigationDeps } from "./shellRailNavigation";
 import type { ShellMenuRailItem } from "./registries/ShellMenuRailRegistry";
 
 export function useShellNavigation(): {
   deps: ShellNavigationDeps;
   openFromRailItem: (item: ShellMenuRailItem) => void;
-  openNoteById: (
-    noteId: string,
-    opts?: {
-      markdownHeadingSlug?: string;
-      newTab?: boolean;
-      canonicalVfsPath?: string;
-    },
-  ) => void;
+  openNoteById: (noteId: string, opts?: OpenNoteInShellOptions) => void;
   invokeCommand: (commandId: string, args?: Record<string, unknown>) => unknown;
 } {
   const regs = useShellRegistries();
@@ -44,10 +37,7 @@ export function useShellNavigation(): {
   );
 
   const openNoteById = useCallback(
-    (
-      noteId: string,
-      opts?: { markdownHeadingSlug?: string; newTab?: boolean },
-    ) => {
+    (noteId: string, opts?: OpenNoteInShellOptions) => {
       openNoteInShell(noteId, deps, opts);
     },
     [deps],

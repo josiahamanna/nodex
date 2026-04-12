@@ -1,7 +1,7 @@
 // Release deploy: checkout → optional npm ci → full or targeted Docker deploy.
 // Prerequisites: deploy/jenkins/README.md (Docker, Node 22 or NVM, bash).
 //
-// FULL_DEPLOY runs scripts/docker-full-deploy.sh (API + gateway + web blue/green).
+// FULL_DEPLOY runs scripts/docker-full-deploy.sh (mongo-sync + sync-api + gateway + web blue/green).
 // Targeted stages run in order: API → gateway → web (deploy:web-only).
 // Cold / first-time: prefer FULL_DEPLOY, or enable all targets. Gateway-only can fail if
 // deploy/nginx-active-web.upstream.conf points at a missing web container (see deploy/jenkins/README.md).
@@ -22,12 +22,12 @@ pipeline {
         booleanParam(
             name: 'DEPLOY_API',
             defaultValue: false,
-            description: 'Rebuild/restart nodex-api'
+            description: 'Rebuild/restart mongo-sync + nodex-sync-api'
         )
         booleanParam(
             name: 'DEPLOY_GATEWAY',
             defaultValue: false,
-            description: 'Rebuild/restart nodex-gateway (--no-deps). Requires API + web upstream resolvable (see nginx-active-web.upstream.conf)'
+            description: 'Rebuild/restart nodex-gateway (--no-deps). Requires sync-api + web upstream resolvable (see nginx-active-web.upstream.conf)'
         )
         booleanParam(
             name: 'DEPLOY_WEB',
@@ -46,7 +46,8 @@ pipeline {
         // when Jenkins WORKSPACE basename differs between jobs or multibranch branches.
         COMPOSE_PROJECT_NAME = 'nodex'
         // Uncomment after creating credentials (see deploy/jenkins/README.md):
-        // NODEX_AUTH_JWT_SECRET = credentials('nodex-auth-jwt-secret')
+        // JWT_SECRET = credentials('nodex-jwt-secret')
+        // Legacy headless only: NODEX_AUTH_JWT_SECRET = credentials('nodex-auth-jwt-secret')
     }
 
     stages {
@@ -98,7 +99,7 @@ pipeline {
             steps {
                 sh '''#!/usr/bin/env bash
 set -euo pipefail
-docker compose up -d --build --remove-orphans nodex-api
+docker compose up -d --build --remove-orphans mongo-sync nodex-sync-api
 '''
             }
         }

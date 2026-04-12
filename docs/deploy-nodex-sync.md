@@ -4,8 +4,8 @@ Signed-in **web** and **Electron cloud windows** use the Fastify service in `app
 
 ## Web + API dev checklist
 
-1. Start Mongo: `docker compose --profile sync up -d mongo-sync`
-2. Start API: `npm run sync-api` (or run both API + DB: `docker compose --profile sync up -d mongo-sync nodex-sync-api`)
+1. Start Mongo: `docker compose up -d mongo-sync` (or use the full default stack below)
+2. Start API: `npm run sync-api` (or: `docker compose up -d mongo-sync nodex-sync-api`)
 3. Start web: `npm run dev:web` (sets `NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API=1` and `NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only`)
 4. Register / sign in via the app (tokens required for WPN mutations, `/me/shell-layout`, builtin plugin render)
 5. Bundled Documentation: served anonymously from sync-api at `GET /public/bundled-docs/notes/:id` when `docs/bundled-plugin-authoring` is present in the image or `NODEX_BUNDLED_DOCS_DIR` is set
@@ -19,7 +19,7 @@ See also: [`docs/web-backend-modes.md`](web-backend-modes.md).
 
 | Variable | Where | Purpose |
 |----------|--------|---------|
-| `NEXT_PUBLIC_NODEX_SYNC_API_URL` | Web build / runtime | Public sync base URL (no trailing slash), e.g. `https://api.example.com` |
+| `NEXT_PUBLIC_NODEX_SYNC_API_URL` | Web build / runtime | Public sync base URL including `/api/v1` (no trailing slash), e.g. `https://api.example.com/api/v1` |
 | `NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API` | Web (optional) | Set `1` to force sync WPN routing when no URL is baked in |
 | `NEXT_PUBLIC_NODEX_WEB_BACKEND` | Web | `sync-only` — disable legacy headless `/api/v1` calls in the shim |
 | `NODEX_SYNC_API_URL` | Electron webpack / Node | Same as above when `window.__NODEX_SYNC_API_BASE__` is unset |
@@ -27,28 +27,37 @@ See also: [`docs/web-backend-modes.md`](web-backend-modes.md).
 | `MONGODB_URI` / `MONGODB_DB` | sync-api | Mongo connection (defaults in `server.ts`) |
 | `NODEX_BUNDLED_DOCS_DIR` | sync-api | Optional absolute path to bundled markdown (default: packaged `docs/bundled-plugin-authoring`) |
 
-Dev: `resolve-sync-base` falls back to `http://127.0.0.1:4010` when `NODE_ENV=development` and nothing else is set.
+Dev: `resolve-sync-base` falls back to `http://127.0.0.1:4010/api/v1` when `NODE_ENV=development` and nothing else is set.
 
-## Docker Compose (`profile: sync`)
+## Docker Compose (default stack)
 
-Mongo + sync-api (API image: [`Dockerfile.sync-api`](../Dockerfile.sync-api)):
+Mongo + sync-api + web + gateway (API image: [`Dockerfile.sync-api`](../Dockerfile.sync-api)):
 
 ```bash
-docker compose --profile sync up -d mongo-sync nodex-sync-api
+npm run docker:api:up:detached
+# or: docker compose up -d mongo-sync nodex-sync-api nodex-web-blue nodex-gateway
+```
+
+Mongo + sync-api only:
+
+```bash
+docker compose up -d mongo-sync nodex-sync-api
 ```
 
 Run the API on the host only (Mongo in Docker):
 
 ```bash
-docker compose --profile sync up -d mongo-sync
+docker compose up -d mongo-sync
 npm run sync-api
 ```
 
-Legacy headless Express (`Dockerfile` on port 3847) remains available for exceptional single-folder workflows; it is no longer the default web backend.
+Legacy headless Express (`Dockerfile` on port 3847) is opt-in: `docker compose --profile legacy up -d nodex-api`. It is not part of the default gateway stack.
 
 ## Nginx gateway (optional same-origin path)
 
-If the browser must call sync-api **same-origin** (avoid CORS), add an upstream and location, e.g. proxy `/backend/sync/` → sync-api root so `/backend/sync/auth/login` → `/auth/login`.
+The default Docker **`nodex-gateway`** ([`deploy/nginx-gateway.conf`](../deploy/nginx-gateway.conf)) proxies **`GET /health`** to sync-api’s root probe and **`/api/v1/`** to **`nodex-sync-api`**. Build the web image with **`NEXT_PUBLIC_NODEX_SYNC_API_URL`** including **`/api/v1`** (default in Compose: `http://127.0.0.1:8080/api/v1`).
+
+For a **custom** path prefix (e.g. `/backend/sync/` → sync-api `/api/v1/`), add an upstream and `rewrite`/`proxy_pass` rules so browser-visible paths map to `/api/v1/...` on Fastify.
 
 Example fragment (adjust host/port or Docker DNS name):
 

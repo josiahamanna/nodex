@@ -28,12 +28,12 @@ To **start the stack on machine boot** (after a cold stop), use a oneshot unit t
 1. Run **`npm run deploy`** at least once on the server so images exist (`docker-stack-boot.sh` uses `--no-build`).
 2. Copy [nodex-docker-stack.service.example](nodex-docker-stack.service.example) to `/etc/systemd/system/nodex-docker-stack.service`.
 3. Edit `WorkingDirectory=` and `ExecStart=` to your **absolute** checkout path (both must match).
-4. Set **`NODEX_AUTH_JWT_SECRET`** in the repo `.env` or via `EnvironmentFile=` on the unit so logins survive container recreates (the full deploy script can generate one; this boot script does not).
+4. Set **`JWT_SECRET`** in the repo `.env` or via `EnvironmentFile=` on the unit so sync-api auth survives container recreates (the full deploy script can generate one; this boot script does not).
 5. `sudo systemctl daemon-reload && sudo systemctl enable --now nodex-docker-stack`
 
 **Suggested order:** `docker.service` → `nodex-docker-stack` → `cloudflared` (tunnel). The stack unit `Requires=docker.service`.
 
-**Stack layout:** `docker-stack-boot.sh` runs `docker compose up` for **nodex-api**, **nodex-web-blue**, and **nodex-gateway** (see [../ZERO-DOWNTIME.md](../ZERO-DOWNTIME.md)). WPN data lives in the mounted project directory (`data/nodex-workspace.json`). Hosts that keep **only green** as the live UI with blue stopped may need a custom compose invocation; the default gateway service depends on `nodex-web-blue`.
+**Stack layout:** `docker-stack-boot.sh` runs `docker compose up` for **mongo-sync**, **nodex-sync-api**, **nodex-web-blue**, and **nodex-gateway** (see [../ZERO-DOWNTIME.md](../ZERO-DOWNTIME.md)). WPN data lives in **Mongo** (compose service `mongo-sync`). Hosts that keep **only green** as the live UI with blue stopped may need a custom compose invocation; the default gateway service depends on `nodex-web-blue`.
 
 ## SSH
 

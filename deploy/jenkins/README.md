@@ -27,7 +27,7 @@ The root [`Jenkinsfile`](../../Jenkinsfile) defaults to **`FULL_DEPLOY`**: `npm 
      - service: http_status:404
    ```
 
-   Same-origin `/api/v1` through the browser depends on this: the UI is built with `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1` and expects the **hostname** users open to match the gateway (see [`deploy/ZERO-DOWNTIME.md`](../ZERO-DOWNTIME.md)).
+   The web image bakes **`NEXT_PUBLIC_NODEX_SYNC_API_URL`** (default `http://127.0.0.1:8080`) so the browser hits the **same origin** as the gateway for sync-api routes (see [`deploy/ZERO-DOWNTIME.md`](../ZERO-DOWNTIME.md)). Override at build time if the public URL differs.
 
 4. **Run as a service** so it survives reboot — copy and edit [`deploy/systemd/cloudflared.service.example`](../systemd/cloudflared.service.example), then `sudo systemctl enable --now cloudflared`. Set `User=` to the account that owns `~/.cloudflared` (often `root` or a dedicated user; the `jenkins` user is only needed if credentials live in its home).
 
@@ -48,8 +48,8 @@ Confirm the machine or container that runs the job has:
 
 Compose uses fixed `container_name` values (see [`docker-compose.yml`](../../docker-compose.yml)). Docker allows each name only once per daemon.
 
-- **Stopped leftovers** — [`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh) can remove **stopped** `nodex-gateway`, `nodex-api`, or web slots when they block a recreate.
-- **Wrong Compose project** — Compose labels each container with `com.docker.compose.project` (default: checkout directory basename, e.g. `nodex-studio`). If the [`Jenkinsfile`](../../Jenkinsfile) sets **`COMPOSE_PROJECT_NAME=nodex`** but old containers still belong to `nodex-studio`, Compose tries to **create** new containers and hits a name conflict. The deploy script **removes** gateway, API, and web slots whose project label **does not** match the current `COMPOSE_PROJECT_NAME`, then recreates them under the correct project (named volumes such as `nodex-user-data` are unchanged).
+- **Stopped leftovers** — [`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh) can remove **stopped** `nodex-gateway`, `nodex-mongo-sync`, `nodex-sync-api`, `nodex-api` (legacy), or web slots when they block a recreate.
+- **Wrong Compose project** — Compose labels each container with `com.docker.compose.project` (default: checkout directory basename, e.g. `nodex-studio`). If the [`Jenkinsfile`](../../Jenkinsfile) sets **`COMPOSE_PROJECT_NAME=nodex`** but old containers still belong to `nodex-studio`, Compose tries to **create** new containers and hits a name conflict. The deploy script **removes** gateway, Mongo, sync-api, legacy API, and web slots whose project label **does not** match the current `COMPOSE_PROJECT_NAME`, then recreates them under the correct project (named volumes such as `nodex-user-data` and `nodex-mongo-sync-data` are unchanged).
 - **Local dev** — If you do not set `COMPOSE_PROJECT_NAME`, the script defaults it to the repo directory basename, matching Compose’s usual behavior.
 
 ## Why a naive `sh` + hard-coded NVM path fails
@@ -59,10 +59,10 @@ Compose uses fixed `container_name` values (see [`docker-compose.yml`](../../doc
 
 ## Secrets and environment variables
 
-[`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh) generates a random **`NODEX_AUTH_JWT_SECRET`** when unset, which **invalidates existing sessions** on each deploy. For production, bind a stable secret in Jenkins:
+[`scripts/docker-full-deploy.sh`](../../scripts/docker-full-deploy.sh) generates a random **`JWT_SECRET`** for sync-api when unset, which **invalidates existing auth tokens** on each deploy. For production, bind a stable secret in Jenkins:
 
-1. Add a **Secret text** credential (for example ID `nodex-auth-jwt-secret`).
-2. In the `Jenkinsfile`, uncomment the `NODEX_*` credential lines inside `environment { }` and match the credential IDs to what you created.
+1. Add a **Secret text** credential (for example ID `nodex-jwt-secret`).
+2. In the `Jenkinsfile`, map it to **`JWT_SECRET`** in `environment { }` (or inject via Credentials binding).
 
 Optional overrides (same as local deploy): `NODEX_WPN_DEFAULT_OWNER`, `NODEX_HOST_PROJECT`, `NODEX_GATEWAY_PORT`, etc. Set them on the job or via an **Inject environment variables** / **Credentials** binding.
 

@@ -11,7 +11,7 @@ The browser shell uses `window.Nodex` from [`src/renderer/nodex-web-shim.ts`](..
 
 | Variable | Where | Purpose |
 |----------|--------|---------|
-| `NEXT_PUBLIC_NODEX_SYNC_API_URL` | Web build | Public sync API origin (no trailing slash), e.g. `http://127.0.0.1:4010` |
+| `NEXT_PUBLIC_NODEX_SYNC_API_URL` | Web build | Public sync API base (no trailing slash), including `/api/v1`, e.g. `http://127.0.0.1:4010/api/v1` or `http://127.0.0.1:8080/api/v1` behind the default Docker gateway |
 | `NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API` | Web | Set `1` to route WPN to sync-api (required for Mongo WPN in the browser). |
 | `NEXT_PUBLIC_NODEX_WEB_BACKEND` | Web | `sync-only` — block legacy headless `webRequest` calls; use sync-api routes only. |
 | `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN` | Web | `1` — use relative `/api/v1` (only if you still run a gateway proxy to Express). |
@@ -23,7 +23,7 @@ The browser shell uses `window.Nodex` from [`src/renderer/nodex-web-shim.ts`](..
 
 ## Running local dev
 
-1. Mongo: `docker compose --profile sync up -d mongo-sync`
+1. Mongo: `docker compose up -d mongo-sync`
 2. API: `npm run sync-api`
 3. Web: `npm run dev:web` (sets sync WPN + `sync-only` for you)
 

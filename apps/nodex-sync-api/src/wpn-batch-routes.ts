@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { syncApiV1Path } from "./api-v1-prefix.js";
 import { requireAuth } from "./auth.js";
 
 const batchOpSchema = z.object({
@@ -14,15 +15,23 @@ const batchBodySchema = z.object({
   operations: z.array(batchOpSchema).min(1).max(40),
 });
 
+function logicalPathForWpnCheck(p: string): string {
+  if (p.startsWith("/api/v1/")) {
+    return p.slice("/api/v1".length) || "/";
+  }
+  return p;
+}
+
 function isSafeWpnPath(p: string): boolean {
-  if (!p.startsWith("/wpn/")) {
+  const logical = logicalPathForWpnCheck(p);
+  if (!logical.startsWith("/wpn/")) {
     return false;
   }
-  if (p.includes("..") || p.includes("//")) {
+  if (logical.includes("..") || logical.includes("//")) {
     return false;
   }
   /** Avoid recursive batch-in-batch via inject. */
-  if (p === "/wpn/sync/batch" || p.startsWith("/wpn/sync/")) {
+  if (logical === "/wpn/sync/batch" || logical.startsWith("/wpn/sync/")) {
     return false;
   }
   return true;
@@ -67,7 +76,7 @@ export function registerWpnBatchRoutes(
         payload?: string;
       } = {
         method: op.method,
-        url: op.path,
+        url: syncApiV1Path(op.path),
         headers: {
           authorization: authHeader,
           "content-type": "application/json",
