@@ -27,6 +27,7 @@ ENV npm_config_fetch_retries=5 \
 
 COPY package.json package-lock.json ./
 COPY apps ./apps
+COPY packages ./packages
 COPY src ./src
 COPY tsconfig.json ./
 
