@@ -53,7 +53,7 @@ docker compose --profile local-mongo up -d mongo-sync
 npm run sync-api
 ```
 
-**Production (remote Mongo, no `mongo:7` image):** in the repo root `.env` set `MONGODB_URI` (e.g. Atlas `mongodb+srv://…`) and `NODEX_LOCAL_MONGO=0`, then `npm run deploy` (or `docker-stack-boot.sh`). Compose will not start `mongo-sync`.
+**Production (remote Mongo, no `mongo:7` image):** set `MONGODB_URI` in the repo root `.env` to your Atlas / host URI (must not use hostname `mongo-sync`). `npm run deploy` and `docker-stack-boot.sh` then default **`NODEX_LOCAL_MONGO=0`** and skip `mongo-sync`. Override with explicit `NODEX_LOCAL_MONGO=1` if you still want the compose Mongo container.
 
 Legacy headless Express (`Dockerfile` on port 3847) is opt-in: `docker compose --profile legacy up -d nodex-api`. It is not part of the default gateway stack.
 

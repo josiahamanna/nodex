@@ -29,14 +29,8 @@ if [[ -f "${REPO_ROOT}/.env" ]]; then
   set +a
 fi
 
-# Local Mongo container (compose profile local-mongo): 1 = default dev/Jenkins; 0 = remote MONGODB_URI only (set in .env).
-export NODEX_LOCAL_MONGO="${NODEX_LOCAL_MONGO:-1}"
-compose_pf=()
-mongo_svc=()
-if [[ "${NODEX_LOCAL_MONGO}" == "1" ]]; then
-  compose_pf=(--profile local-mongo)
-  mongo_svc=(mongo-sync)
-fi
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/scripts/docker-local-mongo-env.sh"
 
 # Match docker compose project isolation (default: checkout directory basename). Jenkins sets
 # COMPOSE_PROJECT_NAME=nodex so jobs under varying workspace paths reuse one stack; containers

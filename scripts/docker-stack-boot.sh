@@ -21,13 +21,8 @@ if [[ -f "${REPO_ROOT}/.env" ]]; then
   set +a
 fi
 
-export NODEX_LOCAL_MONGO="${NODEX_LOCAL_MONGO:-1}"
-compose_pf=()
-mongo_svc=()
-if [[ "${NODEX_LOCAL_MONGO}" == "1" ]]; then
-  compose_pf=(--profile local-mongo)
-  mongo_svc=(mongo-sync)
-fi
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/scripts/docker-local-mongo-env.sh"
 
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$REPO_ROOT")}"
 export NODEX_WPN_DEFAULT_OWNER="${NODEX_WPN_DEFAULT_OWNER:-jehu}"
