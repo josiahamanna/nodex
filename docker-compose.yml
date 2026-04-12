@@ -1,4 +1,5 @@
-# Default stack: Mongo + nodex-sync-api + nodex-web-blue + nodex-gateway (WPN in Mongo).
+# Default stack: nodex-sync-api + nodex-web-blue + nodex-gateway (WPN in Mongo).
+# Local Mongo (`mongo-sync`) is opt-in via profile `local-mongo` (see NODEX_LOCAL_MONGO in scripts).
 # See docs/deploy-nodex-sync.md
 #
 # Usage (gateway on host port NODEX_GATEWAY_PORT, default 8080):
@@ -28,10 +29,11 @@
 #
 # Full stack + UI deploy:
 #   npm run deploy
-#   Open http://127.0.0.1:8080 — WPN data in Mongo (compose service mongo-sync).
+#   Open http://127.0.0.1:8080 — WPN in Mongo (local container with --profile local-mongo, or set MONGODB_URI for remote).
 
 services:
   mongo-sync:
+    profiles: ["local-mongo"]
     image: mongo:7
     container_name: nodex-mongo-sync
     restart: unless-stopped
@@ -52,13 +54,10 @@ services:
     environment:
       HOST: "0.0.0.0"
       PORT: "4010"
-      MONGODB_URI: mongodb://mongo-sync:27017
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo-sync:27017}
       MONGODB_DB: ${MONGODB_DB:-nodex_sync}
       JWT_SECRET: ${JWT_SECRET:-dev-only-nodex-sync-secret-min-32-chars!!}
       NODEX_BUNDLED_DOCS_DIR: /app/docs/bundled-plugin-authoring
-    depends_on:
-      mongo-sync:
-        condition: service_started
     healthcheck:
       test:
         [
@@ -192,8 +191,6 @@ services:
         target: /etc/nginx/active-web.upstream.conf
         read_only: false
     depends_on:
-      mongo-sync:
-        condition: service_started
       nodex-sync-api:
         condition: service_healthy
       nodex-web-blue:

@@ -5,7 +5,7 @@
 #   sudo cp nodex-docker-stack.service.example /etc/systemd/system/nodex-docker-stack.service
 #   sudoedit /etc/systemd/system/nodex-docker-stack.service
 #     - Set WorkingDirectory= to your absolute repo checkout
-#     - Optionally EnvironmentFile=-/path/to/nodex.env (JWT_SECRET, NEXT_PUBLIC_NODEX_SYNC_API_URL for web builds, NODEX_HOST_PROJECT for --profile legacy, etc.)
+#     - Optionally EnvironmentFile=-/path/to/nodex.env (JWT_SECRET, MONGODB_URI + NODEX_LOCAL_MONGO=0 for remote Mongo, NEXT_PUBLIC_NODEX_SYNC_API_URL for web builds, NODEX_HOST_PROJECT for --profile legacy, etc.)
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now nodex-docker-stack
 #

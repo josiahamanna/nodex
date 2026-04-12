@@ -99,7 +99,7 @@ pipeline {
             steps {
                 sh '''#!/usr/bin/env bash
 set -euo pipefail
-docker compose up -d --build --remove-orphans mongo-sync nodex-sync-api
+docker compose --profile local-mongo up -d --build --remove-orphans mongo-sync nodex-sync-api
 '''
             }
         }

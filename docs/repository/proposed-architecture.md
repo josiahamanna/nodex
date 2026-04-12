@@ -356,7 +356,7 @@ The sync engine catches fetch errors per collection, accumulates them, and rethr
 
 ## 8. Environment Variables
 
-### `apps/nodex-sync-api/.env` (Fastify + Mongo — **this repo**)
+### Repo root `.env` (Fastify + Mongo + Next + Docker — **this repo**; copy from `.env.example`)
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `PORT` | No | 4010 | Sync API listen port |
@@ -407,8 +407,8 @@ The sync engine catches fetch errors per collection, accumulates them, and rethr
 npm install
 
 # 2. MongoDB for sync API (default Compose stack, or any mongo:7 on 27017)
-docker compose up -d mongo-sync
-# Copy env: cp apps/nodex-sync-api/.env.example apps/nodex-sync-api/.env  → set JWT_SECRET (≥32 chars in production)
+docker compose --profile local-mongo up -d mongo-sync
+# Copy env: cp .env.example .env  → set JWT_SECRET (≥32 chars in production), MONGODB_URI, NEXT_PUBLIC_* as needed
 
 # 3. Fastify sync API (default http://127.0.0.1:4010/api/v1 for versioned routes; GET /health at root)
 npm run sync-api

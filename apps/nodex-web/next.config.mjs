@@ -1,7 +1,10 @@
+import { loadEnvConfig } from "@next/env";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, "../..");
+loadEnvConfig(repoRoot, process.env.NODE_ENV !== "production");
 const staticExport = process.env.NODEX_NEXT_STATIC_EXPORT === "1";
 
 const envHeadlessOrigin = process.env.NODEX_HEADLESS_API_ORIGIN?.trim().replace(

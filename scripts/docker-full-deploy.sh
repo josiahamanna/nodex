@@ -10,17 +10,33 @@
 # What it does:
 #   1. Ensures dist/plugins exists (compose bind mount for optional legacy nodex-api profile).
 #   2. Ensures ./.nodex-docker-workspace exists (default bind mount when using --profile legacy).
-#   3. Brings up mongo-sync, nodex-sync-api, nodex-web-blue, nodex-gateway.
+#   3. Brings up nodex-sync-api, nodex-web-blue, nodex-gateway (and mongo-sync when NODEX_LOCAL_MONGO=1).
 #      Then always runs `compose up --no-deps nodex-gateway` so :8080 is listening after partial stacks.
 #   4. Runs scripts/docker-web-deploy.sh to build the web image, blue/green swap, and prune dangling images.
 #
 # Bundled Documentation (Guides): baked into the sync-api image (`NODEX_BUNDLED_DOCS_DIR`).
 #
-# Override URL or secrets via environment or a .env file in the repo root (compose loads .env).
+# Override URL or secrets via repo root `.env` (Compose loads it; see `.env.example`).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
+
+if [[ -f "${REPO_ROOT}/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "${REPO_ROOT}/.env"
+  set +a
+fi
+
+# Local Mongo container (compose profile local-mongo): 1 = default dev/Jenkins; 0 = remote MONGODB_URI only (set in .env).
+export NODEX_LOCAL_MONGO="${NODEX_LOCAL_MONGO:-1}"
+compose_pf=()
+mongo_svc=()
+if [[ "${NODEX_LOCAL_MONGO}" == "1" ]]; then
+  compose_pf=(--profile local-mongo)
+  mongo_svc=(mongo-sync)
+fi
 
 # Match docker compose project isolation (default: checkout directory basename). Jenkins sets
 # COMPOSE_PROJECT_NAME=nodex so jobs under varying workspace paths reuse one stack; containers
@@ -168,7 +184,7 @@ remove_docker_run_web_slot() {
 remove_docker_run_web_slot nodex-web-blue
 remove_docker_run_web_slot nodex-web-green
 
-echo "[nodex] Starting mongo-sync + nodex-sync-api + web (blue) + gateway..."
+echo "[nodex] Starting nodex-sync-api + web (blue) + gateway (NODEX_LOCAL_MONGO=${NODEX_LOCAL_MONGO})..."
 active_is_docker_run=false
 if [[ -n "$active_line" ]]; then
   active_proj="$(docker container inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$active_line" 2>/dev/null || true)"
@@ -180,10 +196,10 @@ fi
 compose_up() {
   if [[ "$active_is_docker_run" == "true" ]]; then
     # Avoid pulling in nodex-web-blue via depends_on (would conflict with an active docker-run slot).
-    docker compose up -d --build --remove-orphans mongo-sync nodex-sync-api
-    docker compose up -d --build --remove-orphans --no-deps nodex-gateway
+    docker compose "${compose_pf[@]}" up -d --build --remove-orphans "${mongo_svc[@]}" nodex-sync-api
+    docker compose "${compose_pf[@]}" up -d --build --remove-orphans --no-deps nodex-gateway
   else
-    docker compose up -d --build --remove-orphans mongo-sync nodex-sync-api nodex-web-blue nodex-gateway
+    docker compose "${compose_pf[@]}" up -d --build --remove-orphans "${mongo_svc[@]}" nodex-sync-api nodex-web-blue nodex-gateway
   fi
 }
 
@@ -201,7 +217,7 @@ fi
 # gateway leaves the stack without :8080. --no-deps avoids recreating nodex-web-blue when it is a
 # docker-run slot (blue/green) rather than a compose-managed container.
 echo "[nodex] Ensuring nodex-gateway is up (host port ${NODEX_GATEWAY_PORT:-8080})..."
-docker compose up -d --build --remove-orphans --no-deps nodex-gateway
+docker compose "${compose_pf[@]}" up -d --build --remove-orphans --no-deps nodex-gateway
 
 echo "[nodex] Waiting for nodex-gateway to be running..."
 for _ in $(seq 1 60); do

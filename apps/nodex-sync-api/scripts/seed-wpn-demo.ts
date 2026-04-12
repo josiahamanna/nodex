@@ -1,7 +1,8 @@
 /**
  * Inserts a sample workspace → project → note for the given Mongo user id (JWT `sub` / register `userId`).
- * Usage: MONGODB_URI=... MONGODB_DB=nodex_sync npx tsx scripts/seed-wpn-demo.ts <userHexId>
+ * Usage: set MONGODB_URI in repo root `.env`, or pass env inline: MONGODB_URI=... npx tsx scripts/seed-wpn-demo.ts <userHexId>
  */
+import "../src/load-root-env.js";
 import * as crypto from "node:crypto";
 import { connectMongo, closeMongo } from "../src/db.js";
 import {

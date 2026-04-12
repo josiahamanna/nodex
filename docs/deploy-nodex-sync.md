@@ -4,8 +4,10 @@ Signed-in **web** and **Electron cloud windows** use the Fastify service in `app
 
 ## Web + API dev checklist
 
-1. Start Mongo: `docker compose up -d mongo-sync` (or use the full default stack below)
-2. Start API: `npm run sync-api` (or: `docker compose up -d mongo-sync nodex-sync-api`)
+Use **one env file** at the **repo root**: copy [`.env.example`](../.env.example) → `.env` (Compose, deploy scripts, `npm run sync-api`, and Next dev all read that path).
+
+1. Start Mongo: `docker compose --profile local-mongo up -d mongo-sync` (or use the full default stack below)
+2. Start API: `npm run sync-api` (or: `docker compose --profile local-mongo up -d mongo-sync nodex-sync-api`)
 3. Start web: `npm run dev:web` (sets `NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API=1` and `NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only`)
 4. Register / sign in via the app (tokens required for WPN mutations, `/me/shell-layout`, builtin plugin render)
 5. Bundled Documentation: served anonymously from sync-api at `GET /public/bundled-docs/notes/:id` when `docs/bundled-plugin-authoring` is present in the image or `NODEX_BUNDLED_DOCS_DIR` is set
@@ -35,21 +37,23 @@ Mongo + sync-api + web + gateway (API image: [`Dockerfile.sync-api`](../Dockerfi
 
 ```bash
 npm run docker:api:up:detached
-# or: docker compose up -d mongo-sync nodex-sync-api nodex-web-blue nodex-gateway
+# or: docker compose --profile local-mongo up -d mongo-sync nodex-sync-api nodex-web-blue nodex-gateway
 ```
 
 Mongo + sync-api only:
 
 ```bash
-docker compose up -d mongo-sync nodex-sync-api
+docker compose --profile local-mongo up -d mongo-sync nodex-sync-api
 ```
 
 Run the API on the host only (Mongo in Docker):
 
 ```bash
-docker compose up -d mongo-sync
+docker compose --profile local-mongo up -d mongo-sync
 npm run sync-api
 ```
+
+**Production (remote Mongo, no `mongo:7` image):** in the repo root `.env` set `MONGODB_URI` (e.g. Atlas `mongodb+srv://…`) and `NODEX_LOCAL_MONGO=0`, then `npm run deploy` (or `docker-stack-boot.sh`). Compose will not start `mongo-sync`.
 
 Legacy headless Express (`Dockerfile` on port 3847) is opt-in: `docker compose --profile legacy up -d nodex-api`. It is not part of the default gateway stack.
 

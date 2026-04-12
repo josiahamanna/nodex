@@ -17,13 +17,13 @@ The browser shell uses `window.Nodex` from [`src/renderer/nodex-web-shim.ts`](..
 | `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN` | Web | `1` — use relative `/api/v1` (only if you still run a gateway proxy to Express). |
 | `NODEX_HEADLESS_API_ORIGIN` | `next.config` | Optional proxy target for legacy Express during migration. |
 | `NODEX_HEADLESS_API_ORIGIN_DEV` | `next.config` | Set `1` to default dev proxy to `http://127.0.0.1:3847` (legacy). |
-| `MONGODB_URI` / `MONGODB_DB` | sync-api | Mongo connection ([`docs/deploy-nodex-sync.md`](deploy-nodex-sync.md)). |
+| `MONGODB_URI` / `MONGODB_DB` | sync-api | Mongo connection ([`docs/deploy-nodex-sync.md`](deploy-nodex-sync.md)); set in repo root `.env`. |
 | `JWT_SECRET` | sync-api | JWT signing (≥32 chars in production). |
 | `NODEX_BUNDLED_DOCS_DIR` | sync-api | Optional absolute path to bundled markdown tree (default: repo `docs/bundled-plugin-authoring` relative to package). |
 
 ## Running local dev
 
-1. Mongo: `docker compose up -d mongo-sync`
+1. Mongo: `docker compose --profile local-mongo up -d mongo-sync`
 2. API: `npm run sync-api`
 3. Web: `npm run dev:web` (sets sync WPN + `sync-only` for you)
 

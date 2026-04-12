@@ -1,3 +1,4 @@
+import "./load-root-env.js";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { NODEX_SYNC_API_V1_PREFIX } from "./api-v1-prefix.js";
