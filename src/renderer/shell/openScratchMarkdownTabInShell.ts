@@ -3,8 +3,12 @@ import { store } from "../store";
 import { createNote, fetchAllNotes } from "../store/notesSlice";
 import {
   ensureScratchMarkdownProjectId,
-  findRootNoteIdWithTitle,
+  findFlatRootMarkdownNoteIdWithTitleCaseInsensitive,
+  findRootMarkdownNoteIdWithTitleCaseInsensitive,
+  nextScratchBufferTitle,
+  nextScratchMarkdownTitleFromFlatList,
   scratchNotesUseWpnPath,
+  SCRATCH_NOTE_BASE_TITLE,
 } from "./wpnScratchProject";
 import { dispatchWpnTreeChanged } from "./first-party/plugins/notes-explorer/wpnExplorerEvents";
 import {
@@ -68,30 +72,42 @@ export async function openScratchMarkdownTabInShell(deps: ShellNavigationDeps): 
       let id: string;
       if (useWpnPath) {
         const projectId = await ensureScratchMarkdownProjectId();
-        const existing = await findRootNoteIdWithTitle(projectId, "Scratch");
+        const existing = await findRootMarkdownNoteIdWithTitleCaseInsensitive(
+          projectId,
+          SCRATCH_NOTE_BASE_TITLE,
+        );
         if (existing) {
           id = existing;
         } else {
+          const title = await nextScratchBufferTitle(projectId);
           const created = await getNodex().wpnCreateNoteInProject(projectId, {
             relation: "root",
             type: "markdown",
-            title: "Scratch",
+            title,
             content: "",
           });
           id = created.id;
         }
       } else {
-        const r = await store
-          .dispatch(
-            createNote({
-              relation: "root",
-              type: "markdown",
-              title: "Scratch",
-              content: "",
-            }),
-          )
-          .unwrap();
-        id = r.id;
+        const existing = await findFlatRootMarkdownNoteIdWithTitleCaseInsensitive(
+          SCRATCH_NOTE_BASE_TITLE,
+        );
+        if (existing) {
+          id = existing;
+        } else {
+          const title = await nextScratchMarkdownTitleFromFlatList();
+          const r = await store
+            .dispatch(
+              createNote({
+                relation: "root",
+                type: "markdown",
+                title,
+                content: "",
+              }),
+            )
+            .unwrap();
+          id = r.id;
+        }
       }
       noteId = id;
       try {
@@ -109,7 +125,8 @@ export async function openScratchMarkdownTabInShell(deps: ShellNavigationDeps): 
   }
 
   const title =
-    store.getState().notes.notesList.find((n) => n.id === noteId)?.title?.trim() || "Scratch";
+    store.getState().notes.notesList.find((n) => n.id === noteId)?.title?.trim() ||
+    SCRATCH_NOTE_BASE_TITLE;
 
   deps.tabs.openOrReuseTab(SHELL_TAB_SCRATCH_MARKDOWN, {
     title,

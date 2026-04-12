@@ -10,9 +10,10 @@ import { store } from "../../store";
 import { createNote, fetchAllNotes } from "../../store/notesSlice";
 import { dispatchWpnTreeChanged } from "./plugins/notes-explorer/wpnExplorerEvents";
 import {
-  nextScratchBufferTitle,
-  scratchNotesUseWpnPath,
   ensureScratchMarkdownProjectId,
+  nextScratchBufferTitle,
+  nextScratchMarkdownTitleFromFlatList,
+  scratchNotesUseWpnPath,
 } from "../wpnScratchProject";
 import { NoteEditorShellView } from "./NoteEditorShellView";
 import { MarkdownTocShellView } from "./MarkdownTocShellView";
@@ -149,7 +150,7 @@ export function useRegisterNotesShellPlugin(): void {
         title: "Notes: New scratch markdown",
         category: "Notes",
         sourcePluginId: NOTES_SHELL_PLUGIN_ID,
-        doc: "Creates a new root markdown scratch buffer (Scratch, then Scratch-1, …) and opens it in a new tab.",
+        doc: "Creates a new root markdown scratch buffer (`scratch`, or `scratch-<w1>-<w2>` when a same-type sibling already uses `scratch`) and opens it in a new tab.",
         api: {
           summary: "Create a root markdown note and open it with a fresh tab.",
           args: [],
@@ -170,12 +171,13 @@ export function useRegisterNotesShellPlugin(): void {
               });
               id = created.id;
             } else {
+              const title = await nextScratchMarkdownTitleFromFlatList();
               const r = await store
                 .dispatch(
                   createNote({
                     relation: "root",
                     type: "markdown",
-                    title: "Scratch",
+                    title,
                     content: "",
                   }),
                 )

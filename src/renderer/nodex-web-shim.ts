@@ -9,6 +9,7 @@ import type {
 import type { WpnNoteDetail, WpnNoteListItem } from "../shared/wpn-v2-types";
 import { authRefresh } from "./auth/auth-client";
 import { getAccessToken, setAccessToken } from "./auth/auth-session";
+import { isWebScratchSession } from "./auth/web-scratch";
 import {
   readCloudSyncRefreshToken,
   readCloudSyncToken,
@@ -1435,7 +1436,7 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
     }),
   };
 
-  if (useWebTryoutWpnIndexedDb()) {
+  if (isWebScratchSession()) {
     Object.assign(impl, webScratchPlainStubOverrides());
   }
 

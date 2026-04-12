@@ -50,18 +50,18 @@ Shell views are React components. Use DevTools: \`window.nodex.shell\`. Register
 
 ### Start here
 
-- [Scratch markdown](#/welcome/scratch-markdown) — open the **Scratch** tab (reusable note; also use the tab strip or activity bar)
+- [Scratch markdown](#/welcome/scratch-markdown) — open the **scratch** tab (reusable note; also use the tab strip or activity bar)
 - [Scratch JS notebook](#/welcome/js-notebook) — interactive notebook in the primary area (not saved as a project note)
 
 ### Scratch notes and the explorer
 
-The **Scratch** tab is one reusable markdown note. **New scratch markdown** (command palette) adds more root notes named **Scratch**, **Scratch-1**, and so on.
+The **scratch** tab is one reusable markdown note. **New scratch markdown** (command palette) adds more root markdown notes named **scratch**, or **scratch-…-…** (two random nature words) when a same-type sibling already uses **scratch** (case-insensitive).
 
 Those notes appear in the [Notes explorer](#/welcome/notes-explorer) under workspace **Scratch** → project **Scratch**—a **draft bucket** in the same tree as your other notes, not a hidden buffer.
 
 ${persistence}
 
-**Workflow:** Capture in Scratch; when something is no longer a draft, move or duplicate it into another project in the explorer.
+**Workflow:** Capture in scratch; when something is no longer a draft, move or duplicate it into another project in the explorer.
 
 ### Go to
 

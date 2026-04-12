@@ -3,19 +3,10 @@ import { getAccessToken } from "../auth/auth-session";
 import { isWebScratchSession } from "../auth/web-scratch";
 import { syncWpnNotesBackend } from "../nodex-web-shim";
 import { scratchWpnProjectExists } from "../wpnscratch/wpn-scratch-store";
-import { computeNextScratchBufferTitle } from "./scratch-buffer-titles";
-
-/** Web try-out: WPN in IndexedDB (same condition as {@link useWebTryoutWpnIndexedDb}). */
-function useWebScratchIdbWpn(): boolean {
-  if (typeof window === "undefined") {
-    return false;
-  }
-  try {
-    return isWebScratchSession() && !getAccessToken();
-  } catch {
-    return false;
-  }
-}
+import {
+  computeNextScratchNoteTitle,
+  SCRATCH_NOTE_BASE_TITLE,
+} from "./scratch-buffer-titles";
 
 /**
  * Remembers the last WPN project the user had open in the explorer so shell commands
@@ -57,8 +48,17 @@ export async function wpnProjectIdExists(projectId: string): Promise<boolean> {
   if (!id) {
     return false;
   }
-  if (useWebScratchIdbWpn()) {
-    return scratchWpnProjectExists(id);
+  if (isWebScratchSession()) {
+    try {
+      if (await scratchWpnProjectExists(id)) {
+        return true;
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!getAccessToken()) {
+      return false;
+    }
   }
   try {
     await getNodex().wpnListNotes(id);
@@ -161,7 +161,7 @@ export async function ensureScratchMarkdownProjectId(): Promise<string> {
   return findOrCreateScratchBucketProjectId();
 }
 
-/** Root note titles in `projectId` that are exactly `Scratch` (first match wins). */
+/** Root note in `projectId` whose title equals `title` (trimmed, exact). */
 export async function findRootNoteIdWithTitle(
   projectId: string,
   title: string,
@@ -173,10 +173,63 @@ export async function findRootNoteIdWithTitle(
   return row?.id ?? null;
 }
 
-export { computeNextScratchBufferTitle };
+/** Root markdown note with title matching `title` case-insensitively (first match wins). */
+export async function findRootMarkdownNoteIdWithTitleCaseInsensitive(
+  projectId: string,
+  title: string,
+): Promise<string | null> {
+  const needle = title.trim().toLowerCase();
+  if (!needle) {
+    return null;
+  }
+  const { notes } = await getNodex().wpnListNotes(projectId);
+  const row = notes.find(
+    (n) =>
+      n.parent_id === null &&
+      n.type === "markdown" &&
+      n.title.trim().toLowerCase() === needle,
+  );
+  return row?.id ?? null;
+}
 
+export { computeNextScratchNoteTitle, SCRATCH_NOTE_BASE_TITLE };
+
+/** Next root markdown scratch title in `projectId` (per-type sibling rules). */
 export async function nextScratchBufferTitle(projectId: string): Promise<string> {
   const { notes } = await getNodex().wpnListNotes(projectId);
-  const rootTitles = notes.filter((n) => n.parent_id === null).map((n) => n.title);
-  return computeNextScratchBufferTitle(rootTitles);
+  const siblings = notes.map((n) => ({
+    title: n.title,
+    type: n.type,
+    parentId: n.parent_id,
+  }));
+  return computeNextScratchNoteTitle("markdown", null, siblings);
+}
+
+/** Legacy flat list: next root markdown scratch title (same sibling rules as WPN). */
+export async function nextScratchMarkdownTitleFromFlatList(): Promise<string> {
+  const list = await getNodex().getAllNotes();
+  const siblings = list.map((n) => ({
+    title: n.title,
+    type: n.type,
+    parentId: n.parentId,
+  }));
+  return computeNextScratchNoteTitle("markdown", null, siblings);
+}
+
+/** Legacy flat list: id of root markdown note with title (case-insensitive), if any. */
+export async function findFlatRootMarkdownNoteIdWithTitleCaseInsensitive(
+  title: string,
+): Promise<string | null> {
+  const needle = title.trim().toLowerCase();
+  if (!needle) {
+    return null;
+  }
+  const list = await getNodex().getAllNotes();
+  const row = list.find(
+    (n) =>
+      n.type === "markdown" &&
+      n.parentId === null &&
+      n.title.trim().toLowerCase() === needle,
+  );
+  return row?.id ?? null;
 }
