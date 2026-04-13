@@ -50,6 +50,7 @@ import { resolveNoteIdFromVfsPath } from "../utils/resolve-note-vfs-path";
 import type { OpenNoteInShellOptions } from "./openNoteInShell";
 import { applyShellTabFromUrlHash, applyShellWelcomeHash } from "./shellRailNavigation";
 import { useShellNavigation } from "./useShellNavigation";
+import { useShellProjectWorkspace } from "./useShellProjectWorkspace";
 import { ShellViewHost } from "./views/ShellViewHost";
 import { useShellViewRegistry } from "./views/ShellViewContext";
 import { useShellRegistries } from "./registries/ShellRegistriesContext";
@@ -307,6 +308,8 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   const cloudAuth = useSelector((s: RootState) => s.cloudAuth);
   const noteRenameEpoch = useSelector((s: RootState) => s.notes.noteRenameEpoch);
   const notesListLength = useSelector((s: RootState) => s.notes.notesList.length);
+  const { workspaceRoots } = useShellProjectWorkspace();
+  const projectOpen = workspaceRoots.length > 0;
   const isElectronScratchWorkbench =
     isElectronUserAgent() && auth.electronRunMode === "scratch";
   const isElectronVaultWorkbench =
@@ -529,20 +532,28 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
   }, [tabs]);
 
   useEffect(() => {
+    if (!projectOpen) {
+      return;
+    }
     const nodex = getNodex();
     if (typeof nodex.wpnListAllNotesWithContext !== "function") {
       return;
     }
     let cancelled = false;
-    void nodex.wpnListAllNotesWithContext().then((res) => {
-      if (cancelled) return;
-      const list = Array.isArray(res?.notes) ? res.notes : [];
-      setNoteIdVfsPathCacheFromWpnNotes(list);
-    });
+    void nodex
+      .wpnListAllNotesWithContext()
+      .then((res) => {
+        if (cancelled) return;
+        const list = Array.isArray(res?.notes) ? res.notes : [];
+        setNoteIdVfsPathCacheFromWpnNotes(list);
+      })
+      .catch(() => {
+        /* no project / backend race — avoid crashing shell */
+      });
     return () => {
       cancelled = true;
     };
-  }, [noteRenameEpoch, notesListLength]);
+  }, [noteRenameEpoch, notesListLength, projectOpen]);
 
   useEffect(() => {
     return subscribeNoteVfsPathCacheInvalidated(() => {

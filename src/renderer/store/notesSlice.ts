@@ -193,7 +193,13 @@ const notesSlice = createSlice({
       .addCase(fetchNote.fulfilled, (state, action) => {
         state.detailLoading = false;
         const note = action.payload ?? null;
+        const requestedId = action.meta.arg;
         state.currentNote = note;
+        if (typeof requestedId === "string" && requestedId.length > 0 && note === null) {
+          state.error = "This note no longer exists or could not be loaded.";
+        } else if (note) {
+          state.error = null;
+        }
         if (note?.id) {
           const bar = bumpContentSaveSeqAfterExternalLoad(note.id);
           state.noteContentSaveAppliedSeq[note.id] = bar;

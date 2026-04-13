@@ -1,5 +1,5 @@
 import { getNodex } from "../../shared/nodex-host-access";
-import { store } from "../store";
+import { platformDeps, store } from "../store";
 import { createNote, fetchAllNotes } from "../store/notesSlice";
 import {
   ensureScratchMarkdownProjectId,
@@ -39,6 +39,20 @@ function messageFromCaught(e: unknown): string {
   return String(e);
 }
 
+/** True if the id still exists in the notes backend (not only in a possibly stale Redux list). */
+async function scratchStoredNoteIdStillValid(id: string): Promise<boolean> {
+  try {
+    if (await scratchNotesUseWpnPath()) {
+      await getNodex().wpnGetNote(id);
+      return true;
+    }
+    const note = await platformDeps.localStore.notes.getNote(id);
+    return note != null;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Opens or focuses the shell Scratch markdown tab (one reusable root markdown note per browser profile).
  */
@@ -52,7 +66,7 @@ export async function openScratchMarkdownTabInShell(deps: ShellNavigationDeps): 
     const raw = localStorage.getItem(LS_KEY);
     if (raw?.trim()) {
       const id = raw.trim();
-      if (store.getState().notes.notesList.some((n) => n.id === id)) {
+      if (await scratchStoredNoteIdStillValid(id)) {
         noteId = id;
       } else {
         try {
