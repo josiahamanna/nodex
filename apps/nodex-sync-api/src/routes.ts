@@ -18,6 +18,7 @@ import { registerMeRoutes } from "./me-routes.js";
 import { registerWpnBatchRoutes } from "./wpn-batch-routes.js";
 import { registerWpnReadRoutes } from "./wpn-routes.js";
 import { registerWpnWriteRoutes } from "./wpn-write-routes.js";
+import { registerMcpDeviceAuthRoutes } from "./mcp-device-auth-routes.js";
 
 const registerBody = z.object({
   email: z.string().email(),
@@ -60,6 +61,7 @@ export function registerRoutes(
   registerMeRoutes(app, { jwtSecret });
   registerMeAssetsRoutes(app, { jwtSecret });
   registerBuiltinPluginRoutes(app, { jwtSecret });
+  registerMcpDeviceAuthRoutes(app, { jwtSecret });
 
   app.post("/auth/register", async (request, reply) => {
     const parsed = registerBody.safeParse(request.body);

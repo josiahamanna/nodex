@@ -47,6 +47,7 @@ See also: [`docs/web-backend-modes.md`](web-backend-modes.md).
 | `MONGODB_URI` / `MONGODB_DB` | sync-api **or** Next server (colocated `/api/v1`) | Mongo connection (defaults in `server.ts`; Next route handler calls the same `ensureMongoConnected()`) |
 | `NODEX_BUNDLED_DOCS_DIR` | sync-api / Next | Optional absolute path to bundled markdown (default: packaged `docs/bundled-plugin-authoring`; Next prebuild copies into `apps/nodex-web/bundled-plugin-authoring`) |
 | `NODEX_SYNC_API_SERVERLESS` | sync-api | Set automatically when `VERCEL=1`; lowers Mongo `maxPoolSize` for serverless |
+| `NODEX_MCP_WEB_VERIFY_BASE` | sync-api / Next | Public site origin (no trailing slash) for MCP device-login links, e.g. `https://your-app.vercel.app`. Used by `POST /auth/mcp/device/start` to build `verification_uri` (`/mcp-auth?user_code=…`). |
 
 Dev: `resolve-sync-base` falls back to `http://127.0.0.1:4010/api/v1` when `NODE_ENV=development` and nothing else is set.
 

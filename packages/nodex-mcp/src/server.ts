@@ -1,10 +1,16 @@
+import fs from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { loadWpnHttpConfig } from "./config.js";
+import { loadMcpAuthRuntime, type McpAuthRuntime } from "./config.js";
+import {
+  clearPersistedMcpAuth,
+  writePersistedMcpAuth,
+} from "./mcp-cloud-auth-persist.js";
+import { mapWpnCaughtError, unauthenticatedToolResult } from "./mcp-unauthenticated.js";
 import { findNotesByQuery, findProjectsByQuery } from "./find-wpn.js";
 import { resolveNoteFromCatalog } from "./resolve-note.js";
-import { errorResult, jsonResult } from "./text-result.js";
+import { errorResult, jsonResult, type ToolReturn } from "./text-result.js";
 import { WpnHttpClient } from "./wpn-client.js";
 
 const resolveInput = z.object({
@@ -116,9 +122,114 @@ const writeNoteInput = z.discriminatedUnion("mode", [
   }),
 ]);
 
+const nodexLoginInput = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+const nodexLoginBrowserPollInput = z.object({
+  device_code: z.string().min(10).describe("Secret from nodex_login_browser_start; do not log."),
+});
+
+function requireCloudAccess(runtime: McpAuthRuntime, client: WpnHttpClient): ToolReturn | null {
+  if (runtime.cloudSession && !client.getHolder().hasAccess()) {
+    return unauthenticatedToolResult(
+      "No access token. Call nodex_login_browser_start (open verification_uri, complete login in browser, then nodex_login_browser_poll), or nodex_login, or set NODEX_ACCESS_TOKEN.",
+    );
+  }
+  return null;
+}
+
+function wpnCatch(e: unknown, runtime: McpAuthRuntime): ToolReturn {
+  const mapped = mapWpnCaughtError(e, runtime.cloudSession);
+  if (mapped) {
+    return mapped;
+  }
+  const msg = e instanceof Error ? e.message : String(e);
+  return errorResult(msg);
+}
+
+function persistIfNeeded(runtime: McpAuthRuntime): void {
+  if (runtime.mode !== "cloud_session" || !runtime.persistPath) {
+    return;
+  }
+  const h = runtime.holder;
+  if (!h.hasAccess()) {
+    clearPersistedMcpAuth(runtime.persistPath);
+    return;
+  }
+  writePersistedMcpAuth(runtime.persistPath, {
+    accessToken: h.accessToken,
+    refreshToken: h.refreshToken ?? "",
+  });
+}
+
+async function postJsonUnauthed(
+  baseUrl: string,
+  apiPath: string,
+  body: unknown,
+): Promise<{ ok: boolean; status: number; json: unknown }> {
+  const p = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+  const url = `${baseUrl}${p}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json: unknown = {};
+  try {
+    json = text.trim() ? JSON.parse(text) : {};
+  } catch {
+    json = {};
+  }
+  return { ok: res.ok, status: res.status, json };
+}
+
+function parseJwtUnverified(accessToken: string): {
+  unverified_sub?: string;
+  access_expires_at_ms?: number;
+} {
+  const parts = accessToken.split(".");
+  if (parts.length < 2) {
+    return {};
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8")) as {
+      sub?: string;
+      exp?: number;
+    };
+    const out: { unverified_sub?: string; access_expires_at_ms?: number } = {};
+    if (typeof payload.sub === "string") {
+      out.unverified_sub = payload.sub;
+    }
+    if (typeof payload.exp === "number" && Number.isFinite(payload.exp)) {
+      out.access_expires_at_ms = payload.exp * 1000;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+const MCP_INSTRUCTIONS =
+  "Nodex WPN tools: nodex_list_wpn lists workspaces / projects / notes or a full_tree; " +
+  "nodex_find_projects / nodex_find_notes resolve by name or UUID with path (Workspace / Project / Title) and ambiguity hints; " +
+  "nodex_resolve_note finds a noteId from workspace+project+title; nodex_get_note reads a note; " +
+  "nodex_execute_note resolves by title or id, returns ambiguity (path + noteId per candidate) for the user to pick, or returns the full note when unique — then the agent follows note.content; " +
+  "nodex_write_note patches or creates notes; nodex_write_back_child creates a child under a task note after completing work scoped to that note. " +
+  "Write-back policy: when you finish work that was driven by a specific Nodex note, call nodex_write_back_child with taskNoteId equal to that note so the outcome is attached as a new direct child (audit trail). " +
+  "If that note already has other children, still attach the write-back as a new direct child of the same task note unless the user asked for a different placement. " +
+  "Tool overlap is intentional: nodex_execute_note equals find_notes then get_note when unique; nodex_write_back_child equals get_note then write_note create_child when you only have taskNoteId. " +
+  "Auth: use NODEX_SYNC_API_BASE + NODEX_ACCESS_TOKEN (cloud), NODEX_LOCAL_WPN_URL + NODEX_LOCAL_WPN_TOKEN (Electron loopback), or NODEX_MCP_CLOUD_SESSION=1 for browser (nodex_login_browser_*) or password (nodex_login). " +
+  "If any tool returns JSON with error \"unauthenticated\" and suggested_tools, call nodex_login_browser_start first (preferred), complete the browser step, use nodex_login_browser_poll with device_code until authorized, or use nodex_login — do not use nodex_logout for that case. " +
+  "nodex_auth_status reports session state without exposing secrets.";
+
 export async function runMcpStdioServer(): Promise<void> {
-  const cfg = loadWpnHttpConfig();
-  const client = new WpnHttpClient(cfg);
+  const runtime = loadMcpAuthRuntime();
+  const client = new WpnHttpClient(runtime.baseUrl, runtime.holder, {
+    onTokensUpdated: () => persistIfNeeded(runtime),
+  });
 
   const mcp = new McpServer(
     { name: "nodex-mcp", version: "0.0.0" },
@@ -126,16 +237,7 @@ export async function runMcpStdioServer(): Promise<void> {
       capabilities: {
         tools: {},
       },
-      instructions:
-        "Nodex WPN tools: nodex_list_wpn lists workspaces / projects / notes or a full_tree; " +
-        "nodex_find_projects / nodex_find_notes resolve by name or UUID with path (Workspace / Project / Title) and ambiguity hints; " +
-        "nodex_resolve_note finds a noteId from workspace+project+title; nodex_get_note reads a note; " +
-        "nodex_execute_note resolves by title or id, returns ambiguity (path + noteId per candidate) for the user to pick, or returns the full note when unique — then the agent follows note.content; " +
-        "nodex_write_note patches or creates notes; nodex_write_back_child creates a child under a task note after completing work scoped to that note. " +
-        "Write-back policy: when you finish work that was driven by a specific Nodex note, call nodex_write_back_child with taskNoteId equal to that note so the outcome is attached as a new direct child (audit trail). " +
-        "If that note already has other children, still attach the write-back as a new direct child of the same task note unless the user asked for a different placement. " +
-        "Tool overlap is intentional: nodex_execute_note equals find_notes then get_note when unique; nodex_write_back_child equals get_note then write_note create_child when you only have taskNoteId. " +
-        "Configure NODEX_SYNC_API_BASE + NODEX_ACCESS_TOKEN (cloud) or NODEX_LOCAL_WPN_URL + NODEX_LOCAL_WPN_TOKEN (Electron loopback).",
+      instructions: MCP_INSTRUCTIONS,
     },
   );
 
@@ -148,12 +250,15 @@ export async function runMcpStdioServer(): Promise<void> {
       inputSchema: findProjectsInput,
     },
     async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) {
+        return denied;
+      }
       try {
         const result = await findProjectsByQuery(client, args.query, args.workspaceQuery);
         return jsonResult(result);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return errorResult(msg);
+        return wpnCatch(e, runtime);
       }
     },
   );
@@ -168,6 +273,10 @@ export async function runMcpStdioServer(): Promise<void> {
       inputSchema: findNotesInput,
     },
     async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) {
+        return denied;
+      }
       try {
         const rows = await client.getNotesWithContext();
         const result = findNotesByQuery(
@@ -178,8 +287,7 @@ export async function runMcpStdioServer(): Promise<void> {
         );
         return jsonResult(result);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return errorResult(msg);
+        return wpnCatch(e, runtime);
       }
     },
   );
@@ -192,6 +300,10 @@ export async function runMcpStdioServer(): Promise<void> {
       inputSchema: listWpnInput,
     },
     async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) {
+        return denied;
+      }
       try {
         if (args.scope === "workspaces") {
           const workspaces = await client.getWorkspaces();
@@ -228,8 +340,7 @@ export async function runMcpStdioServer(): Promise<void> {
         }
         return jsonResult({ scope: "full_tree", tree });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return errorResult(msg);
+        return wpnCatch(e, runtime);
       }
     },
   );
@@ -240,6 +351,10 @@ export async function runMcpStdioServer(): Promise<void> {
       "Matching is trim + case-insensitive. Returns an error if zero or multiple notes match.",
     resolveInput.shape,
     async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) {
+        return denied;
+      }
       try {
         const rows = await client.getNotesWithContext();
         const r = resolveNoteFromCatalog(rows, {
@@ -273,8 +388,7 @@ export async function runMcpStdioServer(): Promise<void> {
           type: r.type,
         });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return errorResult(msg);
+        return wpnCatch(e, runtime);
       }
     },
   );
@@ -284,12 +398,15 @@ export async function runMcpStdioServer(): Promise<void> {
     "Fetch a single note by id (includes content and metadata).",
     getNoteInput.shape,
     async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) {
+        return denied;
+      }
       try {
         const note = await client.getNote(args.noteId);
         return jsonResult({ note });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return errorResult(msg);
+        return wpnCatch(e, runtime);
       }
     },
   );
@@ -304,6 +421,10 @@ export async function runMcpStdioServer(): Promise<void> {
       inputSchema: executeNoteInput,
     },
     async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) {
+        return denied;
+      }
       try {
         const rows = await client.getNotesWithContext();
         const resolved = findNotesByQuery(
@@ -327,8 +448,7 @@ export async function runMcpStdioServer(): Promise<void> {
           note,
         });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return errorResult(msg);
+        return wpnCatch(e, runtime);
       }
     },
   );
@@ -342,6 +462,10 @@ export async function runMcpStdioServer(): Promise<void> {
       inputSchema: writeBackChildInput,
     },
     async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) {
+        return denied;
+      }
       try {
         const task = await client.getNote(args.taskNoteId);
         const noteType = (args.type ?? "markdown").trim() || "markdown";
@@ -360,8 +484,7 @@ export async function runMcpStdioServer(): Promise<void> {
           createdNoteId: created.id,
         });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return errorResult(msg);
+        return wpnCatch(e, runtime);
       }
     },
   );
@@ -374,6 +497,10 @@ export async function runMcpStdioServer(): Promise<void> {
       inputSchema: writeNoteInput,
     },
     async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) {
+        return denied;
+      }
       try {
         if (args.mode === "patch_existing") {
           const patch: {
@@ -415,9 +542,188 @@ export async function runMcpStdioServer(): Promise<void> {
         const created = await client.createNote(args.projectId, body);
         return jsonResult({ ok: true as const, created });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return errorResult(msg);
+        return wpnCatch(e, runtime);
       }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_login",
+    {
+      description:
+        "Cloud session only: sign in with email and password against NODEX_SYNC_API_BASE. Tokens are stored in-memory and optionally on disk (see README). Passwords may appear in host logs.",
+      inputSchema: nodexLoginInput,
+    },
+    async (args) => {
+      if (!runtime.cloudSession) {
+        return errorResult("nodex_login is only available when NODEX_MCP_CLOUD_SESSION=1.");
+      }
+      const r = await postJsonUnauthed(runtime.baseUrl, "/auth/login", {
+        email: args.email,
+        password: args.password,
+      });
+      if (!r.ok) {
+        const err = (r.json as { error?: string })?.error ?? `login failed (${r.status})`;
+        return errorResult(typeof err === "string" ? err : JSON.stringify(err));
+      }
+      const j = r.json as { token?: string; refreshToken?: string; userId?: string };
+      if (typeof j.token !== "string" || !j.token.trim()) {
+        return errorResult("Login response missing token.");
+      }
+      const rt =
+        typeof j.refreshToken === "string" && j.refreshToken.trim()
+          ? j.refreshToken.trim()
+          : null;
+      runtime.holder.setTokens(j.token.trim(), rt);
+      persistIfNeeded(runtime);
+      return jsonResult({
+        ok: true,
+        userId: typeof j.userId === "string" ? j.userId : undefined,
+        message: "Session established. WPN tools are available.",
+      });
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_login_browser_start",
+    {
+      description:
+        "Start browser-based MCP login. Returns verification_uri (open in browser), device_code (secret — pass only to nodex_login_browser_poll), user_code, expires_in. Requires NODEX_MCP_CLOUD_SESSION=1.",
+      inputSchema: z.object({}),
+    },
+    async () => {
+      if (!runtime.cloudSession) {
+        return errorResult(
+          "nodex_login_browser_start requires NODEX_MCP_CLOUD_SESSION=1 and NODEX_SYNC_API_BASE.",
+        );
+      }
+      const r = await postJsonUnauthed(runtime.baseUrl, "/auth/mcp/device/start", {});
+      if (!r.ok) {
+        const err = (r.json as { error?: string })?.error ?? `start failed (${r.status})`;
+        return errorResult(typeof err === "string" ? err : JSON.stringify(err));
+      }
+      const j = r.json as {
+        device_code?: string;
+        verification_uri?: string;
+        user_code?: string;
+        expires_in?: number;
+        interval?: number;
+      };
+      if (typeof j.device_code !== "string" || typeof j.verification_uri !== "string") {
+        return errorResult("Invalid device/start response.");
+      }
+      return jsonResult({
+        nextStep:
+          "Open verification_uri in a browser, sign in, authorize MCP access, then call nodex_login_browser_poll with device_code until status is authorized.",
+        device_code: j.device_code,
+        verification_uri: j.verification_uri,
+        user_code: j.user_code,
+        expires_in: j.expires_in,
+        interval: j.interval ?? 2,
+      });
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_login_browser_poll",
+    {
+      description:
+        "Poll after browser login. Pass device_code from nodex_login_browser_start. On status authorized, session is stored (and persisted when configured).",
+      inputSchema: nodexLoginBrowserPollInput,
+    },
+    async (args) => {
+      if (!runtime.cloudSession) {
+        return errorResult("nodex_login_browser_poll requires NODEX_MCP_CLOUD_SESSION=1.");
+      }
+      const r = await postJsonUnauthed(runtime.baseUrl, "/auth/mcp/device/token", {
+        device_code: args.device_code,
+      });
+      if (!r.ok) {
+        return errorResult(`token poll failed (${r.status})`);
+      }
+      const j = r.json as {
+        status?: string;
+        token?: string;
+        refreshToken?: string;
+        userId?: string;
+      };
+      if (j.status === "pending" || j.status === "invalid") {
+        return jsonResult({
+          status: j.status,
+          message:
+            j.status === "pending"
+              ? "Still waiting for browser authorization."
+              : "Invalid or expired device_code.",
+        });
+      }
+      if (j.status === "expired") {
+        return jsonResult({ status: "expired", message: "Login request expired; start again." });
+      }
+      if (j.status !== "authorized") {
+        return jsonResult({ status: j.status ?? "unknown", raw: j });
+      }
+      if (typeof j.token !== "string" || !j.token.trim()) {
+        return errorResult("Authorized response missing token.");
+      }
+      const rt =
+        typeof j.refreshToken === "string" && j.refreshToken.trim()
+          ? j.refreshToken.trim()
+          : null;
+      runtime.holder.setTokens(j.token.trim(), rt);
+      persistIfNeeded(runtime);
+      return jsonResult({
+        ok: true,
+        status: "authorized",
+        userId: typeof j.userId === "string" ? j.userId : undefined,
+        message: "Session established. WPN tools are available.",
+      });
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_logout",
+    {
+      description: "Clear MCP cloud session (memory and persisted file when applicable).",
+      inputSchema: z.object({}),
+    },
+    async () => {
+      runtime.holder.clear();
+      client.invalidateNotesWithContextCache();
+      if (runtime.persistPath) {
+        clearPersistedMcpAuth(runtime.persistPath);
+      }
+      return jsonResult({ ok: true as const });
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_auth_status",
+    {
+      description:
+        "Diagnostics: mode, authenticated, sync API host, persist file presence, JWT claims (unverified_sub / exp) — never includes raw tokens.",
+      inputSchema: z.object({}),
+    },
+    async () => {
+      const persistPath = runtime.persistPath;
+      const persist_file_present =
+        persistPath && fs.existsSync(persistPath) ? true : false;
+      let sync_base_host = "";
+      try {
+        sync_base_host = new URL(runtime.baseUrl).host;
+      } catch {
+        sync_base_host = "";
+      }
+      const access = runtime.holder.accessToken;
+      const jwtInfo = access ? parseJwtUnverified(access) : {};
+      return jsonResult({
+        mode: runtime.mode,
+        cloud_session: runtime.cloudSession,
+        authenticated: runtime.holder.hasAccess(),
+        sync_base_host,
+        persist_file_path: persistPath ?? null,
+        persist_file_present,
+        ...jwtInfo,
+      });
     },
   );
 

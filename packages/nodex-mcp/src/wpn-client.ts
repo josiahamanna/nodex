@@ -1,4 +1,4 @@
-import type { WpnHttpConfig } from "./config.js";
+import type { McpTokenHolder } from "./mcp-token-holder.js";
 
 /** Default TTL for `GET /wpn/notes-with-context` in-process cache (ms). */
 const DEFAULT_NOTES_WITH_CONTEXT_TTL_MS = 2500;
@@ -6,6 +6,8 @@ const DEFAULT_NOTES_WITH_CONTEXT_TTL_MS = 2500;
 export type WpnHttpClientOptions = {
   /** How long to reuse the notes-with-context catalog; invalidated on note PATCH/POST. */
   notesWithContextTtlMs?: number;
+  /** Called after refresh (or login) updates tokens so MCP can persist. */
+  onTokensUpdated?: (access: string, refresh: string | null) => void;
 };
 
 export type WpnNoteWithContextRow = {
@@ -33,46 +35,115 @@ export type WpnNoteDetail = {
 
 export class WpnHttpClient {
   private readonly notesWithContextTtlMs: number;
+  private readonly onTokensUpdated?: WpnHttpClientOptions["onTokensUpdated"];
   private notesWithContextCache: { fetchedAtMs: number; rows: WpnNoteWithContextRow[] } | null =
     null;
 
   constructor(
-    private readonly cfg: WpnHttpConfig,
+    private readonly baseUrl: string,
+    private readonly holder: McpTokenHolder,
     opts: WpnHttpClientOptions = {},
   ) {
     this.notesWithContextTtlMs =
       opts.notesWithContextTtlMs ?? DEFAULT_NOTES_WITH_CONTEXT_TTL_MS;
+    this.onTokensUpdated = opts.onTokensUpdated;
   }
 
-  private invalidateNotesWithContextCache(): void {
+  getHolder(): McpTokenHolder {
+    return this.holder;
+  }
+
+  /** Clear notes-with-context cache (e.g. after logout). */
+  invalidateNotesWithContextCache(): void {
+    this.notesWithContextCache = null;
+  }
+
+  private invalidateNotesWithContextCacheInternal(): void {
     this.notesWithContextCache = null;
   }
 
   private url(path: string): string {
     const p = path.startsWith("/") ? path : `/${path}`;
-    return `${this.cfg.baseUrl}${p}`;
+    return `${this.baseUrl}${p}`;
   }
 
-  private headers(): HeadersInit {
-    return {
+  private authHeaders(): HeadersInit {
+    const h: Record<string, string> = {
       Accept: "application/json",
       "Content-Type": "application/json",
-      Authorization: `Bearer ${this.cfg.bearerToken}`,
     };
+    if (this.holder.accessToken) {
+      h.Authorization = `Bearer ${this.holder.accessToken}`;
+    }
+    return h;
   }
 
-  private async getJson<T>(path: string, errLabel: string): Promise<T> {
-    const res = await fetch(this.url(path), {
-      method: "GET",
-      headers: this.headers(),
+  private async tryRefresh(): Promise<boolean> {
+    const rt = this.holder.refreshToken;
+    if (!rt) {
+      return false;
+    }
+    const res = await fetch(this.url("/auth/refresh"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: rt }),
     });
-    const text = await res.text();
-    let body: unknown;
+    if (!res.ok) {
+      return false;
+    }
+    let body: { token?: string; refreshToken?: string };
     try {
-      body = text ? JSON.parse(text) : {};
+      body = (await res.json()) as { token?: string; refreshToken?: string };
+    } catch {
+      return false;
+    }
+    if (typeof body.token !== "string" || !body.token.trim()) {
+      return false;
+    }
+    const newRt =
+      typeof body.refreshToken === "string" && body.refreshToken.trim()
+        ? body.refreshToken.trim()
+        : rt;
+    this.holder.setTokens(body.token.trim(), newRt);
+    this.onTokensUpdated?.(this.holder.accessToken, this.holder.refreshToken);
+    return true;
+  }
+
+  private async fetchWpn(
+    path: string,
+    method: string,
+    errLabel: string,
+    body?: unknown,
+  ): Promise<{ res: Response; text: string; body: unknown }> {
+    const doFetch = () =>
+      fetch(this.url(path), {
+        method,
+        headers: this.authHeaders(),
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+    let res = await doFetch();
+    let text = await res.text();
+    if (res.status === 401 && this.holder.refreshToken) {
+      const ok = await this.tryRefresh();
+      if (ok) {
+        res = await doFetch();
+        text = await res.text();
+      }
+    }
+    if (res.status === 401) {
+      throw new Error("NODEX_UNAUTHORIZED");
+    }
+    let parsed: unknown;
+    try {
+      parsed = text ? JSON.parse(text) : {};
     } catch {
       throw new Error(`${errLabel}: invalid JSON (${res.status})`);
     }
+    return { res, text, body: parsed };
+  }
+
+  private async getJson<T>(path: string, errLabel: string): Promise<T> {
+    const { res, text, body } = await this.fetchWpn(path, "GET", errLabel);
     if (!res.ok) {
       const err = (body as { error?: string })?.error ?? text.slice(0, 200);
       throw new Error(`${errLabel} failed (${res.status}): ${err}`);
@@ -140,17 +211,11 @@ export class WpnHttpClient {
   }
 
   async getNote(noteId: string): Promise<WpnNoteDetail> {
-    const res = await fetch(this.url(`/wpn/notes/${encodeURIComponent(noteId)}`), {
-      method: "GET",
-      headers: this.headers(),
-    });
-    const text = await res.text();
-    let body: unknown;
-    try {
-      body = text ? JSON.parse(text) : {};
-    } catch {
-      throw new Error(`WPN get note: invalid JSON (${res.status})`);
-    }
+    const { res, text, body } = await this.fetchWpn(
+      `/wpn/notes/${encodeURIComponent(noteId)}`,
+      "GET",
+      "WPN get note",
+    );
     if (!res.ok) {
       const err = (body as { error?: string })?.error ?? text.slice(0, 200);
       throw new Error(`WPN GET note failed (${res.status}): ${err}`);
@@ -171,18 +236,12 @@ export class WpnHttpClient {
       metadata?: Record<string, unknown> | null;
     },
   ): Promise<WpnNoteDetail> {
-    const res = await fetch(this.url(`/wpn/notes/${encodeURIComponent(noteId)}`), {
-      method: "PATCH",
-      headers: this.headers(),
-      body: JSON.stringify(patch),
-    });
-    const text = await res.text();
-    let body: unknown;
-    try {
-      body = text ? JSON.parse(text) : {};
-    } catch {
-      throw new Error(`WPN patch note: invalid JSON (${res.status})`);
-    }
+    const { res, text, body } = await this.fetchWpn(
+      `/wpn/notes/${encodeURIComponent(noteId)}`,
+      "PATCH",
+      "WPN patch note",
+      patch,
+    );
     if (!res.ok) {
       const err = (body as { error?: string })?.error ?? text.slice(0, 200);
       throw new Error(`WPN PATCH note failed (${res.status}): ${err}`);
@@ -191,7 +250,7 @@ export class WpnHttpClient {
     if (!note) {
       throw new Error("WPN PATCH note: missing note in response");
     }
-    this.invalidateNotesWithContextCache();
+    this.invalidateNotesWithContextCacheInternal();
     return note;
   }
 
@@ -206,21 +265,12 @@ export class WpnHttpClient {
       metadata?: Record<string, unknown>;
     },
   ): Promise<{ id: string }> {
-    const res = await fetch(
-      this.url(`/wpn/projects/${encodeURIComponent(projectId)}/notes`),
-      {
-        method: "POST",
-        headers: this.headers(),
-        body: JSON.stringify(body),
-      },
+    const { res, text, body: parsed } = await this.fetchWpn(
+      `/wpn/projects/${encodeURIComponent(projectId)}/notes`,
+      "POST",
+      "WPN create note",
+      body,
     );
-    const text = await res.text();
-    let parsed: unknown;
-    try {
-      parsed = text ? JSON.parse(text) : {};
-    } catch {
-      throw new Error(`WPN create note: invalid JSON (${res.status})`);
-    }
     if (!res.ok) {
       const err = (parsed as { error?: string })?.error ?? text.slice(0, 200);
       throw new Error(`WPN POST note failed (${res.status}): ${err}`);
@@ -229,7 +279,7 @@ export class WpnHttpClient {
     if (typeof id !== "string" || !id) {
       throw new Error("WPN POST note: missing id in response");
     }
-    this.invalidateNotesWithContextCache();
+    this.invalidateNotesWithContextCacheInternal();
     return { id };
   }
 }

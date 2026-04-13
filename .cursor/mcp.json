@@ -1,11 +1,11 @@
 {
-    "mcpServers": {
-      "nodex-dev": {
-        "command": "npx",
-      "args": ["/home/jehu/Workspace/Nodex-Studio/nodex/packages/nodex-mcp/dist/cli.js"],
-        "env": {
+  "mcpServers": {
+    "nodex-session": {
+      "command": "npx",
+      "args": ["@nodex-studio/mcp"],
+      "env": {
           "NODEX_SYNC_API_BASE": "https://nodex.studio/api/v1",
-          "NODEX_ACCESS_TOKEN": "12345678900987654321"
+        "NODEX_MCP_CLOUD_SESSION": "1"
       }
     }
   }

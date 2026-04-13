@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { McpTokenHolder } from "./mcp-token-holder.js";
 import { WpnHttpClient } from "./wpn-client.js";
 
 const sampleRows = [
@@ -73,20 +74,22 @@ describe("WpnHttpClient getNotesWithContext cache", () => {
   });
 
   it("reuses notes-with-context within TTL", async () => {
-    const client = new WpnHttpClient(
-      { baseUrl: "http://127.0.0.1:9", bearerToken: "t" },
-      { notesWithContextTtlMs: 60_000 },
-    );
+    const holder = new McpTokenHolder();
+    holder.setTokens("t", null);
+    const client = new WpnHttpClient("http://127.0.0.1:9", holder, {
+      notesWithContextTtlMs: 60_000,
+    });
     await client.getNotesWithContext();
     await client.getNotesWithContext();
     assert.equal(catalogGets, 1);
   });
 
   it("refetches after patchNote invalidates cache", async () => {
-    const client = new WpnHttpClient(
-      { baseUrl: "http://127.0.0.1:9", bearerToken: "t" },
-      { notesWithContextTtlMs: 60_000 },
-    );
+    const holder = new McpTokenHolder();
+    holder.setTokens("t", null);
+    const client = new WpnHttpClient("http://127.0.0.1:9", holder, {
+      notesWithContextTtlMs: 60_000,
+    });
     await client.getNotesWithContext();
     assert.equal(catalogGets, 1);
     await client.patchNote("n1", { title: "y" });
@@ -95,10 +98,11 @@ describe("WpnHttpClient getNotesWithContext cache", () => {
   });
 
   it("refetches after createNote invalidates cache", async () => {
-    const client = new WpnHttpClient(
-      { baseUrl: "http://127.0.0.1:9", bearerToken: "t" },
-      { notesWithContextTtlMs: 60_000 },
-    );
+    const holder = new McpTokenHolder();
+    holder.setTokens("t", null);
+    const client = new WpnHttpClient("http://127.0.0.1:9", holder, {
+      notesWithContextTtlMs: 60_000,
+    });
     await client.getNotesWithContext();
     assert.equal(catalogGets, 1);
     await client.createNote("p1", { type: "markdown", relation: "root" });
@@ -107,10 +111,11 @@ describe("WpnHttpClient getNotesWithContext cache", () => {
   });
 
   it("does not cache when notesWithContextTtlMs is 0", async () => {
-    const client = new WpnHttpClient(
-      { baseUrl: "http://127.0.0.1:9", bearerToken: "t" },
-      { notesWithContextTtlMs: 0 },
-    );
+    const holder = new McpTokenHolder();
+    holder.setTokens("t", null);
+    const client = new WpnHttpClient("http://127.0.0.1:9", holder, {
+      notesWithContextTtlMs: 0,
+    });
     await client.getNotesWithContext();
     await client.getNotesWithContext();
     assert.equal(catalogGets, 2);

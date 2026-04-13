@@ -71,6 +71,20 @@ export type UserPrefsDoc = {
   updatedAtMs: number;
 };
 
+/** MCP browser device login (OAuth-style); TTL via `expiresAt`. */
+export type McpDeviceSessionDoc = {
+  _id?: ObjectId;
+  userCode: string;
+  deviceCodeHash: string;
+  status: "awaiting_user" | "awaiting_mcp" | "consumed";
+  clientIp: string;
+  createdAt: Date;
+  expiresAt: Date;
+  boundUserId?: string;
+  issuedAccessToken?: string | null;
+  issuedRefreshToken?: string | null;
+};
+
 let client: MongoClient | null = null;
 let db: Db | null = null;
 let connectInFlight: Promise<Db> | null = null;
@@ -144,6 +158,12 @@ async function ensureIndexes(database: Db): Promise<void> {
 
   const prefs = database.collection<UserPrefsDoc>("user_prefs");
   await prefs.createIndex({ userId: 1 }, { unique: true });
+
+  const mcpDev = database.collection<McpDeviceSessionDoc>("mcp_device_sessions");
+  await mcpDev.createIndex({ userCode: 1 }, { unique: true });
+  await mcpDev.createIndex({ deviceCodeHash: 1 }, { unique: true });
+  await mcpDev.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  await mcpDev.createIndex({ boundUserId: 1, status: 1, expiresAt: 1 });
 }
 
 export function getNotesCollection(): Collection<SyncNoteDoc> {
@@ -201,6 +221,13 @@ export function getUserPrefsCollection(): Collection<UserPrefsDoc> {
     throw new Error("MongoDB not connected");
   }
   return db.collection<UserPrefsDoc>("user_prefs");
+}
+
+export function getMcpDeviceSessionsCollection(): Collection<McpDeviceSessionDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<McpDeviceSessionDoc>("mcp_device_sessions");
 }
 
 export async function closeMongo(): Promise<void> {

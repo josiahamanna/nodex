@@ -15,7 +15,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "NODE_ENV=production tsx src/server.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/integration-auth-wpn.test.ts src/marked-smoke.test.ts src/repo-bundled-docs-path.test.ts",
+    "test": "tsx --test src/integration-auth-wpn.test.ts src/mcp-device-auth.test.ts src/marked-smoke.test.ts src/repo-bundled-docs-path.test.ts",
     "seed:wpn": "tsx scripts/seed-wpn-demo.ts"
   },
   "main": "./dist/index.js",

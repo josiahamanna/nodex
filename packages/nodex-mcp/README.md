@@ -17,10 +17,15 @@ stdio [Model Context Protocol](https://modelcontextprotocol.io) server for **Nod
 | `nodex_execute_note` | `noteQuery` (title or UUID) + optional `workspaceQuery` / `projectQuery`. Uses the same resolution as `nodex_find_notes`; if **unique**, returns full `note` for the agent to follow `content`. If **ambiguous** / scope errors, returns candidates with **path** and **noteId** so the user can pick; then call again with the chosen UUID (or narrower filters). |
 | `nodex_write_note` | Discriminated `mode`: `patch_existing`, `create_root`, `create_child`, `create_sibling` (maps to `PATCH` / `POST` WPN routes). |
 | `nodex_write_back_child` | After work scoped to a task note: `taskNoteId` + `title` + `content` → new **direct child** of that note (loads `projectId` via `GET /wpn/notes/:id`, then `POST` child). |
+| `nodex_login` | Cloud **session** mode only (`NODEX_MCP_CLOUD_SESSION=1`): `email` + `password` → stores JWT in-process and on disk (see below). Passwords may appear in host logs. |
+| `nodex_login_browser_start` | Starts browser device login; returns `verification_uri`, `device_code` (secret), `user_code`. Open the URL in a browser signed into Nodex, confirm, then poll. |
+| `nodex_login_browser_poll` | `device_code` → `{ status: pending \| authorized \| expired \| invalid }`; on `authorized`, tokens are stored like `nodex_login`. |
+| `nodex_logout` | Clears cloud session memory, notes catalog cache, and the persisted auth file when session mode is enabled. |
+| `nodex_auth_status` | Safe diagnostics: `mode`, `authenticated`, `sync_base_host`, `persist_file_present`, JWT `unverified_sub` / `access_expires_at_ms` — **never** returns raw tokens. |
 
-### Tool overlap (why all eight stay)
+### Tool overlap (convenience vs lower-level)
 
-**Decision:** keep the full tool surface. Pairs below are **intentional convenience**; agents can use the lower-level tool instead when they already have ids.
+**Decision:** keep the full WPN tool surface. Pairs below are **intentional convenience**; agents can use the lower-level tool instead when they already have ids.
 
 | If you use… | Same effect as… |
 |-------------|-------------------|
@@ -32,7 +37,7 @@ stdio [Model Context Protocol](https://modelcontextprotocol.io) server for **Nod
 
 ### Catalog request coalescing
 
-`nodex_find_notes`, `nodex_resolve_note`, and `nodex_execute_note` all read `GET /wpn/notes-with-context`. The HTTP client keeps a **short in-memory TTL** (default 2.5s) for that response and **drops the cache after** `PATCH` / `POST` notes so writes are not hidden for long. Tight loops in one agent turn still hit the network at most once per TTL window for reads. For tests or special cases, construct `WpnHttpClient` with `{ notesWithContextTtlMs: 0 }` to disable caching.
+`nodex_find_notes`, `nodex_resolve_note`, and `nodex_execute_note` all read `GET /wpn/notes-with-context`. The HTTP client keeps a **short in-memory TTL** (default 2.5s) for that response and **drops the cache after** `PATCH` / `POST` notes so writes are not hidden for long. Tight loops in one agent turn still hit the network at most once per TTL window for reads. For tests or special cases, construct `WpnHttpClient` with a `McpTokenHolder` and `{ notesWithContextTtlMs: 0 }` to disable caching.
 
 **Binary / cloud assets:** sync-api `/me/assets` may return 501 until implemented; embed text in markdown or use URLs the host can fetch. Local assets stay on disk under the project folder (Electron).
 
@@ -41,7 +46,21 @@ stdio [Model Context Protocol](https://modelcontextprotocol.io) server for **Nod
 ### Cloud (Cursor / Claude Desktop / Windsurf / CI)
 
 - `NODEX_SYNC_API_BASE` — must include `/api/v1` (e.g. `http://127.0.0.1:4010/api/v1` or `https://your-host/api/v1`).
-- `NODEX_ACCESS_TOKEN` **or** `NODEX_JWT` — raw JWT string (no `Bearer ` prefix).
+- `NODEX_ACCESS_TOKEN` **or** `NODEX_JWT` — raw JWT string (no `Bearer ` prefix). Required unless session mode is on.
+
+### Cloud session + browser login (optional)
+
+Set **`NODEX_MCP_CLOUD_SESSION=1`** to allow starting MCP **without** `NODEX_ACCESS_TOKEN`. Then:
+
+1. Call **`nodex_login_browser_start`** (or **`nodex_login`** with email/password).
+2. For browser flow: open **`verification_uri`**, sign in, click **Authorize** on `/mcp-auth`, then **`nodex_login_browser_poll`** with `device_code` until `status` is `authorized`.
+3. Tokens are saved under **`$XDG_CONFIG_HOME/nodex/mcp-cloud-auth.json`** or **`~/.config/nodex/mcp-cloud-auth.json`** with mode **0600** (override with **`NODEX_MCP_AUTH_FILE`**). Optional **`NODEX_MCP_TOKEN_ENCRYPTION_KEY`** wraps the file (see `.env.example`).
+
+**Threat model:** anyone with read access to your home directory can use the persisted JWT until expiry. Do not use session persistence on shared machines; prefer env-injected CI tokens. **`nodex_logout`** deletes the persist file.
+
+**Sync-api / Next:** set **`NODEX_MCP_WEB_VERIFY_BASE`** to the public site origin (e.g. `https://your-app.vercel.app`) so `verification_uri` points at **`/mcp-auth`**. The authorize API requires an **already signed-in** web Bearer token (anti-hijack); per-user **5** concurrent awaiting-MCP device sessions are enforced server-side.
+
+When session mode is on but there is no token yet, WPN tools return JSON with **`error: "unauthenticated"`** and **`suggested_tools`** so agents call login tools first (see server `instructions`).
 
 ### Local (Electron file vault + MCP)
 
@@ -65,9 +84,13 @@ node packages/nodex-mcp/dist/cli.js
 npm run dev -w @nodex-studio/mcp
 ```
 
-## Example: Cursor MCP (`mcp.json`)
+## Examples: Cursor MCP (`mcp.json`)
 
-Cloud:
+Use an absolute path to `dist/cli.js` (or your global `nodex-mcp` binary). Replace host and secrets with your values.
+
+### Cloud — fixed JWT (CI / stable token)
+
+No interactive login. MCP exits at startup if the token is missing.
 
 ```json
 {
@@ -77,14 +100,39 @@ Cloud:
       "args": ["/absolute/path/to/nodex/packages/nodex-mcp/dist/cli.js"],
       "env": {
         "NODEX_SYNC_API_BASE": "http://127.0.0.1:4010/api/v1",
-        "NODEX_ACCESS_TOKEN": "<jwt-from-login>"
+        "NODEX_ACCESS_TOKEN": "<jwt-from-web-login-or-service-account>"
       }
     }
   }
 }
 ```
 
-Local (after Electron wrote `nodex-local-wpn-mcp.json` or you set a fixed token):
+### Cloud — session mode (browser or `nodex_login`)
+
+Omits `NODEX_ACCESS_TOKEN` at startup. Use tools `nodex_login_browser_start` → open `verification_uri` → authorize in the browser → `nodex_login_browser_poll`, or `nodex_login` with email/password. Tokens persist under `~/.config/nodex/mcp-cloud-auth.json` (unless overridden).
+
+On the **sync-api / Next** deployment, set server env **`NODEX_MCP_WEB_VERIFY_BASE`** to the public site origin (e.g. `https://your-app.vercel.app`) so `verification_uri` points at `/mcp-auth`.
+
+```json
+{
+  "mcpServers": {
+    "nodex-session": {
+      "command": "node",
+      "args": ["/absolute/path/to/nodex/packages/nodex-mcp/dist/cli.js"],
+      "env": {
+        "NODEX_SYNC_API_BASE": "https://your-app.vercel.app/api/v1",
+        "NODEX_MCP_CLOUD_SESSION": "1"
+      }
+    }
+  }
+}
+```
+
+You can add to the same `env` object: **`NODEX_MCP_AUTH_FILE`** (custom persist path), **`NODEX_MCP_TOKEN_ENCRYPTION_KEY`** (encrypt the persist file; see repo [`.env.example`](../../.env.example)), or **`NODEX_ACCESS_TOKEN`** to seed a token while still allowing refresh + persist.
+
+### Local — Electron loopback WPN
+
+After Electron wrote `nodex-local-wpn-mcp.json` (or you set a fixed token in both places):
 
 ```json
 {
@@ -94,7 +142,7 @@ Local (after Electron wrote `nodex-local-wpn-mcp.json` or you set a fixed token)
       "args": ["/absolute/path/to/nodex/packages/nodex-mcp/dist/cli.js"],
       "env": {
         "NODEX_LOCAL_WPN_URL": "http://127.0.0.1:41234",
-        "NODEX_LOCAL_WPN_TOKEN": "<same-as-electron>"
+        "NODEX_LOCAL_WPN_TOKEN": "<same-as-electron-bridge>"
       }
     }
   }
@@ -103,7 +151,7 @@ Local (after Electron wrote `nodex-local-wpn-mcp.json` or you set a fixed token)
 
 ## CI
 
-Use a machine-safe JWT (service account or long-lived test user) with `NODEX_SYNC_API_BASE` + `NODEX_ACCESS_TOKEN`. Do not commit secrets; inject via CI secrets.
+Use a machine-safe JWT (service account or long-lived test user) with `NODEX_SYNC_API_BASE` + `NODEX_ACCESS_TOKEN`. Leave **`NODEX_MCP_CLOUD_SESSION` unset** in pipelines so startup fails fast if the token is missing. Do not commit secrets; inject via CI secrets.
 
 ## Tests
 
