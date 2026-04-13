@@ -14,7 +14,7 @@ The browser shell uses `window.Nodex` from [`src/renderer/nodex-web-shim.ts`](..
 | `NEXT_PUBLIC_NODEX_WPN_USE_SYNC_API` | Web | Set `1` to route WPN to sync-api (required for Mongo WPN in the browser). |
 | `NEXT_PUBLIC_NODEX_WEB_BACKEND` | Web | `sync-only` — use sync-api routes only (default in `npm run dev:web`). |
 | `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN` | Web | `1` — use relative `/api/v1` through the gateway. |
-| `NODEX_HEADLESS_API_ORIGIN` | `next.config` | **Rare:** optional Next rewrite proxy for `/api/v1` during custom migrations (leave unset by default). |
+| `NODEX_HEADLESS_API_ORIGIN` | `next.config` | **Rare:** optional Next rewrite proxy for `/api/v1` during custom migrations (leave unset by default). **On Vercel** it is **ignored** unless `NODEX_ALLOW_HEADLESS_REWRITE_ON_VERCEL=1`, so colocated `/api/v1` (MCP device login, etc.) is not proxied away by mistake. |
 | `MONGODB_URI` / `MONGODB_DB` | sync-api **or** Next (colocated API) | Mongo connection ([`docs/deploy-nodex-sync.md`](deploy-nodex-sync.md)); repo root `.env` for local dev. |
 | `JWT_SECRET` | sync-api **or** Next (colocated API) | JWT signing (≥32 chars in production). |
 | `NODEX_BUNDLED_DOCS_DIR` | sync-api / Next | Optional absolute path to bundled markdown tree (Next build copies docs into `apps/nodex-web/bundled-plugin-authoring` when unset). |
@@ -27,7 +27,7 @@ The browser shell uses `window.Nodex` from [`src/renderer/nodex-web-shim.ts`](..
 2. API: `npm run sync-api`
 3. Web: `npm run dev:web` (sets sync WPN + `sync-only`)
 
-**Option B — full-stack Next only:** Mongo + `npm run dev:web` with `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1` and `MONGODB_URI` / `JWT_SECRET` in `.env` so `/api/v1/*` is handled inside Next (no process on 4010).
+**Option B — full-stack Next only:** Mongo + `npm run dev:web` with `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1` and `MONGODB_URI` / `JWT_SECRET` in `.env` so `/api/v1/*` is handled inside Next (no process on 4010). For MCP browser login, set **`NODEX_MCP_WEB_VERIFY_BASE`** on that Next server to the public origin (see [`docs/deploy-nodex-sync.md`](deploy-nodex-sync.md)); verify with `npm run verify:mcp-device-start` against your public `/api/v1` base.
 
 Self-hosted operators should run **`nodex-sync-api`** or **Next + colocated routes** (see [`docs/deploy-nodex-sync.md`](deploy-nodex-sync.md)) or use **Electron** for the local file vault; there is no in-repo Express replacement.
 

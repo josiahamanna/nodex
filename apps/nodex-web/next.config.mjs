@@ -10,18 +10,30 @@ const repoRoot = path.resolve(__dirname, "../..");
 loadEnvConfig(repoRoot, process.env.NODE_ENV !== "production");
 const staticExport = process.env.NODEX_NEXT_STATIC_EXPORT === "1";
 
-const envHeadlessOrigin = process.env.NODEX_HEADLESS_API_ORIGIN?.trim().replace(
-  /\/$/,
-  "",
-);
+const envHeadlessOrigin =
+  process.env.NODEX_HEADLESS_API_ORIGIN?.trim().replace(/\/$/, "") || "";
 
 /**
  * When set, Next proxies /api/v1 and /marketplace/files to that origin (legacy dev only).
  * Default web dev (`npm run dev:web`) uses sync-api + `NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only` — leave unset.
  * Prefer nodex-gateway on :8080 with `NEXT_PUBLIC_NODEX_API_SAME_ORIGIN=1` (relative /api/v1, no rewrite in Next).
+ *
+ * **Vercel:** `NODEX_HEADLESS_API_ORIGIN` is ignored unless `NODEX_ALLOW_HEADLESS_REWRITE_ON_VERCEL=1`.
+ * Otherwise an accidental env value proxies `/api/v1` to an older host and new routes (e.g. MCP
+ * `POST /auth/mcp/device/start`) return 404 from that backend.
  */
-/** Optional HTTP proxy target for /api/v1; leave unset for sync-api-only web (default). */
-const headlessApiOrigin = envHeadlessOrigin || "";
+let headlessApiOrigin = envHeadlessOrigin;
+if (
+  process.env.VERCEL === "1" &&
+  envHeadlessOrigin &&
+  process.env.NODEX_ALLOW_HEADLESS_REWRITE_ON_VERCEL !== "1"
+) {
+  console.warn(
+    "[nodex] Ignoring NODEX_HEADLESS_API_ORIGIN on Vercel so /api/v1 uses colocated sync-api. " +
+      "Set NODEX_ALLOW_HEADLESS_REWRITE_ON_VERCEL=1 only if you intentionally proxy /api/v1 elsewhere.",
+  );
+  headlessApiOrigin = "";
+}
 
 const securityHeaders =
   process.env.VERCEL === "1"

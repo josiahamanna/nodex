@@ -17,6 +17,7 @@
     "pre-electron": "npm run core:npm-install",
     "electron": "ELECTRON_DISABLE_SANDBOX=1 electron-forge start",
     "start": "npm run electron",
+    "verify:mcp-device-start": "bash scripts/verify-mcp-device-start.sh",
     "sync-api": "npm run dev -w @nodex/sync-api",
     "sync-api:start": "npm run start -w @nodex/sync-api",
     "web": "npm run dev:web",

@@ -31,9 +31,12 @@ See also: [`docs/web-backend-modes.md`](web-backend-modes.md).
 
 1. Create a Vercel project with **Root Directory** `apps/nodex-web` (monorepo). The included [`apps/nodex-web/vercel.json`](../apps/nodex-web/vercel.json) runs **`npm ci` from the repo root** so workspace packages resolve, then **`npm run build`** in the web app (prebuild compiles sync-api + copies bundled docs).
 2. Set **environment variables** in the Vercel project: `MONGODB_URI`, `MONGODB_DB`, `JWT_SECRET` (≥32 chars), optional `CORS_ORIGIN` (`true` for permissive dev-style CORS). For public browser + packaged Electron, set **`NEXT_PUBLIC_NODEX_SYNC_API_URL`** to `https://<your-deployment>/api/v1` and **`NEXT_PUBLIC_NODEX_SITE_URL`** to `https://<your-deployment>` (see [`.env.example`](../.env.example)).
-3. **`VERCEL=1`** enables shorter Mongo pool sizing inside the driver (`apps/nodex-sync-api` `db.ts`). Optional: `NODEX_SYNC_API_VERBOSE=1` for Fastify request logging on serverless.
+3. **MCP browser login (Option B):** On the **same** Vercel project (Next server runs `/api/v1/*` via [`app/api/v1/[[...path]]`](../apps/nodex-web/app/api/v1/[[...path]]/route.ts)), set **`NODEX_MCP_WEB_VERIFY_BASE`** to the **public site origin** with no trailing slash (e.g. `https://<your-deployment>`). That env is read when building `verification_uri` for `POST /auth/mcp/device/start` (`…/mcp-auth?user_code=…`). Scope **`JWT_SECRET`** (and other secrets) to **Production** vs **Preview** to match how you test. After deploy, verify from your machine: `bash scripts/verify-mcp-device-start.sh https://<your-deployment>/api/v1` (expects HTTP 200 and a `verification_uri` line). **Do not set `NODEX_HEADLESS_API_ORIGIN` on Vercel** for colocated API; if it is set by mistake, [`next.config.mjs`](../apps/nodex-web/next.config.mjs) now **ignores** it unless you add **`NODEX_ALLOW_HEADLESS_REWRITE_ON_VERCEL=1`** (escape hatch for rare proxy setups).
+4. **`VERCEL=1`** enables shorter Mongo pool sizing inside the driver (`apps/nodex-sync-api` `db.ts`). Optional: `NODEX_SYNC_API_VERBOSE=1` for Fastify request logging on serverless.
 
 `GET /health` is served by Next at the deployment root for probes (same JSON as standalone sync-api).
+
+**Operator check (MCP device start):** From repo root, `npm run verify:mcp-device-start` (or `bash scripts/verify-mcp-device-start.sh <base>`) POSTs to `{base}/auth/mcp/device/start`. Override the default URL with the first argument or `NODEX_SYNC_API_VERIFY_BASE`.
 
 ## Environment variables
 
@@ -48,6 +51,8 @@ See also: [`docs/web-backend-modes.md`](web-backend-modes.md).
 | `NODEX_BUNDLED_DOCS_DIR` | sync-api / Next | Optional absolute path to bundled markdown (default: packaged `docs/bundled-plugin-authoring`; Next prebuild copies into `apps/nodex-web/bundled-plugin-authoring`) |
 | `NODEX_SYNC_API_SERVERLESS` | sync-api | Set automatically when `VERCEL=1`; lowers Mongo `maxPoolSize` for serverless |
 | `NODEX_MCP_WEB_VERIFY_BASE` | sync-api / Next | Public site origin (no trailing slash) for MCP device-login links, e.g. `https://your-app.vercel.app`. Used by `POST /auth/mcp/device/start` to build `verification_uri` (`/mcp-auth?user_code=…`). |
+| `NODEX_HEADLESS_API_ORIGIN` | `next.config` (local / non-Vercel) | Optional rewrite: proxy `/api/v1` to this origin. **On Vercel** ignored by default (see next row). |
+| `NODEX_ALLOW_HEADLESS_REWRITE_ON_VERCEL` | Vercel / Next build | Set `1` only if you **intentionally** want `NODEX_HEADLESS_API_ORIGIN` rewrites on Vercel. Otherwise colocated `/api/v1` stays on the Next server. |
 
 Dev: `resolve-sync-base` falls back to `http://127.0.0.1:4010/api/v1` when `NODE_ENV=development` and nothing else is set.
 

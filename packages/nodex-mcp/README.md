@@ -53,12 +53,16 @@ stdio [Model Context Protocol](https://modelcontextprotocol.io) server for **Nod
 Set **`NODEX_MCP_CLOUD_SESSION=1`** to allow starting MCP **without** `NODEX_ACCESS_TOKEN`. Then:
 
 1. Call **`nodex_login_browser_start`** (or **`nodex_login`** with email/password).
-2. For browser flow: open **`verification_uri`**, sign in, click **Authorize** on `/mcp-auth`, then **`nodex_login_browser_poll`** with `device_code` until `status` is `authorized`.
+2. For browser flow: open the **full** **`verification_uri`** from the tool response (it includes `?user_code=…` — opening **`/mcp-auth` alone is not enough**). Sign in, click **Authorize** on `/mcp-auth`, then **`nodex_login_browser_poll`** with `device_code` until `status` is `authorized`.
 3. Tokens are saved under **`$XDG_CONFIG_HOME/nodex/mcp-cloud-auth.json`** or **`~/.config/nodex/mcp-cloud-auth.json`** with mode **0600** (override with **`NODEX_MCP_AUTH_FILE`**). Optional **`NODEX_MCP_TOKEN_ENCRYPTION_KEY`** wraps the file (see `.env.example`).
 
 **Threat model:** anyone with read access to your home directory can use the persisted JWT until expiry. Do not use session persistence on shared machines; prefer env-injected CI tokens. **`nodex_logout`** deletes the persist file.
 
-**Sync-api / Next:** set **`NODEX_MCP_WEB_VERIFY_BASE`** to the public site origin (e.g. `https://your-app.vercel.app`) so `verification_uri` points at **`/mcp-auth`**. The authorize API requires an **already signed-in** web Bearer token (anti-hijack); per-user **5** concurrent awaiting-MCP device sessions are enforced server-side.
+**Option B (full-stack Next, colocated `/api/v1`):** The same Next deployment that serves [`app/api/v1/[[...path]]`](../../apps/nodex-web/app/api/v1/[[...path]]/route.ts) must expose **`POST /auth/mcp/device/start`**. Set **`NODEX_MCP_WEB_VERIFY_BASE`** on the **Next server** env (Vercel project) to the public site origin (no trailing slash) so `verification_uri` is `https://your-host/mcp-auth?user_code=…`. After deploy, check from your machine: `npm run verify:mcp-device-start` at repo root (or `bash scripts/verify-mcp-device-start.sh https://your-host/api/v1`) — expect HTTP **200** and a printed `verification_uri`.
+
+**Sync-api / Next:** The authorize API requires an **already signed-in** web Bearer token (anti-hijack); per-user **5** concurrent awaiting-MCP device sessions are enforced server-side.
+
+**Cursor chat:** Ask the agent to run **`nodex_login_browser_start`** and paste the full **`verification_uri`** string from the tool JSON. If the tool returns **Not Found**, fix deployment until `device/start` returns 200 (see above).
 
 When session mode is on but there is no token yet, WPN tools return JSON with **`error: "unauthenticated"`** and **`suggested_tools`** so agents call login tools first (see server `instructions`).
 
@@ -109,9 +113,9 @@ No interactive login. MCP exits at startup if the token is missing.
 
 ### Cloud — session mode (browser or `nodex_login`)
 
-Omits `NODEX_ACCESS_TOKEN` at startup. Use tools `nodex_login_browser_start` → open `verification_uri` → authorize in the browser → `nodex_login_browser_poll`, or `nodex_login` with email/password. Tokens persist under `~/.config/nodex/mcp-cloud-auth.json` (unless overridden).
+Omits `NODEX_ACCESS_TOKEN` at startup. Use tools `nodex_login_browser_start` → open the **full** `verification_uri` (includes `user_code`) → authorize in the browser → `nodex_login_browser_poll`, or `nodex_login` with email/password. Tokens persist under `~/.config/nodex/mcp-cloud-auth.json` (unless overridden).
 
-On the **sync-api / Next** deployment, set server env **`NODEX_MCP_WEB_VERIFY_BASE`** to the public site origin (e.g. `https://your-app.vercel.app`) so `verification_uri` points at `/mcp-auth`.
+On the **sync-api / Next** deployment, set server env **`NODEX_MCP_WEB_VERIFY_BASE`** to the public site origin (e.g. `https://your-app.vercel.app`) so `verification_uri` is `https://your-app.vercel.app/mcp-auth?user_code=…`. Verify deploy: `npm run verify:mcp-device-start` from repo root (see [`docs/deploy-nodex-sync.md`](../../docs/deploy-nodex-sync.md)).
 
 ```json
 {

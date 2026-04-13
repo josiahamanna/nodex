@@ -1,6 +1,6 @@
 {
   "name": "@nodex-studio/mcp",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "MCP server (stdio) for Nodex WPN over HTTP — cloud sync-api or Electron loopback",
   "type": "module",
   "files": [
