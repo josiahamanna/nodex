@@ -12,6 +12,7 @@ export type {
   RemoteApi,
 } from "./ports";
 export type { SyncDocument, SyncPullResponse, SyncPushResponse } from "./sync-types";
+export type { CreateNodexPlatformDepsOptions } from "./implementations";
 export {
   createElectronDesktopHost,
   createElectronOfflineFirstLocalStore,
@@ -20,7 +21,10 @@ export {
   createStubRemoteApi,
   createWebThinLocalStore,
 } from "./implementations";
-export { createFetchRemoteApi } from "./remote-fetch";
+export {
+  createFetchRemoteApi,
+  type CreateFetchRemoteApiOptions,
+} from "./remote-fetch";
 export {
   createSyncBaseUrlResolver,
   normalizeSyncApiBaseUrl,

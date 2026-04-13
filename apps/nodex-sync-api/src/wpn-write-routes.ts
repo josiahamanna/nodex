@@ -16,6 +16,8 @@ import {
   mongoWpnPatchWorkspaceSettings,
   mongoWpnSetExplorerExpanded,
   mongoWpnUpdateNote,
+  WpnDuplicateSiblingTitleError,
+  WPN_DUPLICATE_NOTE_TITLE_MESSAGE,
   mongoWpnUpdateProject,
   mongoWpnUpdateWorkspace,
 } from "./wpn-mongo-writes.js";
@@ -219,11 +221,18 @@ export function registerWpnWriteRoutes(
     if (body.metadata === null || (body.metadata && typeof body.metadata === "object")) {
       patch.metadata = body.metadata as Record<string, unknown> | null;
     }
-    const note = await mongoWpnUpdateNote(auth.sub, id, patch);
-    if (!note) {
-      return reply.status(404).send({ error: "Note not found" });
+    try {
+      const note = await mongoWpnUpdateNote(auth.sub, id, patch);
+      if (!note) {
+        return reply.status(404).send({ error: "Note not found" });
+      }
+      return reply.send({ note });
+    } catch (e) {
+      if (e instanceof WpnDuplicateSiblingTitleError) {
+        return reply.status(409).send({ error: WPN_DUPLICATE_NOTE_TITLE_MESSAGE });
+      }
+      throw e;
     }
-    return reply.send({ note });
   });
 
   app.post("/wpn/notes/delete", async (request, reply) => {

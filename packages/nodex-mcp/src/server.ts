@@ -23,6 +23,15 @@ const getNoteInput = z.object({
   noteId: z.string().describe("Canonical note UUID"),
 });
 
+const getNoteTitleInput = z.object({
+  noteId: z.string().describe("Canonical note UUID"),
+});
+
+const noteRenameInput = z.object({
+  noteId: z.string().describe("Canonical note UUID"),
+  title: z.string().describe("Full new title for the note (same as WPN PATCH title)."),
+});
+
 const findProjectsInput = z.object({
   query: z.string().describe("Project name or project UUID"),
   workspaceQuery: z
@@ -155,7 +164,6 @@ function persistIfNeeded(runtime: McpAuthRuntime): void {
   }
   const h = runtime.holder;
   if (!h.hasAccess()) {
-    clearPersistedMcpAuth(runtime.persistPath);
     return;
   }
   writePersistedMcpAuth(runtime.persistPath, {
@@ -216,6 +224,7 @@ const MCP_INSTRUCTIONS =
   "Nodex WPN tools: nodex_list_wpn lists workspaces / projects / notes or a full_tree; " +
   "nodex_find_projects / nodex_find_notes resolve by name or UUID with path (Workspace / Project / Title) and ambiguity hints; " +
   "nodex_resolve_note finds a noteId from workspace+project+title; nodex_get_note reads a note; " +
+  "nodex_get_note_title returns only { noteId, title } for composing renames; nodex_note_rename PATCHes the full title (duplicate sibling title → error); " +
   "nodex_execute_note resolves by title or id, returns ambiguity (path + noteId per candidate) for the user to pick, or returns the full note when unique — then the agent follows note.content; " +
   "nodex_write_note patches or creates notes; nodex_write_back_child creates a child under a task note after completing work scoped to that note. " +
   "Write-back policy: when you finish work that was driven by a specific Nodex note, call nodex_write_back_child with taskNoteId equal to that note so the outcome is attached as a new direct child (audit trail). " +
@@ -405,6 +414,48 @@ export async function runMcpStdioServer(): Promise<void> {
       try {
         const note = await client.getNote(args.noteId);
         return jsonResult({ note });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_get_note_title",
+    {
+      description:
+        "Return the current title for a note id without fetching full content. Use with nodex_note_rename to prepend e.g. DONE or fix typos.",
+      inputSchema: getNoteTitleInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) {
+        return denied;
+      }
+      try {
+        const note = await client.getNote(args.noteId);
+        return jsonResult({ noteId: note.id, title: note.title });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_note_rename",
+    {
+      description:
+        "Rename a note by id (PATCH title only). Fails with a clear error if another sibling under the same parent already uses that title.",
+      inputSchema: noteRenameInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) {
+        return denied;
+      }
+      try {
+        const note = await client.patchNote(args.noteId, { title: args.title });
+        return jsonResult({ ok: true as const, note });
       } catch (e) {
         return wpnCatch(e, runtime);
       }

@@ -54,13 +54,34 @@ function persistSyncedAuthTokens(access: string, refresh: string): void {
   }
 }
 
+export type CreateFetchRemoteApiOptions = {
+  /** After clearing tokens due to 401 + failed refresh, or 401 after a refresh retry. */
+  onSessionInvalidated?: () => void;
+};
+
 /**
  * HTTP client for `@nodex/sync-api` (Fastify + Mongo).
  * If base URL is empty, `syncPush` / `syncPull` no-op; `auth*` throws.
  */
-export function createFetchRemoteApi(getBaseUrl: () => string): RemoteApi {
+export function createFetchRemoteApi(
+  getBaseUrl: () => string,
+  options: CreateFetchRemoteApiOptions = {},
+): RemoteApi {
+  const onSessionInvalidated = options.onSessionInvalidated;
   let token: string | null = null;
   let refreshToken: string | null = null;
+
+  const invalidateSession = (): void => {
+    token = null;
+    refreshToken = null;
+    try {
+      localStorage.removeItem(NODEX_SYNC_ACCESS_TOKEN_KEY);
+      localStorage.removeItem(NODEX_SYNC_REFRESH_TOKEN_KEY);
+    } catch {
+      /* private mode */
+    }
+    onSessionInvalidated?.();
+  };
 
   const jsonHeaders = (): Record<string, string> => {
     const h: Record<string, string> = { "Content-Type": "application/json" };
@@ -115,15 +136,20 @@ export function createFetchRemoteApi(getBaseUrl: () => string): RemoteApi {
     }
     const ok = await tryRefreshTokens(base);
     if (!ok) {
+      invalidateSession();
       return first;
     }
-    return fetch(url, {
+    const second = await fetch(url, {
       ...init,
       headers: {
         ...(init.headers as Record<string, string>),
         ...jsonHeaders(),
       },
     });
+    if (second.status === 401) {
+      invalidateSession();
+    }
+    return second;
   };
 
   return {

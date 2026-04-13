@@ -3,7 +3,9 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ObjectId } from "mongodb";
 import { z } from "zod";
 import { requireAuth, signAccessToken, signRefreshToken } from "./auth.js";
+import type { UserDoc } from "./db.js";
 import { getUsersCollection } from "./db.js";
+import { buildSessionsAfterAppend } from "./refresh-sessions.js";
 import { getMcpDeviceSessionsCollection } from "./db.js";
 
 const MAX_ACTIVE_SESSIONS_PER_USER = 5;
@@ -169,11 +171,19 @@ export function registerMcpDeviceAuthRoutes(
       return reply.status(400).send({ error: "Invalid account id in session" });
     }
 
+    const userRow = (await users.findOne({ _id: userOid })) as UserDoc | null;
+    if (!userRow) {
+      return reply.status(400).send({ error: "Account not found" });
+    }
     const payload = { sub: auth.sub, email: auth.email };
     const jti = randomUUID();
     const accessToken = signAccessToken(jwtSecret, payload);
     const refreshToken = signRefreshToken(jwtSecret, payload, jti);
-    await users.updateOne({ _id: userOid }, { $set: { activeRefreshJti: jti } });
+    const nextSessions = buildSessionsAfterAppend(userRow, jti);
+    await users.updateOne(
+      { _id: userOid },
+      { $set: { refreshSessions: nextSessions }, $unset: { activeRefreshJti: "" } },
+    );
 
     await coll.updateOne(
       { _id: row._id, status: "awaiting_user" },

@@ -243,6 +243,12 @@ export class WpnHttpClient {
       patch,
     );
     if (!res.ok) {
+      if (res.status === 409) {
+        const msg = (body as { error?: string })?.error;
+        if (typeof msg === "string" && msg.trim()) {
+          throw new Error(msg.trim());
+        }
+      }
       const err = (body as { error?: string })?.error ?? text.slice(0, 200);
       throw new Error(`WPN PATCH note failed (${res.status}): ${err}`);
     }

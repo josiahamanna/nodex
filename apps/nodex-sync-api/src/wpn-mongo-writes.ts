@@ -24,6 +24,17 @@ function normalizeNoteType(t: string): string {
   return String(t || "markdown").trim().toLowerCase() || "markdown";
 }
 
+/** Same string returned in JSON `{ error }` for PATCH title conflicts (cloud + local WPN). */
+export const WPN_DUPLICATE_NOTE_TITLE_MESSAGE =
+  "Note title already exists. Try a different title.";
+
+export class WpnDuplicateSiblingTitleError extends Error {
+  constructor() {
+    super(WPN_DUPLICATE_NOTE_TITLE_MESSAGE);
+    this.name = "WpnDuplicateSiblingTitleError";
+  }
+}
+
 function childrenMapFromDocs(rows: WpnNoteDoc[]): Map<string | null, WpnNoteDoc[]> {
   const active = rows.filter((r) => r.deleted !== true);
   const m = new Map<string | null, WpnNoteDoc[]>();
@@ -390,6 +401,19 @@ export async function mongoWpnUpdateNote(
       patch.metadata && Object.keys(patch.metadata).length > 0
         ? patch.metadata
         : null;
+  }
+  if (patch.title !== undefined && title !== n.title) {
+    const clash = await noteCol.findOne({
+      userId,
+      project_id: n.project_id,
+      parent_id: n.parent_id,
+      title,
+      id: { $ne: noteId },
+      deleted: { $ne: true },
+    });
+    if (clash) {
+      throw new WpnDuplicateSiblingTitleError();
+    }
   }
   const updated_at_ms = nowMs();
   await noteCol.updateOne(

@@ -103,6 +103,8 @@ export interface CreateNodexPlatformDepsOptions {
   profile?: "web" | "electron";
   /** Highest-priority sync API base URL (no trailing slash); empty falls through to env. */
   getSyncApiBaseUrl?: () => string;
+  /** After the sync client clears tokens (401 + refresh failed, or 401 after refresh retry). */
+  onSyncSessionInvalidated?: () => void;
 }
 
 /**
@@ -116,7 +118,9 @@ export function createNodexPlatformDeps(
   const profile =
     options.profile ?? (isElectronUserAgent() ? "electron" : "web");
   const getBase = createSyncBaseUrlResolver(options.getSyncApiBaseUrl);
-  const remoteApi = createFetchRemoteApi(getBase);
+  const remoteApi = createFetchRemoteApi(getBase, {
+    onSessionInvalidated: options.onSyncSessionInvalidated,
+  });
   const localStore =
     profile === "electron"
       ? createElectronOfflineFirstLocalStore(options.notes)

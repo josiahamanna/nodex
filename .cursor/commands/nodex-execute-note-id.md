@@ -10,7 +10,7 @@ Extract a **single UUID** from the user’s latest message(s) (the same message 
 
 Call that value `NOTE_ID`.
 
-After you load that note (see **Steps**), treat its **content** as the task spec: read it carefully and **carry out those instructions** (research, edits, analysis, checklist, etc.)—not a generic summary unless the note itself only asks for a summary.
+After you load that note (see **Steps**), treat its **content** as the task spec: read it carefully and **carry out those instructions** (research, edits, analysis, checklist, etc.)—not a generic summary unless the note itself only asks for a summary. Specifically you need to execute the instructions from the contents of the notes
 
 When finished, **persist the outcome in Nodex** by creating a **direct child** of `NOTE_ID` via `nodex_write_back_child`, with **title** = `Result: ` + the original note title (same name, with `Result: ` prepended; use `Result: (untitled)` if there is no title) and **content** = your full result (markdown).
 

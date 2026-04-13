@@ -14,8 +14,10 @@ stdio [Model Context Protocol](https://modelcontextprotocol.io) server for **Nod
 | `nodex_list_wpn` | `scope`: `workspaces` \| `projects`+`workspaceId` \| `notes`+`projectId` \| `full_tree` — same data as GET `/wpn/workspaces`, `/wpn/workspaces/…/projects`, `/wpn/projects/…/notes`. |
 | `nodex_resolve_note` | Match `workspaceName` + `projectName` + `noteTitle` (trim, case-insensitive) → canonical `noteId`. Errors with `candidates` if ambiguous. |
 | `nodex_get_note` | `GET /wpn/notes/:id` — full note including `content`. |
+| `nodex_get_note_title` | Same GET as `nodex_get_note` but returns only `{ noteId, title }` (lighter context for rename flows). |
+| `nodex_note_rename` | `PATCH /wpn/notes/:id` with `{ title }` only. Duplicate title under the same parent → tool error with `Note title already exists. Try a different title.` (HTTP **409** from API). |
 | `nodex_execute_note` | `noteQuery` (title or UUID) + optional `workspaceQuery` / `projectQuery`. Uses the same resolution as `nodex_find_notes`; if **unique**, returns full `note` for the agent to follow `content`. If **ambiguous** / scope errors, returns candidates with **path** and **noteId** so the user can pick; then call again with the chosen UUID (or narrower filters). |
-| `nodex_write_note` | Discriminated `mode`: `patch_existing`, `create_root`, `create_child`, `create_sibling` (maps to `PATCH` / `POST` WPN routes). |
+| `nodex_write_note` | Discriminated `mode`: `patch_existing`, `create_root`, `create_child`, `create_sibling` (maps to `PATCH` / `POST` WPN routes). `patch_existing` with `title` uses the same duplicate-title rules as `nodex_note_rename`. |
 | `nodex_write_back_child` | After work scoped to a task note: `taskNoteId` + `title` + `content` → new **direct child** of that note (loads `projectId` via `GET /wpn/notes/:id`, then `POST` child). |
 | `nodex_login` | Cloud **session** mode only (`NODEX_MCP_CLOUD_SESSION=1`): `email` + `password` → stores JWT in-process and on disk (see below). Passwords may appear in host logs. |
 | `nodex_login_browser_start` | Starts browser device login; returns `verification_uri`, `device_code` (secret), `user_code`. Open the URL in a browser signed into Nodex, confirm, then poll. |
@@ -56,7 +58,9 @@ Set **`NODEX_MCP_CLOUD_SESSION=1`** to allow starting MCP **without** `NODEX_ACC
 2. For browser flow: open the **full** **`verification_uri`** from the tool response (it includes `?user_code=…` — opening **`/mcp-auth` alone is not enough**). Sign in, click **Authorize** on `/mcp-auth`, then **`nodex_login_browser_poll`** with `device_code` until `status` is `authorized`.
 3. Tokens are saved under **`$XDG_CONFIG_HOME/nodex/mcp-cloud-auth.json`** or **`~/.config/nodex/mcp-cloud-auth.json`** with mode **0600** (override with **`NODEX_MCP_AUTH_FILE`**). Optional **`NODEX_MCP_TOKEN_ENCRYPTION_KEY`** wraps the file (see `.env.example`).
 
-**Threat model:** anyone with read access to your home directory can use the persisted JWT until expiry. Do not use session persistence on shared machines; prefer env-injected CI tokens. **`nodex_logout`** deletes the persist file.
+**Threat model:** anyone with read access to your home directory can use the persisted JWT until expiry. Do not use session persistence on shared machines; prefer env-injected CI tokens. The persist file is **only** removed by **`nodex_logout`**; losing the in-memory session (e.g. process exit) does **not** delete it—tokens are reloaded on next MCP start.
+
+**Server JWT TTL (sync-api):** optional env **`NODEX_JWT_ACCESS_EXPIRES`** (default `15m`) and **`NODEX_JWT_REFRESH_EXPIRES`** (default `30d`) — longer values increase impact of token leakage. Concurrent device sessions are capped with **`NODEX_MAX_REFRESH_SESSIONS`** (default **20**, max **100**).
 
 **Option B (full-stack Next, colocated `/api/v1`):** The same Next deployment that serves [`app/api/v1/[[...path]]`](../../apps/nodex-web/app/api/v1/[[...path]]/route.ts) must expose **`POST /auth/mcp/device/start`**. Set **`NODEX_MCP_WEB_VERIFY_BASE`** on the **Next server** env (Vercel project) to the public site origin (no trailing slash) so `verification_uri` is `https://your-host/mcp-auth?user_code=…`. After deploy, check from your machine: `npm run verify:mcp-device-start` at repo root (or `bash scripts/verify-mcp-device-start.sh https://your-host/api/v1`) — expect HTTP **200** and a printed `verification_uri`.
 

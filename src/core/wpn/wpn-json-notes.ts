@@ -18,6 +18,17 @@ function persist(store: WorkspaceStore): void {
   store.persist();
 }
 
+/** Same `error` string as cloud `PATCH /wpn/notes/:id` on duplicate sibling title. */
+export const WPN_LOCAL_DUPLICATE_NOTE_TITLE_MESSAGE =
+  "Note title already exists. Try a different title.";
+
+export class WpnJsonDuplicateTitleError extends Error {
+  constructor() {
+    super(WPN_LOCAL_DUPLICATE_NOTE_TITLE_MESSAGE);
+    this.name = "WpnJsonDuplicateTitleError";
+  }
+}
+
 function findSlotForProject(
   store: WorkspaceStore,
   projectId: string,
@@ -282,6 +293,18 @@ export function wpnJsonUpdateNote(
     return null;
   }
   const title = patch.title !== undefined ? patch.title.trim() || cur.title : cur.title;
+  if (patch.title !== undefined && title !== cur.title) {
+    const hasDup = slot.notes.some(
+      (x) =>
+        x.project_id === cur.project_id &&
+        x.parent_id === cur.parent_id &&
+        x.id !== noteId &&
+        x.title === title,
+    );
+    if (hasDup) {
+      throw new WpnJsonDuplicateTitleError();
+    }
+  }
   const content = patch.content !== undefined ? patch.content : cur.content;
   const type = normalizeLegacyNoteType(
     patch.type !== undefined ? patch.type : cur.type,

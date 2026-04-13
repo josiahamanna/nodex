@@ -19,6 +19,11 @@ import { registerWpnBatchRoutes } from "./wpn-batch-routes.js";
 import { registerWpnReadRoutes } from "./wpn-routes.js";
 import { registerWpnWriteRoutes } from "./wpn-write-routes.js";
 import { registerMcpDeviceAuthRoutes } from "./mcp-device-auth-routes.js";
+import {
+  buildSessionsAfterAppend,
+  rotateRefreshSession,
+  userHasRefreshJti,
+} from "./refresh-sessions.js";
 
 const registerBody = z.object({
   email: z.string().email(),
@@ -89,7 +94,7 @@ export function registerRoutes(
     const refreshToken = signRefreshToken(jwtSecret, payload, jti);
     await users.updateOne(
       { _id: ins.insertedId },
-      { $set: { activeRefreshJti: jti } },
+      { $set: { refreshSessions: [{ jti, createdAt: new Date() }] } },
     );
     return reply.send({ token, refreshToken, userId });
   });
@@ -114,9 +119,10 @@ export function registerRoutes(
     const jti = randomUUID();
     const token = signAccessToken(jwtSecret, payload);
     const refreshToken = signRefreshToken(jwtSecret, payload, jti);
+    const nextSessions = buildSessionsAfterAppend(user as UserDoc, jti);
     await users.updateOne(
       { _id: user._id },
-      { $set: { activeRefreshJti: jti } },
+      { $set: { refreshSessions: nextSessions }, $unset: { activeRefreshJti: "" } },
     );
     return reply.send({ token, refreshToken, userId });
   });
@@ -135,12 +141,19 @@ export function registerRoutes(
       } catch {
         return reply.status(401).send({ error: "Invalid or expired refresh token" });
       }
-      const user = await users.findOne({ _id: userId });
-      if (!user || user.activeRefreshJti !== p.jti) {
+      const user = (await users.findOne({ _id: userId })) as UserDoc | null;
+      if (!user || !userHasRefreshJti(user, p.jti)) {
         return reply.status(401).send({ error: "Invalid or expired refresh token" });
       }
       const newJti = randomUUID();
-      await users.updateOne({ _id: userId }, { $set: { activeRefreshJti: newJti } });
+      const nextSessions = rotateRefreshSession(user, p.jti, newJti);
+      if (!nextSessions) {
+        return reply.status(401).send({ error: "Invalid or expired refresh token" });
+      }
+      await users.updateOne(
+        { _id: userId },
+        { $set: { refreshSessions: nextSessions }, $unset: { activeRefreshJti: "" } },
+      );
       const token = signAccessToken(jwtSecret, {
         sub: p.sub,
         email: p.email,

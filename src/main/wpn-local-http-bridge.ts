@@ -8,6 +8,8 @@ import { getNotesDatabase } from "../core/workspace-store";
 import { getWpnOwnerId } from "../core/wpn/wpn-owner";
 import { wpnJsonListProjects, wpnJsonListWorkspaces } from "../core/wpn/wpn-json-service";
 import {
+  WpnJsonDuplicateTitleError,
+  WPN_LOCAL_DUPLICATE_NOTE_TITLE_MESSAGE,
   wpnJsonCreateNote,
   wpnJsonGetNoteById,
   wpnJsonListAllNotesWithContext,
@@ -242,7 +244,16 @@ function handleWpnRequest(
         const store = requireStore();
         const before =
           patch.title !== undefined ? wpnJsonGetNoteById(store, ownerId, id) : null;
-        const note = wpnJsonUpdateNote(store, ownerId, id, patch);
+        let note;
+        try {
+          note = wpnJsonUpdateNote(store, ownerId, id, patch);
+        } catch (e) {
+          if (e instanceof WpnJsonDuplicateTitleError) {
+            sendJson(res, 409, { error: WPN_LOCAL_DUPLICATE_NOTE_TITLE_MESSAGE });
+            return;
+          }
+          throw e;
+        }
         if (!note) {
           sendJson(res, 404, { error: "Note not found" });
           return;

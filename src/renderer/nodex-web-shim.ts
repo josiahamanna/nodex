@@ -22,6 +22,7 @@ import {
   useWebTryoutWpnIndexedDb,
   webScratchPlainStubOverrides,
 } from "./wpnscratch/web-scratch-nodex-api";
+import { notifySyncSessionInvalidated } from "./sync-session-invalidation";
 
 const noopUnsub = (): void => {};
 
@@ -211,6 +212,7 @@ async function syncWpnFetch<T>(
           return stub;
         }
       }
+      notifySyncSessionInvalidated();
       throw new Error(`${method} ${apiPath} failed (401)`);
     }
     const r2 = await fetch(`${syncBase.replace(/\/$/, "")}/auth/refresh`, {
@@ -227,6 +229,7 @@ async function syncWpnFetch<T>(
           return stub;
         }
       }
+      notifySyncSessionInvalidated();
       throw new Error(`${method} ${apiPath} failed (401)`);
     }
     const j = (await r2.json()) as { token: string; refreshToken: string };
@@ -236,6 +239,9 @@ async function syncWpnFetch<T>(
   }
   const text = await res.text();
   if (!res.ok) {
+    if (res.status === 401) {
+      notifySyncSessionInvalidated();
+    }
     let msg = `${method} ${apiPath} failed (${res.status})`;
     try {
       const errObj = JSON.parse(text) as { error?: string };

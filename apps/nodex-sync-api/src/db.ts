@@ -173,12 +173,16 @@ export function getNotesCollection(): Collection<SyncNoteDoc> {
   return db.collection<SyncNoteDoc>("notes");
 }
 
+export type RefreshSessionDoc = { jti: string; createdAt: Date };
+
 export type UserDoc = {
   _id: ObjectId;
   email: string;
   passwordHash: string;
-  /** Refresh token jti; new login/register overwrites → other clients cannot refresh. */
+  /** Legacy single-session field; migrated to `refreshSessions` on next login/refresh/MCP authorize. */
   activeRefreshJti?: string | null;
+  /** Concurrent refresh token sessions (JTIs). */
+  refreshSessions?: RefreshSessionDoc[] | null;
 };
 
 export function getUsersCollection(): Collection {

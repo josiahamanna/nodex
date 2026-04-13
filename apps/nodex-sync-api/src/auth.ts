@@ -1,6 +1,15 @@
 import jwt, { type SignOptions } from "jsonwebtoken";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
+const ACCESS_EXPIRES =
+  (typeof process.env.NODEX_JWT_ACCESS_EXPIRES === "string" &&
+    process.env.NODEX_JWT_ACCESS_EXPIRES.trim()) ||
+  "15m";
+const REFRESH_EXPIRES =
+  (typeof process.env.NODEX_JWT_REFRESH_EXPIRES === "string" &&
+    process.env.NODEX_JWT_REFRESH_EXPIRES.trim()) ||
+  "30d";
+
 export type JwtPayload = {
   sub: string;
   email: string;
@@ -24,7 +33,7 @@ export function signToken(
 }
 
 export function signAccessToken(secret: string, payload: JwtPayload): string {
-  return signToken(secret, { ...payload, typ: "access" }, "15m");
+  return signToken(secret, { ...payload, typ: "access" }, ACCESS_EXPIRES);
 }
 
 export function signRefreshToken(
@@ -32,7 +41,7 @@ export function signRefreshToken(
   payload: JwtPayload,
   jti: string,
 ): string {
-  return signToken(secret, { ...payload, typ: "refresh", jti }, "30d");
+  return signToken(secret, { ...payload, typ: "refresh", jti }, REFRESH_EXPIRES);
 }
 
 export function verifyToken(secret: string, token: string): JwtPayload {
