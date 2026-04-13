@@ -213,6 +213,111 @@ function optimisticWpnNotesAfterMove(
   }
 }
 
+function buildChildMapFromExplorerItems(items: WpnNoteListItem[]): Map<string | null, string[]> {
+  const m = new Map<string | null, string[]>();
+  for (const n of items) {
+    const k = n.parent_id;
+    const arr = m.get(k) ?? [];
+    arr.push(n.id);
+    m.set(k, arr);
+  }
+  const byId = new Map(items.map((n) => [n.id, n]));
+  for (const [, arr] of m) {
+    arr.sort((a, b) => (byId.get(a)?.sibling_index ?? 0) - (byId.get(b)?.sibling_index ?? 0));
+  }
+  return m;
+}
+
+function flattenExplorerChildMapToListItems(
+  childMap: Map<string | null, string[]>,
+  items: WpnNoteListItem[],
+  synthetic: { id: string; project_id: string; type: string; title: string },
+): WpnNoteListItem[] {
+  const byId = new Map(items.map((n) => [n.id, n]));
+  const out: WpnNoteListItem[] = [];
+  const visit = (parentId: string | null, depth: number): void => {
+    const kids = childMap.get(parentId) ?? [];
+    for (let i = 0; i < kids.length; i++) {
+      const nid = kids[i]!;
+      if (nid === synthetic.id) {
+        out.push({
+          id: synthetic.id,
+          project_id: synthetic.project_id,
+          parent_id: parentId,
+          type: synthetic.type,
+          title: synthetic.title,
+          depth,
+          sibling_index: i,
+        });
+        visit(nid, depth + 1);
+      } else {
+        const src = byId.get(nid);
+        if (!src) continue;
+        out.push({
+          ...src,
+          parent_id: parentId,
+          depth,
+          sibling_index: i,
+        });
+        visit(nid, depth + 1);
+      }
+    }
+  };
+  visit(null, 0);
+  return out;
+}
+
+/**
+ * Inserts a synthetic row matching {@link wpnJsonCreateNote} placement (root / child / sibling).
+ */
+function optimisticWpnNotesAfterCreate(
+  items: WpnNoteListItem[],
+  params: {
+    newId: string;
+    projectId: string;
+    relation: CreateNoteRelation;
+    anchorId?: string;
+    type: string;
+  },
+): WpnNoteListItem[] | null {
+  try {
+    if (items.some((n) => n.id === params.newId)) return null;
+    const { newId, projectId, relation, anchorId, type } = params;
+    const base = buildChildMapFromExplorerItems(items);
+    const cm = new Map<string | null, string[]>();
+    for (const [k, v] of base) {
+      cm.set(k, [...v]);
+    }
+
+    if (relation === "root") {
+      const roots = [...(cm.get(null) ?? [])];
+      cm.set(null, [...roots, newId]);
+    } else if (!anchorId) {
+      return null;
+    } else if (relation === "child") {
+      const kids = [...(cm.get(anchorId) ?? [])];
+      cm.set(anchorId, [...kids, newId]);
+    } else {
+      const anchor = items.find((x) => x.id === anchorId);
+      if (!anchor) return null;
+      const parentKey = anchor.parent_id;
+      const sibs = [...(cm.get(parentKey) ?? [])];
+      const ai = sibs.indexOf(anchorId);
+      if (ai < 0) return null;
+      cm.set(parentKey, [...sibs.slice(0, ai + 1), newId, ...sibs.slice(ai + 1)]);
+    }
+
+    return flattenExplorerChildMapToListItems(cm, items, {
+      id: newId,
+      project_id: projectId,
+      type,
+      title: "Untitled",
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** Short badge for explorer rows: two letters, e.g. markdown → md, foo-bar → fb. */
 function noteTypeExplorerAbbrev(type: string): string {
   const key = type.toLowerCase().trim();
@@ -741,18 +846,48 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       type,
       anchorId,
     });
-    await loadProjectTree(projectId);
+    const optimistic = optimisticWpnNotesAfterCreate(notesRef.current, {
+      newId: id,
+      projectId,
+      relation,
+      anchorId,
+      type,
+    });
+    if (optimistic) {
+      setNotes(optimistic);
+      if (relation === "child" && anchorId) {
+        setExpandedNoteParents((ex) => {
+          const n = new Set(ex);
+          n.add(anchorId);
+          void persistExpandedNotes(projectId, n);
+          return n;
+        });
+      }
+    }
     closeAllMenus();
     const vfsPath = explorerCanonicalVfsPath(projectId, "Untitled", workspaces, projectsByWs);
     openNoteById(id, { newTab: true, ...(vfsPath ? { canonicalVfsPath: vfsPath } : {}) });
+    void loadProjectTree(projectId).catch((e) => {
+      console.error(e);
+    });
   };
 
   const onDeleteNotes = async (projectId: string, ids: string[]) => {
     if (!window.confirm(`Delete ${ids.length} note(s)?`)) return;
-    await getNodex().wpnDeleteNotes(ids);
+    const snapshot = notesRef.current;
+    setNotes((prev) => prev.filter((n) => !ids.includes(n.id)));
+    try {
+      await getNodex().wpnDeleteNotes(ids);
+    } catch (e) {
+      setNotes(snapshot);
+      window.alert(e instanceof Error ? e.message : String(e));
+      return;
+    }
     closeShellTabsForNoteIds(tabs, ids);
-    await loadProjectTree(projectId);
     closeAllMenus();
+    void loadProjectTree(projectId).catch((e) => {
+      console.error(e);
+    });
   };
 
   const swapWorkspaceOrder = useCallback(
