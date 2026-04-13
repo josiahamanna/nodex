@@ -193,8 +193,8 @@ export function registerMcpDeviceAuthRoutes(
     }
     const payload = { sub: auth.sub, email: auth.email };
     const jti = randomUUID();
-    const accessToken = signAccessToken(jwtSecret, payload);
-    const refreshToken = signRefreshToken(jwtSecret, payload, jti);
+    const accessToken = signAccessToken(jwtSecret, payload, "mcp");
+    const refreshToken = signRefreshToken(jwtSecret, payload, jti, "mcp");
     const nextSessions = buildSessionsAfterAppend(userRow, jti);
     await users.updateOne(
       { _id: userOid },

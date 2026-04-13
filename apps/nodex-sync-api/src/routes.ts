@@ -30,7 +30,10 @@ const registerBody = z.object({
   password: z.string().min(8).max(256),
 });
 
-const loginBody = registerBody;
+const loginBody = registerBody.extend({
+  /** When `mcp`, refresh token uses NODEX_JWT_MCP_REFRESH_EXPIRES (default 7d). */
+  client: z.enum(["mcp"]).optional(),
+});
 
 const refreshBody = z.object({
   refreshToken: z.string().min(10),
@@ -117,8 +120,9 @@ export function registerRoutes(
     const userId = user._id.toHexString();
     const payload = { sub: userId, email: user.email };
     const jti = randomUUID();
-    const token = signAccessToken(jwtSecret, payload);
-    const refreshToken = signRefreshToken(jwtSecret, payload, jti);
+    const sessionVariant = parsed.data.client === "mcp" ? "mcp" : "default";
+    const token = signAccessToken(jwtSecret, payload, sessionVariant);
+    const refreshToken = signRefreshToken(jwtSecret, payload, jti, sessionVariant);
     const nextSessions = buildSessionsAfterAppend(user as UserDoc, jti);
     await users.updateOne(
       { _id: user._id },
@@ -154,14 +158,17 @@ export function registerRoutes(
         { _id: userId },
         { $set: { refreshSessions: nextSessions }, $unset: { activeRefreshJti: "" } },
       );
-      const token = signAccessToken(jwtSecret, {
-        sub: p.sub,
-        email: p.email,
-      });
+      const sessionVariant = p.mcp === true ? "mcp" : "default";
+      const token = signAccessToken(
+        jwtSecret,
+        { sub: p.sub, email: p.email },
+        sessionVariant,
+      );
       const refreshToken = signRefreshToken(
         jwtSecret,
         { sub: p.sub, email: p.email },
         newJti,
+        sessionVariant,
       );
       return reply.send({ token, refreshToken });
     } catch {

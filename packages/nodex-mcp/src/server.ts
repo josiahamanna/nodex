@@ -755,6 +755,7 @@ export async function runMcpStdioServer(): Promise<void> {
       const r = await postJsonUnauthed(runtime.baseUrl, "/auth/login", {
         email: args.email,
         password: args.password,
+        client: "mcp",
       });
       if (!r.ok) {
         const err = (r.json as { error?: string })?.error ?? `login failed (${r.status})`;

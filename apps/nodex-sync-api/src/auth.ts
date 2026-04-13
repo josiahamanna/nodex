@@ -10,15 +10,32 @@ const REFRESH_EXPIRES =
     process.env.NODEX_JWT_REFRESH_EXPIRES.trim()) ||
   "30d";
 
+/** Access + refresh tokens from MCP browser or password login. */
+const MCP_ACCESS_EXPIRES =
+  (typeof process.env.NODEX_JWT_MCP_ACCESS_EXPIRES === "string" &&
+    process.env.NODEX_JWT_MCP_ACCESS_EXPIRES.trim()) ||
+  "7d";
+const MCP_REFRESH_EXPIRES =
+  (typeof process.env.NODEX_JWT_MCP_REFRESH_EXPIRES === "string" &&
+    process.env.NODEX_JWT_MCP_REFRESH_EXPIRES.trim()) ||
+  "7d";
+
 export type JwtPayload = {
   sub: string;
   email: string;
   typ?: string;
   /** Present on refresh tokens (rotation / single active session). */
   jti?: string;
+  /** MCP-issued tokens carry this so /auth/refresh keeps MCP access + refresh TTLs. */
+  mcp?: boolean;
 };
 
 export type RefreshJwtPayload = JwtPayload & { typ: "refresh"; jti: string };
+
+/** Issue web-style vs MCP-style JWT expiries (see NODEX_JWT_* and NODEX_JWT_MCP_* env). */
+export type AuthTokenVariant = "default" | "mcp";
+/** @deprecated use AuthTokenVariant */
+export type RefreshTokenVariant = AuthTokenVariant;
 
 export function signToken(
   secret: string,
@@ -32,16 +49,31 @@ export function signToken(
   return jwt.sign(payload, secret, opts);
 }
 
-export function signAccessToken(secret: string, payload: JwtPayload): string {
-  return signToken(secret, { ...payload, typ: "access" }, ACCESS_EXPIRES);
+export function signAccessToken(
+  secret: string,
+  payload: JwtPayload,
+  variant: AuthTokenVariant = "default",
+): string {
+  const expiresIn = variant === "mcp" ? MCP_ACCESS_EXPIRES : ACCESS_EXPIRES;
+  const body: JwtPayload =
+    variant === "mcp"
+      ? { sub: payload.sub, email: payload.email, typ: "access", mcp: true }
+      : { ...payload, typ: "access" };
+  return signToken(secret, body, expiresIn);
 }
 
 export function signRefreshToken(
   secret: string,
   payload: JwtPayload,
   jti: string,
+  variant: AuthTokenVariant = "default",
 ): string {
-  return signToken(secret, { ...payload, typ: "refresh", jti }, REFRESH_EXPIRES);
+  const expiresIn = variant === "mcp" ? MCP_REFRESH_EXPIRES : REFRESH_EXPIRES;
+  const body: JwtPayload =
+    variant === "mcp"
+      ? { sub: payload.sub, email: payload.email, typ: "refresh", jti, mcp: true }
+      : { sub: payload.sub, email: payload.email, typ: "refresh", jti };
+  return signToken(secret, body, expiresIn);
 }
 
 export function verifyToken(secret: string, token: string): JwtPayload {
