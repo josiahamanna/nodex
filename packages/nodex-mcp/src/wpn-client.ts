@@ -33,6 +33,48 @@ export type WpnNoteDetail = {
   updated_at_ms: number;
 };
 
+/** One row from `GET /wpn/projects/:projectId/notes` (preorder flat list). */
+export type WpnNoteListItem = {
+  id: string;
+  project_id: string;
+  parent_id: string | null;
+  type: string;
+  title: string;
+  depth: number;
+  sibling_index: number;
+};
+
+function isWpnNoteListItem(x: unknown): x is WpnNoteListItem {
+  if (x === null || typeof x !== "object") {
+    return false;
+  }
+  const o = x as Record<string, unknown>;
+  const pid = o.parent_id;
+  return (
+    typeof o.id === "string" &&
+    typeof o.project_id === "string" &&
+    (pid === null || typeof pid === "string") &&
+    typeof o.type === "string" &&
+    typeof o.title === "string" &&
+    typeof o.depth === "number" &&
+    Number.isFinite(o.depth) &&
+    typeof o.sibling_index === "number" &&
+    Number.isFinite(o.sibling_index)
+  );
+}
+
+export function parseWpnNoteListItems(raw: unknown[], errLabel: string): WpnNoteListItem[] {
+  const out: WpnNoteListItem[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const item = raw[i];
+    if (!isWpnNoteListItem(item)) {
+      throw new Error(`${errLabel}: invalid note list item at index ${i}`);
+    }
+    out.push(item);
+  }
+  return out;
+}
+
 export class WpnHttpClient {
   private readonly notesWithContextTtlMs: number;
   private readonly onTokensUpdated?: WpnHttpClientOptions["onTokensUpdated"];
@@ -175,7 +217,7 @@ export class WpnHttpClient {
     return p;
   }
 
-  async getNotesFlat(projectId: string): Promise<unknown[]> {
+  async getNotesFlat(projectId: string): Promise<WpnNoteListItem[]> {
     const body = await this.getJson<{ notes?: unknown }>(
       `/wpn/projects/${encodeURIComponent(projectId)}/notes`,
       "WPN GET notes",
@@ -184,7 +226,7 @@ export class WpnHttpClient {
     if (!Array.isArray(n)) {
       throw new Error("WPN GET notes: missing notes array");
     }
-    return n;
+    return parseWpnNoteListItems(n, "WPN GET notes");
   }
 
   async getNotesWithContext(): Promise<WpnNoteWithContextRow[]> {

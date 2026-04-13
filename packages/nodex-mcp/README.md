@@ -18,6 +18,7 @@ stdio [Model Context Protocol](https://modelcontextprotocol.io) server for **Nod
 | `nodex_note_rename` | `PATCH /wpn/notes/:id` with `{ title }` only. Duplicate title under the same parent → tool error with `Note title already exists. Try a different title.` (HTTP **409** from API). |
 | `nodex_execute_note` | `noteQuery` (title or UUID) + optional `workspaceQuery` / `projectQuery`. Uses the same resolution as `nodex_find_notes`; if **unique**, returns full `note` for the agent to follow `content`. If **ambiguous** / scope errors, returns candidates with **path** and **noteId** so the user can pick; then call again with the chosen UUID (or narrower filters). |
 | `nodex_write_note` | Discriminated `mode`: `patch_existing`, `create_root`, `create_child`, `create_sibling` (maps to `PATCH` / `POST` WPN routes). `patch_existing` with `title` uses the same duplicate-title rules as `nodex_note_rename`. |
+| `nodex_create_child_note` | Create a **direct child** under a parent from `parentNoteId`, or `workspaceName`+`projectName`+`parentPathTitles` (root→parent title chain in the project tree), or `parentWpnPath` (`"Workspace / Project / Title / …"` split on ` / `). Returns project/path ambiguity JSON like other tools when resolution fails. |
 | `nodex_write_back_child` | After work scoped to a task note: `taskNoteId` + `title` + `content` → new **direct child** of that note (loads `projectId` via `GET /wpn/notes/:id`, then `POST` child). |
 | `nodex_login` | Cloud **session** mode only (`NODEX_MCP_CLOUD_SESSION=1`): `email` + `password` → stores JWT in-process and on disk (see below). Passwords may appear in host logs. |
 | `nodex_login_browser_start` | Starts browser device login; returns `verification_uri`, `device_code` (secret), `user_code`. Open the URL in a browser signed into Nodex, confirm, then poll. |
@@ -33,6 +34,7 @@ stdio [Model Context Protocol](https://modelcontextprotocol.io) server for **Nod
 |-------------|-------------------|
 | `nodex_execute_note` | `nodex_find_notes` → then `nodex_get_note` when `status` is `unique` (one fewer round-trip when executing task notes). |
 | `nodex_write_back_child` | `nodex_get_note`(`taskNoteId`) for `project_id` → `nodex_write_note` with `mode: "create_child"` and that `projectId` / `anchorId`. |
+| `nodex_create_child_note` | Same POST child as `nodex_write_note` / `nodex_write_back_child`, but resolves the parent by nested title path or `parentWpnPath` when you do not have `parentNoteId`. |
 | `nodex_resolve_note` | Not a duplicate of `nodex_find_notes`: triple match on **workspace + project + note title** vs free **title or UUID** + optional scope filters. |
 
 `nodex_find_projects` and `nodex_list_wpn` are not redundant with the note catalog: different endpoints and shapes (project discovery vs flat `notes-with-context` vs per-project tree).

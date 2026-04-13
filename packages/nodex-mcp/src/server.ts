@@ -9,6 +9,7 @@ import {
 } from "./mcp-cloud-auth-persist.js";
 import { mapWpnCaughtError, unauthenticatedToolResult } from "./mcp-unauthenticated.js";
 import { findNotesByQuery, findProjectsByQuery } from "./find-wpn.js";
+import { parseParentWpnPath, resolveParentInTree } from "./resolve-parent-in-tree.js";
 import { resolveNoteFromCatalog } from "./resolve-note.js";
 import { errorResult, jsonResult, type ToolReturn } from "./text-result.js";
 import { WpnHttpClient } from "./wpn-client.js";
@@ -93,6 +94,63 @@ const writeBackChildInput = z.object({
     .describe("Note type; defaults to markdown when omitted."),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
+
+const createChildNoteInput = z
+  .object({
+    parentNoteId: z
+      .string()
+      .optional()
+      .describe("Parent note UUID. When set, workspace/project/path fields are ignored."),
+    workspaceName: z
+      .string()
+      .optional()
+      .describe("With projectName + parentPathTitles, names the workspace (trim, case-insensitive)."),
+    projectName: z.string().optional().describe("Project name (trim, case-insensitive)."),
+    parentPathTitles: z
+      .array(z.string())
+      .optional()
+      .describe("Titles from a project root note down to the parent; each step is among direct children."),
+    parentWpnPath: z
+      .string()
+      .optional()
+      .describe('Convenience: "Workspace / Project / Title1 / …" split on ` / ` (space-slash-space).'),
+    title: z.string().describe("Title for the new child note."),
+    content: z.string().describe("Body for the new child note."),
+    type: z.string().optional().describe("Note type; defaults to markdown when omitted."),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const idTrim = data.parentNoteId?.trim() ?? "";
+    const hasId = idTrim.length > 0;
+    const pathTrim = data.parentWpnPath?.trim() ?? "";
+    const hasWpnPath = pathTrim.length > 0;
+    const ws = data.workspaceName?.trim() ?? "";
+    const proj = data.projectName?.trim() ?? "";
+    const titles = data.parentPathTitles;
+    const hasStruct =
+      ws.length > 0 && proj.length > 0 && Array.isArray(titles) && titles.length > 0;
+
+    const modes = (hasId ? 1 : 0) + (hasWpnPath ? 1 : 0) + (hasStruct ? 1 : 0);
+    if (modes !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Provide exactly one parent selector: parentNoteId, OR parentWpnPath, OR workspaceName + projectName + parentPathTitles (non-empty array).",
+      });
+      return;
+    }
+    if (hasStruct && titles) {
+      for (let i = 0; i < titles.length; i++) {
+        if (typeof titles[i] !== "string" || titles[i]!.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `parentPathTitles[${i}] must be a non-empty string.`,
+          });
+          return;
+        }
+      }
+    }
+  });
 
 const writeNoteInput = z.discriminatedUnion("mode", [
   z.object({
@@ -226,10 +284,11 @@ const MCP_INSTRUCTIONS =
   "nodex_resolve_note finds a noteId from workspace+project+title; nodex_get_note reads a note; " +
   "nodex_get_note_title returns only { noteId, title } for composing renames; nodex_note_rename PATCHes the full title (duplicate sibling title → error); " +
   "nodex_execute_note resolves by title or id, returns ambiguity (path + noteId per candidate) for the user to pick, or returns the full note when unique — then the agent follows note.content; " +
+  "nodex_create_child_note creates a direct child under a parent given by parentNoteId OR by workspace+project+nested title path OR parentWpnPath string; " +
   "nodex_write_note patches or creates notes; nodex_write_back_child creates a child under a task note after completing work scoped to that note. " +
   "Write-back policy: when you finish work that was driven by a specific Nodex note, call nodex_write_back_child with taskNoteId equal to that note so the outcome is attached as a new direct child (audit trail). " +
   "If that note already has other children, still attach the write-back as a new direct child of the same task note unless the user asked for a different placement. " +
-  "Tool overlap is intentional: nodex_execute_note equals find_notes then get_note when unique; nodex_write_back_child equals get_note then write_note create_child when you only have taskNoteId. " +
+  "Tool overlap is intentional: nodex_execute_note equals find_notes then get_note when unique; nodex_write_back_child equals get_note then write_note create_child when you only have taskNoteId; nodex_create_child_note overlaps write_back when you need path-based parent resolution. " +
   "Auth: use NODEX_SYNC_API_BASE + NODEX_ACCESS_TOKEN (cloud), NODEX_LOCAL_WPN_URL + NODEX_LOCAL_WPN_TOKEN (Electron loopback), or NODEX_MCP_CLOUD_SESSION=1 for browser (nodex_login_browser_*) or password (nodex_login). " +
   "If any tool returns JSON with error \"unauthenticated\" and suggested_tools, call nodex_login_browser_start first (preferred), complete the browser step, use nodex_login_browser_poll with device_code until authorized, or use nodex_login — do not use nodex_logout for that case. " +
   "nodex_auth_status reports session state without exposing secrets.";
@@ -497,6 +556,90 @@ export async function runMcpStdioServer(): Promise<void> {
           stage: "fetched" as const,
           match: resolved.matches[0],
           note,
+        });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_create_child_note",
+    {
+      description:
+        "Create a new note as direct child of a parent resolved by parentNoteId, OR workspaceName+projectName+parentPathTitles (root-to-parent title chain), OR parentWpnPath (\"Workspace / Project / Title / …\"). " +
+        "Returns project ambiguity like nodex_find_projects or path ambiguity with candidate noteIds. Uses GET /wpn/projects/:id/notes for tree walk (same norm as nodex_resolve_note).",
+      inputSchema: createChildNoteInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) {
+        return denied;
+      }
+      try {
+        const idTrim = args.parentNoteId?.trim() ?? "";
+        if (idTrim.length > 0) {
+          const parent = await client.getNote(idTrim);
+          const noteType = (args.type ?? "markdown").trim() || "markdown";
+          const created = await client.createNote(parent.project_id, {
+            type: noteType,
+            relation: "child",
+            anchorId: parent.id,
+            title: args.title,
+            content: args.content,
+            metadata: args.metadata,
+          });
+          return jsonResult({
+            ok: true as const,
+            parentNoteId: parent.id,
+            projectId: parent.project_id,
+            createdNoteId: created.id,
+          });
+        }
+
+        let workspaceName: string;
+        let projectName: string;
+        let parentPathTitles: string[];
+
+        const wpnTrim = args.parentWpnPath?.trim() ?? "";
+        if (wpnTrim.length > 0) {
+          const parsed = parseParentWpnPath(wpnTrim);
+          if (!parsed.ok) {
+            return errorResult(parsed.error);
+          }
+          workspaceName = parsed.workspaceName;
+          projectName = parsed.projectName;
+          parentPathTitles = parsed.parentPathTitles;
+        } else {
+          workspaceName = args.workspaceName!.trim();
+          projectName = args.projectName!.trim();
+          parentPathTitles = args.parentPathTitles!;
+        }
+
+        const proj = await findProjectsByQuery(client, projectName, workspaceName);
+        if (proj.status !== "unique") {
+          return jsonResult({ ok: false as const, stage: "project_resolution" as const, ...proj });
+        }
+        const projectId = proj.matches[0]!.projectId;
+        const flat = await client.getNotesFlat(projectId);
+        const resolved = resolveParentInTree(flat, parentPathTitles);
+        if (!resolved.ok) {
+          return jsonResult({ stage: "parent_path" as const, ...resolved });
+        }
+        const noteType = (args.type ?? "markdown").trim() || "markdown";
+        const created = await client.createNote(resolved.projectId, {
+          type: noteType,
+          relation: "child",
+          anchorId: resolved.parentId,
+          title: args.title,
+          content: args.content,
+          metadata: args.metadata,
+        });
+        return jsonResult({
+          ok: true as const,
+          parentNoteId: resolved.parentId,
+          projectId: resolved.projectId,
+          createdNoteId: created.id,
         });
       } catch (e) {
         return wpnCatch(e, runtime);

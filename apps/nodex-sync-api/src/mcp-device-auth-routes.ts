@@ -9,7 +9,23 @@ import { buildSessionsAfterAppend } from "./refresh-sessions.js";
 import { getMcpDeviceSessionsCollection } from "./db.js";
 
 const MAX_ACTIVE_SESSIONS_PER_USER = 5;
-const DEVICE_SESSION_TTL_MS = 15 * 60 * 1000;
+
+/** Pending browser MCP login window (user_code / device_code). Override with NODEX_MCP_DEVICE_SESSION_TTL_MS (milliseconds), min 60_000, max 10 years. Default 30 days. */
+function resolveDeviceSessionTtlMs(): number {
+  const raw =
+    typeof process.env.NODEX_MCP_DEVICE_SESSION_TTL_MS === "string"
+      ? process.env.NODEX_MCP_DEVICE_SESSION_TTL_MS.trim()
+      : "";
+  if (raw) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 60_000) {
+      return Math.min(Math.floor(n), 10 * 365 * 24 * 60 * 60 * 1000);
+    }
+  }
+  return 30 * 24 * 60 * 60 * 1000;
+}
+
+const DEVICE_SESSION_TTL_MS = resolveDeviceSessionTtlMs();
 const START_RATE_WINDOW_MS = 10 * 60 * 1000;
 const START_RATE_MAX_PER_IP = 40;
 
