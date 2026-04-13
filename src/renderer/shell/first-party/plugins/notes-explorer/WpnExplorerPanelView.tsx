@@ -39,7 +39,11 @@ import {
   runWpnNoteTitleRenameWithVfsDependentsFlow,
   useVfsDependentTitleRenameChoice,
 } from "../../../wpn/vfsDependentTitleRenameChoice";
-import { canonicalVfsPathFromLinkRow } from "../../../../../shared/note-vfs-path";
+import {
+  canonicalVfsPathFromLinkRow,
+  displayWpnNotePathParts,
+} from "../../../../../shared/note-vfs-path";
+import { useToast } from "../../../../toast/ToastContext";
 
 type ShellViewComponentProps = {
   viewId: string;
@@ -65,6 +69,22 @@ function explorerCanonicalVfsPath(
         projectName: p.name,
         title: noteTitle,
       });
+    }
+  }
+  return undefined;
+}
+
+function explorerDisplayWpnNotePath(
+  projectId: string,
+  noteTitle: string,
+  workspaces: WpnWorkspaceRow[],
+  projectsByWs: Record<string, WpnProjectRow[]>,
+): string | undefined {
+  for (const w of workspaces) {
+    const projs = projectsByWs[w.id] ?? [];
+    const p = projs.find((x) => x.id === projectId);
+    if (p) {
+      return displayWpnNotePathParts(w.name, p.name, noteTitle);
     }
   }
   return undefined;
@@ -254,6 +274,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const dispatch = useDispatch<AppDispatch>();
   const { tabs } = useShellRegistries();
   const { openNoteById } = useShellNavigation();
+  const { showToast } = useToast();
   const { workspaceRoots, rootPath } = useShellProjectWorkspace();
   const currentNoteId = useSelector((s: RootState) => s.notes.currentNote?.id);
   const noteRenameEpoch = useSelector((s: RootState) => s.notes.noteRenameEpoch);
@@ -1759,6 +1780,51 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                 }}
               >
                 Rename
+              </button>
+              <button
+                type="button"
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
+                onClick={() => {
+                  const row = notes.find((x) => x.id === menu.id);
+                  const path =
+                    row && menu.projectId
+                      ? explorerDisplayWpnNotePath(
+                          menu.projectId,
+                          row.title,
+                          workspaces,
+                          projectsByWs,
+                        )
+                      : undefined;
+                  closeAllMenus();
+                  if (!path) {
+                    return;
+                  }
+                  void (async () => {
+                    try {
+                      await navigator.clipboard.writeText(path);
+                    } catch {
+                      showToast({ severity: "error", message: "Could not copy" });
+                    }
+                  })();
+                }}
+              >
+                Copy note path
+              </button>
+              <button
+                type="button"
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
+                onClick={() => {
+                  closeAllMenus();
+                  void (async () => {
+                    try {
+                      await navigator.clipboard.writeText(menu.id);
+                    } catch {
+                      showToast({ severity: "error", message: "Could not copy" });
+                    }
+                  })();
+                }}
+              >
+                Copy note ID
               </button>
               <button
                 type="button"

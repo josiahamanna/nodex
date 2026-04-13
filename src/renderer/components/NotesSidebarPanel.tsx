@@ -114,6 +114,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
         onRevealProjectFolder={onRevealProjectFolder}
         openRename={core.openRename}
         workspaceLabels={workspaceLabels}
+        workspaceRoots={workspaceRoots}
       />
       <NotesSidebarPanelRenameModal
         renameTarget={core.renameTarget}

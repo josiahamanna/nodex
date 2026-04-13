@@ -50,6 +50,18 @@ export function canonicalVfsPathFromLinkRow(row: {
   return `${ws}/${proj}/${title}`;
 }
 
+/** Human- and MCP-aligned path: `Workspace / Project / Title` with normalized segments. */
+export function displayWpnNotePathParts(
+  workspaceName: string,
+  projectName: string,
+  title: string,
+): string {
+  const ws = normalizeVfsSegment(workspaceName, "Workspace");
+  const proj = normalizeVfsSegment(projectName, "Project");
+  const t = normalizeVfsSegment(title, "Untitled");
+  return `${ws} / ${proj} / ${t}`;
+}
+
 export function resolveNoteIdByCanonicalVfsPath(
   notes: readonly WpnNoteWithContextListItem[],
   canonicalPath: string,

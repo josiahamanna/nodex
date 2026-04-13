@@ -10,9 +10,11 @@ import type {
   NodexAlertOptions,
   NodexConfirmOptions,
 } from "../dialog/NodexDialogProvider";
+import { useToast } from "../toast/ToastContext";
 import {
   clipboardTouchesDeleted,
   ctxBtn,
+  filesystemNoteDisplayPath,
   workspaceFolderLabel,
   type ClipboardState,
   type ContextMenuState,
@@ -47,6 +49,7 @@ export interface NotesSidebarPanelContextMenuProps {
   onRevealProjectFolder?: (noteId: string) => void;
   openRename: (id: string, title: string) => void;
   workspaceLabels: Record<string, string>;
+  workspaceRoots: string[];
 }
 
 const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> = ({
@@ -71,7 +74,9 @@ const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> 
   onRevealProjectFolder,
   openRename,
   workspaceLabels,
+  workspaceRoots,
 }) => {
+  const { showToast } = useToast();
   if (!menu) {
     return null;
   }
@@ -212,6 +217,60 @@ const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> 
                 >
                   Open project folder…
                 </button>
+              ) : null}
+              {multiSelectCount <= 1 && menu.anchorId ? (
+                <>
+                  <button
+                    type="button"
+                    className={ctxBtn}
+                    onClick={() => {
+                      const id = menu.anchorId;
+                      const path =
+                        id &&
+                        filesystemNoteDisplayPath({
+                          noteId: id,
+                          notes,
+                          parents,
+                          workspaceRoots,
+                          workspaceLabels,
+                        });
+                      closeMenu();
+                      if (!path) {
+                        showToast({ severity: "error", message: "Could not copy" });
+                        return;
+                      }
+                      void (async () => {
+                        try {
+                          await navigator.clipboard.writeText(path);
+                        } catch {
+                          showToast({ severity: "error", message: "Could not copy" });
+                        }
+                      })();
+                    }}
+                  >
+                    Copy note path
+                  </button>
+                  <button
+                    type="button"
+                    className={ctxBtn}
+                    onClick={() => {
+                      const id = menu.anchorId;
+                      closeMenu();
+                      if (!id) {
+                        return;
+                      }
+                      void (async () => {
+                        try {
+                          await navigator.clipboard.writeText(id);
+                        } catch {
+                          showToast({ severity: "error", message: "Could not copy" });
+                        }
+                      })();
+                    }}
+                  >
+                    Copy note ID
+                  </button>
+                </>
               ) : null}
               {multiSelectCount <= 1 ? (
                 <button

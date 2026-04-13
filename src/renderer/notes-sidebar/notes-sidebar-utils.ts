@@ -1,5 +1,7 @@
 import type { DragEvent } from "react";
 import type { CreateNoteRelation, NoteListItem, NoteMovePlacement } from "@nodex/ui-types";
+import { normalizeVfsSegment } from "../../shared/note-vfs-path";
+import { isWorkspaceMountNoteId, workspaceFolderPathForNote } from "../../shared/note-workspace";
 
 export const DND_NOTE_MIME = "application/x-nodex-note-id";
 export const DND_NOTE_IDS_MIME = "application/x-nodex-note-ids";
@@ -54,6 +56,36 @@ export function workspaceFolderLabel(
     }
   }
   return folderDisplayName(absPath);
+}
+
+/** Filesystem sidebar: workspace label + ancestor titles to the mount, joined with ` / `. */
+export function filesystemNoteDisplayPath(args: {
+  noteId: string;
+  notes: NoteListItem[];
+  parents: Map<string, string | null>;
+  workspaceRoots: string[];
+  workspaceLabels: Record<string, string>;
+}): string | null {
+  const { noteId, notes, parents, workspaceRoots, workspaceLabels } = args;
+  const projectRoot = workspaceFolderPathForNote(noteId, workspaceRoots);
+  if (!projectRoot) {
+    return null;
+  }
+  const firstSeg = workspaceFolderLabel(projectRoot, workspaceLabels);
+  const titleSegments: string[] = [];
+  let cur: string | null = noteId;
+  while (cur != null && !isWorkspaceMountNoteId(cur)) {
+    const n = notes.find((x) => x.id === cur);
+    if (!n) {
+      return null;
+    }
+    titleSegments.unshift(normalizeVfsSegment(n.title, "Untitled"));
+    cur = parents.get(cur) ?? null;
+  }
+  if (titleSegments.length === 0) {
+    return firstSeg;
+  }
+  return [firstSeg, ...titleSegments].join(" / ");
 }
 
 export function parentMapFromNotes(notes: NoteListItem[]): Map<string, string | null> {
