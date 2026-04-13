@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import { BrowserWindow } from "electron";
 import {
   flushWorkspaceStoreFromMirrorPayload,
   getNotesDatabase,
@@ -17,6 +18,7 @@ import { ctx } from "./main-context";
 const DEBOUNCE_MS = 150;
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let wpnPersistNotifyTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function buildWorkspaceRxdbMirrorPayload(): WorkspaceRxdbMirrorPayloadV1 | null {
   const store = getNotesDatabase();
@@ -56,9 +58,25 @@ export function scheduleWorkspaceRxdbMirrorBroadcast(): void {
   }, DEBOUNCE_MS);
 }
 
+/** Notifies all windows after WPN JSON persist (independent of `NODEX_LOCAL_RXDB_WPN`). */
+export function scheduleWorkspaceWpnPersistedBroadcast(): void {
+  if (wpnPersistNotifyTimer) {
+    clearTimeout(wpnPersistNotifyTimer);
+  }
+  wpnPersistNotifyTimer = setTimeout(() => {
+    wpnPersistNotifyTimer = null;
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send(IPC_CHANNELS.WORKSPACE_WPN_PERSISTED);
+      }
+    }
+  }, DEBOUNCE_MS);
+}
+
 export function registerWorkspaceRxdbMirrorPersistHook(): void {
   setWorkspaceStorePersistHook(() => {
     scheduleWorkspaceRxdbMirrorBroadcast();
+    scheduleWorkspaceWpnPersistedBroadcast();
   });
 }
 

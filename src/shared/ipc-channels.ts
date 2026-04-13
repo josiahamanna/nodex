@@ -165,6 +165,8 @@ export const IPC_CHANNELS = {
   ELECTRON_SET_WPN_BACKEND_FOR_SENDER: "electron:set-wpn-backend-for-sender",
   /** Main → renderer: periodic nudge to run HTTP sync (`DesktopHost.onSyncTrigger`). */
   DESKTOP_SYNC_TRIGGER: "desktop:sync-trigger",
+  /** Main → renderer: debounced nudge after `WorkspaceStore.persist` (WPN JSON on disk); refetch Redux notes. */
+  WORKSPACE_WPN_PERSISTED: "workspace:wpn-persisted",
   /** Main → renderer: debounced workspace JSON mirror after `WorkspaceStore.persist` (ADR-016). */
   WORKSPACE_RXDB_MIRROR_UPDATED: "workspace:rxdb-mirror-updated",
   /** Renderer → main: read current `nodex-workspace.json` slot files for RxDB import. */

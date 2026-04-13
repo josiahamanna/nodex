@@ -11,6 +11,7 @@ import {
   hydrateWpnLocalMirrorFromPayload,
   LOCAL_WPN_MIRROR_COLLECTIONS,
 } from "./wpn-local-rxdb-mirror";
+import { scheduleDebouncedNotesRefetchAfterWpnPersist } from "./wpn-persist-refetch";
 
 export type WorkspaceSnapshotRow = {
   id: string;
@@ -159,6 +160,7 @@ export async function importWorkspaceMirrorFromMainPayload(
     return;
   }
   await hydrateWpnLocalMirrorFromPayload(dbInst, payload);
+  scheduleDebouncedNotesRefetchAfterWpnPersist();
 }
 
 export async function readLatestMirrorPayload(

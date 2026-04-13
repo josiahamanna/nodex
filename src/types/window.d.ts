@@ -11,6 +11,8 @@ type NodexWindowGlobal = {
 /** Preload `contextBridge` API for `@nodex/platform` DesktopHost (sync nudge from main). */
 type NodexDesktopBridge = {
   onSyncTrigger: (callback: () => void) => () => void;
+  /** After main `WorkspaceStore.persist` (MCP, in-app WPN writes). */
+  onWorkspaceWpnPersisted?: (callback: () => void) => () => void;
   onWorkspaceRxdbMirrorUpdated?: (
     callback: (payload: WorkspaceRxdbMirrorPayloadV1) => void,
   ) => () => void;

@@ -551,4 +551,14 @@ contextBridge.exposeInMainWorld("nodexDesktop", {
       ipcRenderer.removeListener(channel, listener);
     };
   },
+  onWorkspaceWpnPersisted: (callback: () => void) => {
+    const channel = IPC_CHANNELS.WORKSPACE_WPN_PERSISTED;
+    const listener = (): void => {
+      callback();
+    };
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.removeListener(channel, listener);
+    };
+  },
 });

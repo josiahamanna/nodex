@@ -36,4 +36,11 @@ void (async () => {
       void importWorkspaceMirrorFromMainPayload(payload);
     });
   }
+  if (typeof window !== "undefined" && window.nodexDesktop?.onWorkspaceWpnPersisted) {
+    window.nodexDesktop.onWorkspaceWpnPersisted(() => {
+      void import("../workspace-rxdb/wpn-persist-refetch").then((m) =>
+        m.scheduleDebouncedNotesRefetchAfterWpnPersist(),
+      );
+    });
+  }
 })();
