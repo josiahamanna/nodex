@@ -67,7 +67,7 @@ async function deriveVerifierBytes(pin: string, salt: Uint8Array): Promise<Uint8
   const bits = await crypto.subtle.deriveBits(
     {
       name: "PBKDF2",
-      salt,
+      salt: new Uint8Array(salt),
       iterations: PBKDF2_ITERATIONS,
       hash: "SHA-256",
     },
