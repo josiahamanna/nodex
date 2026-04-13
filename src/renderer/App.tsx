@@ -18,6 +18,7 @@ import { useRegisterMarkdownNotePlugin } from "./shell/first-party/plugins/markd
 import { GlobalContextMenuHost } from "./shell/GlobalContextMenuHost";
 import { AuthProvider } from "./auth/AuthContext";
 import { AuthGate } from "./auth/AuthGate";
+import { WebPostAuthRedirectBootstrap } from "./auth/WebPostAuthRedirectBootstrap";
 import { isElectronScratchSession } from "./auth/electron-scratch";
 import { isWebScratchSession } from "./auth/web-scratch";
 import { initCloudSyncRuntime } from "./cloud-sync/initCloudSyncRuntime";
@@ -77,6 +78,7 @@ const App: React.FC = () => {
 
   return (
     <AuthProvider>
+      <WebPostAuthRedirectBootstrap />
       <div className="min-h-screen w-full" data-testid="nodex-app-root">
         <AuthGate>
           <CloudRuntimeBootstrap />

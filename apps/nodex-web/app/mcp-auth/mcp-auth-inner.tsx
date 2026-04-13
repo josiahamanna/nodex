@@ -2,13 +2,18 @@
 
 import { NODEX_SYNC_ACCESS_TOKEN_KEY } from "@nodex/platform";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useState, type ReactElement } from "react";
+import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { buildMcpDevicePostAuthSignInHref } from "../../../../src/renderer/auth/post-auth-redirect";
 
 export function McpAuthInner(): ReactElement {
   const searchParams = useSearchParams();
   const userCode = searchParams.get("user_code")?.trim() ?? "";
   const [status, setStatus] = useState<"idle" | "working" | "done" | "error">("idle");
   const [message, setMessage] = useState<string>("");
+  const signInHref = useMemo(
+    () => (userCode ? buildMcpDevicePostAuthSignInHref(userCode) : ""),
+    [userCode],
+  );
 
   const authorize = useCallback(async () => {
     if (!userCode) {
@@ -25,7 +30,7 @@ export function McpAuthInner(): ReactElement {
     if (!token) {
       setStatus("error");
       setMessage(
-        "You are not signed in to Nodex in this browser. Open the app, sign in, then return to this page and try again.",
+        "You are not signed in to Nodex in this browser. Use “Sign in to Nodex” below, then click Confirm authorization again.",
       );
       return;
     }
@@ -81,6 +86,17 @@ export function McpAuthInner(): ReactElement {
           Request code: <code>{userCode}</code>
         </p>
       )}
+      {userCode && signInHref ? (
+        <p style={{ marginTop: 20, fontSize: "0.9rem", lineHeight: 1.5 }}>
+          <a
+            href={signInHref}
+            style={{ color: "#0369a1", fontWeight: 600, textDecoration: "underline" }}
+          >
+            Sign in to Nodex
+          </a>{" "}
+          (or create an account). After signing in you will return here to finish MCP authorization.
+        </p>
+      ) : null}
       <button
         type="button"
         onClick={() => void authorize()}

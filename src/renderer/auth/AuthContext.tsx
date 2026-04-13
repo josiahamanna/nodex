@@ -22,6 +22,7 @@ import {
   cloudRegisterThunk,
   cloudRestoreSessionThunk,
 } from "../store/cloudAuthSlice";
+import { consumePostAuthRedirectAfterSignIn } from "./post-auth-redirect";
 
 const LOCAL_AUTH_USER: AuthUser = {
   id: "local",
@@ -266,11 +267,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
           status: "authed",
           user: authUserFromSyncCredentials(userId, e),
         });
+        consumePostAuthRedirectAfterSignIn();
         return;
       }
       const u = await authLogin({ email, password });
       await mergeWebScratchCloudNotesAfterAuth(u.id);
       setState({ status: "authed", user: u });
+      consumePostAuthRedirectAfterSignIn();
     },
     [mergeWebScratchCloudNotesAfterAuth],
   );
@@ -290,11 +293,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
           status: "authed",
           user: { id: userId, email: e, username: name },
         });
+        consumePostAuthRedirectAfterSignIn();
         return;
       }
       const u = await authSignup({ email, username, password });
       await mergeWebScratchCloudNotesAfterAuth(u.id);
       setState({ status: "authed", user: u });
+      consumePostAuthRedirectAfterSignIn();
     },
     [mergeWebScratchCloudNotesAfterAuth],
   );

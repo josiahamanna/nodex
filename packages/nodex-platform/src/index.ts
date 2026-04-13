@@ -27,6 +27,7 @@ export {
 } from "./resolve-sync-base";
 export { withSyncRetry } from "./sync-retry";
 export {
+  NODEX_POST_AUTH_REDIRECT_KEY,
   NODEX_SYNC_ACCESS_TOKEN_KEY,
   NODEX_SYNC_REFRESH_TOKEN_KEY,
 } from "./sync-auth-storage-keys";
