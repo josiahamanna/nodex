@@ -50,6 +50,21 @@ const listWpnInput = z.discriminatedUnion("scope", [
   z.object({ scope: z.literal("full_tree") }),
 ]);
 
+const writeBackChildInput = z.object({
+  taskNoteId: z
+    .string()
+    .describe(
+      "The Nodex note id the agent worked from; the write-back is created as a new direct child of this note.",
+    ),
+  title: z.string().describe("Title for the new child note (e.g. session summary or task outcome)."),
+  content: z.string().describe("Body for the new child note (markdown or plain text)."),
+  type: z
+    .string()
+    .optional()
+    .describe("Note type; defaults to markdown when omitted."),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
 const writeNoteInput = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("patch_existing"),
@@ -101,7 +116,9 @@ export async function runMcpStdioServer(): Promise<void> {
         "Nodex WPN tools: nodex_list_wpn lists workspaces / projects / notes or a full_tree; " +
         "nodex_find_projects / nodex_find_notes resolve by name or UUID with path (Workspace / Project / Title) and ambiguity hints; " +
         "nodex_resolve_note finds a noteId from workspace+project+title; nodex_get_note reads a note; " +
-        "nodex_write_note patches or creates notes. " +
+        "nodex_write_note patches or creates notes; nodex_write_back_child creates a child under a task note after completing work scoped to that note. " +
+        "Write-back policy: when you finish work that was driven by a specific Nodex note, call nodex_write_back_child with taskNoteId equal to that note so the outcome is attached as a new direct child (audit trail). " +
+        "If that note already has other children, still attach the write-back as a new direct child of the same task note unless the user asked for a different placement. " +
         "Configure NODEX_SYNC_API_BASE + NODEX_ACCESS_TOKEN (cloud) or NODEX_LOCAL_WPN_URL + NODEX_LOCAL_WPN_TOKEN (Electron loopback).",
     },
   );
@@ -254,6 +271,39 @@ export async function runMcpStdioServer(): Promise<void> {
       try {
         const note = await client.getNote(args.noteId);
         return jsonResult({ note });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return errorResult(msg);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_write_back_child",
+    {
+      description:
+        "After completing work scoped to a Nodex task note, persist results as a new direct child of that note (GET task note for project, then POST create child). " +
+        "Prefer this over nodex_write_note create_child when you only know taskNoteId.",
+      inputSchema: writeBackChildInput,
+    },
+    async (args) => {
+      try {
+        const task = await client.getNote(args.taskNoteId);
+        const noteType = (args.type ?? "markdown").trim() || "markdown";
+        const created = await client.createNote(task.project_id, {
+          type: noteType,
+          relation: "child",
+          anchorId: args.taskNoteId,
+          title: args.title,
+          content: args.content,
+          metadata: args.metadata,
+        });
+        return jsonResult({
+          ok: true as const,
+          taskNoteId: args.taskNoteId,
+          projectId: task.project_id,
+          createdNoteId: created.id,
+        });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         return errorResult(msg);

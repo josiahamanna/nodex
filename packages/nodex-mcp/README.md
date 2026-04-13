@@ -1,4 +1,4 @@
-# @nodex/mcp
+# @nodex-studio/mcp
 
 stdio [Model Context Protocol](https://modelcontextprotocol.io) server for **Nodex** workspace/project/note (WPN) data. It calls the same HTTP JSON API as the web client:
 
@@ -15,6 +15,7 @@ stdio [Model Context Protocol](https://modelcontextprotocol.io) server for **Nod
 | `nodex_resolve_note` | Match `workspaceName` + `projectName` + `noteTitle` (trim, case-insensitive) → canonical `noteId`. Errors with `candidates` if ambiguous. |
 | `nodex_get_note` | `GET /wpn/notes/:id` — full note including `content`. |
 | `nodex_write_note` | Discriminated `mode`: `patch_existing`, `create_root`, `create_child`, `create_sibling` (maps to `PATCH` / `POST` WPN routes). |
+| `nodex_write_back_child` | After work scoped to a task note: `taskNoteId` + `title` + `content` → new **direct child** of that note (loads `projectId` via `GET /wpn/notes/:id`, then `POST` child). |
 
 **Binary / cloud assets:** sync-api `/me/assets` may return 501 until implemented; embed text in markdown or use URLs the host can fetch. Local assets stay on disk under the project folder (Electron).
 
@@ -41,10 +42,10 @@ stdio [Model Context Protocol](https://modelcontextprotocol.io) server for **Nod
 
 ```bash
 # from repo root (after npm install)
-npm run build -w @nodex/mcp
+npm run build -w @nodex-studio/mcp
 node packages/nodex-mcp/dist/cli.js
 # or
-npm run dev -w @nodex/mcp
+npm run dev -w @nodex-studio/mcp
 ```
 
 ## Example: Cursor MCP (`mcp.json`)
@@ -90,7 +91,7 @@ Use a machine-safe JWT (service account or long-lived test user) with `NODEX_SYN
 ## Tests
 
 ```bash
-npm test -w @nodex/mcp
+npm test -w @nodex-studio/mcp
 # from repo root:
 npm run test:mcp
 ```

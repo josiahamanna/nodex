@@ -1,11 +1,17 @@
 {
-  "name": "@nodex/mcp",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@nodex-studio/mcp",
+  "version": "0.0.2",
   "description": "MCP server (stdio) for Nodex WPN over HTTP — cloud sync-api or Electron loopback",
   "type": "module",
+  "files": [
+    "dist",
+    "bin"
+  ],
   "bin": {
-    "nodex-mcp": "./dist/cli.js"
+    "nodex-mcp": "bin/nodex-mcp.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

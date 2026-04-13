@@ -1,9 +1,16 @@
 /**
  * ADR-016 P2: when `NODEX_LOCAL_RXDB_WPN` is on, prefer WPN reads from the local RxDB mirror
  * (fed by main debounced push + pull on project-root changes). Writes still use IPC + JSON persist.
+ *
+ * When switching to cloud WPN, `writeElectronRunMode("cloud")` runs before
+ * `syncElectronCloudWpnOverlayFromRunMode()`; during that gap {@link getNodex} can still resolve to
+ * this overlay, which must not fall through to file-vault IPC while main already treats the window
+ * as cloud.
  */
 import { getWpnOwnerId } from "../../core/wpn/wpn-owner";
 import type { NodexRendererApi } from "../../shared/nodex-renderer-api";
+import { readElectronRunMode } from "../auth/electron-run-mode";
+import { createWebNodexApi } from "../nodex-web-shim";
 import { isLocalRxdbWpnMirrorEnabled } from "./flags";
 import {
   tryWpnGetExplorerStateFromLocalRxdb,
@@ -15,6 +22,45 @@ import {
   tryWpnListWorkspacesFromLocalRxdb,
 } from "./wpn-local-rxdb-mirror";
 import { getOpenWorkspaceWpnRxDb } from "./workspace-wpn-rxdb";
+
+let httpWpnForCloudRace: NodexRendererApi | null = null;
+
+function shouldUseHttpWpnInsteadOfVaultIpc(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  if (readElectronRunMode() === "cloud") {
+    return true;
+  }
+  return window.__NODEX_ELECTRON_WPN_BACKEND__ === "cloud";
+}
+
+function getHttpWpnApiForRxdbCloudRace(): NodexRendererApi {
+  if (!httpWpnForCloudRace) {
+    httpWpnForCloudRace = createWebNodexApi("");
+  }
+  return httpWpnForCloudRace;
+}
+
+async function rxdbWpnReadFallback(
+  prop: keyof NodexRendererApi,
+  target: NodexRendererApi,
+  receiver: unknown,
+  args: unknown[],
+): Promise<unknown> {
+  if (shouldUseHttpWpnInsteadOfVaultIpc()) {
+    const http = getHttpWpnApiForRxdbCloudRace();
+    const fn = Reflect.get(http, prop, http);
+    if (typeof fn === "function") {
+      return await (fn as (...a: unknown[]) => Promise<unknown>).apply(http, args);
+    }
+  }
+  const orig = Reflect.get(target, prop, receiver);
+  if (typeof orig === "function") {
+    return await (orig as (...a: unknown[]) => Promise<unknown>).apply(target, args);
+  }
+  throw new Error(`Missing ${String(prop)}`);
+}
 
 export function createElectronWorkspaceRxdbNodexOverlay(base: NodexRendererApi): NodexRendererApi {
   if (!isLocalRxdbWpnMirrorEnabled()) {
@@ -33,7 +79,7 @@ export function createElectronWorkspaceRxdbNodexOverlay(base: NodexRendererApi):
           if (local) {
             return { workspaces: local };
           }
-          return Reflect.get(target, prop, receiver).bind(target)();
+          return rxdbWpnReadFallback(prop, target, receiver, []);
         };
       }
       if (prop === "wpnListProjects") {
@@ -42,7 +88,7 @@ export function createElectronWorkspaceRxdbNodexOverlay(base: NodexRendererApi):
           if (local) {
             return { projects: local };
           }
-          return Reflect.get(target, prop, receiver).bind(target)(workspaceId);
+          return rxdbWpnReadFallback(prop, target, receiver, [workspaceId]);
         };
       }
       if (prop === "wpnListNotes") {
@@ -51,7 +97,7 @@ export function createElectronWorkspaceRxdbNodexOverlay(base: NodexRendererApi):
           if (local) {
             return { notes: local };
           }
-          return Reflect.get(target, prop, receiver).bind(target)(projectId);
+          return rxdbWpnReadFallback(prop, target, receiver, [projectId]);
         };
       }
       if (prop === "wpnGetNote") {
@@ -60,7 +106,7 @@ export function createElectronWorkspaceRxdbNodexOverlay(base: NodexRendererApi):
           if (local) {
             return { note: local };
           }
-          return Reflect.get(target, prop, receiver).bind(target)(noteId);
+          return rxdbWpnReadFallback(prop, target, receiver, [noteId]);
         };
       }
       if (prop === "wpnGetExplorerState") {
@@ -69,7 +115,7 @@ export function createElectronWorkspaceRxdbNodexOverlay(base: NodexRendererApi):
           if (local) {
             return { expanded_ids: local };
           }
-          return Reflect.get(target, prop, receiver).bind(target)(projectId);
+          return rxdbWpnReadFallback(prop, target, receiver, [projectId]);
         };
       }
       if (prop === "wpnListAllNotesWithContext") {
@@ -78,7 +124,7 @@ export function createElectronWorkspaceRxdbNodexOverlay(base: NodexRendererApi):
           if (local) {
             return { notes: local };
           }
-          return Reflect.get(target, prop, receiver).bind(target)();
+          return rxdbWpnReadFallback(prop, target, receiver, []);
         };
       }
       if (prop === "wpnListBacklinksToNote") {
@@ -87,7 +133,7 @@ export function createElectronWorkspaceRxdbNodexOverlay(base: NodexRendererApi):
           if (local) {
             return { sources: local };
           }
-          return Reflect.get(target, prop, receiver).bind(target)(targetNoteId);
+          return rxdbWpnReadFallback(prop, target, receiver, [targetNoteId]);
         };
       }
       const v = Reflect.get(target, prop, target);

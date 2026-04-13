@@ -20,6 +20,7 @@ import {
   cloudLoginThunk,
   cloudLogoutThunk,
   cloudRegisterThunk,
+  cloudRestoreSessionThunk,
 } from "../store/cloudAuthSlice";
 
 const LOCAL_AUTH_USER: AuthUser = {
@@ -92,6 +93,11 @@ function webUsesSyncServiceAuth(): boolean {
   return nodexWebBackendSyncOnly() || syncWpnUsesSyncApi();
 }
 
+function authUserFromSyncCredentials(userId: string, email: string): AuthUser {
+  const localPart = email.includes("@") ? email.slice(0, email.indexOf("@")) : email;
+  return { id: userId, email, username: localPart || "user" };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const [electronRunMode, setElectronRunModeState] = useState<ElectronRunMode>(() =>
     typeof window === "undefined" ? "unset" : isElectronUserAgent()
@@ -117,6 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       const { getNodex } = await import("../../shared/nodex-host-access");
       const nodex = getNodex();
       if (readElectronRunMode() === "cloud") {
+        syncElectronCloudWpnOverlayFromRunMode();
         await nodex.setElectronWpnBackendForSession("cloud");
       } else {
         await nodex.setElectronWpnBackendForSession("file");
@@ -131,6 +138,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       return;
     }
     if (nodexWebBackendSyncOnly() || syncWpnUsesSyncApi()) {
+      setState({ status: "loading", user: null });
+      try {
+        const result = await store.dispatch(cloudRestoreSessionThunk());
+        if (cloudRestoreSessionThunk.fulfilled.match(result) && result.payload) {
+          const { userId, email } = result.payload;
+          setState({ status: "authed", user: authUserFromSyncCredentials(userId, email) });
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
       setAccessToken(null);
       setState({ status: "anon", user: null });
       return;
@@ -152,6 +170,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
         return;
       }
       if (nodexWebBackendSyncOnly() || syncWpnUsesSyncApi()) {
+        try {
+          const result = await store.dispatch(cloudRestoreSessionThunk());
+          if (cloudRestoreSessionThunk.fulfilled.match(result) && result.payload) {
+            const { userId, email } = result.payload;
+            setState({ status: "authed", user: authUserFromSyncCredentials(userId, email) });
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
         setState({ status: "anon", user: null });
         return;
       }
@@ -174,6 +202,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       writeElectronRunMode(mode);
       setElectronRunModeState(mode);
       setAccessToken(null);
+      /** Before any awaited IPC: avoids a gap where main is cloud but {@link getNodex} still hits RxDB → file-vault IPC. */
+      syncElectronCloudWpnOverlayFromRunMode();
 
       if (mode === "local") {
         setState({ status: "authed", user: LOCAL_AUTH_USER });
@@ -190,7 +220,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       const wantsCloud = mode === "cloud";
       if (wantsCloud && !argvCloud) {
         await nodex.setElectronWpnBackendForSession("cloud");
-        syncElectronCloudWpnOverlayFromRunMode();
         await nodex.applyElectronPrimaryWpnBackend({ backend: "file", relaunch: false });
         return;
       }
@@ -199,7 +228,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
         return;
       }
       await nodex.setElectronWpnBackendForSession(wantsCloud ? "cloud" : "file");
-      syncElectronCloudWpnOverlayFromRunMode();
       await nodex.applyElectronPrimaryWpnBackend({
         backend: wantsCloud ? "cloud" : "file",
         relaunch: false,
@@ -234,10 +262,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
         }
         const { userId, email: e } = result.payload;
         await mergeWebScratchCloudNotesAfterAuth(userId);
-        const localPart = e.includes("@") ? e.slice(0, e.indexOf("@")) : e;
         setState({
           status: "authed",
-          user: { id: userId, email: e, username: localPart || "user" },
+          user: authUserFromSyncCredentials(userId, e),
         });
         return;
       }
@@ -257,7 +284,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
         }
         const { userId, email: e } = result.payload;
         await mergeWebScratchCloudNotesAfterAuth(userId);
-        const name = username.trim() || (e.includes("@") ? e.slice(0, e.indexOf("@")) : e) || "user";
+        const name =
+          username.trim() || (e.includes("@") ? e.slice(0, e.indexOf("@")) : e) || "user";
         setState({
           status: "authed",
           user: { id: userId, email: e, username: name },

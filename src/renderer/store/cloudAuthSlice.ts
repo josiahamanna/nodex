@@ -19,7 +19,7 @@ type CloudAuthThunkExtra = { extra: NodexPlatformDeps };
 
 async function migrateWebScratchCloudNotesIfNeeded(realUserId: string): Promise<void> {
   if (typeof window === "undefined") return;
-  const { isWebScratchSession } = await import("../auth/web-scratch");
+  const { isWebScratchSession } = await import("../auth/web-scratch-session");
   if (!isWebScratchSession()) return;
   const { migrateWebScratchCloudNotesToUser } = await import(
     "../cloud-sync/migrate-web-scratch-cloud-notes",

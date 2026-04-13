@@ -17,7 +17,7 @@ import {
 import {
   WEB_SCRATCH_CLOUD_USER_ID,
   isWebScratchSession,
-} from "../auth/web-scratch";
+} from "../auth/web-scratch-session";
 
 type ListenerRoot = {
   cloudAuth: { status: string; userId: string | null };

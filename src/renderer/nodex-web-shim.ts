@@ -202,6 +202,15 @@ async function syncWpnFetch<T>(
   if (res.status === 401 && attempt < 1) {
     const rt = readCloudSyncRefreshToken();
     if (!rt) {
+      // Stale access token with no refresh (common in dev): clear it so later calls use
+      // unsigned read stubs; still serve this request like an unsigned read when possible.
+      writeCloudSyncToken(null);
+      if (!isMutatingWpnHttpMethod(method)) {
+        const stub = syncWpnUnsignedReadStub<T>(apiPath);
+        if (stub !== undefined) {
+          return stub;
+        }
+      }
       throw new Error(`${method} ${apiPath} failed (401)`);
     }
     const r2 = await fetch(`${syncBase.replace(/\/$/, "")}/auth/refresh`, {
@@ -212,6 +221,12 @@ async function syncWpnFetch<T>(
     if (!r2.ok) {
       writeCloudSyncToken(null);
       writeCloudSyncRefreshToken(null);
+      if (!isMutatingWpnHttpMethod(method)) {
+        const stub = syncWpnUnsignedReadStub<T>(apiPath);
+        if (stub !== undefined) {
+          return stub;
+        }
+      }
       throw new Error(`${method} ${apiPath} failed (401)`);
     }
     const j = (await r2.json()) as { token: string; refreshToken: string };
@@ -240,6 +255,52 @@ async function syncWpnFetch<T>(
   return JSON.parse(text) as T;
 }
 
+function hasCloudSyncSessionForWpn(): boolean {
+  return !!readCloudSyncToken() || !!readCloudSyncRefreshToken();
+}
+
+function isMutatingWpnHttpMethod(method: string): boolean {
+  const m = method.toUpperCase();
+  return m === "POST" || m === "PATCH" || m === "PUT" || m === "DELETE";
+}
+
+/**
+ * When sync-api WPN is configured but the browser has no cloud tokens yet, avoid hitting
+ * `/wpn/*` (401 + noisy unhandled rejections) and return the same empty shapes the API would
+ * produce for reads. Mutations still throw so the user gets a clear sign-in message.
+ */
+function syncWpnUnsignedReadStub<T>(apiPath: string): T | undefined {
+  const normalized = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+  if (normalized === "/wpn/workspaces") {
+    return { workspaces: [] } as T;
+  }
+  if (/^\/wpn\/workspaces\/[^/]+\/projects$/.test(normalized)) {
+    return { projects: [] } as T;
+  }
+  if (/^\/wpn\/workspaces\/[^/]+\/settings$/.test(normalized)) {
+    return { settings: {} } as T;
+  }
+  if (/^\/wpn\/projects\/[^/]+\/notes$/.test(normalized)) {
+    return { notes: [] } as T;
+  }
+  if (/^\/wpn\/projects\/[^/]+\/settings$/.test(normalized)) {
+    return { settings: {} } as T;
+  }
+  if (/^\/wpn\/projects\/[^/]+\/explorer-state$/.test(normalized)) {
+    return { expanded_ids: [] } as T;
+  }
+  if (normalized === "/wpn/all-notes-list") {
+    return { notes: [] } as T;
+  }
+  if (normalized === "/wpn/notes-with-context") {
+    return { notes: [] } as T;
+  }
+  if (/^\/wpn\/backlinks\//.test(normalized)) {
+    return { sources: [] } as T;
+  }
+  return undefined;
+}
+
 async function wpnHttp<T>(
   headlessBaseUrl: string,
   method: string,
@@ -250,6 +311,17 @@ async function wpnHttp<T>(
     const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
     if (syncBase.length > 0) {
       assertSignedInCloudWpnOnlineForMutation(method);
+      if (!hasCloudSyncSessionForWpn()) {
+        if (!isMutatingWpnHttpMethod(method)) {
+          const stub = syncWpnUnsignedReadStub<T>(path);
+          if (stub !== undefined) {
+            return stub;
+          }
+        }
+        throw new Error(
+          "Sign in with cloud sync to use the Mongo-backed workspace in the browser.",
+        );
+      }
       return syncWpnFetch<T>(syncBase, method, path, body);
     }
   }

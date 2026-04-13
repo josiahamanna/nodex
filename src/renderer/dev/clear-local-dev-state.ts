@@ -2,7 +2,10 @@
  * Dev helpers: clear browser session/UI cache vs IndexedDB (RxDB / scratch WPN) vs both.
  * Used by command palette + minibuffer (`nodex.dev.clearUi`, etc.).
  */
-import { WEB_SCRATCH_CLOUD_USER_ID, WEB_SCRATCH_SESSION_KEY } from "../auth/web-scratch";
+import {
+  WEB_SCRATCH_CLOUD_USER_ID,
+  WEB_SCRATCH_SESSION_KEY,
+} from "../auth/web-scratch-session";
 
 /** Same as {@link NODEX_WEB_HEADLESS_API_STORAGE_KEY} in `nodex-web-shim` (avoid importing the shim here). */
 const NODEX_WEB_HEADLESS_API_STORAGE_KEY = "nodex-headless-api-base";

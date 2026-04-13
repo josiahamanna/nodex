@@ -55,15 +55,17 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
         return (
           <>
             {children}
-            <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-background/90 px-4 py-10 backdrop-blur-sm">
-              <ElectronSyncAuthPanel
-                initialMode={electronSyncOverlay}
-                onBack={
-                  isElectronCloudWpnSession() ? exitElectronSessionToWelcome : closeElectronSyncAuth
-                }
-                backLabel={isElectronCloudWpnSession() ? "Return to home" : "Back"}
-                onSignedIn={closeElectronSyncAuth}
-              />
+            <div className="fixed inset-0 z-[100] overflow-y-auto bg-background/90 backdrop-blur-sm">
+              <div className="flex min-h-full items-center justify-center px-4 py-8">
+                <ElectronSyncAuthPanel
+                  initialMode={electronSyncOverlay}
+                  onBack={
+                    isElectronCloudWpnSession() ? exitElectronSessionToWelcome : closeElectronSyncAuth
+                  }
+                  backLabel={isElectronCloudWpnSession() ? "Return to home" : "Back"}
+                  onSignedIn={closeElectronSyncAuth}
+                />
+              </div>
             </div>
           </>
         );

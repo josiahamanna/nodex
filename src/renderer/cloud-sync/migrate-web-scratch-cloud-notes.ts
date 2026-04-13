@@ -7,7 +7,7 @@ import {
 import {
   WEB_SCRATCH_CLOUD_USER_ID,
   setWebScratchSession,
-} from "../auth/web-scratch";
+} from "../auth/web-scratch-session";
 
 /** Copy browser-only scratch cloud notes into the signed-in user’s local DB (then push via normal sync). */
 export async function migrateWebScratchCloudNotesToUser(

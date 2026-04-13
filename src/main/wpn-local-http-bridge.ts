@@ -101,7 +101,7 @@ function persistBridgeMeta(userDataPath: string, baseUrl: string, token: string)
           token,
           baseUrl,
           updatedAtMs: Date.now(),
-          hint: "Use baseUrl + Bearer token in NODEX_LOCAL_WPN_URL / NODEX_LOCAL_WPN_TOKEN for @nodex/mcp.",
+          hint: "Use baseUrl + Bearer token in NODEX_LOCAL_WPN_URL / NODEX_LOCAL_WPN_TOKEN for @nodex-studio/mcp.",
         },
         null,
         2,
@@ -312,7 +312,7 @@ function handleWpnRequest(
 }
 
 /**
- * Start or stop the loopback WPN HTTP bridge for MCP (`@nodex/mcp` local mode).
+ * Start or stop the loopback WPN HTTP bridge for MCP (`@nodex-studio/mcp` local mode).
  * Enable with `NODEX_WPN_LOCAL_HTTP=1`. Token: `NODEX_LOCAL_WPN_TOKEN` or persisted under userData.
  */
 export function syncWpnLocalHttpBridgeState(): void {
