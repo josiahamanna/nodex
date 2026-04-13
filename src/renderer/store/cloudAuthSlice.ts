@@ -9,6 +9,8 @@ import {
   writeCloudSyncRefreshToken,
   writeCloudSyncToken,
 } from "../cloud-sync/cloud-sync-storage";
+import { clearAllElectronAppPinSettings } from "../auth/electron-app-pin-storage";
+import { clearPersistedWebSyncWpnPreference } from "../nodex-web-shim";
 import {
   hydrateCloudNotesFromRxDbThunk,
   resetCloudNotes,
@@ -194,7 +196,9 @@ export const cloudLogoutThunk = createAsyncThunk<void, void, CloudAuthThunkExtra
     writeCloudSyncEmail(null);
     extra.remoteApi.setAuthToken(null);
     extra.remoteApi.setRefreshToken(null);
+    clearAllElectronAppPinSettings();
     dispatch(resetCloudNotes());
+    clearPersistedWebSyncWpnPreference();
   },
 );
 

@@ -37,6 +37,20 @@ const findNotesInput = z.object({
     .describe("Optional project name or UUID to narrow results"),
 });
 
+const executeNoteInput = z.object({
+  noteQuery: z
+    .string()
+    .describe("Note title or canonical note UUID (same matching rules as nodex_find_notes)."),
+  workspaceQuery: z
+    .string()
+    .optional()
+    .describe("Optional workspace name or UUID to narrow results before fetch."),
+  projectQuery: z
+    .string()
+    .optional()
+    .describe("Optional project name or UUID to narrow results before fetch."),
+});
+
 const listWpnInput = z.discriminatedUnion("scope", [
   z.object({ scope: z.literal("workspaces") }),
   z.object({
@@ -116,9 +130,11 @@ export async function runMcpStdioServer(): Promise<void> {
         "Nodex WPN tools: nodex_list_wpn lists workspaces / projects / notes or a full_tree; " +
         "nodex_find_projects / nodex_find_notes resolve by name or UUID with path (Workspace / Project / Title) and ambiguity hints; " +
         "nodex_resolve_note finds a noteId from workspace+project+title; nodex_get_note reads a note; " +
+        "nodex_execute_note resolves by title or id, returns ambiguity (path + noteId per candidate) for the user to pick, or returns the full note when unique — then the agent follows note.content; " +
         "nodex_write_note patches or creates notes; nodex_write_back_child creates a child under a task note after completing work scoped to that note. " +
         "Write-back policy: when you finish work that was driven by a specific Nodex note, call nodex_write_back_child with taskNoteId equal to that note so the outcome is attached as a new direct child (audit trail). " +
         "If that note already has other children, still attach the write-back as a new direct child of the same task note unless the user asked for a different placement. " +
+        "Tool overlap is intentional: nodex_execute_note equals find_notes then get_note when unique; nodex_write_back_child equals get_note then write_note create_child when you only have taskNoteId. " +
         "Configure NODEX_SYNC_API_BASE + NODEX_ACCESS_TOKEN (cloud) or NODEX_LOCAL_WPN_URL + NODEX_LOCAL_WPN_TOKEN (Electron loopback).",
     },
   );
@@ -271,6 +287,45 @@ export async function runMcpStdioServer(): Promise<void> {
       try {
         const note = await client.getNote(args.noteId);
         return jsonResult({ note });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return errorResult(msg);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_execute_note",
+    {
+      description:
+        "Resolve a task note by title or UUID (optional workspaceQuery / projectQuery), then fetch it when the match is unique. " +
+        "If multiple notes share the title, returns status ambiguous with each candidate's full path and noteId — have the user pick one, then call again with noteQuery set to that UUID (or narrow filters). " +
+        "On success, the agent should read note.content and follow those instructions in the session.",
+      inputSchema: executeNoteInput,
+    },
+    async (args) => {
+      try {
+        const rows = await client.getNotesWithContext();
+        const resolved = findNotesByQuery(
+          rows,
+          args.noteQuery,
+          args.workspaceQuery,
+          args.projectQuery,
+        );
+        if (resolved.status !== "unique") {
+          return jsonResult({
+            stage: "needs_resolution" as const,
+            ...resolved,
+            nextStep:
+              "If ambiguous, show the user each path and noteId from matches; after they choose, call nodex_execute_note again with noteQuery equal to the chosen noteId (or narrow workspaceQuery/projectQuery).",
+          });
+        }
+        const note = await client.getNote(resolved.matches[0]!.noteId);
+        return jsonResult({
+          stage: "fetched" as const,
+          match: resolved.matches[0],
+          note,
+        });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         return errorResult(msg);

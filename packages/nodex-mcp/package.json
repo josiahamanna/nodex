@@ -18,7 +18,7 @@
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/resolve-note.test.ts src/find-wpn.test.ts"
+    "test": "tsx --test src/resolve-note.test.ts src/find-wpn.test.ts src/wpn-client.cache.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

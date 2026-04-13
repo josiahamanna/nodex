@@ -200,6 +200,9 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const showFolderBasedWorkspaceCreate = isElectronUserAgent() || rootPath != null;
 
   const [workspaces, setWorkspaces] = useState<WpnWorkspaceRow[]>([]);
+  /** Latest rows for {@link loadWorkspaces} merge logic without widening `loadWorkspaces` deps. */
+  const workspacesRef = useRef<WpnWorkspaceRow[]>([]);
+  workspacesRef.current = workspaces;
   const [projectsByWs, setProjectsByWs] = useState<Record<string, WpnProjectRow[]>>({});
   const [expandedWs, setExpandedWs] = useState<Set<string>>(() => new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set());
@@ -236,6 +239,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
        * appears without a full page refresh.
        */
       if (!opts?.force && !projectOpen) return;
+      const prevWorkspaceIds = new Set(workspacesRef.current.map((w) => w.id));
       setBusy(true);
       try {
         const { workspaces: ws } = await getNodex().wpnListWorkspaces();
@@ -257,7 +261,17 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
           const visible = Object.values(nextProj).some((arr) => arr.some((p) => p.id === prev));
           return visible ? prev : null;
         });
-        setExpandedWs(new Set(ws.map((w) => w.id)));
+        setExpandedWs((prevExpanded) => {
+          const out = new Set<string>();
+          for (const w of ws) {
+            if (!prevWorkspaceIds.has(w.id)) {
+              out.add(w.id);
+            } else if (prevExpanded.has(w.id)) {
+              out.add(w.id);
+            }
+          }
+          return out;
+        });
       } finally {
         setBusy(false);
       }
@@ -391,6 +405,8 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     lastExplorerRevealForNoteIdRef.current = null;
   }, [currentNoteId]);
 
+  // Follow the open note in the tree when the active note or workspace list changes — not when
+  // `notes` alone changes (project switch clears the list briefly and would snap selection back).
   useEffect(() => {
     if (!currentNoteId || !projectOpen) return;
     let cancelled = false;
@@ -427,7 +443,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     return () => {
       cancelled = true;
     };
-  }, [currentNoteId, projectOpen, projectsByWs, notes]);
+  }, [currentNoteId, projectOpen, projectsByWs]);
 
   const filteredNotes = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -524,6 +540,10 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
 
   const onDeleteWorkspace = async (id: string) => {
     if (!window.confirm("Delete this workspace and all projects and notes inside it?")) return;
+    const { projects } = await getNodex().wpnListProjects(id);
+    const lists = await Promise.all(projects.map((p) => getNodex().wpnListNotes(p.id)));
+    const noteIds = lists.flatMap((r) => r.notes.map((n) => n.id));
+    closeShellTabsForNoteIds(tabs, noteIds);
     await getNodex().wpnDeleteWorkspace(id);
     if (selectedProjectId) {
       const projs = projectsByWs[id] ?? [];
@@ -538,6 +558,8 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
 
   const onDeleteProject = async (id: string) => {
     if (!window.confirm("Delete this project and all its notes?")) return;
+    const { notes } = await getNodex().wpnListNotes(id);
+    closeShellTabsForNoteIds(tabs, notes.map((n) => n.id));
     await getNodex().wpnDeleteProject(id);
     if (selectedProjectId === id) {
       setSelectedProjectId(null);

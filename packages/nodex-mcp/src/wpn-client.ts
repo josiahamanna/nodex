@@ -1,5 +1,13 @@
 import type { WpnHttpConfig } from "./config.js";
 
+/** Default TTL for `GET /wpn/notes-with-context` in-process cache (ms). */
+const DEFAULT_NOTES_WITH_CONTEXT_TTL_MS = 2500;
+
+export type WpnHttpClientOptions = {
+  /** How long to reuse the notes-with-context catalog; invalidated on note PATCH/POST. */
+  notesWithContextTtlMs?: number;
+};
+
 export type WpnNoteWithContextRow = {
   id: string;
   title: string;
@@ -24,7 +32,21 @@ export type WpnNoteDetail = {
 };
 
 export class WpnHttpClient {
-  constructor(private readonly cfg: WpnHttpConfig) {}
+  private readonly notesWithContextTtlMs: number;
+  private notesWithContextCache: { fetchedAtMs: number; rows: WpnNoteWithContextRow[] } | null =
+    null;
+
+  constructor(
+    private readonly cfg: WpnHttpConfig,
+    opts: WpnHttpClientOptions = {},
+  ) {
+    this.notesWithContextTtlMs =
+      opts.notesWithContextTtlMs ?? DEFAULT_NOTES_WITH_CONTEXT_TTL_MS;
+  }
+
+  private invalidateNotesWithContextCache(): void {
+    this.notesWithContextCache = null;
+  }
 
   private url(path: string): string {
     const p = path.startsWith("/") ? path : `/${path}`;
@@ -95,6 +117,15 @@ export class WpnHttpClient {
   }
 
   async getNotesWithContext(): Promise<WpnNoteWithContextRow[]> {
+    const now = Date.now();
+    const c = this.notesWithContextCache;
+    if (
+      c !== null &&
+      this.notesWithContextTtlMs > 0 &&
+      now - c.fetchedAtMs < this.notesWithContextTtlMs
+    ) {
+      return c.rows;
+    }
     const body = await this.getJson<{ notes?: unknown }>(
       "/wpn/notes-with-context",
       "WPN GET notes-with-context",
@@ -103,7 +134,9 @@ export class WpnHttpClient {
     if (!Array.isArray(notes)) {
       throw new Error("WPN GET notes-with-context: missing notes array");
     }
-    return notes as WpnNoteWithContextRow[];
+    const rows = notes as WpnNoteWithContextRow[];
+    this.notesWithContextCache = { fetchedAtMs: now, rows };
+    return rows;
   }
 
   async getNote(noteId: string): Promise<WpnNoteDetail> {
@@ -158,6 +191,7 @@ export class WpnHttpClient {
     if (!note) {
       throw new Error("WPN PATCH note: missing note in response");
     }
+    this.invalidateNotesWithContextCache();
     return note;
   }
 
@@ -195,6 +229,7 @@ export class WpnHttpClient {
     if (typeof id !== "string" || !id) {
       throw new Error("WPN POST note: missing id in response");
     }
+    this.invalidateNotesWithContextCache();
     return { id };
   }
 }

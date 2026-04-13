@@ -13,7 +13,6 @@ import { useRegisterDocumentationPlugin } from "./shell/first-party/plugins/docu
 import { useRegisterNotesExplorerPlugin } from "./shell/first-party/plugins/notes-explorer/useRegisterNotesExplorerPlugin";
 import { useRegisterJsNoteEditor } from "./shell/first-party/plugins/js-notebook/useRegisterJsNoteEditor";
 import { useRegisterJsNotebookPlugin } from "./shell/first-party/plugins/js-notebook/useRegisterJsNotebookPlugin";
-import { useRegisterCloudSyncPlugin } from "./shell/first-party/useRegisterCloudSyncPlugin";
 import { useRegisterNotesShellPlugin } from "./shell/first-party/useRegisterNotesShellPlugin";
 import { useRegisterMarkdownNotePlugin } from "./shell/first-party/plugins/markdown/useRegisterMarkdownNotePlugin";
 import { GlobalContextMenuHost } from "./shell/GlobalContextMenuHost";
@@ -73,7 +72,6 @@ const App: React.FC = () => {
   useRegisterJsNotebookPlugin();
   useRegisterJsNoteEditor();
   useRegisterDocumentationPlugin();
-  useRegisterCloudSyncPlugin();
   useRegisterNotesShellPlugin();
   useRegisterNotesExplorerPlugin();
 

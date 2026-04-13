@@ -334,6 +334,25 @@ export const NODEX_WEB_PLUGINS_CHANGED = "nodex-web-plugins-changed";
 /** Persisted headless API origin for `?web=1` (no `api=` query needed). */
 export const NODEX_WEB_HEADLESS_API_STORAGE_KEY = "nodex-headless-api-base";
 
+/** Persisted `?syncWpn=1` so new tabs with a bare URL still enable sync-api WPN + cloud auth paths. */
+export const NODEX_WEB_SYNC_WPN_STORAGE_KEY = "nodex.web.syncWpn";
+
+/** Clears persisted sync-WPN preference (e.g. cloud logout). Safe when env still forces sync API. */
+export function clearPersistedWebSyncWpnPreference(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    localStorage.removeItem(NODEX_WEB_SYNC_WPN_STORAGE_KEY);
+  } catch {
+    /* private mode */
+  }
+  const w = window as Window & { __NODEX_WPN_USE_SYNC_API__?: boolean };
+  if (w.__NODEX_WPN_USE_SYNC_API__ === true) {
+    delete w.__NODEX_WPN_USE_SYNC_API__;
+  }
+}
+
 export type HeadlessApiPreset = { label: string; value: string };
 
 export function normalizeHeadlessApiBase(url: string): string {
@@ -373,8 +392,29 @@ export function initHeadlessWebApiBaseFromUrlAndStorage(): void {
   const q = new URLSearchParams(window.location.search);
   const web = q.get("web") === "1" || q.get("web") === "true";
 
-  if (q.get("syncWpn") === "1" || q.get("syncWpn") === "true") {
+  try {
+    if (localStorage.getItem(NODEX_WEB_SYNC_WPN_STORAGE_KEY) === "1") {
+      window.__NODEX_WPN_USE_SYNC_API__ = true;
+    }
+  } catch {
+    /* private mode */
+  }
+  const syncWpnQ = q.get("syncWpn");
+  if (syncWpnQ === "1" || syncWpnQ === "true") {
     window.__NODEX_WPN_USE_SYNC_API__ = true;
+    try {
+      localStorage.setItem(NODEX_WEB_SYNC_WPN_STORAGE_KEY, "1");
+    } catch {
+      /* private mode */
+    }
+  } else if (syncWpnQ === "0" || syncWpnQ === "false") {
+    try {
+      localStorage.removeItem(NODEX_WEB_SYNC_WPN_STORAGE_KEY);
+    } catch {
+      /* private mode */
+    }
+    const w = window as Window & { __NODEX_WPN_USE_SYNC_API__?: boolean };
+    delete w.__NODEX_WPN_USE_SYNC_API__;
   }
 
   const api = q.get("api")?.trim();

@@ -1,10 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  platformDeps,
-  type AppDispatch,
-  type RootState,
-} from "../store";
+import { type AppDispatch, type RootState } from "../store";
 import {
   cloudLoginThunk,
   cloudRegisterThunk,
@@ -62,8 +58,6 @@ export function ElectronSyncAuthPanel({
     }
   }, [auth.status, onSignedIn]);
 
-  const apiBase = platformDeps.remoteApi.getBaseUrl() || "(not set)";
-
   return (
     <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-lg">
       <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
@@ -77,9 +71,7 @@ export function ElectronSyncAuthPanel({
         </button>
       </div>
       <p className="mt-3 text-[12px] leading-5 text-muted-foreground">
-        Sign in or create an account to sync notes with the configured API. On-disk workspace files are
-        unchanged. API base:{" "}
-        <span className="font-mono text-[11px] text-foreground/90">{apiBase}</span>
+        Sign in to sync notes with your account. Local workspace files stay on this device.
       </p>
       <div className="mt-5 space-y-3">
         <div className="flex gap-2 text-[11px]">

@@ -1,4 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useDispatch } from "react-redux";
 import Editor from "@monaco-editor/react";
 import { loader } from "@monaco-editor/react";
@@ -25,6 +33,15 @@ function useDebouncedNoteSave(
 ): (content: string) => void {
   const dispatch = useDispatch<AppDispatch>();
   const tRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (tRef.current) {
+        clearTimeout(tRef.current);
+        tRef.current = null;
+      }
+    };
+  }, [noteId]);
 
   return useCallback(
     (content: string) => {
@@ -54,13 +71,26 @@ function TextNoteEditor({
   note: Note;
   persist: boolean;
 }): React.ReactElement {
+  const dispatch = useDispatch<AppDispatch>();
   const [value, setValue] = useState(note.content ?? "");
   const [caret, setCaret] = useState(0);
+  const latestRef = useRef(note.content ?? "");
   const save = useDebouncedNoteSave(note.id, persist, 400);
+  latestRef.current = value;
 
   useEffect(() => {
     setValue(note.content ?? "");
   }, [note.id, note.content]);
+
+  useLayoutEffect(() => {
+    const idWhenAttached = note.id;
+    return () => {
+      if (!persist) return;
+      void dispatch(
+        saveNoteContent({ noteId: idWhenAttached, content: latestRef.current }),
+      );
+    };
+  }, [note.id, persist, dispatch]);
 
   const syncCaret = useCallback((el: HTMLTextAreaElement) => {
     setCaret(el.selectionStart);
@@ -104,15 +134,28 @@ function CodeNoteEditor({
   note: Note;
   persist: boolean;
 }): React.ReactElement {
+  const dispatch = useDispatch<AppDispatch>();
   const { resolvedDark } = useTheme();
   const meta = (note.metadata ?? {}) as { language?: string };
   const language = typeof meta.language === "string" ? meta.language : "javascript";
   const [value, setValue] = useState(note.content ?? "");
+  const latestRef = useRef(note.content ?? "");
   const save = useDebouncedNoteSave(note.id, persist, 400);
+  latestRef.current = value;
 
   useEffect(() => {
     setValue(note.content ?? "");
   }, [note.id, note.content]);
+
+  useLayoutEffect(() => {
+    const idWhenAttached = note.id;
+    return () => {
+      if (!persist) return;
+      void dispatch(
+        saveNoteContent({ noteId: idWhenAttached, content: latestRef.current }),
+      );
+    };
+  }, [note.id, persist, dispatch]);
 
   const codeSecondary = useMemo(() => {
     const lines = value.length === 0 ? 1 : value.split("\n").length;

@@ -1,14 +1,21 @@
-import React, { useEffect } from "react";
-import { useSelector } from "react-redux";
+import React, { useCallback, useEffect, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { useAuth } from "./AuthContext";
 import { AuthScreen } from "./AuthScreen";
 import { EntryScreen } from "./EntryScreen";
 import { ElectronRunModeGreet } from "./ElectronRunModeGreet";
+import { ElectronAppPinLock, ElectronAppPinOffer } from "./ElectronAppPinOverlays";
 import { ElectronSyncAuthPanel } from "./ElectronSyncAuthPanel";
+import {
+  isElectronAppPinEnabled,
+  isPinOfferDismissed,
+  isSessionPinUnlocked,
+} from "./electron-app-pin-storage";
 import { isElectronUserAgent } from "../nodex-web-shim";
 import { isElectronCloudWpnSession } from "./electron-cloud-session";
 import { isWebScratchSession } from "./web-scratch";
-import type { RootState } from "../store";
+import { cloudLogoutThunk } from "../store/cloudAuthSlice";
+import type { AppDispatch, RootState } from "../store";
 
 export function AuthGate({ children }: { children: React.ReactNode }): React.ReactElement {
   const {
@@ -22,7 +29,41 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
     openElectronSyncAuth,
     exitElectronSessionToWelcome,
   } = useAuth();
+  const dispatch = useDispatch<AppDispatch>();
   const cloudAuth = useSelector((s: RootState) => s.cloudAuth);
+  const [showPinOffer, setShowPinOffer] = useState(false);
+  const [pinGateTick, setPinGateTick] = useState(0);
+
+  const handleSignInWithEmailFromPin = useCallback(async () => {
+    await dispatch(cloudLogoutThunk());
+    openElectronSyncAuth("login");
+    setPinGateTick((n) => n + 1);
+  }, [dispatch, openElectronSyncAuth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isElectronUserAgent()) {
+      return;
+    }
+    if (electronRunMode !== "cloud") {
+      setShowPinOffer(false);
+      return;
+    }
+    if (electronSyncOverlay) {
+      setShowPinOffer(false);
+      return;
+    }
+    if (cloudAuth.busy || cloudAuth.status !== "signedIn") {
+      if (cloudAuth.status !== "signedIn") {
+        setShowPinOffer(false);
+      }
+      return;
+    }
+    if (isElectronAppPinEnabled() || isPinOfferDismissed()) {
+      setShowPinOffer(false);
+      return;
+    }
+    setShowPinOffer(true);
+  }, [electronRunMode, electronSyncOverlay, cloudAuth.busy, cloudAuth.status]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !isElectronUserAgent()) {
@@ -37,7 +78,7 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
     if (electronSyncOverlay !== null) {
       return;
     }
-    openElectronSyncAuth("signup");
+    openElectronSyncAuth("login");
   }, [
     cloudAuth.busy,
     cloudAuth.status,
@@ -51,10 +92,25 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
       return <ElectronRunModeGreet onChoose={chooseElectronRunMode} />;
     }
     if (electronRunMode === "scratch" || electronRunMode === "local" || electronRunMode === "cloud") {
-      if (electronSyncOverlay) {
-        return (
-          <>
-            {children}
+      const showPinLock =
+        electronRunMode === "cloud" &&
+        !electronSyncOverlay &&
+        cloudAuth.status === "signedIn" &&
+        !cloudAuth.busy &&
+        isElectronAppPinEnabled() &&
+        !isSessionPinUnlocked();
+
+      const showPinOfferOverlay =
+        electronRunMode === "cloud" &&
+        !electronSyncOverlay &&
+        cloudAuth.status === "signedIn" &&
+        !cloudAuth.busy &&
+        showPinOffer;
+
+      return (
+        <>
+          {children}
+          {electronSyncOverlay ? (
             <div className="fixed inset-0 z-[100] overflow-y-auto bg-background/90 backdrop-blur-sm">
               <div className="flex min-h-full items-center justify-center px-4 py-8">
                 <ElectronSyncAuthPanel
@@ -67,10 +123,22 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
                 />
               </div>
             </div>
-          </>
-        );
-      }
-      return <>{children}</>;
+          ) : null}
+          {showPinLock ? (
+            <ElectronAppPinLock
+              key={`pin-lock-${pinGateTick}`}
+              onUnlocked={() => setPinGateTick((n) => n + 1)}
+              onSignInWithEmail={handleSignInWithEmailFromPin}
+            />
+          ) : null}
+          {showPinOfferOverlay && !showPinLock ? (
+            <ElectronAppPinOffer
+              onSkip={() => setShowPinOffer(false)}
+              onPinCreated={() => setShowPinOffer(false)}
+            />
+          ) : null}
+        </>
+      );
     }
     return <>{children}</>;
   }

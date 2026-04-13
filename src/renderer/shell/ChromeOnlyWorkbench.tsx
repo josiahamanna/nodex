@@ -25,7 +25,7 @@ import React, {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import { useSelector } from "react-redux";
 import { getNodex } from "../../shared/nodex-host-access";
 import {
   Panel,
@@ -78,8 +78,7 @@ import {
   isSignedInCloudWpnOffline,
   shouldSkipDurableChromePersistence,
 } from "../cloud-sync/signed-in-cloud-offline";
-import { cloudLogoutThunk } from "../store/cloudAuthSlice";
-import type { AppDispatch, RootState } from "../store";
+import type { RootState } from "../store";
 
 function IconBottomDockLayout({ className }: { className?: string }): React.ReactElement {
   return (
@@ -305,7 +304,6 @@ function applyShellHashNoteTarget(
 
 export function ChromeOnlyWorkbench(): React.ReactElement {
   const auth = useAuth();
-  const dispatch = useDispatch<AppDispatch>();
   const cloudAuth = useSelector((s: RootState) => s.cloudAuth);
   const noteRenameEpoch = useSelector((s: RootState) => s.notes.noteRenameEpoch);
   const notesListLength = useSelector((s: RootState) => s.notes.notesList.length);
@@ -919,21 +917,21 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 Sync
               </button>
             ) : null}
-            {isElectronVaultWorkbench && cloudAuth.status === "signedIn" ? (
+            {cloudAuth.status === "signedIn" ? (
               <button
                 type="button"
                 className="mr-1 rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
                 onClick={() => {
-                  if (isElectronCloudWpnSession()) {
+                  if (isElectronUserAgent()) {
                     auth.exitElectronSessionToWelcome();
                   } else {
-                    void dispatch(cloudLogoutThunk());
+                    void auth.logout();
                   }
                 }}
                 title={
-                  isElectronCloudWpnSession()
-                    ? "Sign out and return to the welcome screen. Your cloud data stays on the server."
-                    : "Logout: end sync on this device. Server-side data stays in the cloud."
+                  isElectronUserAgent()
+                    ? "Sign out of sync and return to the home dashboard. Your data on disk and on the server is unchanged."
+                    : "Sign out and return to the home screen. Server-side data stays in the cloud."
                 }
               >
                 Logout

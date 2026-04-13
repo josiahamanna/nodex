@@ -1,8 +1,8 @@
 {
     "mcpServers": {
       "nodex-dev": {
-        "command": "npx",
-        "args": ["@nodex-studio/mcp"],
+        "command": "node",
+      "args": ["/home/jehu/Workspace/Nodex-Studio/nodex/packages/nodex-mcp/dist/cli.js"],
         "env": {
           "NODEX_LOCAL_WPN_URL": "http://127.0.0.1:41234",
           "NODEX_LOCAL_WPN_TOKEN": "12345678900987654321"

@@ -8,6 +8,26 @@ import {
 } from "../utils/cached-nodex-note-types";
 import NoteTypeReactRenderer from "./renderers/NoteTypeReactRenderer";
 
+function CopyGlyph(props: { className?: string }): React.ReactElement {
+  return (
+    <svg
+      width={14}
+      height={14}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
 interface NoteViewerProps {
   note: Note;
   /** Project folder that owns this note’s `assets/` (multi-root workspaces). */
@@ -100,6 +120,44 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
     );
   };
 
+  const copyNoteTitle = () => {
+    void navigator.clipboard.writeText(note.title).then(
+      () => {
+        showToast({
+          severity: "info",
+          message: "Note name copied",
+          mergeKey: "note-viewer-copy-title",
+        });
+      },
+      () => {
+        showToast({
+          severity: "error",
+          message: "Could not copy name (clipboard permission).",
+          mergeKey: "note-viewer-copy-title-err",
+        });
+      },
+    );
+  };
+
+  const copyNoteId = () => {
+    void navigator.clipboard.writeText(note.id).then(
+      () => {
+        showToast({
+          severity: "info",
+          message: "Note id copied",
+          mergeKey: "note-viewer-copy-id",
+        });
+      },
+      () => {
+        showToast({
+          severity: "error",
+          message: "Could not copy id (clipboard permission).",
+          mergeKey: "note-viewer-copy-id-err",
+        });
+      },
+    );
+  };
+
   const commitTitleFromDom = async () => {
     const el = titleRef.current;
     if (!el) {
@@ -145,16 +203,40 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
             }
           }}
         />
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-          <div className="flex items-center gap-2 text-[12px]">
-            <span className="text-muted-foreground">Type</span>
-            <span className="font-mono text-foreground">{note.type}</span>
+        <div className="mt-3 flex w-full min-w-0 flex-nowrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="flex items-center gap-2 text-[12px]">
+              <span className="text-muted-foreground">Type</span>
+              <span className="font-mono text-foreground">{note.type}</span>
+            </div>
+            {hasPlugin ? (
+              <span className="rounded-sm bg-badge-text-bg px-2 py-0.5 font-medium text-[11px] text-badge-text-fg">
+                Plugin active
+              </span>
+            ) : null}
           </div>
-          {hasPlugin ? (
-            <span className="rounded-sm bg-badge-text-bg px-2 py-0.5 font-medium text-[11px] text-badge-text-fg">
-              Plugin active
-            </span>
-          ) : null}
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+              title="Copy note name"
+              aria-label="Copy note name"
+              onClick={copyNoteTitle}
+            >
+              <CopyGlyph />
+              <span>Copy note name</span>
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+              title="Copy note id"
+              aria-label="Copy note id"
+              onClick={copyNoteId}
+            >
+              <CopyGlyph />
+              <span>Copy note id</span>
+            </button>
+          </div>
         </div>
       </header>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-3">

@@ -14,8 +14,25 @@ stdio [Model Context Protocol](https://modelcontextprotocol.io) server for **Nod
 | `nodex_list_wpn` | `scope`: `workspaces` \| `projects`+`workspaceId` \| `notes`+`projectId` \| `full_tree` — same data as GET `/wpn/workspaces`, `/wpn/workspaces/…/projects`, `/wpn/projects/…/notes`. |
 | `nodex_resolve_note` | Match `workspaceName` + `projectName` + `noteTitle` (trim, case-insensitive) → canonical `noteId`. Errors with `candidates` if ambiguous. |
 | `nodex_get_note` | `GET /wpn/notes/:id` — full note including `content`. |
+| `nodex_execute_note` | `noteQuery` (title or UUID) + optional `workspaceQuery` / `projectQuery`. Uses the same resolution as `nodex_find_notes`; if **unique**, returns full `note` for the agent to follow `content`. If **ambiguous** / scope errors, returns candidates with **path** and **noteId** so the user can pick; then call again with the chosen UUID (or narrower filters). |
 | `nodex_write_note` | Discriminated `mode`: `patch_existing`, `create_root`, `create_child`, `create_sibling` (maps to `PATCH` / `POST` WPN routes). |
 | `nodex_write_back_child` | After work scoped to a task note: `taskNoteId` + `title` + `content` → new **direct child** of that note (loads `projectId` via `GET /wpn/notes/:id`, then `POST` child). |
+
+### Tool overlap (why all eight stay)
+
+**Decision:** keep the full tool surface. Pairs below are **intentional convenience**; agents can use the lower-level tool instead when they already have ids.
+
+| If you use… | Same effect as… |
+|-------------|-------------------|
+| `nodex_execute_note` | `nodex_find_notes` → then `nodex_get_note` when `status` is `unique` (one fewer round-trip when executing task notes). |
+| `nodex_write_back_child` | `nodex_get_note`(`taskNoteId`) for `project_id` → `nodex_write_note` with `mode: "create_child"` and that `projectId` / `anchorId`. |
+| `nodex_resolve_note` | Not a duplicate of `nodex_find_notes`: triple match on **workspace + project + note title** vs free **title or UUID** + optional scope filters. |
+
+`nodex_find_projects` and `nodex_list_wpn` are not redundant with the note catalog: different endpoints and shapes (project discovery vs flat `notes-with-context` vs per-project tree).
+
+### Catalog request coalescing
+
+`nodex_find_notes`, `nodex_resolve_note`, and `nodex_execute_note` all read `GET /wpn/notes-with-context`. The HTTP client keeps a **short in-memory TTL** (default 2.5s) for that response and **drops the cache after** `PATCH` / `POST` notes so writes are not hidden for long. Tight loops in one agent turn still hit the network at most once per TTL window for reads. For tests or special cases, construct `WpnHttpClient` with `{ notesWithContextTtlMs: 0 }` to disable caching.
 
 **Binary / cloud assets:** sync-api `/me/assets` may return 501 until implemented; embed text in markdown or use URLs the host can fetch. Local assets stay on disk under the project folder (Electron).
 
