@@ -25,7 +25,10 @@ import { closeShellTabsForNoteIds } from "../../../shellTabClose";
 import { useShellNavigation } from "../../../useShellNavigation";
 import { useShellProjectWorkspace } from "../../../useShellProjectWorkspace";
 import { rememberWpnProjectIdForScratch } from "../../../wpnScratchProject";
-import { NODEX_WPN_TREE_CHANGED_EVENT } from "./wpnExplorerEvents";
+import {
+  NODEX_WPN_TREE_CHANGED_EVENT,
+  WPN_SYNC_REMOTE_POLL_INTERVAL_MS,
+} from "./wpnExplorerEvents";
 import { NODEX_SHELL_NOTE_TAB_CLOSED_EVENT } from "../../../shellTabUrlSync";
 import { SHELL_TAB_NOTE, SHELL_TAB_SCRATCH_MARKDOWN } from "../../shellWorkspaceIds";
 import { InlineSingleLineEditable } from "../../../../components/InlineSingleLineEditable";
@@ -339,6 +342,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     return () => window.removeEventListener(NODEX_WPN_TREE_CHANGED_EVENT, onWpnTreeChanged);
   }, [loadWorkspaces]);
 
+  useEffect(() => {
+    if (!projectOpen || !syncWpnNotesBackend()) return;
+    const id = window.setInterval(() => {
+      void loadWorkspaces();
+    }, WPN_SYNC_REMOTE_POLL_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [projectOpen, loadWorkspaces]);
+
   const loadProjectTree = useCallback(async (projectId: string) => {
     const [{ notes: n }, { expanded_ids }] = await Promise.all([
       getNodex().wpnListNotes(projectId),
@@ -348,6 +359,24 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     setNotes(n);
     setExpandedNoteParents(new Set(expanded_ids));
   }, []);
+
+  const refreshProjectNotesFromServer = useCallback(async (projectId: string) => {
+    try {
+      const { notes: n } = await getNodex().wpnListNotes(projectId);
+      if (selectedProjectIdRef.current !== projectId) return;
+      setNotes(n);
+    } catch {
+      /* offline or WPN unavailable */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedProjectId || !projectOpen || !syncWpnNotesBackend()) return;
+    const id = window.setInterval(() => {
+      void refreshProjectNotesFromServer(selectedProjectId);
+    }, WPN_SYNC_REMOTE_POLL_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [selectedProjectId, projectOpen, refreshProjectNotesFromServer]);
 
   useEffect(() => {
     if (!selectedProjectId || !projectOpen) return;
