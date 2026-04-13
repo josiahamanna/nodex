@@ -1,9 +1,9 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import NoteViewer from "../../components/NoteViewer";
 import { workspaceFolderPathForNote } from "../../../shared/note-workspace";
 import type { AppDispatch, RootState } from "../../store";
-import { fetchAllNotes, fetchNote, renameNote } from "../../store/notesSlice";
+import { clearNoteTitleDraft, fetchAllNotes, fetchNote, renameNote } from "../../store/notesSlice";
 import {
   runWpnNoteTitleRenameWithVfsDependentsFlow,
   useVfsDependentTitleRenameChoice,
@@ -31,10 +31,19 @@ export function NoteEditorShellView(_props: ShellViewComponentProps): React.Reac
       ? (tab.state as NoteTabState).noteId
       : undefined;
 
+  const prevNoteIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (noteId) {
       void dispatch(fetchNote(noteId));
     }
+  }, [dispatch, noteId]);
+
+  useEffect(() => {
+    const prev = prevNoteIdRef.current;
+    if (prev && prev !== noteId) {
+      dispatch(clearNoteTitleDraft(prev));
+    }
+    prevNoteIdRef.current = noteId;
   }, [dispatch, noteId]);
 
   const assetProjectRoot =
@@ -74,7 +83,7 @@ export function NoteEditorShellView(_props: ShellViewComponentProps): React.Reac
           note={currentNote}
           assetProjectRoot={assetProjectRoot}
           onTitleCommit={(title) => {
-            void (async () => {
+            return (async () => {
               const id = currentNote.id;
               const outcome = await runWpnNoteTitleRenameWithVfsDependentsFlow({
                 noteId: id,
@@ -86,7 +95,7 @@ export function NoteEditorShellView(_props: ShellViewComponentProps): React.Reac
                 },
               });
               if (outcome === "cancelled") {
-                return;
+                throw new DOMException("Rename cancelled", "AbortError");
               }
               await dispatch(fetchAllNotes());
               const tabInst =

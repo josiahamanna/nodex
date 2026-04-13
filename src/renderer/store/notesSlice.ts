@@ -43,6 +43,11 @@ interface NotesState {
    * completions from clobbering newer editor state in Redux (and controlled editors).
    */
   noteContentSaveAppliedSeq: Record<string, number>;
+  /**
+   * Ephemeral in-progress title text shared between WPN explorer inline rename and
+   * {@link NoteViewer} header so both surfaces stay in sync while typing.
+   */
+  noteTitleDraftById: Record<string, string>;
 }
 
 const initialState: NotesState = {
@@ -53,6 +58,7 @@ const initialState: NotesState = {
   error: null,
   noteRenameEpoch: 0,
   noteContentSaveAppliedSeq: {},
+  noteTitleDraftById: {},
 };
 
 export const fetchNote = createAsyncThunk<
@@ -183,6 +189,16 @@ const notesSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
+    setNoteTitleDraft: (state, action: PayloadAction<{ id: string; text: string }>) => {
+      const { id, text } = action.payload;
+      if (!id) return;
+      state.noteTitleDraftById[id] = text;
+    },
+    clearNoteTitleDraft: (state, action: PayloadAction<string>) => {
+      const id = action.payload;
+      if (!id) return;
+      delete state.noteTitleDraftById[id];
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -230,6 +246,7 @@ const notesSlice = createSlice({
       .addCase(renameNote.fulfilled, (state, action) => {
         state.error = null;
         state.noteRenameEpoch += 1;
+        delete state.noteTitleDraftById[action.payload.id];
         if (state.currentNote?.id === action.payload.id) {
           state.currentNote = {
             ...state.currentNote,
@@ -298,5 +315,6 @@ const notesSlice = createSlice({
   },
 });
 
-export const { setCurrentNote, clearCurrentNote, clearError } = notesSlice.actions;
+export const { setCurrentNote, clearCurrentNote, clearError, setNoteTitleDraft, clearNoteTitleDraft } =
+  notesSlice.actions;
 export default notesSlice.reducer;

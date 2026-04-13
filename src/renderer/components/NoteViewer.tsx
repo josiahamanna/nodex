@@ -1,6 +1,9 @@
 import { getNodex } from "../../shared/nodex-host-access";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { Note } from "@nodex/ui-types";
+import type { AppDispatch, RootState } from "../store";
+import { clearNoteTitleDraft, setNoteTitleDraft } from "../store/notesSlice";
 import { useToast } from "../toast/ToastContext";
 import {
   getRegisteredTypesCached,
@@ -40,6 +43,8 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
   assetProjectRoot = null,
   onTitleCommit,
 }) => {
+  const dispatch = useDispatch<AppDispatch>();
+  const titleDraft = useSelector((s: RootState) => s.notes.noteTitleDraftById[note.id]);
   const [hasPlugin, setHasPlugin] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [titleEditing, setTitleEditing] = useState(false);
@@ -91,15 +96,17 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
     };
   }, [note.type, showToast]);
 
+  const displayTitle = titleDraft !== undefined ? titleDraft : note.title;
+
   useLayoutEffect(() => {
     const el = titleRef.current;
     if (!el || titleEditing) {
       return;
     }
-    if (el.textContent !== note.title) {
-      el.textContent = note.title;
+    if (el.textContent !== displayTitle) {
+      el.textContent = displayTitle;
     }
-  }, [note.id, note.title, titleEditing]);
+  }, [note.id, displayTitle, titleEditing]);
 
   const renderNote = () => {
     if (hasPlugin) {
@@ -167,11 +174,25 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
     const t = raw.replace(/\s+/g, " ").trim();
     if (!t) {
       el.textContent = note.title;
+      dispatch(clearNoteTitleDraft(note.id));
       setTitleEditing(false);
       return;
     }
     if (t !== note.title) {
-      await onTitleCommit(t);
+      try {
+        await onTitleCommit(t);
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          el.textContent = note.title;
+          dispatch(clearNoteTitleDraft(note.id));
+          setTitleEditing(false);
+          return;
+        }
+        setTitleEditing(false);
+        return;
+      }
+    } else {
+      dispatch(clearNoteTitleDraft(note.id));
     }
     el.textContent = t;
     setTitleEditing(false);
@@ -190,6 +211,13 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
           tabIndex={0}
           className="min-h-[1.25rem] max-w-full rounded-sm px-1 py-0.5 text-[13px] font-semibold leading-tight text-foreground outline-none ring-offset-background hover:bg-muted/40 focus:bg-muted/40 focus:ring-2 focus:ring-ring focus:ring-offset-2"
           onFocus={() => setTitleEditing(true)}
+          onInput={() => {
+            const el = titleRef.current;
+            if (!el) return;
+            const raw = el.textContent ?? "";
+            const text = raw.replace(/\r\n/g, "\n").replace(/\n/g, " ").replace(/\u00a0/g, " ");
+            dispatch(setNoteTitleDraft({ id: note.id, text }));
+          }}
           onBlur={() => void commitTitleFromDom()}
           onPaste={(e) => {
             e.preventDefault();

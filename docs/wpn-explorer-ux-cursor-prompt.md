@@ -1,174 +1,182 @@
-# Cursor prompt: WPN Notes explorer — smooth interactions, correct Refresh, optional title sync
+# WPN Notes explorer — UX spec (single document)
 
-**How to use this document:** Paste the sections below (from “You are working in…” through “Acceptance criteria”) into a Cursor chat or Agent task, or attach this file. Implement in the Nodex repo; keep changes scoped to WPN explorer and related title UI unless shared state requires a thin shell/Redux addition.
-
----
-
-## You are working in the Nodex monorepo
-
-**Goal:** Improve the **WPN (workspace / project / notes) explorer** so drag-and-drop, moves, and renames feel responsive; make **Refresh** actually and quickly refresh what users see; **preserve** which workspaces, projects, and note folders are **expanded or collapsed**; on Refresh, update **note data** (new, removed, moved, renamed rows) **without** resetting that expansion state except where invalid (e.g. deleted node); optionally make **in-progress rename** mirror between the explorer row and the note title in the editor **letter-by-letter**.
+**How to use:** Attach this file or paste sections into a Cursor chat or Agent task. Implement in the Nodex repo; scope changes to the WPN explorer, shared title draft plumbing, and closely related shell/Redux if needed.
 
 **Primary file:** [`src/renderer/shell/first-party/plugins/notes-explorer/WpnExplorerPanelView.tsx`](../src/renderer/shell/first-party/plugins/notes-explorer/WpnExplorerPanelView.tsx)
 
-**Related files:**
+---
+
+## Related files
 
 - [`src/renderer/components/NoteViewer.tsx`](../src/renderer/components/NoteViewer.tsx) — `contentEditable` title, commit on blur
-- [`src/renderer/shell/first-party/NoteEditorShellView.tsx`](../src/renderer/shell/first-party/NoteEditorShellView.tsx) — wires `onTitleCommit` + `renameNote` / VFS flow
+- [`src/renderer/shell/first-party/NoteEditorShellView.tsx`](../src/renderer/shell/first-party/NoteEditorShellView.tsx) — `onTitleCommit` + `renameNote` / VFS flow
 - [`src/renderer/components/InlineSingleLineEditable.tsx`](../src/renderer/components/InlineSingleLineEditable.tsx) — explorer inline rename
 - [`src/renderer/notes-sidebar/notes-sidebar-panel-dnd.ts`](../src/renderer/notes-sidebar/notes-sidebar-panel-dnd.ts) — `placementFromPointer`, `dropAllowedOne`
-- [`src/renderer/components/WorkspaceMountHeaderSurface.tsx`](../src/renderer/components/WorkspaceMountHeaderSurface.tsx) — **reference** for drop hint UI (lines before drop)
+- [`src/renderer/components/WorkspaceMountHeaderSurface.tsx`](../src/renderer/components/WorkspaceMountHeaderSurface.tsx) — reference for drop-hint patterns
 - [`src/renderer/store/notesSlice.ts`](../src/renderer/store/notesSlice.ts) — `renameNote.fulfilled` bumps `noteRenameEpoch`; explorer reloads tree on epoch change
 - [`src/renderer/shell/first-party/plugins/notes-explorer/wpnExplorerEvents.ts`](../src/renderer/shell/first-party/plugins/notes-explorer/wpnExplorerEvents.ts) — `WPN_SYNC_REMOTE_POLL_INTERVAL_MS` (8000), `NODEX_WPN_TREE_CHANGED_EVENT`
+- [`apps/nodex-sync-api/src/wpn-tree.ts`](../apps/nodex-sync-api/src/wpn-tree.ts) — `wpnComputeChildMapAfterMove` (shared ordering logic with optimistic client patch)
 
-**Constraints:**
+---
+
+## Constraints
 
 - Match existing patterns (React hooks, `getNodex().wpn*`, no unrelated refactors).
 - Preserve VFS-dependent rename flows (`runWpnNoteTitleRenameWithVfsDependentsFlow`, `useVfsDependentTitleRenameChoice`).
-- Handle failure: optimistic updates must **revert** on error and surface a toast or existing error UX.
-- **Expansion preservation:** Do not replace the user’s open/close state with a full reset on every `loadProjectTree` / Refresh unless necessary. Today `loadProjectTree` pairs `wpnListNotes` with `wpnGetExplorerState` and may **overwrite** `expandedNoteParents` from the server—treat Refresh as “reconcile note list + titles + structure” while **keeping** prior expansion for ids that still exist; **prune** expanded ids for notes that disappeared.
+- Optimistic updates must **revert** on error and use existing error UX (e.g. `alert`).
+- **Expansion preservation:** On refresh/reconcile, merge or prune `expandedNoteParents` (and workspace/project expansion) so valid open folders stay open; drop ids for deleted nodes. [`loadProjectTree`](src/renderer/shell/first-party/plugins/notes-explorer/WpnExplorerPanelView.tsx) uses `mergeWpnExpandedNoteParents` when applying server `expanded_ids`.
 
 ---
 
-## Problem 1: Drag-and-drop does not feel smooth
+## Guiding principle: visible change first
 
-### What the user sees
+For **create, rename, reorder/move, and (where safe) refresh**:
 
-- While dragging a note, there is little visual feedback about **whether** the row will accept a drop and **where** (above / below / as child).
-- After releasing, the tree often **stalls** until the network returns; the row order does not update instantly.
-
-### Root cause (technical)
-
-1. **Minimal drag-over UX:** In `WpnExplorerPanelView`, note rows use `onDragOver` to `preventDefault`, set `dropEffect`, and validate with `placementFromPointer` + `dropAllowedOne`, but they do **not** render insertion lines or a “before / after / into” hint. The folder-based notes UI does this in `WorkspaceMountHeaderSurface` via `dropHint` state and absolute-positioned indicators.
-2. **Blocking full reload after drop:** `onDropOnNote` (and `runMoveNote`) `await getNodex().wpnMoveNote(...)` then `await loadProjectTree(projectId)`. `loadProjectTree` runs `wpnListNotes` and `wpnGetExplorerState` and replaces local state with `setNotes(n)` and `setExpandedNoteParents`. Until both complete, the UI shows the old order.
-3. **Whole-list reconciliation:** Replacing the entire `notes` array forces React to reconcile many rows; with large trees or slow IPC/HTTP this amplifies jank.
-
-### Available fixes (choose and combine)
-
-| Fix | Description | Pros | Cons |
-|-----|-------------|------|------|
-| **A. Drop hint UI** | Track `{ targetNoteId, placement }` or similar during drag-over; render top/bottom/middle indicators like `WorkspaceMountHeaderSurface`. | Low risk, big perceived improvement | Small amount of new state/CSS |
-| **B. Optimistic reorder** | After validating placement locally, patch `notes` in memory to match the move, then call `wpnMoveNote` and **background** `loadProjectTree` to reconcile | Instant feedback | Must implement correct tree patch or reuse server ordering logic; revert on failure |
-| **C. Non-blocking reload** | Keep await on `wpnMoveNote` for correctness but avoid awaiting `loadProjectTree` before clearing drag state; or show skeleton only on row | Simpler than full optimistic | Brief wrong UI if server disagrees |
-| **D. `drag image` / row highlight** | Custom drag preview or highlight source row | Polish | Optional, extra work |
-
-**Recommended minimum:** **A** + **B** (or **A** + **C** if optimistic patch is too risky in v1).
+1. **Update what the user sees immediately** — optimistic tree/workspace state, or open the new note **without** waiting for a full list refetch when possible.
+2. **Persist and reconcile in the background** — `wpn*` calls and `loadProjectTree` / `loadWorkspaces` via `void` or after the frame that applied the optimistic patch.
+3. **On failure** — restore the previous snapshot (same pattern as `performWpnNoteMove` today) and surface the error.
+4. **VFS rename** — keep blocking **preview/confirm** modal; apply the visible committed title **after** the user confirms; avoid unnecessary full reload before the row shows the new title.
+5. **Dual rename surfaces (notes)** — While editing a note title in **either** the explorer or the **main editor header**, the other control must mirror the string **on every input** (incremental), not only after commit. Requires a **shared draft** keyed by `noteId` (see [Incremental title sync](#incremental-title-sync-explorer--main-note-title-required)).
 
 ---
 
-## Problem 2: Moving (menus / keyboard) and renaming do not feel smooth
+## Current baseline (as of this doc)
 
-### What the user sees
+These are already implemented in `WpnExplorerPanelView` unless noted.
 
-- Reordering or moving via context menu feels like it “waits on the server” before the list updates.
-- Renaming workspace/project/note triggers a full reload pattern; the UI can feel frozen or jumpy.
-
-### Root cause (technical)
-
-- Same **mutate → await → `loadProjectTree` / `loadWorkspaces`** pattern as DnD.
-- `loadWorkspaces` sets **`setBusy(true)`** for the whole operation, which **disables** Refresh and other controls that use `disabled={busy}`.
-- No **optimistic** title change on the explorer row after a successful local validation; title only updates after fetch returns.
-
-### Available fixes
-
-| Fix | Description | Pros | Cons |
-|-----|-------------|------|------|
-| **A. Optimistic title** | On successful `wpnPatchNote` (or immediately after user commits if you trust local title), update the matching row in `notes` before/without waiting for `loadProjectTree` | Snappy rename | Must stay in sync with VFS dialog cancellation |
-| **B. Optimistic move** | Same as DnD optimistic patch for `runMoveNote` / paste / duplicate flows | Consistent | Shared helper recommended |
-| **C. Scoped busy flags** | Use `busyWorkspaces` vs `busyNotes` vs per-operation spinner; do not block Refresh with workspace-load busy | Refresh usable during note ops | Slightly more state |
-| **D. Background reconcile** | Always fire `loadProjectTree` in `void` after optimistic patch; on mismatch replace state | Correctness | Possible flicker if server differs—debounce optional |
-
-**Recommended minimum:** **C** for Refresh usability + **A**/**B** where safe.
+| Area | Status |
+|------|--------|
+| **Toolbar Refresh** | [`refreshExplorer`](src/renderer/shell/first-party/plugins/notes-explorer/WpnExplorerPanelView.tsx) runs `loadWorkspaces({ manageBusy: false })` and `loadProjectTree(selectedProjectId)` in parallel. |
+| **Note DnD drop hints** | `wpnNoteDropHint`: top/bottom lines, “into” overlay, above/below/into label on rows. |
+| **Note move optimistic UI** | [`optimisticWpnNotesAfterMove`](src/renderer/shell/first-party/plugins/notes-explorer/WpnExplorerPanelView.tsx) + `setNotes`, then `wpnMoveNote`, then `void loadProjectTree` in `finally`. |
+| **Note expansion merge** | `mergeWpnExpandedNoteParents` when applying list + server `expanded_ids`. |
+| **Empty-panel context menu Refresh** | Still calls **`loadWorkspaces()` only** and uses **`disabled={busy}`** — **not** aligned with toolbar `refreshExplorer` (backlog). |
+| **Cross-project note DnD** | **Not supported** — `onDropOnNote` ignores drags where `projectId` differs. Moving notes across projects needs separate API + UI. |
+| **Expand/chevron hit targets** | Note chevron: `w-4` + `text-[10px]` ▼/▶ (~lines 1138–1151). Workspace/project: `w-5` + `text-[10px]` (~1345–1357, ~1427–1442). **Too small for comfortable click/tap** (backlog). |
 
 ---
 
-## Problem 3: Renaming in explorer vs note title does not sync letter-by-letter
+## Implementation backlog (checklist)
 
-### What the user sees
+Use this as the ordered task list for agents; align each change with **visible first** where applicable.
 
-- Editing the title in the **explorer** does not update the **editor header** (and vice versa) until commit and refetch.
-
-### Root cause (technical)
-
-- **Two independent sources of truth while editing:**
-  - Explorer: `renaming` state with `draft` in `WpnExplorerPanelView`; `InlineSingleLineEditable` drives DOM from user input; commit calls `commitRename` → `wpnPatchNote` / `loadProjectTree` / `fetchNote`.
-  - Editor: `NoteViewer` uses `contentEditable`; while `titleEditing` is true, `useLayoutEffect` does **not** overwrite DOM from `note.title`; Redux `note.title` updates on `renameNote.fulfilled` after commit.
-- There is **no shared store** for “ephemeral title string while editing.”
-- `InlineSingleLineEditable` syncs initial `value` only on **mount** (`useLayoutEffect` with `[]`), not on every prop change—so a future cross-sync from props needs either **key remount** or **controlled sync effect**.
-
-### Available fixes
-
-| Fix | Description | Pros | Cons |
-|-----|-------------|------|------|
-| **A. Shared draft store** | Add `noteTitleDraftById: Record<string, string>` (Redux slice or React context under shell). On `input` from explorer and from `NoteViewer`, dispatch `setNoteTitleDraft({ id, text })`. Both UIs read: if draft exists for open note and that pane is active, show draft; else show committed title. Clear draft on successful commit or cancel. | True letter-by-letter sync | Design “both focused” policy; more plumbing |
-| **B. Broadcast via custom event** | `window.dispatchEvent` on title input with `noteId` + string; other side listens and updates local display only | Decoupled | Easy to get out of sync; prefer A for maintainability |
-| **C. Single edit surface** | Disable rename in explorer when tab open, or only allow rename in editor | Simple | Worse UX, not what users asked for |
-| **D. Debounced server sync** | Save title every N ms while typing | “Sync” via server | Heavy, conflicts with VFS rename flow; **not recommended** |
-
-**Recommended:** **A** if product requires live sync; document rule: e.g. **last focused surface wins**, or **lock**: opening rename in one place closes/blurs the other.
+1. **Empty-panel Refresh parity** — Context menu “Refresh” should call the same path as the toolbar (`refreshExplorer` or equivalent): workspaces **and** selected project’s note list, without relying on global `busy` alone.
+2. **Note create** — After `wpnCreateNoteInProject` returns `id`: show new row (synthesized `WpnNoteListItem` if needed) and/or `openNoteById` immediately; `void loadProjectTree` to reconcile.
+3. **Workspace / project create** — After API success: patch local `workspaces` / `projectsByWs` optimistically, then `void loadWorkspaces({ manageBusy: false })`; avoid blocking the whole panel with `setBusy(true)` except for true modals (e.g. folder picker).
+4. **Workspace / project rename** — Update label in UI on commit, then PATCH in background; revert on error. Keep VFS rules for **note** rename unchanged.
+5. **Incremental title sync (required)** — Shared per-note draft store + explorer + `NoteViewer` / shell title; clear on commit/cancel/switch note; dual-focus policy (e.g. last-focused wins). May require `InlineSingleLineEditable` to sync from external draft updates.
+6. **DnD polish** — Hysteresis / snap for `placementFromPointer`; source-row highlight; optional `setDragImage`; soften post-drop reconcile so the tree does not “jump” when server matches optimistic order.
+7. **Larger expand / chevron targets** — For every `[data-wpn-tree-chevron]` control (notes, workspaces, projects): increase **minimum interactive size** (e.g. ~28–32px square), use larger glyphs or an icon font, `inline-flex items-center justify-center`, adequate `min-h`/`min-w`, `aria-label` (“Expand” / “Collapse”), keep `closest("[data-wpn-tree-chevron]")` row-click exclusions working.
 
 ---
 
-## Problem 4: Refresh does not refresh the list quickly (or the right data)
+## Create: W / P / N still feels slow
 
-### What the user sees
+| Action | Current flow | Why it hurts |
+|--------|----------------|--------------|
+| **Workspace** | `wpnCreateWorkspace` → `await loadWorkspaces()` | Full fan-out: every workspace + every project list. |
+| **Project** | `wpnCreateProject` → `await loadWorkspaces()` | Same. |
+| **Note** | `wpnCreateNoteInProject` → **`await loadProjectTree`** → open tab | Two sequential round-trips; APIs return only `{ id }` unless extended. |
+| **Desktop folder workspace** | `setBusy(true)` around picker + create | Whole panel feels frozen. |
 
-- Clicking **Refresh** feels slow and sometimes the **note list** under the selected project does not change.
-
-### Root cause (technical)
-
-- The Refresh button calls **`loadWorkspaces()` only** (~lines 1135–1141). That:
-  1. Sets **`setBusy(true)`** until **all** workspaces and all their projects are listed (`wpnListWorkspaces` + `Promise.all` of `wpnListProjects` per workspace).
-  2. **Never calls `loadProjectTree(selectedProjectId)`**, so **note rows** for the current project are **not** reloaded by this button.
-- Stale notes may only update via: initial select effect, `noteRenameEpoch` effect, post-mutation `loadProjectTree`, or **`refreshProjectNotesFromServer` every 8s** when `syncWpnNotesBackend()` is true.
-
-### Expansion state vs “refreshing the tree”
-
-- **User expectation:** **Refresh** means “pull the latest note list from the backend”: **added** notes appear, **removed** notes disappear, **renamed** titles and **moved** parentage/order update. It does **not** mean “collapse everything I had open” or “reset chevrons to a default.”
-- **Current coupling:** `loadProjectTree` fetches `wpnGetExplorerState` and sets `expandedNoteParents` from `expanded_ids`. That can **clobber** the in-session expansion the user had before the fetch, or fight with local toggles, so the tree feels like it “jumps” after Refresh or poll.
-- **Workspace/project rows:** `loadWorkspaces` already tries to **merge** `expandedWs` when workspace ids are stable; apply the same idea to **note** expansion: prefer **merging** with previous `expandedNoteParents` rather than blind replace from server on Refresh (server state can still be used for **initial** project open or explicit “reset expansion” if you add one later).
-
-### Available fixes
-
-| Fix | Description | Pros | Cons |
-|-----|-------------|------|------|
-| **A. Refresh notes + workspaces** | On Refresh: `void loadWorkspaces()` and, if `selectedProjectId`, `void loadProjectTree(selectedProjectId)` (parallel or sequential—prefer parallel with `Promise.all` where safe) | Matches user expectation | Two load phases; handle race if selection changes mid-flight |
-| **B. Narrow busy** | Do not use global `busy` for refresh; use `isRefreshing` and allow clicks or show inline spinner on the button only | Feels faster | Prevent double-submit if needed |
-| **C. Split buttons** | “Refresh folders” vs “Refresh notes” | Clear semantics | UI clutter |
-| **D. Cache / incremental** | ETag or last-modified if API supports | Fewer bytes | Backend work |
-| **E. Preserve expansion on data refresh** | After `wpnListNotes`, update `notes` but compute `setExpandedNoteParents` as: **previous** expanded set **intersected** with ids still present in the new list (optional: **union** with server `expanded_ids` if you want cross-device open folders). Never drop expansion for rows that still exist. | Refresh updates content without UI reset | Define policy when server and client disagree; prune ghosts for deleted ids |
-| **F. Separate “fetch notes” from “fetch expansion”** | Refresh path calls `wpnListNotes` only; persist expansion via existing `persistExpandedNotes` / local state without re-reading `wpnGetExplorerState` on every refresh | Clear separation | Initial open may still need one `wpnGetExplorerState` read |
-
-**Recommended minimum:** **A** + **B** + **E** (or **F** if it simplifies the code path).
-
-### What “refresh tree state” means (data, not chrome)
-
-- **In scope for Refresh:** Reflect **added / removed / updated / renamed** notes in `WpnNoteListItem[]` (titles, `parent_id`, order, depth as returned by the API).
-- **Out of scope for collapsing:** Do **not** treat Refresh as collapsing workspaces, projects, or note subtrees the user had open.
-- **Pruning:** If a note id was expanded but that note was **deleted**, remove that id from `expandedNoteParents` so the Set stays valid.
+**Visible-first direction:** See backlog items 2–3.
 
 ---
 
-## Suggested implementation order
+## Rename: W / P / N
 
-1. **Refresh correctness, feel, and expansion:** `loadWorkspaces` + `loadProjectTree` (or equivalent) when a project is selected; relax or scope `busy` for refresh-only path; **merge/prune** `expandedNoteParents` (and keep workspace/project expansion stable) so Refresh updates **note data** without resetting open folders.
-2. **Drop hints:** State + UI on note rows during `application/nodex-wpn-note` drag (reuse `placementFromPointer` semantics).
-3. **Optimistic updates:** Helper to patch `WpnNoteListItem[]` after move; optimistic title row update after rename commit (coordinate with VFS cancel).
-4. **Optional — title draft sync:** Redux or context + `NoteViewer` / explorer `InlineSingleLineEditable` input handlers; edge cases for dual focus.
-5. **QA:** Electron + web sync; invalid DnD; rename cancel; empty project; many workspaces; **Refresh with deep expansion** (folders stay open; new/removed/renamed notes correct).
+- **Workspace/project:** Today `wpnUpdate*` then `await loadWorkspaces()` — heavy, no optimistic label. **Target:** optimistic label + background PATCH + revert on error (backlog item 4).
+- **Note:** After VFS confirm, row title patches via `setNotes`; `void loadProjectTree` still runs — consider skipping when only title changed. **Incremental typing sync** is a separate requirement ([Incremental title sync](#incremental-title-sync-explorer--main-note-title-required)).
+
+---
+
+## Drag-and-drop: done vs remaining
+
+**Done:** Drop hints (lines, overlay, label); optimistic reorder via `optimisticWpnNotesAfterMove` + `wpnComputeChildMapAfterMove`.
+
+**Remaining:** Placement jitter (25% / 50% / 25% bands in [`placementFromPointer`](src/renderer/notes-sidebar/notes-sidebar-panel-dnd.ts)); weak source-row feedback; `loadProjectTree` in `finally` can cause a second visual jump if server data differs slightly — see backlog item 6.
+
+---
+
+## Incremental title sync (explorer ↔ main note title) — **required**
+
+**Surfaces**
+
+- Explorer: `renaming` + [`InlineSingleLineEditable`](src/renderer/components/InlineSingleLineEditable.tsx) on note rows.
+- Main: [`NoteViewer`](src/renderer/components/NoteViewer.tsx) title + [`NoteEditorShellView`](src/renderer/shell/first-party/NoteEditorShellView.tsx).
+
+**Problem:** Two independent edit buffers; the other UI updates only after commit / Redux.
+
+**Target:** Shared store (e.g. `noteTitleDraftById` in Redux or shell context). On input from either side: `setNoteTitleDraft({ id, text })`. Display: use draft when present for that `noteId`, else committed title. Clear draft on successful commit, cancel, or when switching notes/tabs.
+
+**Implementation options (prefer A):**
+
+| Option | Description |
+|--------|-------------|
+| **A. Shared draft store** | Recommended — maintainable, testable. |
+| **B. Custom events** | Possible but easier to desync. |
+| **C. Single edit surface** | Not acceptable per product ask. |
+| **D. Debounced server sync** | Conflicts with VFS; not recommended. |
+
+**Caveat:** `InlineSingleLineEditable` may need controlled sync beyond mount-only `useLayoutEffect` so editor-driven draft updates refresh the explorer field.
+
+---
+
+## Expand / collapse: larger hit area (chevrons)
+
+**Problem:** The ▼/▶ controls use small width and `text-[10px]`; the clickable region is hard to hit with mouse or touch.
+
+**Location:** [`WpnExplorerPanelView.tsx`](../src/renderer/shell/first-party/plugins/notes-explorer/WpnExplorerPanelView.tsx) — search `data-wpn-tree-chevron` (note rows ~1138–1151, workspace ~1345–1357, project ~1427–1442).
+
+**Target:** Touch-friendly targets (commonly **44×44px** minimum on mobile; at least **~28–32px** on desktop for consistency), centered icon, visible focus ring, `aria-expanded`, accessible name.
+
+---
+
+## Refresh: toolbar vs menu vs expansion
+
+**Toolbar** already refreshes workspaces + open project tree in parallel without `manageBusy` on that path.
+
+**Gaps:** Empty-panel context menu Refresh (see backlog item 1). If any path still clobbers expansion without merge/prune, align with `mergeWpnExpandedNoteParents` behavior.
+
+---
+
+## Sequence: create and move (reference)
+
+```mermaid
+sequenceDiagram
+  participant UI as WpnExplorerPanelView
+  participant API as wpn IPC or HTTP
+  UI->>API: wpnCreateNoteInProject
+  API-->>UI: id only
+  UI->>API: wpnListNotes plus wpnGetExplorerState
+  API-->>UI: full list
+  UI->>UI: openNoteById
+
+  participant UI2 as WpnExplorerPanelView
+  UI2->>UI2: optimisticWpnNotesAfterMove plus setNotes
+  UI2->>API: wpnMoveNote
+  API-->>UI2: ok
+  UI2->>API: wpnListNotes plus wpnGetExplorerState
+  API-->>UI2: full list reconcile
+```
+
+**Target shape for “visible first” (create):** After `id` returns, update UI and/or open tab **before** awaiting full `loadProjectTree`.
 
 ---
 
 ## Acceptance criteria
 
-- **Refresh:** With a project selected, one click refreshes **both** workspace/project metadata **and** the **note list data** for that project (additions, deletions, renames, moves reflected from the backend); the button does not unnecessarily block the entire panel for unrelated operations (or shows a clear local loading state).
-- **Expansion preserved:** After Refresh, **workspaces, projects, and note rows** that were expanded stay expanded if those nodes still exist; **new** notes do not force unrelated branches closed; expanded ids for **deleted** notes are dropped. The user should not see the whole explorer “snap shut” solely because they clicked Refresh.
-- **DnD:** While dragging, user sees **clear** indication of target placement (before / after / into) where drops are allowed.
-- **Move/rename:** Perceived latency improves via optimistic updates or non-blocking reconcile, without leaving inconsistent state on errors.
-- **Title sync (if implemented):** Typing in explorer inline title or editor title updates the other within the same frame tick, with defined behavior when both could be focused.
+- **Visible first:** Create/rename/move show updated UI immediately where safe; background reconcile; revert + error on failure.
+- **Refresh:** With a project selected, toolbar refresh loads workspaces and that project’s notes; expansion preserved per merge/prune rules; empty-panel refresh matches toolbar behavior.
+- **DnD:** Clear before/after/into feedback; optimistic order; minimal post-drop jump; same-project only unless cross-project is explicitly built.
+- **Title sync:** Typing in explorer inline title or editor header updates the other **incrementally**; dual-focus behavior documented and stable.
+- **Chevrons:** Expand/collapse controls are easy to hit (adequate size, a11y labels, focus visible).
+- **VFS:** Note rename still respects dependent-link preview/confirm; no silent server rename while user is in the VFS dialog.
 
 ---
 
-## Out of scope (unless explicitly requested)
+## Out of scope (unless requested)
 
 - Changing `WPN_SYNC_REMOTE_POLL_INTERVAL_MS` or sync protocol.
-- Rewriting the entire explorer as a virtualized tree (only if profiling proves necessary).
+- Full tree virtualization unless profiling proves necessary.
+- Cross-project note move (needs product + API design).

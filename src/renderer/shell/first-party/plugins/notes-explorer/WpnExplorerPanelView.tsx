@@ -10,7 +10,7 @@ import type { WpnNoteRow } from "../../../../../core/wpn/wpn-types";
 import type { WpnNoteListItem, WpnProjectRow, WpnWorkspaceRow } from "../../../../../shared/wpn-v2-types";
 import type { AppDispatch, RootState } from "../../../../store";
 import { useAuth } from "../../../../auth/AuthContext";
-import { fetchNote } from "../../../../store/notesSlice";
+import { clearNoteTitleDraft, fetchNote, setNoteTitleDraft } from "../../../../store/notesSlice";
 import {
   fetchHeadlessWpnSession,
   isElectronUserAgent,
@@ -257,6 +257,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const { workspaceRoots, rootPath } = useShellProjectWorkspace();
   const currentNoteId = useSelector((s: RootState) => s.notes.currentNote?.id);
   const noteRenameEpoch = useSelector((s: RootState) => s.notes.noteRenameEpoch);
+  const noteTitleDraftById = useSelector((s: RootState) => s.notes.noteTitleDraftById);
 
   const showFolderBasedWorkspaceCreate = isElectronUserAgent() || rootPath != null;
 
@@ -884,6 +885,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
           return;
         }
         if (outcome === "renamed") {
+          dispatch(clearNoteTitleDraft(renaming.id));
           setNotes((prev) =>
             prev.map((x) => (x.id === renaming.id ? { ...x, title } : x)),
           );
@@ -1037,7 +1039,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
             if (isRenamingNote) return;
             const el = e.target as HTMLElement;
             if (el.closest("[data-wpn-note-drag-handle]") || el.closest("[data-wpn-tree-chevron]")) return;
-            scheduleOpenNote(n.id, projectId, n.title);
+            scheduleOpenNote(n.id, projectId, noteTitleDraftById[n.id] ?? n.title);
           }}
           onDoubleClick={(e) => {
             if (isRenamingNote) return;
@@ -1045,7 +1047,12 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
             if (el.closest("[data-wpn-note-drag-handle]") || el.closest("[data-wpn-tree-chevron]")) return;
             e.preventDefault();
             cancelScheduledOpen();
-            setRenaming({ kind: "note", id: n.id, projectId, draft: n.title });
+            setRenaming({
+              kind: "note",
+              id: n.id,
+              projectId,
+              draft: noteTitleDraftById[n.id] ?? n.title,
+            });
           }}
           onDragOver={(e) => {
             if (!e.dataTransfer.types.includes(DND_NOTE_MIME)) {
@@ -1162,9 +1169,15 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                 className="min-w-0 flex-1 rounded border border-border bg-background px-1 py-0 text-[11px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 aria-label="Note title"
                 value={renaming.draft}
-                onChange={(draft) => setRenaming({ ...renaming, draft })}
+                onChange={(draft) => {
+                  setRenaming({ ...renaming, draft });
+                  dispatch(setNoteTitleDraft({ id: n.id, text: draft }));
+                }}
                 onCommit={() => void commitRename()}
-                onCancel={() => setRenaming(null)}
+                onCancel={() => {
+                  dispatch(clearNoteTitleDraft(n.id));
+                  setRenaming(null);
+                }}
               />
             </div>
           ) : (
@@ -1172,7 +1185,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
               <span className="text-muted-foreground" title={n.type}>
                 [{noteTypeExplorerAbbrev(n.type)}]
               </span>{" "}
-              {n.title}
+              {noteTitleDraftById[n.id] !== undefined ? noteTitleDraftById[n.id]! : n.title}
             </span>
           )}
         </div>,
@@ -1687,9 +1700,9 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
               </button>
               <button
                 type="button"
-                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
-                onClick={() => void loadWorkspaces()}
-                disabled={busy}
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40 disabled:opacity-50"
+                onClick={() => void refreshExplorer()}
+                disabled={isRefreshingExplorer}
               >
                 Refresh
               </button>
@@ -1734,8 +1747,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                 type="button"
                 className="mt-1 block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
                 onClick={() => {
-                  const n = notes.find((x) => x.id === menu.id);
-                  if (n) setRenaming({ kind: "note", id: n.id, projectId: menu.projectId!, draft: n.title });
+                  const row = notes.find((x) => x.id === menu.id);
+                  if (row)
+                    setRenaming({
+                      kind: "note",
+                      id: row.id,
+                      projectId: menu.projectId!,
+                      draft: noteTitleDraftById[row.id] ?? row.title,
+                    });
                   closeAllMenus();
                 }}
               >

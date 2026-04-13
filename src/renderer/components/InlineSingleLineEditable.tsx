@@ -54,6 +54,16 @@ export function InlineSingleLineEditable({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialize DOM from open value once per mount
   }, []);
 
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (document.activeElement === el) return;
+    const cur = readFromEl(el);
+    if (cur !== value) {
+      el.textContent = value;
+    }
+  }, [value]);
+
   const handleInput = () => {
     const el = ref.current;
     if (!el) return;
