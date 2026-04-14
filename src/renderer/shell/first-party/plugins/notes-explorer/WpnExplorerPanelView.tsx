@@ -1,4 +1,5 @@
 import { getNodex } from "../../../../../shared/nodex-host-access";
+import { wpnTrace } from "../../../../../shared/wpn-debug-trace";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type {
@@ -452,7 +453,10 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
        * Non-busy polls (8s background refresh) use the lighter `/wpn/workspaces-and-projects` to
        * keep the WS/project list fresh; notes for the active project are re-polled separately.
        */
-      if (!opts?.force && !projectOpen) return;
+      if (!opts?.force && !projectOpen) {
+        wpnTrace("loadWorkspaces.bail", { reason: "!projectOpen && !force", manageBusy: opts?.manageBusy });
+        return;
+      }
       const prevWorkspaceIds = new Set(workspacesRef.current.map((w) => w.id));
       const manageBusy = opts?.manageBusy !== false;
       if (manageBusy) setBusy(true);
@@ -460,6 +464,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         let ws: WpnWorkspaceRow[];
         let allProjects: WpnProjectRow[];
         if (manageBusy) {
+          wpnTrace("loadWorkspaces.branch", { via: "wpnGetFullTree" });
           const tree = await getNodex().wpnGetFullTree();
           ws = tree.workspaces;
           allProjects = tree.projects;
@@ -468,10 +473,12 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
             explorerStateByProjectId: tree.explorerStateByProjectId,
           };
         } else {
+          wpnTrace("loadWorkspaces.branch", { via: "wpnListWorkspacesAndProjects" });
           const r = await getNodex().wpnListWorkspacesAndProjects();
           ws = r.workspaces;
           allProjects = r.projects;
         }
+        wpnTrace("loadWorkspaces.result", { workspaces: ws.length, projects: allProjects.length });
         setWorkspaces(ws);
         const nextProj: Record<string, WpnProjectRow[]> = {};
         for (const w of ws) {
@@ -700,17 +707,22 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   );
 
   const refreshExplorer = useCallback(async () => {
+    const pid = selectedProjectIdRef.current;
+    wpnTrace("refreshExplorer.enter", { projectOpen, pid });
     setIsRefreshingExplorer(true);
     try {
-      const pid = selectedProjectIdRef.current;
       await Promise.all([
         loadWorkspaces({ manageBusy: false }),
         pid ? loadProjectTree(pid) : Promise.resolve(),
       ]);
+      wpnTrace("refreshExplorer.done");
+    } catch (err) {
+      wpnTrace("refreshExplorer.error", { message: err instanceof Error ? err.message : String(err) });
+      throw err;
     } finally {
       setIsRefreshingExplorer(false);
     }
-  }, [loadWorkspaces, loadProjectTree]);
+  }, [loadWorkspaces, loadProjectTree, projectOpen]);
 
   useEffect(() => {
     lastExplorerRevealForNoteIdRef.current = null;

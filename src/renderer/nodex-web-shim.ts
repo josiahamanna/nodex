@@ -23,6 +23,7 @@ import {
   webScratchPlainStubOverrides,
 } from "./wpnscratch/web-scratch-nodex-api";
 import { notifySyncSessionInvalidated } from "./sync-session-invalidation";
+import { wpnTrace } from "../shared/wpn-debug-trace";
 
 const noopUnsub = (): void => {};
 
@@ -209,6 +210,7 @@ async function syncWpnFetch<T>(
       if (!isMutatingWpnHttpMethod(method)) {
         const stub = syncWpnUnsignedReadStub<T>(apiPath);
         if (stub !== undefined) {
+          wpnTrace("wpnHttp.stub", { path: apiPath, method, reason: "401 no refresh token" });
           return stub;
         }
       }
@@ -226,6 +228,7 @@ async function syncWpnFetch<T>(
       if (!isMutatingWpnHttpMethod(method)) {
         const stub = syncWpnUnsignedReadStub<T>(apiPath);
         if (stub !== undefined) {
+          wpnTrace("wpnHttp.stub", { path: apiPath, method, reason: "401 refresh rejected" });
           return stub;
         }
       }
@@ -321,6 +324,7 @@ async function wpnHttp<T>(
         if (!isMutatingWpnHttpMethod(method)) {
           const stub = syncWpnUnsignedReadStub<T>(path);
           if (stub !== undefined) {
+            wpnTrace("wpnHttp.stub", { path, method, reason: "no cloud session" });
             return stub;
           }
         }
@@ -328,9 +332,11 @@ async function wpnHttp<T>(
           "Sign in with cloud sync to use the Mongo-backed workspace in the browser.",
         );
       }
+      wpnTrace("wpnHttp.fetch", { path, method, via: "sync-api" });
       return syncWpnFetch<T>(syncBase, method, path, body);
     }
   }
+  wpnTrace("wpnHttp.fetch", { path, method, via: "headless" });
   return webRequest<T>(headlessBaseUrl, method, path, body);
 }
 

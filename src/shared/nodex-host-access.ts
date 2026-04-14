@@ -1,4 +1,5 @@
 import type { NodexRendererApi } from "./nodex-renderer-api";
+import { wpnTrace } from "./wpn-debug-trace";
 
 /**
  * Electron `contextBridge.exposeInMainWorld("Nodex", …)` makes `window.Nodex` non-writable.
@@ -50,6 +51,13 @@ export function getNodex(): NodexRendererApi {
 }
 
 /** Stable reference for Redux `createNodexPlatformDeps({ notes: nodexDelegatingProxy })`. */
+function overlayLabel(impl: NodexRendererApi): string {
+  if (electronCloudWpnOverlay && impl === electronCloudWpnOverlay) return "cloud";
+  if (electronIdbScratchOverlay && impl === electronIdbScratchOverlay) return "idb";
+  if (electronWorkspaceRxdbOverlay && impl === electronWorkspaceRxdbOverlay) return "rxdb";
+  return "bridged";
+}
+
 export const nodexDelegatingProxy = new Proxy({} as NodexRendererApi, {
   get(_target, prop, _receiver) {
     if (prop === "then") {
@@ -57,6 +65,9 @@ export const nodexDelegatingProxy = new Proxy({} as NodexRendererApi, {
     }
     const impl = activeNodexImpl();
     const value = Reflect.get(impl, prop, impl);
+    if (typeof value === "function" && typeof prop === "string" && prop.startsWith("wpn")) {
+      wpnTrace("getNodex.dispatch", { method: prop, overlay: overlayLabel(impl) });
+    }
     if (typeof value === "function") {
       return (value as (...args: unknown[]) => unknown).bind(impl);
     }
