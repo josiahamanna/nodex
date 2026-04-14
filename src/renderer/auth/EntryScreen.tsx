@@ -24,6 +24,45 @@ function MarketingHome({
   const pill =
     "inline-flex items-center gap-2 rounded-full border border-border bg-muted/10 px-3 py-1 text-[11px] text-muted-foreground";
 
+  const useCases: Array<[string, string]> = [
+    ["Product requirements & PRDs", "Shape the thing before you build it."],
+    ["Design docs & architecture", "The reasoning you'll want to revisit in six months."],
+    ["Code guidelines & playbooks", "The rules your AI tools should be reading."],
+    ["Personal notes & journals", "Think out loud. Keep the thread."],
+    ["Team wikis & shared refs", "Shared context without another SaaS."],
+    ["Research & reading", "PDFs, clippings, and the thoughts they sparked."],
+  ];
+
+  const formats: Array<[string, string]> = [
+    ["Markdown", "Preview-first, side-by-side editing."],
+    ["Rich text", "For notes that aren't code-shaped."],
+    ["Excalidraw", "Whiteboard and diagram in-place."],
+    ["PDF & images", "Reference material lives here too."],
+    ["Video & audio", "Embed a walkthrough. Ship a voice memo."],
+    ["Code notebooks", "jsNotebook: compute inside your notes."],
+    ["Canvas", "Spatial thinking when you need it."],
+    ["…and more", "The format list keeps growing."],
+  ];
+
+  const whyNodex: Array<[string, string]> = [
+    [
+      "Keyboard-first, command-driven",
+      "Fast like an IDE. Learn the keys once, compose them forever.",
+    ],
+    [
+      "Self-documenting system",
+      "Built-in docs hub and commands API, searchable without leaving the app.",
+    ],
+    [
+      "Extensible toolkit",
+      "First-party plugins, embedded IDE, jsNotebook. Make Nodex yours.",
+    ],
+    [
+      "Ready for agents",
+      "One source of truth your AI tools can read — so your context travels with you.",
+    ],
+  ];
+
   return (
     <div className="relative flex h-screen min-h-0 w-full flex-col overflow-y-auto bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -39,7 +78,7 @@ function MarketingHome({
           <div className="min-w-0 leading-tight">
             <div className="text-[13px] font-semibold tracking-tight">Nodex</div>
             <div className="hidden truncate text-[11px] text-muted-foreground sm:block">
-              A studio for building & documenting note systems
+              The knowledge base for software builders
             </div>
           </div>
         </div>
@@ -61,135 +100,158 @@ function MarketingHome({
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 pb-10 pt-6">
-        <section className="grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
+      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-16 px-6 pb-14 pt-10">
+        <section className="grid grid-cols-1 items-start gap-10 lg:grid-cols-[1.25fr_1fr]">
           <div className="min-w-0">
             <div className={pill}>
               <span className="h-2 w-2 rounded-full bg-primary" />
-              <span>Bring notes docs into one system.</span>
+              <span>For builders in the AI era</span>
             </div>
-            <h1 className="mt-4 text-balance text-[34px] font-semibold tracking-tight md:text-[46px]">
-              Build notes and systems—then ship them.
+            <h1 className="mt-4 text-balance text-[36px] font-semibold leading-[1.05] tracking-tight md:text-[52px]">
+              Knowledge, centralized.{" "}
+              <span className="text-primary">Building, accelerated.</span>
             </h1>
-            <p className="mt-3 max-w-xl text-pretty text-[14px] leading-6 text-muted-foreground">
-              Nodex is a studio for technical work: notes, markdown docs. The system is interactive,
-              keyboard-first and command-driven, extensible like a toolkit, and self-documenting with
-              in-app docs that stay close to the features you use.
+            <p className="mt-4 max-w-xl text-pretty text-[14px] leading-6 text-muted-foreground">
+              Nodex is a knowledge base for software builders — and for anyone who thinks, designs, and
+              ships with notes. Keep PRDs, designs, code guidelines, and personal notes in one workspace
+              your team — and your AI tools — can draw from.
             </p>
-            <div className="mt-5 max-w-xl rounded-xl border border-border bg-muted/10 px-4 py-3">
-              <div className="text-[12px] font-semibold text-foreground">Many note types</div>
-              <p className="mt-1.5 text-pretty text-[12px] leading-5 text-muted-foreground">
-                Notes can be text, image, PDF, video, audio, diagrams, code, canvas, and more—each
-                handled in one workspace.
-              </p>
-            </div>
-            <div className="mt-7 flex flex-wrap items-center gap-2">
+            <div className="mt-6 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 className="nodex-btn-neutral h-10 rounded-md px-4 text-[13px] font-medium"
                 onClick={onTryBrowserScratch}
               >
-                Try out
+                Try in browser
               </button>
-            </div>
-
-            <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className={card}>
-                <div className="text-[12px] font-semibold">Markdown, done right</div>
-                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  Edit and preview side‑by‑side. Keep architecture notes close to the work.
-                </div>
-              </div>
-              <div className={card}>
-                <div className="text-[12px] font-semibold">JavaScript notebooks (jsNotebook)</div>
-                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  Delve into note system exploration.
-                </div>
-              </div>
-              <div className={card}>
-                <div className="text-[12px] font-semibold">Integrated IDE for plugin development</div>
-                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  Extend the system with first‑party and bundled plugins.
-                </div>
-              </div>
-              <div className={card}>
-                <div className="text-[12px] font-semibold">Self-documenting system</div>
-                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  Built‑in docs hub for commands and guides, searchable in‑app.
-                </div>
-              </div>
+              <button
+                type="button"
+                className="h-10 rounded-md border border-foreground/20 bg-background px-4 text-[13px] text-foreground hover:bg-foreground/6"
+                onClick={onSignup}
+              >
+                Create account
+              </button>
             </div>
           </div>
 
           <div className="min-w-0">
             <div className="rounded-2xl border border-border bg-muted/10 p-5">
-              <div className="flex items-center justify-between">
-                <div className="text-[12px] font-semibold">What you’ll use every day</div>
-                <div className="text-[11px] text-muted-foreground">A fast, calm workspace</div>
-              </div>
-              <div className="mt-4 grid grid-cols-1 gap-3">
-                {[
-                  {
-                    title: "Notes explorer + pinned tabs",
-                    body: "Navigate your workspace like an IDE, but for knowledge.",
-                  },
-                  {
-                    title: "Docs hub",
-                    body: "Browse guides and command API docs without leaving the app.",
-                  },
-                  {
-                    title: "Preview-first markdown",
-                    body: "Switch between Editor / Preview / Both whenever you need.",
-                  },
-                ].map((x) => (
-                  <div key={x.title} className="rounded-xl border border-border bg-background p-4">
-                    <div className="text-[12px] font-medium text-foreground">{x.title}</div>
-                    <div className="mt-1 text-[12px] leading-5 text-muted-foreground">{x.body}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 rounded-xl border border-border bg-background px-4 py-3 text-[12px] text-muted-foreground">
-                Tip: open <span className="font-mono text-[11px] text-foreground">Docs</span> from the rail
-                once you’re inside.
+              <div className="text-[12px] font-semibold">The AI-era problem</div>
+              <p className="mt-2 text-pretty text-[13px] leading-6 text-muted-foreground">
+                Building with AI means context is exploding: chat logs, PRDs, design sketches,
+                guidelines, personal notes — scattered across files, tabs, and tools.
+              </p>
+              <div className="mt-4 rounded-xl border border-border bg-background px-4 py-3 text-[12px] leading-5 text-foreground">
+                Nodex pulls it all into one workspace. One source of truth for humans and agents.
               </div>
             </div>
           </div>
         </section>
 
-        <section className="w-full">
-          <div className="ml-auto flex w-full max-w-4xl flex-col gap-3">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className={card}>
-                <div className="text-[12px] font-semibold">For maintainers</div>
-                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  Use admin capabilities to keep system docs accurate and up to date.
-                </div>
-              </div>
-              <div className="rounded-2xl border border-border bg-muted/10 p-5">
-                <div className="text-[12px] font-semibold">A useful mental model</div>
-                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  If you like tools that reward learning their keys and composing small actions into powerful workflows,
-                  Nodex will feel familiar.
-                </div>
-                <div className="mt-2 text-[12px] leading-5 text-muted-foreground">
-                  Think of it as <span className="font-medium text-foreground">Emacs for note-taking</span>.
-                </div>
+        <section>
+          <div className="mb-4 flex items-end justify-between gap-3">
+            <h2 className="text-[20px] font-semibold tracking-tight">Who it's for</h2>
+            <div className="text-[11px] text-muted-foreground">Personal, then team</div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className={card}>
+              <div className="text-[12px] font-semibold">Small software teams (1–5)</div>
+              <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                Ship fast with AI. Keep PRDs, code guidelines, and decisions where everyone —
+                including your agents — can find them.
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className={card}>
-                <div className="text-[12px] font-semibold">For teams</div>
-                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  Make documentation a living part of the workflow, not an afterthought.
-                </div>
-              </div>
-              <div className={card}>
-                <div className="text-[12px] font-semibold">For builders</div>
-                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  Keep experiments, decisions, and implementation notes in one place.
-                </div>
+            <div className={card}>
+              <div className="text-[12px] font-semibold">Solo builders & thinkers</div>
+              <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                Founders, designers, researchers, writers — anyone whose work lives in notes and
+                wants a serious tool for it.
               </div>
             </div>
+          </div>
+          <div className="mt-3 rounded-xl border border-border bg-muted/10 px-4 py-3 text-[12px] leading-5 text-muted-foreground">
+            Start personal. Grow into a team workspace.{" "}
+            <span className="text-foreground">Same tool, same notes.</span>
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-[20px] font-semibold tracking-tight">What lives in Nodex</h2>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            From first scribble to shipped artifact — one workspace.
+          </p>
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {useCases.map(([title, body]) => (
+              <div key={title} className={card}>
+                <div className="text-[12px] font-semibold">{title}</div>
+                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">{body}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-[20px] font-semibold tracking-tight">Every format, one workspace</h2>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            Notes aren't one-size-fits-all. Neither is Nodex.
+          </p>
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {formats.map(([title, body]) => (
+              <div
+                key={title}
+                className="rounded-xl border border-border bg-background/70 p-4 backdrop-blur"
+              >
+                <div className="text-[12px] font-semibold">{title}</div>
+                <div className="mt-1 text-[11px] leading-5 text-muted-foreground">{body}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-[20px] font-semibold tracking-tight">Why Nodex</h2>
+          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {whyNodex.map(([title, body]) => (
+              <div key={title} className={card}>
+                <div className="text-[12px] font-semibold">{title}</div>
+                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">{body}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-border bg-muted/10 p-6">
+          <div className="text-[12px] font-semibold text-muted-foreground">A useful mental model</div>
+          <p className="mt-2 text-pretty text-[15px] leading-7 text-foreground">
+            If you like tools that reward learning their keys and composing small actions into powerful
+            workflows, Nodex will feel familiar. Think of it as{" "}
+            <span className="font-medium">Emacs for note-taking</span> — with a modern UI and every
+            format your work actually uses.
+          </p>
+        </section>
+
+        <section className="flex flex-col items-start gap-3 rounded-2xl border border-border bg-background/70 p-6 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-[14px] font-semibold">Start centralizing your knowledge</div>
+            <div className="text-[12px] text-muted-foreground">
+              Try it in the browser. No signup needed to poke around.
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="nodex-btn-neutral h-10 rounded-md px-4 text-[13px] font-medium"
+              onClick={onTryBrowserScratch}
+            >
+              Try in browser
+            </button>
+            <button
+              type="button"
+              className="h-10 rounded-md border border-foreground/20 bg-background px-4 text-[13px] text-foreground hover:bg-foreground/6"
+              onClick={onSignup}
+            >
+              Create account
+            </button>
           </div>
         </section>
       </main>
