@@ -102,6 +102,10 @@ Use an absolute path to `dist/cli.js` (or your global `nodex-mcp` binary). Repla
 
 No interactive login. MCP exits at startup if the token is missing.
 
+> **Token staleness warning:** Standard web access JWTs expire after `NODEX_JWT_ACCESS_EXPIRES` (default **15 minutes**). A fixed `NODEX_ACCESS_TOKEN` in `mcp.json` will go stale quickly — all WPN tools will return 401 until you replace it. For interactive use in Cursor/Claude Desktop, prefer **session mode** (`NODEX_MCP_CLOUD_SESSION=1`) which auto-refreshes. Use fixed tokens only for CI/CD with short-lived service-account JWTs or long-lived tokens issued by a custom `NODEX_JWT_ACCESS_EXPIRES` setting.
+>
+> **Optional refresh in cloud_env mode:** Set `NODEX_REFRESH_TOKEN` alongside `NODEX_ACCESS_TOKEN` to enable automatic token refresh when the access token expires. **Caution:** refresh tokens in shell env and CI logs are sensitive — prefer session mode (`NODEX_MCP_CLOUD_SESSION=1`) for interactive use, and ensure CI secrets are properly scoped and rotated.
+
 ```json
 {
   "mcpServers": {

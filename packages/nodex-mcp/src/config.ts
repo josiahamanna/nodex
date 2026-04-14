@@ -78,8 +78,9 @@ export function loadMcpAuthRuntime(): McpAuthRuntime {
           "or set NODEX_MCP_CLOUD_SESSION=1 for interactive login / persisted session.",
       );
     }
+    const envRefresh = process.env.NODEX_REFRESH_TOKEN?.trim() || null;
     const holder = new McpTokenHolder();
-    holder.setTokens(envAccess, null);
+    holder.setTokens(envAccess, envRefresh);
     return {
       baseUrl,
       holder,

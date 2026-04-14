@@ -19,10 +19,17 @@ export function mapWpnCaughtError(e: unknown, cloudSession: boolean): ToolReturn
   if (!cloudSession) {
     return null;
   }
-  if (msg === "NODEX_UNAUTHORIZED" || msg.includes("(401)")) {
-    return unauthenticatedToolResult(
-      msg === "NODEX_UNAUTHORIZED" ? "Session expired or invalid (401)." : msg,
-    );
+  if (msg.startsWith("NODEX_UNAUTHORIZED") || msg.includes("(401)")) {
+    let detail: string;
+    if (msg.startsWith("NODEX_UNAUTHORIZED")) {
+      const apiPart = msg.slice("NODEX_UNAUTHORIZED".length).replace(/^:\s*/, "").trim();
+      detail = apiPart
+        ? `Session expired or invalid (401): ${apiPart}`
+        : "Session expired or invalid (401).";
+    } else {
+      detail = msg;
+    }
+    return unauthenticatedToolResult(detail);
   }
   return null;
 }

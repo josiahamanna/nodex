@@ -173,7 +173,16 @@ export class WpnHttpClient {
       }
     }
     if (res.status === 401) {
-      throw new Error("NODEX_UNAUTHORIZED");
+      let apiDetail = "";
+      try {
+        const errBody = JSON.parse(text) as { error?: string };
+        if (typeof errBody.error === "string" && errBody.error.trim()) {
+          apiDetail = `: ${errBody.error.trim()}`;
+        }
+      } catch {
+        // non-JSON 401 body; ignore
+      }
+      throw new Error(`NODEX_UNAUTHORIZED${apiDetail}`);
     }
     let parsed: unknown;
     try {

@@ -392,6 +392,8 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const workspacesRef = useRef<WpnWorkspaceRow[]>([]);
   workspacesRef.current = workspaces;
   const [projectsByWs, setProjectsByWs] = useState<Record<string, WpnProjectRow[]>>({});
+  const projectsByWsRef = useRef<Record<string, WpnProjectRow[]>>({});
+  projectsByWsRef.current = projectsByWs;
   const [expandedWs, setExpandedWs] = useState<Set<string>>(() => new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set());
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -671,14 +673,30 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     lastExplorerRevealForNoteIdRef.current = null;
   }, [currentNoteId]);
 
-  // Follow the open note in the tree when the active note or workspace list changes — not when
-  // `notes` alone changes (project switch clears the list briefly and would snap selection back).
+  // Stable signature of the current project-id set — changes only when projects are added or
+  // removed, not on every polling object-reference refresh. Used to limit follow-note re-runs.
+  const projectsSignature = useMemo(
+    () =>
+      Object.values(projectsByWs)
+        .flat()
+        .map((p) => p.id)
+        .sort()
+        .join(","),
+    [projectsByWs],
+  );
+
+  // Follow the open note in the tree when the active note changes or when the set of available
+  // projects changes (new project added/removed). Does NOT re-run on every polling tick that
+  // produces a new `projectsByWs` object identity but the same projects — that was the source of
+  // the "snap-closed" bug where browsing project B while note A was active would be interrupted
+  // every ~8s by the follow effect forcing selection back to project A.
   useEffect(() => {
     if (!currentNoteId || !projectOpen) return;
+    const projectsByWsSnapshot = projectsByWsRef.current;
     let cancelled = false;
     void (async () => {
       try {
-        const localRow = notes.find((n) => n.id === currentNoteId);
+        const localRow = notesRef.current.find((n) => n.id === currentNoteId);
         let pid: string | undefined;
         if (localRow) {
           pid = localRow.project_id;
@@ -688,10 +706,12 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
           pid = r.note.project_id;
         }
         if (!pid) return;
-        const visible = Object.values(projectsByWs).some((arr) => arr.some((p) => p.id === pid));
+        const visible = Object.values(projectsByWsSnapshot).some((arr) =>
+          arr.some((p) => p.id === pid),
+        );
         if (!visible) return;
         let wsId: string | null = null;
-        for (const [w, arr] of Object.entries(projectsByWs)) {
+        for (const [w, arr] of Object.entries(projectsByWsSnapshot)) {
           if (arr.some((p) => p.id === pid)) {
             wsId = w;
             break;
@@ -709,7 +729,8 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     return () => {
       cancelled = true;
     };
-  }, [currentNoteId, projectOpen, projectsByWs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentNoteId, projectOpen, projectsSignature]);
 
   const filteredNotes = useMemo(() => {
     const q = search.trim().toLowerCase();
