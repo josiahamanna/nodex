@@ -8,8 +8,10 @@ import {
   wpnJsonCreateWorkspace,
   wpnJsonDeleteProject,
   wpnJsonDeleteWorkspace,
+  wpnJsonGetFullTree,
   wpnJsonListProjects,
   wpnJsonListWorkspaces,
+  wpnJsonListWorkspacesAndProjects,
   wpnJsonUpdateProject,
   wpnJsonUpdateWorkspace,
 } from "../core/wpn/wpn-json-service";
@@ -54,6 +56,20 @@ export function registerStaticIpcWpnHandlers(): void {
     const db = requireWorkspaceStore();
     const ownerId = getWpnOwnerId();
     return { workspaces: wpnJsonListWorkspaces(db, ownerId) };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WPN_LIST_WORKSPACES_AND_PROJECTS, async (e) => {
+    assertElectronFileVaultWindow(e);
+    const db = requireWorkspaceStore();
+    const ownerId = getWpnOwnerId();
+    return wpnJsonListWorkspacesAndProjects(db, ownerId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WPN_GET_FULL_TREE, async (e) => {
+    assertElectronFileVaultWindow(e);
+    const db = requireWorkspaceStore();
+    const ownerId = getWpnOwnerId();
+    return wpnJsonGetFullTree(db, ownerId);
   });
 
   ipcMain.handle(IPC_CHANNELS.WPN_CREATE_WORKSPACE, async (e, name?: unknown) => {

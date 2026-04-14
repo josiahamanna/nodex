@@ -422,6 +422,15 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const explorerScrollRef = useRef<HTMLDivElement | null>(null);
   const lastExplorerRevealForNoteIdRef = useRef<string | null>(null);
   const notesRef = useRef<WpnNoteListItem[]>([]);
+  /**
+   * Prefetched notes/explorer-state for every project from the last full-tree load.
+   * Used by the project-selection effect to render the tree synchronously instead of
+   * firing another round trip. `null` = no prefetch available; treat as cache miss.
+   */
+  const fullTreeCacheRef = useRef<{
+    notesByProjectId: Record<string, WpnNoteListItem[]>;
+    explorerStateByProjectId: Record<string, { expanded_ids: string[] }>;
+  } | null>(null);
   const [, bumpClip] = useState(0);
 
   const projectOpen = workspaceRoots.length > 0;
@@ -435,24 +444,41 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
        * reports a virtual root. After Scratch auto-provisions WPN, {@link dispatchWpnTreeChanged}
        * may run before the first `getProjectState` tick completes — `force` still loads so the tree
        * appears without a full page refresh.
+       *
+       * Busy loads (first paint, refresh, tree-change event) use `/wpn/full-tree`, so all note
+       * titles + explorer state arrive in one round trip. The project-selection effect can then
+       * render synchronously from `fullTreeCacheRef` without another RTT.
+       *
+       * Non-busy polls (8s background refresh) use the lighter `/wpn/workspaces-and-projects` to
+       * keep the WS/project list fresh; notes for the active project are re-polled separately.
        */
       if (!opts?.force && !projectOpen) return;
       const prevWorkspaceIds = new Set(workspacesRef.current.map((w) => w.id));
       const manageBusy = opts?.manageBusy !== false;
       if (manageBusy) setBusy(true);
       try {
-        const { workspaces: ws } = await getNodex().wpnListWorkspaces();
+        let ws: WpnWorkspaceRow[];
+        let allProjects: WpnProjectRow[];
+        if (manageBusy) {
+          const tree = await getNodex().wpnGetFullTree();
+          ws = tree.workspaces;
+          allProjects = tree.projects;
+          fullTreeCacheRef.current = {
+            notesByProjectId: tree.notesByProjectId,
+            explorerStateByProjectId: tree.explorerStateByProjectId,
+          };
+        } else {
+          const r = await getNodex().wpnListWorkspacesAndProjects();
+          ws = r.workspaces;
+          allProjects = r.projects;
+        }
         setWorkspaces(ws);
-        const entries = await Promise.all(
-          ws.map(async (w) => {
-            const { projects } = await getNodex().wpnListProjects(w.id);
-            // Bundled plugin docs live in a dedicated project; browse them from Documentation, not Notes explorer.
-            return [w.id, projects.filter((p) => p.name !== "Documentation")] as const;
-          }),
-        );
         const nextProj: Record<string, WpnProjectRow[]> = {};
-        for (const [id, projects] of entries) {
-          nextProj[id] = projects;
+        for (const w of ws) {
+          // Bundled plugin docs live in a dedicated project; browse them from Documentation, not Notes explorer.
+          nextProj[w.id] = allProjects.filter(
+            (p) => p.workspace_id === w.id && p.name !== "Documentation",
+          );
         }
         setProjectsByWs(nextProj);
         setSelectedProjectId((prev) => {
@@ -579,6 +605,23 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
 
   useEffect(() => {
     if (!selectedProjectId || !projectOpen) return;
+    // Prefer the prefetched full-tree snapshot so the explorer renders without a second RTT.
+    // Consume once so a later external rename or poll still falls through to a fresh fetch.
+    const cache = fullTreeCacheRef.current;
+    const cachedNotes = cache?.notesByProjectId[selectedProjectId];
+    const cachedExpanded = cache?.explorerStateByProjectId[selectedProjectId]?.expanded_ids;
+    if (cachedNotes && cachedExpanded !== undefined) {
+      const noteIds = new Set(cachedNotes.map((x) => x.id));
+      setNotes(cachedNotes);
+      setExpandedNoteParents((prev) =>
+        mergeWpnExpandedNoteParents(prev, cachedExpanded, noteIds),
+      );
+      if (cache) {
+        delete cache.notesByProjectId[selectedProjectId];
+        delete cache.explorerStateByProjectId[selectedProjectId];
+      }
+      return;
+    }
     setNotes([]);
     setExpandedNoteParents(new Set());
     void loadProjectTree(selectedProjectId);

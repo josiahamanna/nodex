@@ -850,6 +850,8 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       return req("POST", "/redo");
     },
     wpnListWorkspaces: () => wpnReq("GET", "/wpn/workspaces"),
+    wpnListWorkspacesAndProjects: () => wpnReq("GET", "/wpn/workspaces-and-projects"),
+    wpnGetFullTree: () => wpnReq("GET", "/wpn/full-tree"),
     wpnCreateWorkspace: (name) =>
       wpnReq("POST", "/wpn/workspaces", { name: name ?? "Workspace" }),
     wpnUpdateWorkspace: (id, patch) =>
@@ -1511,6 +1513,16 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       );
     },
     wpnListWorkspaces: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnListWorkspacesAndProjects: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnGetFullTree: async () => {
       throw new Error(
         "Not available in plain browser — use Electron or ?web=1&api=…",
       );

@@ -136,6 +136,8 @@ export const IPC_CHANNELS = {
   SHELL_GET_LAYOUT: "shell:get-layout",
   SHELL_SET_LAYOUT: "shell:set-layout",
   WPN_LIST_WORKSPACES: "wpn:list-workspaces",
+  WPN_LIST_WORKSPACES_AND_PROJECTS: "wpn:list-workspaces-and-projects",
+  WPN_GET_FULL_TREE: "wpn:get-full-tree",
   WPN_CREATE_WORKSPACE: "wpn:create-workspace",
   WPN_UPDATE_WORKSPACE: "wpn:update-workspace",
   WPN_DELETE_WORKSPACE: "wpn:delete-workspace",

@@ -590,6 +590,13 @@ export type NodexRendererApi = {
   } | null>;
   /** Workspace / project (v2). Electron: IPC + on-disk JSON workspace. Web: HTTP `/api/v1/wpn/...`. */
   wpnListWorkspaces: () => Promise<{ workspaces: WpnWorkspaceRow[] }>;
+  wpnListWorkspacesAndProjects: () => Promise<{ workspaces: WpnWorkspaceRow[]; projects: WpnProjectRow[] }>;
+  wpnGetFullTree: () => Promise<{
+    workspaces: WpnWorkspaceRow[];
+    projects: WpnProjectRow[];
+    notesByProjectId: Record<string, WpnNoteListItem[]>;
+    explorerStateByProjectId: Record<string, { expanded_ids: string[] }>;
+  }>;
   wpnCreateWorkspace: (name?: string) => Promise<{ workspace: WpnWorkspaceRow }>;
   wpnUpdateWorkspace: (
     id: string,

@@ -480,6 +480,9 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.GET_PLUGIN_MANIFEST_UI, pluginName),
   wpnListWorkspaces: () =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_LIST_WORKSPACES),
+  wpnListWorkspacesAndProjects: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_LIST_WORKSPACES_AND_PROJECTS),
+  wpnGetFullTree: () => ipcRenderer.invoke(IPC_CHANNELS.WPN_GET_FULL_TREE),
   wpnCreateWorkspace: (name) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_CREATE_WORKSPACE, name),
   wpnUpdateWorkspace: (id, patch) =>

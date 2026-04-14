@@ -344,6 +344,57 @@ export async function scratchWpnListProjects(
   return { projects: out.map((p) => ({ ...p })) };
 }
 
+export async function scratchWpnListWorkspacesAndProjects(): Promise<{
+  workspaces: WpnWorkspaceRow[];
+  projects: WpnProjectRow[];
+}> {
+  const b = await loadBundle();
+  const workspaces = [...b.workspaces].sort(
+    (a, b) => a.sort_index - b.sort_index || a.name.localeCompare(b.name),
+  );
+  const wsIds = new Set(workspaces.map((w) => w.id));
+  const projects = b.projects
+    .filter((p) => wsIds.has(p.workspace_id))
+    .sort((a, b) => a.sort_index - b.sort_index || a.name.localeCompare(b.name))
+    .map((p) => ({ ...p }));
+  return { workspaces, projects };
+}
+
+export async function scratchWpnGetFullTree(): Promise<{
+  workspaces: WpnWorkspaceRow[];
+  projects: WpnProjectRow[];
+  notesByProjectId: Record<string, WpnNoteListItem[]>;
+  explorerStateByProjectId: Record<string, { expanded_ids: string[] }>;
+}> {
+  const b = await loadBundle();
+  const workspaces = [...b.workspaces].sort(
+    (a, b) => a.sort_index - b.sort_index || a.name.localeCompare(b.name),
+  );
+  const wsIds = new Set(workspaces.map((w) => w.id));
+  const projects = b.projects
+    .filter((p) => wsIds.has(p.workspace_id))
+    .sort((a, b) => a.sort_index - b.sort_index || a.name.localeCompare(b.name))
+    .map((p) => ({ ...p }));
+  const notesByProjectId: Record<string, WpnNoteListItem[]> = {};
+  for (const p of projects) {
+    notesByProjectId[p.id] = listNotesFlat(b, p.id);
+  }
+  const explorerStateByProjectId: Record<string, { expanded_ids: string[] }> = {};
+  const projectIds = new Set(projects.map((p) => p.id));
+  for (const e of b.explorer) {
+    if (!projectIds.has(e.project_id)) continue;
+    explorerStateByProjectId[e.project_id] = {
+      expanded_ids: Array.isArray(e.expanded_ids) ? [...e.expanded_ids] : [],
+    };
+  }
+  for (const p of projects) {
+    if (!explorerStateByProjectId[p.id]) {
+      explorerStateByProjectId[p.id] = { expanded_ids: [] };
+    }
+  }
+  return { workspaces, projects, notesByProjectId, explorerStateByProjectId };
+}
+
 export async function scratchWpnCreateProject(
   workspaceId: string,
   name?: string,

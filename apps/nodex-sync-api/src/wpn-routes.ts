@@ -120,6 +120,68 @@ export function registerWpnReadRoutes(
     return reply.send({ workspaces });
   });
 
+  /** Single round-trip: returns full explorer tree — workspaces, projects, all note titles, all explorer states. */
+  app.get("/wpn/full-tree", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const userId = auth.sub;
+    const wsCol = getWpnWorkspacesCollection();
+    const projCol = getWpnProjectsCollection();
+    const noteCol = getWpnNotesCollection();
+    const exCol = getWpnExplorerStateCollection();
+    const [wsDocs, projDocs, noteDocs, exDocs] = await Promise.all([
+      wsCol.find({ userId }).sort({ sort_index: 1, name: 1 }).toArray(),
+      projCol.find({ userId }).sort({ sort_index: 1, name: 1 }).toArray(),
+      noteCol
+        .find({ userId, deleted: { $ne: true } }, { projection: { content: 0, metadata: 0 } })
+        .toArray(),
+      exCol.find({ userId }).toArray(),
+    ]);
+    const noteGroups = new Map<string, WpnNoteDoc[]>();
+    for (const n of noteDocs) {
+      const arr = noteGroups.get(n.project_id) ?? [];
+      arr.push(n as WpnNoteDoc);
+      noteGroups.set(n.project_id, arr);
+    }
+    const notesByProjectId: Record<string, WpnNoteListItemOut[]> = {};
+    for (const [pid, rows] of noteGroups) {
+      notesByProjectId[pid] = listNotesFlatPreorder(rows);
+    }
+    const explorerStateByProjectId: Record<string, { expanded_ids: string[] }> = {};
+    for (const ex of exDocs) {
+      explorerStateByProjectId[ex.project_id] = {
+        expanded_ids: Array.isArray(ex.expanded_ids) ? ex.expanded_ids : [],
+      };
+    }
+    return reply.send({
+      workspaces: wsDocs.map((d) => workspaceRow(d)),
+      projects: projDocs.map((d) => projectRow(d)),
+      notesByProjectId,
+      explorerStateByProjectId,
+    });
+  });
+
+  /** Single round-trip: returns all workspaces and all their projects with 2 parallel DB queries. */
+  app.get("/wpn/workspaces-and-projects", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const userId = auth.sub;
+    const wsCol = getWpnWorkspacesCollection();
+    const projCol = getWpnProjectsCollection();
+    const [wsDocs, projDocs] = await Promise.all([
+      wsCol.find({ userId }).sort({ sort_index: 1, name: 1 }).toArray(),
+      projCol.find({ userId }).sort({ sort_index: 1, name: 1 }).toArray(),
+    ]);
+    return reply.send({
+      workspaces: wsDocs.map((d) => workspaceRow(d)),
+      projects: projDocs.map((d) => projectRow(d)),
+    });
+  });
+
   app.get("/wpn/workspaces/:workspaceId/projects", async (request, reply) => {
     const auth = await requireAuth(request, reply, jwtSecret);
     if (!auth) {
@@ -196,7 +258,13 @@ export function registerWpnReadRoutes(
     const noteCol = getWpnNotesCollection();
     const projCol = getWpnProjectsCollection();
     const wsCol = getWpnWorkspacesCollection();
-    const notes = await noteCol.find({ userId, deleted: { $ne: true } }).toArray();
+    const [notes, projects, workspaces] = await Promise.all([
+      noteCol.find({ userId, deleted: { $ne: true } }).toArray(),
+      projCol.find({ userId }).toArray(),
+      wsCol.find({ userId }).toArray(),
+    ]);
+    const projMap = new Map(projects.map((p) => [p.id, p]));
+    const wsMap = new Map(workspaces.map((w) => [w.id, w]));
     const out: {
       id: string;
       title: string;
@@ -207,11 +275,11 @@ export function registerWpnReadRoutes(
       workspace_name: string;
     }[] = [];
     for (const n of notes) {
-      const p = await projCol.findOne({ id: n.project_id, userId });
+      const p = projMap.get(n.project_id);
       if (!p) {
         continue;
       }
-      const w = await wsCol.findOne({ id: p.workspace_id, userId });
+      const w = wsMap.get(p.workspace_id);
       if (!w) {
         continue;
       }

@@ -24,12 +24,14 @@ import {
   scratchWpnDeleteWorkspace,
   scratchWpnDuplicateNoteSubtree,
   scratchWpnGetExplorerState,
+  scratchWpnGetFullTree,
   scratchWpnGetNote,
   scratchWpnListAllNotesWithContext,
   scratchWpnListBacklinksToNote,
   scratchWpnListNotes,
   scratchWpnListProjects,
   scratchWpnListWorkspaces,
+  scratchWpnListWorkspacesAndProjects,
   scratchWpnMoveNote,
   scratchWpnPatchNote,
   scratchWpnPreviewNoteTitleVfsImpact,
@@ -149,6 +151,8 @@ export function webScratchPlainStubOverrides(): Partial<NodexRendererApi> {
       await scratchWpnPatchNote(noteId, { metadata: meta });
     },
     wpnListWorkspaces: () => scratchWpnListWorkspaces(),
+    wpnListWorkspacesAndProjects: () => scratchWpnListWorkspacesAndProjects(),
+    wpnGetFullTree: () => scratchWpnGetFullTree(),
     wpnCreateWorkspace: (name) => scratchWpnCreateWorkspace(name),
     wpnUpdateWorkspace: async (id, patch) => {
       const r = await scratchWpnUpdateWorkspace(id, patch);

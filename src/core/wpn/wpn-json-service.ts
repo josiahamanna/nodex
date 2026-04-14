@@ -1,5 +1,6 @@
 import * as crypto from "crypto";
 import type { WorkspaceStore, WpnWorkspaceStored } from "../workspace-store";
+import type { WpnNoteListItem } from "../../shared/wpn-v2-types";
 import type { WpnProjectRow, WpnWorkspaceRow } from "./wpn-types";
 
 function nowMs(): number {
@@ -134,6 +135,96 @@ export function wpnJsonListProjects(
   }
   out.sort((a, b) => a.sort_index - b.sort_index || a.name.localeCompare(b.name));
   return out;
+}
+
+export function wpnJsonListWorkspacesAndProjects(
+  store: WorkspaceStore,
+  ownerId: string,
+): { workspaces: WpnWorkspaceRow[]; projects: WpnProjectRow[] } {
+  const workspaces = wpnJsonListWorkspaces(store, ownerId);
+  const wsIds = new Set(workspaces.map((w) => w.id));
+  const projects: WpnProjectRow[] = [];
+  for (const slot of store.slots) {
+    for (const p of slot.projects) {
+      if (wsIds.has(p.workspace_id)) {
+        projects.push({ ...p });
+      }
+    }
+  }
+  projects.sort((a, b) => a.sort_index - b.sort_index || a.name.localeCompare(b.name));
+  return { workspaces, projects };
+}
+
+export function wpnJsonGetFullTree(
+  store: WorkspaceStore,
+  ownerId: string,
+): {
+  workspaces: WpnWorkspaceRow[];
+  projects: WpnProjectRow[];
+  notesByProjectId: Record<string, WpnNoteListItem[]>;
+  explorerStateByProjectId: Record<string, { expanded_ids: string[] }>;
+} {
+  const { workspaces, projects } = wpnJsonListWorkspacesAndProjects(store, ownerId);
+  const projectIds = new Set(projects.map((p) => p.id));
+  const notesByProjectId: Record<string, WpnNoteListItem[]> = {};
+  const explorerStateByProjectId: Record<string, { expanded_ids: string[] }> = {};
+
+  for (const slot of store.slots) {
+    // Build notes by project
+    const notesByProj = new Map<string, typeof slot.notes>();
+    for (const n of slot.notes) {
+      if (!projectIds.has(n.project_id)) continue;
+      const arr = notesByProj.get(n.project_id) ?? [];
+      arr.push(n);
+      notesByProj.set(n.project_id, arr);
+    }
+    for (const [pid, rows] of notesByProj) {
+      // Build flat preorder list
+      const cm = new Map<string | null, typeof rows>();
+      for (const r of rows) {
+        const k = r.parent_id;
+        const arr = cm.get(k) ?? [];
+        arr.push(r);
+        cm.set(k, arr);
+      }
+      for (const arr of cm.values()) {
+        arr.sort((a, b) => a.sibling_index - b.sibling_index);
+      }
+      const out: WpnNoteListItem[] = [];
+      const visit = (parentId: string | null, depth: number): void => {
+        const kids = cm.get(parentId) ?? [];
+        for (const r of kids) {
+          out.push({
+            id: r.id,
+            project_id: r.project_id,
+            parent_id: r.parent_id,
+            type: r.type,
+            title: r.title,
+            depth,
+            sibling_index: r.sibling_index,
+          });
+          visit(r.id, depth + 1);
+        }
+      };
+      visit(null, 0);
+      notesByProjectId[pid] = out;
+    }
+    // Build explorer state by project
+    for (const ex of slot.explorer) {
+      if (!projectIds.has(ex.project_id)) continue;
+      explorerStateByProjectId[ex.project_id] = {
+        expanded_ids: Array.isArray(ex.expanded_ids) ? [...ex.expanded_ids] : [],
+      };
+    }
+  }
+
+  // Ensure every project has an entry (even if empty)
+  for (const p of projects) {
+    if (!notesByProjectId[p.id]) notesByProjectId[p.id] = [];
+    if (!explorerStateByProjectId[p.id]) explorerStateByProjectId[p.id] = { expanded_ids: [] };
+  }
+
+  return { workspaces, projects, notesByProjectId, explorerStateByProjectId };
 }
 
 export function wpnJsonCreateProject(
