@@ -24,7 +24,7 @@ async function migrateWebScratchCloudNotesIfNeeded(realUserId: string): Promise<
   const { isWebScratchSession } = await import("../auth/web-scratch-session");
   if (!isWebScratchSession()) return;
   const { migrateWebScratchCloudNotesToUser } = await import(
-    "../cloud-sync/migrate-web-scratch-cloud-notes",
+    "../cloud-sync/migrate-web-scratch-cloud-notes"
   );
   await migrateWebScratchCloudNotesToUser(realUserId);
 }

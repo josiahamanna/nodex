@@ -6,12 +6,7 @@ import {
 } from "../../../../packages/nodex-plugin-ui/src/index";
 import type { PluginHostCapabilities } from "../../../shared/plugin-host-capabilities";
 
-declare global {
-  // eslint-disable-next-line no-var
-  var Compartment: new (options?: Record<string, unknown>) => {
-    evaluate: (src: string) => unknown;
-  };
-}
+// `Compartment` is exposed globally by SES after `import "ses";` above. Its type ships from `ses/types.d.ts`.
 
 export type EvaluateCompiledPluginOptions = {
   /** CommonJS from {@link compilePluginSource} with `format: "cjs"`. */
@@ -26,7 +21,9 @@ export type EvaluateCompiledPluginOptions = {
 export function evaluateCompiledPluginInCompartment(
   opts: EvaluateCompiledPluginOptions,
 ): PluginModuleDefinition {
-  const CompartmentCtor = globalThis.Compartment;
+  const CompartmentCtor = (globalThis as unknown as { Compartment?: unknown }).Compartment as
+    | (new (options: Record<string, unknown>) => { evaluate: (src: string) => unknown })
+    | undefined;
   if (typeof CompartmentCtor !== "function") {
     throw new Error("globalThis.Compartment missing; import ses before evaluating plugins.");
   }

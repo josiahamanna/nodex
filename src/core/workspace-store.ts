@@ -266,6 +266,12 @@ export class WorkspaceStore {
 
   diskPersistence: boolean;
 
+  /** Timer handle for trailing-edge debounced `persistDebounced()`. */
+  private persistDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Trailing-edge debounce window for `persistDebounced()`. Small enough that rapid edits coalesce, short enough to bound data-loss on crash. */
+  private static readonly PERSIST_DEBOUNCE_MS = 50;
+
   private constructor(
     roots: string[],
     slots: WorkspacePersistedSlot[],
@@ -410,6 +416,33 @@ export class WorkspaceStore {
       }
     }
   }
+
+  /**
+   * Coalesces rapid mutations into a single disk write. Callers that need synchronous
+   * durability (tests, app-exit handlers) must call `flushPendingPersist()` after mutating.
+   */
+  persistDebounced(): void {
+    if (!this.diskPersistence) {
+      return;
+    }
+    if (this.persistDebounceTimer != null) {
+      clearTimeout(this.persistDebounceTimer);
+    }
+    this.persistDebounceTimer = setTimeout(() => {
+      this.persistDebounceTimer = null;
+      this.persist();
+    }, WorkspaceStore.PERSIST_DEBOUNCE_MS);
+  }
+
+  /** Force-flush any pending debounced persist immediately. Safe to call when no persist is pending. */
+  flushPendingPersist(): void {
+    if (this.persistDebounceTimer == null) {
+      return;
+    }
+    clearTimeout(this.persistDebounceTimer);
+    this.persistDebounceTimer = null;
+    this.persist();
+  }
 }
 
 export function initWorkspaceNotesDatabase(
@@ -437,7 +470,13 @@ export function getNotesDatabase(): WorkspaceStore | null {
 
 /** Drop the in-memory `WorkspaceStore` singleton (e.g. before opening another project). */
 export function releaseWorkspaceStore(): void {
+  workspaceStore?.flushPendingPersist();
   workspaceStore = null;
+}
+
+/** Flush any debounced persist on the singleton store. No-op when no store is open. */
+export function flushWorkspaceStorePendingPersist(): void {
+  workspaceStore?.flushPendingPersist();
 }
 
 export function getAttachedDatabaseAliases(): string[] {

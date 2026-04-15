@@ -8,6 +8,7 @@ import {
   PasteSubtreePayload,
 } from "@nodex/ui-types";
 import { PLUGIN_UI_METADATA_KEY } from "../../shared/plugin-state-protocol";
+import { isNotePendingDelete } from "./pendingNoteDeletes";
 
 type NotesThunkConfig = { extra: NodexPlatformDeps };
 
@@ -160,11 +161,15 @@ export const saveNoteContent = createAsyncThunk<
   { noteId: string; content: string; saveSeq: number },
   { noteId: string; content: string },
   NotesThunkConfig
->("notes/saveNoteContent", async ({ noteId, content }, { extra }) => {
-  const saveSeq = takeNextContentSaveSeq(noteId);
-  await extra.localStore.notes.saveNoteContent(noteId, content);
-  return { noteId, content, saveSeq };
-});
+>(
+  "notes/saveNoteContent",
+  async ({ noteId, content }, { extra }) => {
+    const saveSeq = takeNextContentSaveSeq(noteId);
+    await extra.localStore.notes.saveNoteContent(noteId, content);
+    return { noteId, content, saveSeq };
+  },
+  { condition: ({ noteId }) => !isNotePendingDelete(noteId) },
+);
 
 export const patchNoteMetadata = createAsyncThunk<
   { noteId: string; patch: Record<string, unknown> },

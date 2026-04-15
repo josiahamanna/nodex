@@ -104,9 +104,11 @@ export function createMainWindow(): void {
               : "Ctrl+Shift+Alt+L",
           click: (_item, browserWindow) => {
             const win = browserWindow ?? ctx.mainWindow;
-            win?.webContents.send(IPC_CHANNELS.UI_RUN_CONTRIBUTION_COMMAND, {
-              commandId: "nodex.contributions.listCommands",
-            });
+            if (win instanceof BrowserWindow) {
+              win.webContents.send(IPC_CHANNELS.UI_RUN_CONTRIBUTION_COMMAND, {
+                commandId: "nodex.contributions.listCommands",
+              });
+            }
           },
         },
       ],

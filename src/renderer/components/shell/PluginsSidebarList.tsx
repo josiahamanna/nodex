@@ -20,7 +20,7 @@ const PluginsSidebarList: React.FC<PluginsSidebarListProps> = ({
   onSelectPlugin,
 }) => {
   const [rows, setRows] = useState<
-    Awaited<ReturnType<typeof getNodex().getPluginInventory>>
+    Awaited<ReturnType<ReturnType<typeof getNodex>["getPluginInventory"]>>
   >([]);
   const [err, setErr] = useState<string | null>(null);
 

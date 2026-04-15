@@ -774,11 +774,27 @@ export async function scratchWpnPreviewNoteTitleVfsImpact(
 
 export async function scratchWpnDeleteNotes(ids: string[]): Promise<{ ok: true }> {
   const b = await loadBundle();
-  const unique = [...new Set(ids)];
-  for (const noteId of unique) {
-    if (!getNoteDetail(b, noteId)) continue;
-    b.notes = b.notes.filter((x) => x.id !== noteId);
+  const seeds = [...new Set(ids)].filter((id) => getNoteDetail(b, id));
+  if (seeds.length === 0) {
+    return { ok: true };
   }
+  const childMap = new Map<string | null, string[]>();
+  for (const n of b.notes) {
+    const arr = childMap.get(n.parent_id) ?? [];
+    arr.push(n.id);
+    childMap.set(n.parent_id, arr);
+  }
+  const toDelete = new Set<string>();
+  const stack = [...seeds];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    if (toDelete.has(id)) continue;
+    toDelete.add(id);
+    for (const childId of childMap.get(id) ?? []) {
+      stack.push(childId);
+    }
+  }
+  b.notes = b.notes.filter((x) => !toDelete.has(x.id));
   await saveBundle(b);
   return { ok: true };
 }

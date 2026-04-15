@@ -554,6 +554,9 @@ async function webRequest<T>(
  * Minimal `window.Nodex` for browser dev: HTTP to `/api/v1` (same-origin or `__NODEX_WEB_API_BASE__`) or sync-api WPN when configured.
  * Set `window.__NODEX_WEB_API_BASE__` via `initHeadlessWebApiBaseFromUrlAndStorage()` when not using `NEXT_PUBLIC_NODEX_WEB_BACKEND=sync-only`.
  */
+/** In-flight `GET /wpn/notes/:id` requests keyed by `${baseUrl}|${noteId}`. Lets concurrent subscribers share one fetch. */
+const wpnGetNoteInFlight = new Map<string, Promise<{ note: WpnNoteDetail }>>();
+
 export function createWebNodexApi(baseUrl: string): NodexRendererApi {
   const req = <T>(method: string, path: string, body?: unknown) =>
     webRequest<T>(baseUrl, method, path, body);
@@ -884,8 +887,21 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
     wpnListAllNotesWithContext: () => wpnReq("GET", "/wpn/notes-with-context"),
     wpnListBacklinksToNote: (targetNoteId) =>
       wpnReq("GET", `/wpn/backlinks/${encodeURIComponent(targetNoteId)}`),
-    wpnGetNote: (noteId) =>
-      wpnReq("GET", `/wpn/notes/${encodeURIComponent(noteId)}`),
+    wpnGetNote: (noteId) => {
+      const key = `${baseUrl}|${noteId}`;
+      const existing = wpnGetNoteInFlight.get(key);
+      if (existing) {
+        return existing as Promise<{ note: WpnNoteDetail }>;
+      }
+      const p = wpnReq<{ note: WpnNoteDetail }>(
+        "GET",
+        `/wpn/notes/${encodeURIComponent(noteId)}`,
+      ).finally(() => {
+        wpnGetNoteInFlight.delete(key);
+      });
+      wpnGetNoteInFlight.set(key, p);
+      return p;
+    },
     wpnGetExplorerState: (projectId) =>
       wpnReq("GET", `/wpn/projects/${encodeURIComponent(projectId)}/explorer-state`),
     wpnSetExplorerState: (projectId, expandedIds) =>

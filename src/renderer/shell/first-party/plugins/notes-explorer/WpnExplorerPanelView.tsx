@@ -13,6 +13,16 @@ import type { AppDispatch, RootState } from "../../../../store";
 import { useAuth } from "../../../../auth/AuthContext";
 import { clearNoteTitleDraft, fetchNote, setNoteTitleDraft } from "../../../../store/notesSlice";
 import {
+  markNotePendingDelete,
+  unmarkNotePendingDelete,
+} from "../../../../store/pendingNoteDeletes";
+import {
+  beginWpnSync,
+  markWpnSyncError,
+  markWpnSyncOk,
+} from "../../../../store/wpnSyncStatus";
+import { WpnSyncStatusBadge } from "./WpnSyncStatusBadge";
+import {
   fetchHeadlessWpnSession,
   isElectronUserAgent,
   NODEX_WEB_PLUGINS_CHANGED,
@@ -54,6 +64,9 @@ type ShellViewComponentProps = {
 const DND_NOTE_MIME = "application/nodex-wpn-note";
 
 const NOTE_OPEN_DELAY_MS = 260;
+
+/** After a mutation, poll ticks are skipped for this window so stale responses don't clobber optimistic state. */
+const WPN_MUTATION_POLL_QUIET_MS = 3000;
 
 function explorerCanonicalVfsPath(
   projectId: string,
@@ -423,6 +436,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const explorerScrollRef = useRef<HTMLDivElement | null>(null);
   const lastExplorerRevealForNoteIdRef = useRef<string | null>(null);
   const notesRef = useRef<WpnNoteListItem[]>([]);
+  const lastMutationAtRef = useRef<number>(0);
   /**
    * Prefetched notes/explorer-state for every project from the last full-tree load.
    * Used by the project-selection effect to render the tree synchronously instead of
@@ -574,37 +588,54 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   useEffect(() => {
     if (!projectOpen || !syncWpnNotesBackend()) return;
     const id = window.setInterval(() => {
+      if (Date.now() - lastMutationAtRef.current < WPN_MUTATION_POLL_QUIET_MS) return;
       void loadWorkspaces({ manageBusy: false });
     }, WPN_SYNC_REMOTE_POLL_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [projectOpen, loadWorkspaces]);
 
   const loadProjectTree = useCallback(async (projectId: string) => {
-    const [{ notes: n }, { expanded_ids }] = await Promise.all([
-      getNodex().wpnListNotes(projectId),
-      getNodex().wpnGetExplorerState(projectId),
-    ]);
-    if (selectedProjectIdRef.current !== projectId) return;
-    const noteIds = new Set(n.map((x) => x.id));
-    setNotes(n);
-    setExpandedNoteParents((prev) =>
-      mergeWpnExpandedNoteParents(prev, expanded_ids, noteIds),
-    );
+    beginWpnSync();
+    try {
+      const [{ notes: n }, { expanded_ids }] = await Promise.all([
+        getNodex().wpnListNotes(projectId),
+        getNodex().wpnGetExplorerState(projectId),
+      ]);
+      if (selectedProjectIdRef.current !== projectId) {
+        markWpnSyncOk();
+        return;
+      }
+      const noteIds = new Set(n.map((x) => x.id));
+      setNotes(n);
+      setExpandedNoteParents((prev) =>
+        mergeWpnExpandedNoteParents(prev, expanded_ids, noteIds),
+      );
+      markWpnSyncOk();
+    } catch (e) {
+      markWpnSyncError(e);
+      throw e;
+    }
   }, []);
 
   const refreshProjectNotesFromServer = useCallback(async (projectId: string) => {
+    beginWpnSync();
     try {
       const { notes: n } = await getNodex().wpnListNotes(projectId);
-      if (selectedProjectIdRef.current !== projectId) return;
+      if (selectedProjectIdRef.current !== projectId) {
+        markWpnSyncOk();
+        return;
+      }
       setNotes(n);
-    } catch {
-      /* offline or WPN unavailable */
+      markWpnSyncOk();
+    } catch (e) {
+      markWpnSyncError(e);
     }
   }, []);
 
   useEffect(() => {
     if (!selectedProjectId || !projectOpen || !syncWpnNotesBackend()) return;
     const id = window.setInterval(() => {
+      if (Date.now() - lastMutationAtRef.current < WPN_MUTATION_POLL_QUIET_MS) return;
       void refreshProjectNotesFromServer(selectedProjectId);
     }, WPN_SYNC_REMOTE_POLL_INTERVAL_MS);
     return () => window.clearInterval(id);
@@ -917,13 +948,10 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     type: string,
     anchorId?: string,
   ) => {
-    const { id } = await getNodex().wpnCreateNoteInProject(projectId, {
-      relation,
-      type,
-      anchorId,
-    });
+    lastMutationAtRef.current = Date.now();
+    const tempId = `__pending_create__${crypto.randomUUID()}`;
     const optimistic = optimisticWpnNotesAfterCreate(notesRef.current, {
-      newId: id,
+      newId: tempId,
       projectId,
       relation,
       anchorId,
@@ -941,29 +969,65 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       }
     }
     closeAllMenus();
+
+    let realId: string;
+    beginWpnSync();
+    try {
+      const r = await getNodex().wpnCreateNoteInProject(projectId, {
+        relation,
+        type,
+        anchorId,
+      });
+      realId = r.id;
+      markWpnSyncOk();
+    } catch (e) {
+      markWpnSyncError(e);
+      if (optimistic) {
+        setNotes((prev) => prev.filter((n) => n.id !== tempId));
+      }
+      showToast({
+        severity: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
+      return;
+    }
+
+    if (optimistic) {
+      setNotes((prev) =>
+        prev.map((n) => (n.id === tempId ? { ...n, id: realId } : n)),
+      );
+    }
+
     const vfsPath = explorerCanonicalVfsPath(projectId, "Untitled", workspaces, projectsByWs);
-    openNoteById(id, { newTab: true, ...(vfsPath ? { canonicalVfsPath: vfsPath } : {}) });
-    void loadProjectTree(projectId).catch((e) => {
-      console.error(e);
-    });
+    openNoteById(realId, { newTab: true, ...(vfsPath ? { canonicalVfsPath: vfsPath } : {}) });
   };
 
   const onDeleteNotes = async (projectId: string, ids: string[]) => {
     if (!window.confirm(`Delete ${ids.length} note(s)?`)) return;
+    lastMutationAtRef.current = Date.now();
     const snapshot = notesRef.current;
+    for (const id of ids) markNotePendingDelete(id);
     setNotes((prev) => prev.filter((n) => !ids.includes(n.id)));
-    try {
-      await getNodex().wpnDeleteNotes(ids);
-    } catch (e) {
-      setNotes(snapshot);
-      window.alert(e instanceof Error ? e.message : String(e));
-      return;
-    }
     closeShellTabsForNoteIds(tabs, ids);
     closeAllMenus();
-    void loadProjectTree(projectId).catch((e) => {
-      console.error(e);
-    });
+    beginWpnSync();
+    try {
+      await getNodex().wpnDeleteNotes(ids);
+      markWpnSyncOk();
+    } catch (e) {
+      markWpnSyncError(e);
+      for (const id of ids) unmarkNotePendingDelete(id);
+      setNotes(snapshot);
+      showToast({
+        severity: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
+      void loadProjectTree(projectId).catch((err) => {
+        console.error(err);
+      });
+      return;
+    }
+    for (const id of ids) unmarkNotePendingDelete(id);
   };
 
   const swapWorkspaceOrder = useCallback(
@@ -1533,6 +1597,16 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
             {wpnOwnerLabel}
           </span>
         ) : null}
+        <WpnSyncStatusBadge
+          onRetry={() => {
+            void refreshExplorer().catch((e) => {
+              showToast({
+                severity: "error",
+                message: e instanceof Error ? e.message : String(e),
+              });
+            });
+          }}
+        />
         <button
           type="button"
           className="rounded border border-border/60 px-2 py-0.5 text-[10px] hover:bg-muted/40 disabled:opacity-50"

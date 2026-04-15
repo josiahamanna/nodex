@@ -123,7 +123,9 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
     }
     if (ctx.scratchSession) {
       const res = closeWorkspace(userDataPath);
-      applyWorkspaceActivateResult(res);
+      if (res.ok) {
+        applyWorkspaceActivateResult(res);
+      }
     } else {
       applyWorkspaceActivateResult({
         ok: true,
@@ -192,7 +194,9 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
         };
       }
       const res = closeWorkspace(userDataPath);
-      applyWorkspaceActivateResult(res);
+      if (res.ok) {
+        applyWorkspaceActivateResult(res);
+      }
       clearNodexUndoRedo();
       writeAppPrefs(userDataPath, { legacyScratchToIdbMigrated: true });
       broadcastProjectRootChanged();

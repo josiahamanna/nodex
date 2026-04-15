@@ -95,7 +95,8 @@ export function getNodexIframeApi(): NodexIframeApi | undefined {
 }
 
 /**
- * @deprecated Legacy iframe bridge.
+ * @deprecated Legacy iframe bridge. Methods are no-ops against the modern `NodexRendererApi` contract
+ * and are kept only so old plugin bundles don't throw at import time.
  */
 export function useNodexIframeApi(): {
   postMessage: (data: unknown) => void;
@@ -106,16 +107,20 @@ export function useNodexIframeApi(): {
   return useMemo(
     () => ({
       postMessage: (data: unknown) => {
-        getNodex()?.postMessage?.(data);
+        const api = getNodex() as unknown as { postMessage?: (data: unknown) => void } | undefined;
+        api?.postMessage?.(data);
       },
       postPluginUiState: (state: unknown) => {
-        getNodex()?.postPluginUiState?.(state);
+        const api = getNodex() as unknown as { postPluginUiState?: (s: unknown) => void } | undefined;
+        api?.postPluginUiState?.(state);
       },
       notifyDisplayReady: () => {
-        getNodex()?.notifyDisplayReady?.();
+        const api = getNodex() as unknown as { notifyDisplayReady?: () => void } | undefined;
+        api?.notifyDisplayReady?.();
       },
       saveNoteContent: (content: string) => {
-        getNodex()?.saveNoteContent?.(content);
+        const api = getNodex() as unknown as { saveNoteContent?: (c: string) => void } | undefined;
+        api?.saveNoteContent?.(content);
       },
     }),
     [],

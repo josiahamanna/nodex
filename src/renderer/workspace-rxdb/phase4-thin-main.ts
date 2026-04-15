@@ -1,7 +1,7 @@
 import {
   isWorkspaceRxdbAuthorityEnvEnabled,
   WORKSPACE_RXDB_AUTHORITY_ENV,
-} from "../../shared/workspace-rxdb-env.ts";
+} from "../../shared/workspace-rxdb-env";
 
 /**
  * ADR-016 Phase 4 (thin main): when the renderer RxDB mirror becomes the sole local source of truth,

@@ -9,6 +9,7 @@ import { app, BrowserWindow, protocol } from "electron";
 import { runAppReady } from "./main/run-app-ready";
 import { registerStaticIpcHandlers } from "./main/register-static-ipc";
 import { createMainWindow } from "./main/create-main-window";
+import { flushWorkspaceStorePendingPersist } from "./core/workspace-store";
 
 /**
  * Linux: Align Electron’s temp with `linux-chromium-tmp-env.ts` (TMPDIR before electron
@@ -136,6 +137,10 @@ registerStaticIpcHandlers();
 
 app.on("ready", () => {
   runAppReady();
+});
+
+app.on("before-quit", () => {
+  flushWorkspaceStorePendingPersist();
 });
 
 app.on("window-all-closed", () => {

@@ -15,7 +15,7 @@ import { wpnJsonProjectOwnedBy } from "./wpn-json-service";
 import type { WpnNoteRow } from "./wpn-types";
 
 function persist(store: WorkspaceStore): void {
-  store.persist();
+  store.persistDebounced();
 }
 
 /** Same `error` string as cloud `PATCH /wpn/notes/:id` on duplicate sibling title. */
@@ -333,17 +333,33 @@ export function wpnJsonDeleteNotes(
   ownerId: string,
   ids: string[],
 ): void {
-  const unique = [...new Set(ids)];
-  for (const noteId of unique) {
-    if (!wpnJsonGetNoteById(store, ownerId, noteId)) {
-      continue;
+  const seeds = [...new Set(ids)].filter((id) =>
+    wpnJsonGetNoteById(store, ownerId, id),
+  );
+  if (seeds.length === 0) {
+    persist(store);
+    return;
+  }
+
+  const toDelete = new Set<string>();
+  for (const slot of store.slots) {
+    const childMap = new Map<string | null, string[]>();
+    for (const n of slot.notes) {
+      const arr = childMap.get(n.parent_id) ?? [];
+      arr.push(n.id);
+      childMap.set(n.parent_id, arr);
     }
-    for (const slot of store.slots) {
-      const before = slot.notes.length;
-      slot.notes = slot.notes.filter((x) => x.id !== noteId);
-      if (slot.notes.length !== before) {
-        break;
+    const stack = seeds.filter((id) => slot.notes.some((n) => n.id === id));
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      if (toDelete.has(id)) continue;
+      toDelete.add(id);
+      for (const childId of childMap.get(id) ?? []) {
+        stack.push(childId);
       }
+    }
+    if (toDelete.size > 0) {
+      slot.notes = slot.notes.filter((x) => !toDelete.has(x.id));
     }
   }
   persist(store);
