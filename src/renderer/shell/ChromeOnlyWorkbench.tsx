@@ -918,16 +918,6 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 Close
               </button>
             ) : null}
-            {isElectronVaultWorkbench && cloudAuth.status === "signedOut" ? (
-              <button
-                type="button"
-                className="rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/30 hover:text-foreground"
-                onClick={() => auth.openElectronSyncAuth("login")}
-                title="Sign in or register to sync notes with the configured API"
-              >
-                Sync
-              </button>
-            ) : null}
             {cloudAuth.status === "signedIn" ? (
               <button
                 type="button"

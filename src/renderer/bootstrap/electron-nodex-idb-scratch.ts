@@ -1,6 +1,7 @@
 import type { NodexRendererApi } from "../../shared/nodex-renderer-api";
 import { setElectronIdbScratchOverlay } from "../../shared/nodex-host-access";
 import { isElectronCloudWpnSession } from "../auth/electron-cloud-session";
+import { readElectronRunMode } from "../auth/electron-run-mode";
 import { webScratchPlainStubOverrides } from "../wpnscratch/web-scratch-nodex-api";
 
 function isElectronRenderer(): boolean {
@@ -23,6 +24,10 @@ export function installElectronNodexIdbScratchProxy(): void {
 
   const recompute = async (): Promise<void> => {
     if (isElectronCloudWpnSession()) {
+      setElectronIdbScratchOverlay(null);
+      return;
+    }
+    if (readElectronRunMode() !== "scratch") {
       setElectronIdbScratchOverlay(null);
       return;
     }

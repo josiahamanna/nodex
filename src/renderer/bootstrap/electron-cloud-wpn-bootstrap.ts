@@ -24,6 +24,8 @@ const ELECTRON_CLOUD_WPN_DELEGATE_KEYS = new Set<keyof NodexRendererApi>([
   "nodexUndo",
   "nodexRedo",
   "wpnListWorkspaces",
+  "wpnListWorkspacesAndProjects",
+  "wpnGetFullTree",
   "wpnCreateWorkspace",
   "wpnUpdateWorkspace",
   "wpnDeleteWorkspace",

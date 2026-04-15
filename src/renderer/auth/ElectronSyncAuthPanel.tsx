@@ -73,7 +73,18 @@ export function ElectronSyncAuthPanel({
       <p className="mt-3 text-[12px] leading-5 text-muted-foreground">
         Sign in to sync notes with your account. Local workspace files stay on this device.
       </p>
-      <div className="mt-5 space-y-3">
+      <form
+        className="mt-5 space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (auth.busy || !canSubmit) return;
+          if (mode === "login") {
+            void dispatch(cloudLoginThunk({ email: email.trim(), password }));
+          } else {
+            void dispatch(cloudRegisterThunk({ email: email.trim(), password }));
+          }
+        }}
+      >
         <div className="flex gap-2 text-[11px]">
           <button
             type="button"
@@ -152,21 +163,13 @@ export function ElectronSyncAuthPanel({
           </div>
         ) : null}
         <button
-          type="button"
+          type="submit"
           disabled={auth.busy || !canSubmit}
           className="nodex-auth-submit w-full rounded-md border border-border px-3 py-2.5 text-[13px] font-medium shadow-sm hover:bg-muted/50 disabled:opacity-50"
-          onClick={() => {
-            if (!canSubmit) return;
-            if (mode === "login") {
-              void dispatch(cloudLoginThunk({ email: email.trim(), password }));
-            } else {
-              void dispatch(cloudRegisterThunk({ email: email.trim(), password }));
-            }
-          }}
         >
           {auth.busy ? "…" : mode === "login" ? "Sign in" : "Signup"}
         </button>
-      </div>
+      </form>
     </div>
   );
 }

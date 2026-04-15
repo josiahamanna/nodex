@@ -106,6 +106,8 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.ELECTRON_OPEN_FILE_WPN_WINDOW_CLOSE_SENDER),
   setElectronWpnBackendForSession: (mode: "file" | "cloud") =>
     ipcRenderer.invoke(IPC_CHANNELS.ELECTRON_SET_WPN_BACKEND_FOR_SENDER, { mode }),
+  clearElectronWorkspaceRoots: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.ELECTRON_CLEAR_WORKSPACE_ROOTS),
   openExternalUrl: (url: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.UI_OPEN_EXTERNAL_URL, url),
   getUserPluginsDirectory: () =>

@@ -286,6 +286,17 @@ function syncWpnUnsignedReadStub<T>(apiPath: string): T | undefined {
   if (normalized === "/wpn/workspaces") {
     return { workspaces: [] } as T;
   }
+  if (normalized === "/wpn/workspaces-and-projects") {
+    return { workspaces: [], projects: [] } as T;
+  }
+  if (normalized === "/wpn/full-tree") {
+    return {
+      workspaces: [],
+      projects: [],
+      notesByProjectId: {},
+      explorerStateByProjectId: {},
+    } as T;
+  }
   if (/^\/wpn\/workspaces\/[^/]+\/projects$/.test(normalized)) {
     return { projects: [] } as T;
   }
@@ -1177,6 +1188,10 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       ok: false as const,
       error: "Electron only",
     }),
+    clearElectronWorkspaceRoots: async () => ({
+      ok: false as const,
+      error: "Electron only",
+    }),
   };
 
   if (useWebTryoutWpnIndexedDb()) {
@@ -1361,6 +1376,10 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       error: "Not available in plain browser",
     }),
     setElectronWpnBackendForSession: async () => ({
+      ok: false as const,
+      error: "Not available in plain browser",
+    }),
+    clearElectronWorkspaceRoots: async () => ({
       ok: false as const,
       error: "Not available in plain browser",
     }),

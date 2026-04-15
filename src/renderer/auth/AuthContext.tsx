@@ -197,42 +197,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
   const chooseElectronRunMode = useCallback((mode: ElectronRunModeChoice) => {
     void (async () => {
-      if (mode === "scratch") {
-        void store.dispatch(cloudLogoutThunk());
-      }
       writeElectronRunMode(mode);
       setElectronRunModeState(mode);
       setAccessToken(null);
-      /** Before any awaited IPC: avoids a gap where main is cloud but {@link getNodex} still hits RxDB → file-vault IPC. */
       syncElectronCloudWpnOverlayFromRunMode();
-
-      if (mode === "local") {
-        setState({ status: "authed", user: LOCAL_AUTH_USER });
-      } else if (mode === "cloud") {
-        setState({ status: "anon", user: null });
-      } else {
-        setState({ status: "anon", user: null });
-      }
 
       const { getNodex } = await import("../../shared/nodex-host-access");
       const nodex = getNodex();
       const argvCloud =
         typeof window !== "undefined" && window.__NODEX_ELECTRON_WPN_BACKEND__ === "cloud";
       const wantsCloud = mode === "cloud";
-      if (wantsCloud && !argvCloud) {
-        await nodex.setElectronWpnBackendForSession("cloud");
-        await nodex.applyElectronPrimaryWpnBackend({ backend: "file", relaunch: false });
-        return;
+
+      if (mode === "scratch") {
+        try {
+          await store.dispatch(cloudLogoutThunk()).unwrap();
+        } catch {
+          /* ignore: still proceed with scratch init */
+        }
+        try {
+          const { destroyWpnScratchIndexedDb } = await import(
+            "../wpnscratch/wpn-scratch-store"
+          );
+          await destroyWpnScratchIndexedDb();
+        } catch {
+          /* non-fatal: IDB may not exist yet */
+        }
+        try {
+          await nodex.clearElectronWorkspaceRoots();
+        } catch {
+          /* non-fatal */
+        }
       }
+
       if (!wantsCloud && argvCloud) {
         await nodex.openFileWpnWindowCloseSender();
         return;
       }
+
       await nodex.setElectronWpnBackendForSession(wantsCloud ? "cloud" : "file");
       await nodex.applyElectronPrimaryWpnBackend({
         backend: wantsCloud ? "cloud" : "file",
         relaunch: false,
       });
+
+      try {
+        await nodex.reloadWindow();
+      } catch {
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
+      }
     })();
   }, []);
 
@@ -368,6 +382,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       await nodex.setElectronWpnBackendForSession("file");
       syncElectronCloudWpnOverlayFromRunMode();
       await nodex.applyElectronPrimaryWpnBackend({ backend: "file", relaunch: false });
+      try {
+        await nodex.reloadWindow();
+      } catch {
+        window.location.reload();
+      }
     })();
   }, []);
 

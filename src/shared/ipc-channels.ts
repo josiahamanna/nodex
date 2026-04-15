@@ -165,6 +165,8 @@ export const IPC_CHANNELS = {
   ELECTRON_OPEN_FILE_WPN_WINDOW_CLOSE_SENDER: "electron:open-file-wpn-window-close-sender",
   /** Renderer → main: set this webContents WPN backend for vault IPC guards (single-window cloud session). */
   ELECTRON_SET_WPN_BACKEND_FOR_SENDER: "electron:set-wpn-backend-for-sender",
+  /** Renderer → main: release any open workspace and clear roots so scratch/cloud mode switch starts empty. */
+  ELECTRON_CLEAR_WORKSPACE_ROOTS: "electron:clear-workspace-roots",
   /** Main → renderer: periodic nudge to run HTTP sync (`DesktopHost.onSyncTrigger`). */
   DESKTOP_SYNC_TRIGGER: "desktop:sync-trigger",
   /** Main → renderer: debounced nudge after `WorkspaceStore.persist` (WPN JSON on disk); refetch Redux notes. */

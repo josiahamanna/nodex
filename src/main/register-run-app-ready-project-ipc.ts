@@ -144,6 +144,31 @@ export function registerRunAppReadyProjectIpc(userDataPath: string): void {
     };
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.ELECTRON_CLEAR_WORKSPACE_ROOTS);
+  ipcMain.handle(IPC_CHANNELS.ELECTRON_CLEAR_WORKSPACE_ROOTS, () => {
+    if (ctx.scratchSession) {
+      const res = closeWorkspace(userDataPath);
+      if (res.ok) {
+        applyWorkspaceActivateResult(res);
+      }
+    } else if (ctx.workspaceRoots.length > 0) {
+      const res = closeWorkspace(userDataPath);
+      if (res.ok) {
+        applyWorkspaceActivateResult(res);
+      }
+    } else {
+      applyWorkspaceActivateResult({
+        ok: true,
+        root: "",
+        dbPath: "",
+        workspaceRoots: [],
+      });
+    }
+    clearNodexUndoRedo();
+    broadcastProjectRootChanged();
+    return { ok: true as const };
+  });
+
   ipcMain.handle(IPC_CHANNELS.PROJECT_SAVE_SCRATCH_TO_FOLDER, async () => ({
     ok: false as const,
     error:

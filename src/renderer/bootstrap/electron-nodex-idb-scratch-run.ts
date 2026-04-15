@@ -1,5 +1,6 @@
 import { setElectronWorkspaceRxdbOverlay } from "../../shared/nodex-host-access";
 import { isElectronCloudWpnSession } from "../auth/electron-cloud-session";
+import { readElectronRunMode } from "../auth/electron-run-mode";
 import { syncElectronCloudWpnOverlayFromRunMode } from "./electron-cloud-wpn-bootstrap";
 import { runElectronLegacyScratchWpnMigrationOnce } from "./electron-legacy-scratch-wpn-migration";
 import { installElectronNodexIdbScratchProxy } from "./electron-nodex-idb-scratch";
@@ -27,7 +28,8 @@ void (async () => {
     typeof window !== "undefined" &&
     window.Nodex &&
     isElectronUserAgent() &&
-    !isElectronCloudWpnSession()
+    !isElectronCloudWpnSession() &&
+    readElectronRunMode() !== "scratch"
   ) {
     setElectronWorkspaceRxdbOverlay(createElectronWorkspaceRxdbNodexOverlay(window.Nodex));
   }

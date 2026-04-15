@@ -175,6 +175,8 @@ export type NodexRendererApi = {
   setElectronWpnBackendForSession: (
     mode: "file" | "cloud",
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Electron: release any open workspace / scratch session so the next mode boots against empty roots. */
+  clearElectronWorkspaceRoots: () => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Open http(s) or mailto in the system browser (Electron); web shim uses `window.open`. */
   openExternalUrl: (
     url: string,
