@@ -19,6 +19,7 @@ import { registerWpnBatchRoutes } from "./wpn-batch-routes.js";
 import { registerWpnReadRoutes } from "./wpn-routes.js";
 import { registerWpnWriteRoutes } from "./wpn-write-routes.js";
 import { registerMcpDeviceAuthRoutes } from "./mcp-device-auth-routes.js";
+import { registerWpnImportExportRoutes } from "./wpn-import-export-routes.js";
 import {
   buildSessionsAfterAppend,
   rotateRefreshSession,
@@ -70,6 +71,9 @@ export function registerRoutes(
   registerMeAssetsRoutes(app, { jwtSecret });
   registerBuiltinPluginRoutes(app, { jwtSecret });
   registerMcpDeviceAuthRoutes(app, { jwtSecret });
+  app.register(
+    async (scoped) => registerWpnImportExportRoutes(scoped, { jwtSecret }),
+  );
 
   app.post("/auth/register", async (request, reply) => {
     const parsed = registerBody.safeParse(request.body);

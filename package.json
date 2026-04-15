@@ -150,6 +150,7 @@
     "dompurify": "^3.3.3",
     "esbuild": "^0.27.4",
     "express": "^5.2.1",
+    "fflate": "^0.8.2",
     "jsonwebtoken": "^9.0.3",
     "monaco-editor": "^0.55.1",
     "multer": "^2.1.1",

@@ -16,6 +16,7 @@ import {
   scratchGetNoteForEditor,
   scratchRenameNote,
   scratchSaveNoteContent,
+  scratchWpnBuildExportBundle,
   scratchWpnCreateNoteInProject,
   scratchWpnCreateProject,
   scratchWpnCreateWorkspace,
@@ -26,6 +27,7 @@ import {
   scratchWpnGetExplorerState,
   scratchWpnGetFullTree,
   scratchWpnGetNote,
+  scratchWpnImportFromBundle,
   scratchWpnListAllNotesWithContext,
   scratchWpnListBacklinksToNote,
   scratchWpnListNotes,
@@ -218,5 +220,53 @@ export function webScratchPlainStubOverrides(): Partial<NodexRendererApi> {
     wpnMoveNote: (payload) => scratchWpnMoveNote(payload),
     wpnDuplicateNoteSubtree: (projectId, noteId) =>
       scratchWpnDuplicateNoteSubtree(projectId, noteId),
+    wpnExportWorkspaces: async (workspaceIds?: string[]) => {
+      const { zipSync, strToU8 } = await import("fflate");
+      const { metadata, noteContents } = await scratchWpnBuildExportBundle(workspaceIds);
+      const files: Record<string, Uint8Array> = {
+        "metadata.json": strToU8(JSON.stringify(metadata, null, 2)),
+      };
+      for (const [noteId, content] of noteContents) {
+        files[`notes/${noteId}.md`] = strToU8(content);
+      }
+      const zipped = zipSync(files, { level: 6 });
+      const blob = new Blob([new Uint8Array(zipped)], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "nodex-export.zip";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    },
+    wpnImportWorkspaces: async (file?: File) => {
+      let zipFile = file;
+      if (!zipFile) {
+        zipFile = await new Promise<File>((resolve, reject) => {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept = ".zip";
+          input.onchange = () => {
+            const f = input.files?.[0];
+            if (f) resolve(f); else reject(new Error("No file selected"));
+          };
+          input.click();
+        });
+      }
+      const { unzipSync, strFromU8 } = await import("fflate");
+      const buf = new Uint8Array(await zipFile.arrayBuffer());
+      const unzipped = unzipSync(buf);
+      const metaBytes = unzipped["metadata.json"];
+      if (!metaBytes) throw new Error("Invalid ZIP: missing metadata.json");
+      const metadata = JSON.parse(strFromU8(metaBytes)) as import("../../shared/wpn-import-export-types").WpnExportMetadata;
+      if (metadata.version !== 1) throw new Error("Unsupported export version");
+      const noteContents = new Map<string, string>();
+      for (const [path, data] of Object.entries(unzipped)) {
+        if (path.startsWith("notes/") && path.endsWith(".md")) {
+          noteContents.set(path.slice(6, -3), strFromU8(data));
+        }
+      }
+      return scratchWpnImportFromBundle(metadata, noteContents);
+    },
   };
 }

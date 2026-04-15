@@ -1893,6 +1893,23 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
               </button>
               <button
                 type="button"
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
+                onClick={() => {
+                  closeAllMenus();
+                  void (async () => {
+                    try {
+                      await getNodex().wpnExportWorkspaces([menu.id]);
+                      showToast({ severity: "info", message: "Workspace exported" });
+                    } catch (err) {
+                      showToast({ severity: "error", message: err instanceof Error ? err.message : "Export failed" });
+                    }
+                  })();
+                }}
+              >
+                Export workspace
+              </button>
+              <button
+                type="button"
                 className="block w-full rounded px-2 py-1 text-left hover:bg-destructive/15"
                 onClick={() => void onDeleteWorkspace(menu.id)}
               >
@@ -2253,6 +2270,53 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         </div>
       ) : null}
       {renderTypePicker()}
+
+      {/* ── Import / Export bottom bar ── */}
+      <div className="flex shrink-0 items-center gap-1 border-t border-border bg-muted/10 px-2 py-1">
+        <button
+          type="button"
+          className="rounded border border-border/60 px-2 py-0.5 text-[10px] hover:bg-muted/40"
+          onClick={() => {
+            void (async () => {
+              try {
+                const result = await getNodex().wpnImportWorkspaces();
+                showToast({
+                  severity: "info",
+                  message: `Imported ${result.workspaces} workspace(s), ${result.projects} project(s), ${result.notes} note(s)`,
+                });
+                window.dispatchEvent(new CustomEvent(NODEX_WPN_TREE_CHANGED_EVENT));
+              } catch (err) {
+                if (err instanceof Error && err.message === "No file selected") return;
+                showToast({
+                  severity: "error",
+                  message: err instanceof Error ? err.message : "Import failed",
+                });
+              }
+            })();
+          }}
+        >
+          Import
+        </button>
+        <button
+          type="button"
+          className="rounded border border-border/60 px-2 py-0.5 text-[10px] hover:bg-muted/40"
+          onClick={() => {
+            void (async () => {
+              try {
+                await getNodex().wpnExportWorkspaces();
+                showToast({ severity: "info", message: "All workspaces exported" });
+              } catch (err) {
+                showToast({
+                  severity: "error",
+                  message: err instanceof Error ? err.message : "Export failed",
+                });
+              }
+            })();
+          }}
+        >
+          Export All
+        </button>
+      </div>
       </div>
     </>
   );

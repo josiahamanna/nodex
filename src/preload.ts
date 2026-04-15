@@ -523,6 +523,10 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.WPN_MOVE_NOTE, payload),
   wpnDuplicateNoteSubtree: (projectId, noteId) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_DUPLICATE_NOTE_SUBTREE, projectId, noteId),
+  wpnExportWorkspaces: (workspaceIds) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_EXPORT_WORKSPACES, workspaceIds),
+  wpnImportWorkspaces: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_IMPORT_WORKSPACES),
   pullWorkspaceRxdbMirrorPayload: () =>
     ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_RXDB_MIRROR_PULL),
   flushWorkspaceRxdbMirrorToDisk: (payload: WorkspaceRxdbMirrorPayloadV1) =>

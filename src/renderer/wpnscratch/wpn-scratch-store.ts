@@ -974,6 +974,149 @@ export async function applyLegacyMainScratchWpnMigration(
   });
 }
 
+export async function scratchWpnBuildExportBundle(
+  workspaceIds?: string[],
+): Promise<{
+  metadata: import("../../shared/wpn-import-export-types").WpnExportMetadata;
+  noteContents: Map<string, string>;
+}> {
+  const b = await loadBundle();
+  const filterIds = workspaceIds && workspaceIds.length > 0 ? new Set(workspaceIds) : null;
+  const noteContents = new Map<string, string>();
+
+  type ExportWs = import("../../shared/wpn-import-export-types").WpnExportWorkspaceEntry;
+  type ExportProj = import("../../shared/wpn-import-export-types").WpnExportProjectEntry;
+  type ExportNote = import("../../shared/wpn-import-export-types").WpnExportNoteEntry;
+
+  const workspaces: ExportWs[] = [];
+  const wsList = b.workspaces
+    .filter((w) => !filterIds || filterIds.has(w.id))
+    .sort((a, c) => a.sort_index - c.sort_index || a.name.localeCompare(c.name));
+
+  for (const ws of wsList) {
+    const projects: ExportProj[] = [];
+    const projList = b.projects
+      .filter((p) => p.workspace_id === ws.id)
+      .sort((a, c) => a.sort_index - c.sort_index || a.name.localeCompare(c.name));
+
+    for (const proj of projList) {
+      const noteRows = b.notes.filter((n) => n.project_id === proj.id);
+      const notes: ExportNote[] = noteRows.map((n) => {
+        noteContents.set(n.id, n.content ?? "");
+        let metadata: Record<string, unknown> | null = null;
+        if (n.metadata_json) {
+          try { metadata = JSON.parse(n.metadata_json) as Record<string, unknown>; } catch { metadata = null; }
+        }
+        return {
+          id: n.id,
+          parent_id: n.parent_id,
+          type: n.type,
+          title: n.title,
+          sibling_index: n.sibling_index,
+          metadata,
+        };
+      });
+      projects.push({
+        id: proj.id,
+        name: proj.name,
+        sort_index: proj.sort_index,
+        color_token: proj.color_token,
+        notes,
+      });
+    }
+    workspaces.push({
+      id: ws.id,
+      name: ws.name,
+      sort_index: ws.sort_index,
+      color_token: ws.color_token,
+      projects,
+    });
+  }
+
+  return {
+    metadata: { version: 1, exported_at_ms: nowMs(), workspaces },
+    noteContents,
+  };
+}
+
+export async function scratchWpnImportFromBundle(
+  metadata: import("../../shared/wpn-import-export-types").WpnExportMetadata,
+  noteContents: Map<string, string>,
+): Promise<import("../../shared/wpn-import-export-types").WpnImportResult> {
+  const b = await loadBundle();
+  const existingNames = new Set(b.workspaces.map((w) => w.name));
+  let maxSort = b.workspaces.reduce((m, w) => Math.max(m, w.sort_index), -1);
+
+  let importedWs = 0;
+  let importedProj = 0;
+  let importedNotes = 0;
+  const t = nowMs();
+
+  for (const wsEntry of metadata.workspaces) {
+    let wsName = wsEntry.name;
+    if (existingNames.has(wsName)) {
+      let suffix = 1;
+      while (existingNames.has(`${wsEntry.name} ${suffix}`)) suffix++;
+      wsName = `${wsEntry.name} ${suffix}`;
+    }
+    existingNames.add(wsName);
+
+    const newWsId = newId();
+    b.workspaces.push({
+      id: newWsId,
+      name: wsName,
+      sort_index: ++maxSort,
+      color_token: wsEntry.color_token,
+      created_at_ms: t,
+      updated_at_ms: t,
+    });
+    importedWs++;
+
+    let nextProjSort = 0;
+    for (const projEntry of wsEntry.projects) {
+      const newProjId = newId();
+      b.projects.push({
+        id: newProjId,
+        workspace_id: newWsId,
+        name: projEntry.name,
+        sort_index: nextProjSort++,
+        color_token: projEntry.color_token,
+        created_at_ms: t,
+        updated_at_ms: t,
+      });
+      importedProj++;
+
+      const idMap = new Map<string, string>();
+      for (const ne of projEntry.notes) idMap.set(ne.id, newId());
+
+      for (const ne of projEntry.notes) {
+        const newNoteId = idMap.get(ne.id)!;
+        const newParentId = ne.parent_id !== null ? (idMap.get(ne.parent_id) ?? null) : null;
+        const content = noteContents.get(ne.id) ?? "";
+        const metadata_json = ne.metadata && Object.keys(ne.metadata).length > 0
+          ? JSON.stringify(ne.metadata)
+          : null;
+        b.notes.push({
+          id: newNoteId,
+          project_id: newProjId,
+          parent_id: newParentId,
+          type: ne.type,
+          title: ne.title,
+          content,
+          metadata_json,
+          sibling_index: ne.sibling_index,
+          created_at_ms: t,
+          updated_at_ms: t,
+        });
+        importedNotes++;
+      }
+    }
+  }
+
+  await saveBundle(b);
+  return { workspaces: importedWs, projects: importedProj, notes: importedNotes };
+}
+
 export async function destroyWpnScratchIndexedDb(): Promise<void> {
   if (typeof indexedDB === "undefined") {
     return;

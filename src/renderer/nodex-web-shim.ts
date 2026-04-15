@@ -957,6 +957,63 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
         `/wpn/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}/duplicate`,
         {},
       ),
+    wpnExportWorkspaces: async (workspaceIds) => {
+      const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
+      const token = readCloudSyncToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${syncBase}/wpn/export`, {
+        method: "POST",
+        headers,
+        credentials: "omit",
+        body: JSON.stringify({ workspaceIds: workspaceIds ?? [] }),
+      });
+      if (!res.ok) {
+        const err = await res.text().catch(() => "Export failed");
+        throw new Error(err);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "nodex-export.zip";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    },
+    wpnImportWorkspaces: async (file) => {
+      let zipFile = file;
+      if (!zipFile) {
+        zipFile = await new Promise<File>((resolve, reject) => {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept = ".zip";
+          input.onchange = () => {
+            const f = input.files?.[0];
+            if (f) resolve(f); else reject(new Error("No file selected"));
+          };
+          input.click();
+        });
+      }
+      const syncBase = resolveSyncApiBase().trim().replace(/\/$/, "");
+      const token = readCloudSyncToken();
+      const fd = new FormData();
+      fd.append("file", zipFile);
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${syncBase}/wpn/import`, {
+        method: "POST",
+        headers,
+        credentials: "omit",
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.text().catch(() => "Import failed");
+        throw new Error(err);
+      }
+      const json = (await res.json()) as { imported: { workspaces: number; projects: number; notes: number } };
+      return json.imported;
+    },
     pullWorkspaceRxdbMirrorPayload: async () => ({
       ok: false as const,
       error: "Workspace mirror is only available in Electron with a file vault.",
@@ -1651,6 +1708,12 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
     wpnDuplicateNoteSubtree: async () => ({
       newRootId: "00000000-0000-4000-8000-000000000000",
     }),
+    wpnExportWorkspaces: async () => {
+      throw new Error("Not available in plain browser — use Electron or ?web=1&api=…");
+    },
+    wpnImportWorkspaces: async () => {
+      throw new Error("Not available in plain browser — use Electron or ?web=1&api=…");
+    },
     pullWorkspaceRxdbMirrorPayload: async () => ({
       ok: false as const,
       error: "Not available in plain browser — use Electron or ?web=1&api=…",

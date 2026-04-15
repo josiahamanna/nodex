@@ -157,6 +157,8 @@ export const IPC_CHANNELS = {
   WPN_DELETE_NOTES: "wpn:delete-notes",
   WPN_MOVE_NOTE: "wpn:move-note",
   WPN_DUPLICATE_NOTE_SUBTREE: "wpn:duplicate-note-subtree",
+  WPN_EXPORT_WORKSPACES: "wpn:export-workspaces",
+  WPN_IMPORT_WORKSPACES: "wpn:import-workspaces",
   /** Renderer → main: persist first-window WPN backend and optionally relaunch the app. */
   ELECTRON_APPLY_PRIMARY_WPN_BACKEND: "electron:apply-primary-wpn-backend",
   /** Renderer → main: spawn cloud WPN window, focus it, then close sender (no relaunch). */

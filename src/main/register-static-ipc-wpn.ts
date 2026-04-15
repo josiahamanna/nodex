@@ -16,6 +16,10 @@ import {
   wpnJsonUpdateWorkspace,
 } from "../core/wpn/wpn-json-service";
 import {
+  wpnJsonBuildExportBundle,
+  wpnJsonImportFromBundle,
+} from "../core/wpn/wpn-json-import-export";
+import {
   wpnJsonCreateNote,
   wpnJsonDeleteNotes,
   wpnJsonDuplicateNoteSubtree,
@@ -422,4 +426,96 @@ export function registerStaticIpcWpnHandlers(): void {
       return wpnJsonDuplicateNoteSubtree(db, ownerId, projectId, noteId);
     },
   );
+
+  ipcMain.handle(
+    IPC_CHANNELS.WPN_EXPORT_WORKSPACES,
+    async (e, workspaceIds: unknown) => {
+      assertElectronFileVaultWindow(e);
+      const db = requireWorkspaceStore();
+      const ownerId = getWpnOwnerId();
+      const ids =
+        Array.isArray(workspaceIds)
+          ? workspaceIds.filter((x): x is string => typeof x === "string")
+          : undefined;
+      const { metadata, noteContents } = wpnJsonBuildExportBundle(db, ownerId, ids);
+
+      const { dialog, BrowserWindow } = await import("electron");
+      const win = BrowserWindow.getFocusedWindow();
+      const dialogOpts = {
+        title: "Export Workspaces",
+        defaultPath: "nodex-export.zip",
+        filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
+      };
+      const { canceled, filePath } = win
+        ? await dialog.showSaveDialog(win, dialogOpts)
+        : await dialog.showSaveDialog(dialogOpts);
+      if (canceled || !filePath) {
+        return { ok: false as const, cancelled: true };
+      }
+
+      const { default: archiver } = await import("archiver");
+      const fs = await import("fs");
+      const output = fs.createWriteStream(filePath);
+      const archive = archiver("zip", { zlib: { level: 6 } });
+
+      await new Promise<void>((resolve, reject) => {
+        output.on("close", resolve);
+        archive.on("error", reject);
+        archive.pipe(output);
+        archive.append(JSON.stringify(metadata, null, 2), { name: "metadata.json" });
+        for (const [noteId, content] of noteContents) {
+          archive.append(content, { name: `notes/${noteId}.md` });
+        }
+        void archive.finalize();
+      });
+
+      return { ok: true as const, path: filePath };
+    },
+  );
+
+  ipcMain.handle(IPC_CHANNELS.WPN_IMPORT_WORKSPACES, async (e) => {
+    assertElectronFileVaultWindow(e);
+
+    const { dialog, BrowserWindow } = await import("electron");
+    const win = BrowserWindow.getFocusedWindow();
+    const dialogOpts = {
+      title: "Import Workspaces",
+      filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
+      properties: ["openFile" as const],
+    };
+    const { canceled, filePaths } = win
+      ? await dialog.showOpenDialog(win, dialogOpts)
+      : await dialog.showOpenDialog(dialogOpts);
+    if (canceled || filePaths.length === 0) {
+      return { ok: false as const, cancelled: true };
+    }
+
+    const fs = await import("fs");
+    const { default: unzipper } = await import("unzipper");
+    const zipBuf = fs.readFileSync(filePaths[0]!);
+    const directory = await unzipper.Open.buffer(zipBuf);
+
+    let metadataJson: import("../shared/wpn-import-export-types").WpnExportMetadata | null = null;
+    const noteContents = new Map<string, string>();
+
+    for (const entry of directory.files) {
+      if (entry.path === "metadata.json") {
+        const buf = await entry.buffer();
+        metadataJson = JSON.parse(buf.toString("utf-8"));
+      } else if (entry.path.startsWith("notes/") && entry.path.endsWith(".md")) {
+        const noteId = entry.path.slice(6, -3);
+        const buf = await entry.buffer();
+        noteContents.set(noteId, buf.toString("utf-8"));
+      }
+    }
+
+    if (!metadataJson || metadataJson.version !== 1) {
+      throw new Error("Invalid or missing metadata.json in ZIP");
+    }
+
+    const db = requireWorkspaceStore();
+    const ownerId = getWpnOwnerId();
+    const result = wpnJsonImportFromBundle(db, ownerId, metadataJson, noteContents);
+    return { ok: true as const, imported: result };
+  });
 }
