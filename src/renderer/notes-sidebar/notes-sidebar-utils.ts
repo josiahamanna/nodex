@@ -1,7 +1,7 @@
 import type { DragEvent } from "react";
 import type { CreateNoteRelation, NoteListItem, NoteMovePlacement } from "@nodex/ui-types";
-import { normalizeVfsSegment } from "../../shared/note-vfs-path";
-import { isWorkspaceMountNoteId, workspaceFolderPathForNote } from "../../shared/note-workspace";
+import { normalizeVfsSegment } from "../../shared/note-vfs-path.ts";
+import { isWorkspaceMountNoteId, workspaceFolderPathForNote } from "../../shared/note-workspace.ts";
 
 export const DND_NOTE_MIME = "application/x-nodex-note-id";
 export const DND_NOTE_IDS_MIME = "application/x-nodex-note-ids";

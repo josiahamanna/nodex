@@ -1,4 +1,4 @@
-# Builds Nodex (Electron Forge) for Linux, Windows, and macOS, and publishes a GitHub Release
+# Builds Nodex (Electron Forge) for Linux and publishes a GitHub Release
 # when you push a version tag (v*). Plugins are released by a separate workflow.
 #
 # Trigger a tag push:
@@ -49,62 +49,9 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Make Windows (Squirrel)
-        run: npm run build:windows
-
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-dist
-          path: dist/exe
-          if-no-files-found: error
-          retention-days: 14
-
-  build-mac:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Rebuild native modules for Electron
-        run: npx electron-rebuild -f
-
-      - name: Make macOS (.dmg)
-        run: npm run build:mac
-
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mac-dist
-          path: dist/dmg
-          if-no-files-found: error
-          retention-days: 14
-
   publish-release:
     needs:
       - build-linux
-      - build-windows
-      - build-mac
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:

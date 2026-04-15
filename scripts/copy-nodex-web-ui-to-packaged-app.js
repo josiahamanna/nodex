@@ -15,7 +15,7 @@ function copyNodexWebUi(buildPath) {
     );
     return;
   }
-  const resourcesDir = path.join(buildPath, "resources");
+  const resourcesDir = path.resolve(buildPath, "..");
   if (!fs.existsSync(resourcesDir)) {
     console.warn("[forge] no resources directory at", resourcesDir);
     return;

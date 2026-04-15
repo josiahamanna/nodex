@@ -1,4 +1,4 @@
-import { isLocalRxdbWpnMirrorEnabledEnv } from "../../shared/workspace-rxdb-env";
+import { isLocalRxdbWpnMirrorEnabledEnv } from "../../shared/workspace-rxdb-env.ts";
 
 /**
  * ADR-016 Phase 2: when enabled, the renderer opens a local RxDB mirror for workspace/WPN data
