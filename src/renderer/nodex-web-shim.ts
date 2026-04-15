@@ -183,7 +183,15 @@ async function syncWpnFetch<T>(
   const path = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
   const url = `${syncBase.replace(/\/$/, "")}${path}`;
   const token = readCloudSyncToken();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const hasBody =
+    body !== undefined &&
+    method !== "GET" &&
+    method !== "HEAD" &&
+    method !== "DELETE";
+  const headers: Record<string, string> = {};
+  if (hasBody) {
+    headers["Content-Type"] = "application/json";
+  }
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -192,12 +200,7 @@ async function syncWpnFetch<T>(
     headers,
     credentials: "omit",
   };
-  if (
-    body !== undefined &&
-    method !== "GET" &&
-    method !== "HEAD" &&
-    method !== "DELETE"
-  ) {
+  if (hasBody) {
     init.body = JSON.stringify(body);
   }
   let res = await fetch(url, init);
@@ -501,19 +504,23 @@ async function webRequest<T>(
     baseUrl.trim() === ""
       ? `/api/v1${path}`
       : `${baseUrl.replace(/\/$/, "")}/api/v1${path}`;
+  const hasBody = body !== undefined && method !== "GET" && method !== "HEAD";
   const init: RequestInit = {
     method,
     credentials: "include",
     headers: (() => {
       const token = getAccessToken();
-      const h: Record<string, string> = { "Content-Type": "application/json" };
+      const h: Record<string, string> = {};
+      if (hasBody) {
+        h["Content-Type"] = "application/json";
+      }
       if (token) {
         h.Authorization = `Bearer ${token}`;
       }
       return h;
     })(),
   };
-  if (body !== undefined && method !== "GET" && method !== "HEAD") {
+  if (hasBody) {
     init.body = JSON.stringify(body);
   }
   const res = await fetch(url, init);

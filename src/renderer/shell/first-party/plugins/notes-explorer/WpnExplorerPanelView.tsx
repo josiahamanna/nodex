@@ -913,11 +913,24 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
 
   const onDeleteWorkspace = async (id: string) => {
     if (!window.confirm("Delete this workspace and all projects and notes inside it?")) return;
-    const { projects } = await getNodex().wpnListProjects(id);
-    const lists = await Promise.all(projects.map((p) => getNodex().wpnListNotes(p.id)));
-    const noteIds = lists.flatMap((r) => r.notes.map((n) => n.id));
-    closeShellTabsForNoteIds(tabs, noteIds);
-    await getNodex().wpnDeleteWorkspace(id);
+    lastMutationAtRef.current = Date.now();
+    closeAllMenus();
+    beginWpnSync();
+    try {
+      const { projects } = await getNodex().wpnListProjects(id);
+      const lists = await Promise.all(projects.map((p) => getNodex().wpnListNotes(p.id)));
+      const noteIds = lists.flatMap((r) => r.notes.map((n) => n.id));
+      closeShellTabsForNoteIds(tabs, noteIds);
+      await getNodex().wpnDeleteWorkspace(id);
+      markWpnSyncOk();
+    } catch (e) {
+      markWpnSyncError(e);
+      showToast({
+        severity: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
+      return;
+    }
     if (selectedProjectId) {
       const projs = projectsByWs[id] ?? [];
       if (projs.some((p) => p.id === selectedProjectId)) {
@@ -926,20 +939,31 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       }
     }
     await loadWorkspaces();
-    closeAllMenus();
   };
 
   const onDeleteProject = async (id: string) => {
     if (!window.confirm("Delete this project and all its notes?")) return;
-    const { notes } = await getNodex().wpnListNotes(id);
-    closeShellTabsForNoteIds(tabs, notes.map((n) => n.id));
-    await getNodex().wpnDeleteProject(id);
+    lastMutationAtRef.current = Date.now();
+    closeAllMenus();
+    beginWpnSync();
+    try {
+      const { notes } = await getNodex().wpnListNotes(id);
+      closeShellTabsForNoteIds(tabs, notes.map((n) => n.id));
+      await getNodex().wpnDeleteProject(id);
+      markWpnSyncOk();
+    } catch (e) {
+      markWpnSyncError(e);
+      showToast({
+        severity: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
+      return;
+    }
     if (selectedProjectId === id) {
       setSelectedProjectId(null);
       setNotes([]);
     }
     await loadWorkspaces();
-    closeAllMenus();
   };
 
   const onCreateNote = async (
