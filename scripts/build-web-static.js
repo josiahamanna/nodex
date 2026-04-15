@@ -39,6 +39,13 @@ const movedApi = moveAside(apiDir, apiAside);
 const movedHealth = moveAside(healthDir, healthAside);
 
 try {
+  // Keep release/static builds deterministic on clean runners by preparing the sync-api package types.
+  execSync("npm run build:lib -w @nodex/sync-api", {
+    stdio: "inherit",
+    cwd: path.join(__dirname, ".."),
+    env: process.env,
+  });
+
   execSync("npx next build", {
     stdio: "inherit",
     cwd: webDir,
