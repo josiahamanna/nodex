@@ -20,6 +20,7 @@ export function buildContentSecurityPolicy(): string {
     "'self'",
     "nodex-pdf-worker:",
     "blob:",
+    "https://api.github.com",
     ...(syncOrigin ? [syncOrigin] : []),
   ];
   if (process.env.NODE_ENV !== "production") {
