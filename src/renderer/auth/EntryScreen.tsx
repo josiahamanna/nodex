@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { AuthScreen } from "./AuthScreen";
 import { NodexLogo } from "../components/NodexLogo";
 import {
@@ -62,6 +62,31 @@ function MarketingHome({
       "One source of truth your AI tools can read — so your context travels with you.",
     ],
   ];
+
+  const [desktopRelease, setDesktopRelease] = useState<
+    { tag: string; deb: string | null; appimage: string | null } | "loading"
+  >("loading");
+  useEffect(() => {
+    fetch("https://api.github.com/repos/jehuamanna/nodex/releases/latest", {
+      headers: { Accept: "application/vnd.github+json" },
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("not ok");
+        return r.json() as Promise<{
+          tag_name: string;
+          assets: Array<{ name: string; browser_download_url: string }>;
+        }>;
+      })
+      .then((data) => {
+        setDesktopRelease({
+          tag: data.tag_name,
+          deb: data.assets.find((a) => a.name.endsWith(".deb"))?.browser_download_url ?? null,
+          appimage:
+            data.assets.find((a) => a.name.endsWith(".AppImage"))?.browser_download_url ?? null,
+        });
+      })
+      .catch(() => setDesktopRelease({ tag: "", deb: null, appimage: null }));
+  }, []);
 
   return (
     <div className="relative flex h-screen min-h-0 w-full flex-col overflow-y-auto bg-background text-foreground">
@@ -131,6 +156,12 @@ function MarketingHome({
               >
                 Create account
               </button>
+              <a
+                href="#download"
+                className="inline-flex h-10 items-center rounded-md border border-foreground/20 bg-background px-4 text-[13px] text-foreground hover:bg-foreground/6"
+              >
+                Download for Linux
+              </a>
             </div>
           </div>
 
@@ -217,6 +248,45 @@ function MarketingHome({
                 <div className="mt-1 text-[12px] leading-5 text-muted-foreground">{body}</div>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section id="download">
+          <h2 className="text-[20px] font-semibold tracking-tight">Download Nodex</h2>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            Linux desktop app — direct download from the latest release.
+          </p>
+          <div className="mt-5">
+            {desktopRelease === "loading" ? (
+              <p className="text-[12px] text-muted-foreground">Checking for latest release…</p>
+            ) : desktopRelease.deb !== null || desktopRelease.appimage !== null ? (
+              <div className="flex flex-col gap-3 sm:flex-row">
+                {desktopRelease.deb !== null && (
+                  <a
+                    href={desktopRelease.deb}
+                    className="flex flex-col items-center justify-center gap-0.5 rounded-lg border border-border bg-card px-8 py-4 shadow-sm transition-colors hover:bg-accent"
+                  >
+                    <span className="text-[13px] font-semibold">
+                      Download .deb{desktopRelease.tag ? ` · ${desktopRelease.tag}` : ""}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">Debian / Ubuntu</span>
+                  </a>
+                )}
+                {desktopRelease.appimage !== null && (
+                  <a
+                    href={desktopRelease.appimage}
+                    className="flex flex-col items-center justify-center gap-0.5 rounded-lg border border-border bg-card px-8 py-4 shadow-sm transition-colors hover:bg-accent"
+                  >
+                    <span className="text-[13px] font-semibold">
+                      Download .AppImage{desktopRelease.tag ? ` · ${desktopRelease.tag}` : ""}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">Any Linux</span>
+                  </a>
+                )}
+              </div>
+            ) : (
+              <p className="text-[12px] text-muted-foreground">No desktop release available yet.</p>
+            )}
           </div>
         </section>
 
