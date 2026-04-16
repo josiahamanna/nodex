@@ -11,7 +11,8 @@
     }
   },
   "scripts": {
-    "build:lib": "tsc -p tsconfig.build.json",
+    "build:shared": "tsc --outDir ../../src/shared --rootDir ../../src/shared --target ES2022 --module commonjs --moduleResolution node --declaration false --skipLibCheck --esModuleInterop ../../src/shared/note-vfs-link-rewrite.ts ../../src/shared/note-vfs-path.ts ../../src/shared/markdown-internal-note-href.ts ../../src/shared/wpn-v2-types.ts",
+    "build:lib": "npm run build:shared && tsc -p tsconfig.build.json",
     "dev": "tsx watch src/server.ts",
     "start": "NODE_ENV=production tsx src/server.ts",
     "typecheck": "tsc --noEmit",
