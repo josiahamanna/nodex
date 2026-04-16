@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractReferencedNoteIdsFromMarkdown } from "./note-link-extract.js";
+import {
+  extractReferencedLinksFromMarkdown,
+  extractReferencedNoteIdsFromMarkdown,
+} from "./note-link-extract.js";
 
 test("extracts noteId from #/n/<id> link", () => {
   const md = "see [target](#/n/abc-123) for details";
@@ -45,4 +48,26 @@ test("ignores malformed link with no href body", () => {
 test("multiple links on one line", () => {
   const md = "[a](#/n/1) [b](#/n/2) [c](#/n/3)";
   assert.deepEqual(extractReferencedNoteIdsFromMarkdown(md), ["1", "2", "3"]);
+});
+
+test("extractReferencedLinksFromMarkdown collects both forms deduped", () => {
+  const md =
+    "[id](#/n/abc) and [vfs](#/w/./A) and again [id2](#/n/abc) and [vfs2](#/w/./A) and [other](#/w/Nodex/Studio/B)";
+  const r = extractReferencedLinksFromMarkdown(md);
+  assert.deepEqual(r.noteIds, ["abc"]);
+  assert.deepEqual(r.vfsHrefPaths, ["./A", "Nodex/Studio/B"]);
+});
+
+test("extractReferencedLinksFromMarkdown: vfs-only", () => {
+  const md = "[x](#/w/./polling%20for%20WPN%20updatee)";
+  const r = extractReferencedLinksFromMarkdown(md);
+  assert.deepEqual(r.noteIds, []);
+  assert.deepEqual(r.vfsHrefPaths, ["./polling%20for%20WPN%20updatee"]);
+});
+
+test("extractReferencedLinksFromMarkdown: ignores external URLs", () => {
+  const md = "[ext](https://example.com) [rel](/home) [x](#/w/./ok)";
+  const r = extractReferencedLinksFromMarkdown(md);
+  assert.deepEqual(r.noteIds, []);
+  assert.deepEqual(r.vfsHrefPaths, ["./ok"]);
 });

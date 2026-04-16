@@ -1,6 +1,6 @@
 {
   "name": "@nodex-studio/mcp",
-  "version": "0.0.11",
+  "version": "0.0.13",
   "description": "MCP server (stdio / SSE / Streamable HTTP) for Nodex WPN — cloud sync-api or Electron loopback",
   "type": "module",
   "files": [
@@ -20,7 +20,7 @@
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/resolve-note.test.ts src/find-wpn.test.ts src/resolve-parent-in-tree.test.ts src/wpn-client.cache.test.ts src/mcp-cloud-auth-persist.test.ts src/note-link-extract.test.ts"
+    "test": "tsx --test src/resolve-note.test.ts src/find-wpn.test.ts src/resolve-parent-in-tree.test.ts src/wpn-client.cache.test.ts src/mcp-cloud-auth-persist.test.ts src/note-link-extract.test.ts src/note-vfs-resolve.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

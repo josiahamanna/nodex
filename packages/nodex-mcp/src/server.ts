@@ -12,8 +12,17 @@ import { findNotesByQuery, findProjectsByQuery } from "./find-wpn.js";
 import { parseParentWpnPath, resolveParentInTree } from "./resolve-parent-in-tree.js";
 import { resolveNoteFromCatalog } from "./resolve-note.js";
 import { errorResult, jsonResult, type ToolReturn } from "./text-result.js";
-import { WpnHttpClient, type WpnNoteDetail } from "./wpn-client.js";
-import { extractReferencedNoteIdsFromMarkdown } from "./note-link-extract.js";
+import {
+  WpnHttpClient,
+  type WpnNoteDetail,
+  type WpnNoteListItem,
+  type WpnNoteWithContextRow,
+} from "./wpn-client.js";
+import { extractReferencedLinksFromMarkdown } from "./note-link-extract.js";
+import {
+  canonicalVfsPathFromRow,
+  resolveVfsHrefToNoteId,
+} from "./note-vfs-resolve.js";
 
 const resolveInput = z.object({
   workspaceName: z.string().describe("Workspace name (trimmed, case-insensitive match)"),
@@ -815,8 +824,8 @@ export function createNodexMcpServer(
     {
       description:
         "Fetch a note plus the full transitive set of notes it links to (forward refs in markdown content), deduped by noteId, with optional one-hop backlinks. " +
-        "Walks `[label](#/n/<id>)` references breadth-first. Skips already-visited ids (cycle-safe). Stops fetching when the hard cap is reached and reports stats.truncated=true. " +
-        "Unresolvable / errored ids are listed in `unresolved` rather than throwing.",
+        "Walks both `[label](#/n/<id>)` and `[label](#/w/<vfsPath>)` references breadth-first. VFS paths support canonical (`Workspace/Project/Title`), same-project-relative (`./Title`), and tree-relative (`../sibling`) forms. " +
+        "Skips already-visited ids (cycle-safe). Stops fetching when the hard cap is reached and reports stats.truncated=true. Id-fetch errors land in `unresolved`; unresolvable VFS paths land in `unresolvedVfsLinks`.",
       inputSchema: getNoteWithLinksInput,
     },
     async (args) => {
@@ -825,12 +834,71 @@ export function createNodexMcpServer(
       const cap = args.maxNotes ?? 200;
       const includeBacklinks = args.includeBacklinks ?? true;
       try {
+        const catalog = await client.getNotesWithContext();
+        const catalogById = new Map<string, WpnNoteWithContextRow>();
+        const catalogByCanonical = new Map<string, string>();
+        for (const r of catalog) {
+          catalogById.set(r.id, r);
+          catalogByCanonical.set(canonicalVfsPathFromRow(r), r.id);
+        }
+        const projectTreeCache = new Map<string, WpnNoteListItem[]>();
+        const getProjectTree = async (projectId: string): Promise<WpnNoteListItem[]> => {
+          const hit = projectTreeCache.get(projectId);
+          if (hit) return hit;
+          const tree = await client.getNotesFlat(projectId);
+          projectTreeCache.set(projectId, tree);
+          return tree;
+        };
+
         const seed = await client.getNote(args.noteId);
         const visited = new Set<string>([seed.id]);
         const linkedNotes: Record<string, WpnNoteDetail> = {};
         const unresolved: { id: string; error: string }[] = [];
-        const queue: string[] = extractReferencedNoteIdsFromMarkdown(seed.content ?? "");
+        const unresolvedVfsLinks: {
+          vfsPath: string;
+          baseNoteId: string;
+          reason: string;
+        }[] = [];
+        const queue: string[] = [];
         let truncated = false;
+
+        const enqueueLinksFrom = async (n: WpnNoteDetail) => {
+          const { noteIds, vfsHrefPaths } = extractReferencedLinksFromMarkdown(
+            n.content ?? "",
+          );
+          for (const id of noteIds) {
+            if (!visited.has(id)) queue.push(id);
+          }
+          if (vfsHrefPaths.length === 0) return;
+          const baseRow = catalogById.get(n.id);
+          if (!baseRow) {
+            for (const p of vfsHrefPaths) {
+              unresolvedVfsLinks.push({
+                vfsPath: p,
+                baseNoteId: n.id,
+                reason: "base note missing from catalog",
+              });
+            }
+            return;
+          }
+          for (const p of vfsHrefPaths) {
+            const res = await resolveVfsHrefToNoteId(p, baseRow, {
+              catalogByCanonical,
+              getProjectTree,
+            });
+            if (res.ok) {
+              if (!visited.has(res.noteId)) queue.push(res.noteId);
+            } else {
+              unresolvedVfsLinks.push({
+                vfsPath: p,
+                baseNoteId: n.id,
+                reason: res.reason,
+              });
+            }
+          }
+        };
+
+        await enqueueLinksFrom(seed);
 
         while (queue.length > 0) {
           if (visited.size >= cap) {
@@ -843,9 +911,7 @@ export function createNodexMcpServer(
           try {
             const detail = await client.getNote(id);
             linkedNotes[id] = detail;
-            for (const next of extractReferencedNoteIdsFromMarkdown(detail.content ?? "")) {
-              if (!visited.has(next)) queue.push(next);
-            }
+            await enqueueLinksFrom(detail);
           } catch (e) {
             unresolved.push({
               id,
@@ -863,9 +929,11 @@ export function createNodexMcpServer(
           linkedNotes,
           backlinks,
           unresolved,
+          unresolvedVfsLinks,
           stats: {
             fetched: 1 + Object.keys(linkedNotes).length,
             unresolvedCount: unresolved.length,
+            unresolvedVfsCount: unresolvedVfsLinks.length,
             truncated,
             cap,
           },
