@@ -1,9 +1,21 @@
-import { fetchLatestRelease, formatBytes } from "../../lib/github-releases";
+"use client";
 
-export const dynamic = "force-dynamic";
+import { useEffect, useState } from "react";
+import {
+  fetchLatestRelease,
+  formatBytes,
+  type LatestRelease,
+} from "../../lib/github-releases";
 
-export default async function DownloadPage() {
-  const release = await fetchLatestRelease();
+export default function DownloadPage() {
+  const [release, setRelease] = useState<LatestRelease | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchLatestRelease()
+      .then(setRelease)
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-8 text-foreground">
@@ -14,7 +26,9 @@ export default async function DownloadPage() {
         </p>
       </div>
 
-      {release ? (
+      {loading ? (
+        <p className="text-muted-foreground">Loading releases…</p>
+      ) : release ? (
         <div className="flex flex-col items-center gap-6">
           <p className="text-sm text-muted-foreground">
             Latest release:{" "}

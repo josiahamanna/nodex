@@ -21,7 +21,6 @@ export async function fetchLatestRelease(): Promise<LatestRelease | null> {
   try {
     const res = await fetch(API_URL, {
       headers: { Accept: "application/vnd.github+json" },
-      next: { revalidate: 300 }, // cache for 5 minutes
     });
     if (!res.ok) return null;
     const data = (await res.json()) as {
