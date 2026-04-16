@@ -37,6 +37,11 @@ module.exports = {
     "@rollup/plugin-node-resolve": "commonjs @rollup/plugin-node-resolve",
     "@rollup/plugin-replace": "commonjs @rollup/plugin-replace",
     "rollup-plugin-esbuild": "commonjs rollup-plugin-esbuild",
+    // MCP SDK uses ESM-only exports map; externalize so Node.js resolves it at runtime.
+    "@modelcontextprotocol/sdk/client/index.js": "commonjs @modelcontextprotocol/sdk/dist/cjs/client/index.js",
+    "@modelcontextprotocol/sdk/client/stdio.js": "commonjs @modelcontextprotocol/sdk/dist/cjs/client/stdio.js",
+    "@modelcontextprotocol/sdk/client/sse.js": "commonjs @modelcontextprotocol/sdk/dist/cjs/client/sse.js",
+    "@modelcontextprotocol/sdk/client/streamableHttp.js": "commonjs @modelcontextprotocol/sdk/dist/cjs/client/streamableHttp.js",
   },
   plugins: [
     new CopyPlugin({

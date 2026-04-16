@@ -179,6 +179,23 @@ export const IPC_CHANNELS = {
   WORKSPACE_RXDB_MIRROR_PULL: "workspace:rxdb-mirror-pull",
   /** Renderer → main: write mirror payload when `NODEX_WORKSPACE_RXDB_AUTHORITY=1` (ADR-016 Phase 4). */
   WORKSPACE_RXDB_MIRROR_FLUSH_TO_DISK: "workspace:rxdb-mirror-flush-to-disk",
+  // MCP Client — connect to external MCP servers
+  MCP_CLIENT_LIST_SERVERS: "mcp-client:list-servers",
+  MCP_CLIENT_ADD_SERVER: "mcp-client:add-server",
+  MCP_CLIENT_REMOVE_SERVER: "mcp-client:remove-server",
+  MCP_CLIENT_UPDATE_SERVER: "mcp-client:update-server",
+  MCP_CLIENT_CONNECT: "mcp-client:connect",
+  MCP_CLIENT_DISCONNECT: "mcp-client:disconnect",
+  MCP_CLIENT_DISCONNECT_ALL: "mcp-client:disconnect-all",
+  MCP_CLIENT_GET_STATUS: "mcp-client:get-status",
+  MCP_CLIENT_LIST_TOOLS: "mcp-client:list-tools",
+  MCP_CLIENT_CALL_TOOL: "mcp-client:call-tool",
+  MCP_CLIENT_LIST_RESOURCES: "mcp-client:list-resources",
+  MCP_CLIENT_READ_RESOURCE: "mcp-client:read-resource",
+  MCP_CLIENT_LIST_PROMPTS: "mcp-client:list-prompts",
+  MCP_CLIENT_GET_PROMPT: "mcp-client:get-prompt",
+  /** Main → renderer: push event when an MCP server connection status changes. */
+  MCP_CLIENT_EVENT: "mcp-client:event",
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

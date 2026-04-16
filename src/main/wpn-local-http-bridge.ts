@@ -6,14 +6,27 @@ import { app } from "electron";
 import { registry } from "../core/registry";
 import { getNotesDatabase } from "../core/workspace-store";
 import { getWpnOwnerId } from "../core/wpn/wpn-owner";
-import { wpnJsonListProjects, wpnJsonListWorkspaces } from "../core/wpn/wpn-json-service";
+import {
+  wpnJsonCreateProject,
+  wpnJsonCreateWorkspace,
+  wpnJsonDeleteProject,
+  wpnJsonDeleteWorkspace,
+  wpnJsonListProjects,
+  wpnJsonListWorkspaces,
+  wpnJsonUpdateProject,
+  wpnJsonUpdateWorkspace,
+} from "../core/wpn/wpn-json-service";
 import {
   WpnJsonDuplicateTitleError,
   WPN_LOCAL_DUPLICATE_NOTE_TITLE_MESSAGE,
   wpnJsonCreateNote,
+  wpnJsonDeleteNotes,
+  wpnJsonDuplicateNoteSubtree,
   wpnJsonGetNoteById,
   wpnJsonListAllNotesWithContext,
+  wpnJsonListBacklinksToNote,
   wpnJsonListNotesFlat,
+  wpnJsonMoveNote,
   wpnJsonUpdateNote,
 } from "../core/wpn/wpn-json-notes";
 import { wpnJsonApplyVfsRewritesAfterTitleChange } from "../core/wpn/wpn-rename-vfs-rewrite";
@@ -160,7 +173,67 @@ function handleWpnRequest(
         return;
       }
 
+      if (method === "POST" && pathname === "/wpn/workspaces") {
+        const store = requireStore();
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const name =
+          typeof body.name === "string" ? body.name : "Workspace";
+        const workspace = wpnJsonCreateWorkspace(store, ownerId, name);
+        sendJson(res, 201, { workspace });
+        return;
+      }
+
+      // PATCH /wpn/workspaces/:id — update workspace
+      const wsIdMatch = /^\/wpn\/workspaces\/([^/]+)$/.exec(pathname);
+      if (method === "PATCH" && wsIdMatch) {
+        const workspaceId = decodeURIComponent(wsIdMatch[1]!);
+        const store = requireStore();
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const patch: { name?: string; sort_index?: number; color_token?: string | null } = {};
+        if (typeof body.name === "string") patch.name = body.name;
+        if (typeof body.sort_index === "number") patch.sort_index = body.sort_index;
+        if (body.color_token === null || typeof body.color_token === "string")
+          patch.color_token = body.color_token as string | null;
+        const workspace = wpnJsonUpdateWorkspace(store, ownerId, workspaceId, patch);
+        if (!workspace) {
+          sendJson(res, 404, { error: "Workspace not found" });
+          return;
+        }
+        sendJson(res, 200, { workspace });
+        return;
+      }
+
+      // DELETE /wpn/workspaces/:id — delete workspace
+      if (method === "DELETE" && wsIdMatch) {
+        const workspaceId = decodeURIComponent(wsIdMatch[1]!);
+        const store = requireStore();
+        const ok = wpnJsonDeleteWorkspace(store, ownerId, workspaceId);
+        if (!ok) {
+          sendJson(res, 404, { error: "Workspace not found" });
+          return;
+        }
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
       const wsProjectsMatch = /^\/wpn\/workspaces\/([^/]+)\/projects$/.exec(pathname);
+
+      // POST /wpn/workspaces/:workspaceId/projects — create project
+      if (method === "POST" && wsProjectsMatch) {
+        const workspaceId = decodeURIComponent(wsProjectsMatch[1]!);
+        const store = requireStore();
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const name = typeof body.name === "string" ? body.name : "Project";
+        try {
+          const project = wpnJsonCreateProject(store, ownerId, workspaceId, name);
+          sendJson(res, 201, { project });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          sendJson(res, msg === "Workspace not found" ? 404 : 400, { error: msg });
+        }
+        return;
+      }
+
       if (method === "GET" && wsProjectsMatch) {
         const workspaceId = decodeURIComponent(wsProjectsMatch[1]!);
         const store = requireStore();
@@ -311,6 +384,107 @@ function handleWpnRequest(
           }
           sendJson(res, 400, { error: msg });
         }
+        return;
+      }
+
+      // PATCH /wpn/projects/:id — update project
+      const projIdMatch = /^\/wpn\/projects\/([^/]+)$/.exec(pathname);
+      if (method === "PATCH" && projIdMatch) {
+        const projectId = decodeURIComponent(projIdMatch[1]!);
+        const store = requireStore();
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const patch: { name?: string; sort_index?: number; color_token?: string | null; workspace_id?: string } = {};
+        if (typeof body.name === "string") patch.name = body.name;
+        if (typeof body.sort_index === "number") patch.sort_index = body.sort_index;
+        if (body.color_token === null || typeof body.color_token === "string")
+          patch.color_token = body.color_token as string | null;
+        if (typeof body.workspace_id === "string") patch.workspace_id = body.workspace_id;
+        const project = wpnJsonUpdateProject(store, ownerId, projectId, patch);
+        if (!project) {
+          sendJson(res, 404, { error: "Project not found" });
+          return;
+        }
+        sendJson(res, 200, { project });
+        return;
+      }
+
+      // DELETE /wpn/projects/:id — delete project
+      if (method === "DELETE" && projIdMatch) {
+        const projectId = decodeURIComponent(projIdMatch[1]!);
+        const store = requireStore();
+        const ok = wpnJsonDeleteProject(store, ownerId, projectId);
+        if (!ok) {
+          sendJson(res, 404, { error: "Project not found" });
+          return;
+        }
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      // POST /wpn/notes/delete — bulk delete notes
+      if (method === "POST" && pathname === "/wpn/notes/delete") {
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const raw = body.ids;
+        if (!Array.isArray(raw)) {
+          sendJson(res, 400, { error: "Expected ids array" });
+          return;
+        }
+        const ids = raw.filter((x): x is string => typeof x === "string");
+        const store = requireStore();
+        wpnJsonDeleteNotes(store, ownerId, ids);
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      // POST /wpn/notes/move — move note (drag & drop)
+      if (method === "POST" && pathname === "/wpn/notes/move") {
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const projectId = typeof body.projectId === "string" ? body.projectId : "";
+        const draggedId = typeof body.draggedId === "string" ? body.draggedId : "";
+        const targetId = typeof body.targetId === "string" ? body.targetId : "";
+        const p = body.placement;
+        if (!projectId || !draggedId || !targetId) {
+          sendJson(res, 400, { error: "projectId, draggedId, targetId required" });
+          return;
+        }
+        if (p !== "before" && p !== "after" && p !== "into") {
+          sendJson(res, 400, { error: "Invalid placement (before | after | into)" });
+          return;
+        }
+        const store = requireStore();
+        try {
+          wpnJsonMoveNote(store, ownerId, projectId, draggedId, targetId, p);
+          sendJson(res, 200, { ok: true });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          sendJson(res, msg === "Project not found" ? 404 : 400, { error: msg });
+        }
+        return;
+      }
+
+      // POST /wpn/projects/:projectId/notes/:noteId/duplicate — duplicate subtree
+      const dupMatch = /^\/wpn\/projects\/([^/]+)\/notes\/([^/]+)\/duplicate$/.exec(pathname);
+      if (method === "POST" && dupMatch) {
+        const projectId = decodeURIComponent(dupMatch[1]!);
+        const noteId = decodeURIComponent(dupMatch[2]!);
+        const store = requireStore();
+        try {
+          const result = wpnJsonDuplicateNoteSubtree(store, ownerId, projectId, noteId);
+          sendJson(res, 201, result);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          sendJson(res, msg === "Project not found" ? 404 : 400, { error: msg });
+        }
+        return;
+      }
+
+      // GET /wpn/backlinks/:noteId — list notes referencing a given note
+      const backlinksMatch = /^\/wpn\/backlinks\/([^/]+)$/.exec(pathname);
+      if (method === "GET" && backlinksMatch) {
+        const noteId = decodeURIComponent(backlinksMatch[1]!);
+        const store = requireStore();
+        const sources = wpnJsonListBacklinksToNote(store, ownerId, noteId);
+        sendJson(res, 200, { sources });
         return;
       }
 

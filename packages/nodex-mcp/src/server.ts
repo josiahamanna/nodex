@@ -189,6 +189,71 @@ const writeNoteInput = z.discriminatedUnion("mode", [
   }),
 ]);
 
+const createWorkspaceInput = z.object({
+  name: z.string().min(1).describe("Name for the new workspace."),
+});
+
+const updateWorkspaceInput = z.object({
+  workspaceId: z.string().describe("Workspace UUID."),
+  name: z.string().optional().describe("New name for the workspace."),
+  sort_index: z.number().optional().describe("Sort order index."),
+  color_token: z.string().nullable().optional().describe("Color token string, or null to clear."),
+});
+
+const deleteWorkspaceInput = z.object({
+  workspaceId: z.string().describe("Workspace UUID to delete. Deletes all contained projects and notes."),
+});
+
+const createProjectInput = z.object({
+  workspaceId: z.string().describe("Parent workspace UUID."),
+  name: z.string().min(1).describe("Name for the new project."),
+});
+
+const updateProjectInput = z.object({
+  projectId: z.string().describe("Project UUID."),
+  name: z.string().optional().describe("New name for the project."),
+  sort_index: z.number().optional().describe("Sort order index."),
+  color_token: z.string().nullable().optional().describe("Color token string, or null to clear."),
+  workspace_id: z.string().optional().describe("Move project to a different workspace by id."),
+});
+
+const deleteProjectInput = z.object({
+  projectId: z.string().describe("Project UUID to delete. Deletes all contained notes."),
+});
+
+const deleteNotesInput = z.object({
+  ids: z.array(z.string()).min(1).describe("Array of note UUIDs to delete (bulk). Descendants are also removed."),
+});
+
+const moveNoteInput = z.object({
+  projectId: z.string().describe("Project UUID the note belongs to."),
+  draggedId: z.string().describe("Note UUID to move."),
+  targetId: z.string().describe("Note UUID that is the drop target."),
+  placement: z.enum(["before", "after", "into"]).describe(
+    "Where to place relative to target: before (sibling above), after (sibling below), into (first child of target).",
+  ),
+});
+
+const duplicateSubtreeInput = z.object({
+  projectId: z.string().describe("Project UUID."),
+  noteId: z.string().describe("Root note UUID of the subtree to duplicate."),
+});
+
+const backlinksInput = z.object({
+  noteId: z.string().describe("Note UUID to find backlinks for (notes whose content references this note)."),
+});
+
+const exportWorkspacesInput = z.object({
+  workspaceIds: z
+    .array(z.string())
+    .optional()
+    .describe("Optional list of workspace UUIDs to export. Omit to export all."),
+});
+
+const importWorkspacesInput = z.object({
+  zipBase64: z.string().describe("Base64-encoded ZIP file content from a previous export."),
+});
+
 const nodexLoginInput = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -280,12 +345,16 @@ function parseJwtUnverified(accessToken: string): {
 
 const MCP_INSTRUCTIONS =
   "Nodex WPN tools: nodex_list_wpn lists workspaces / projects / notes or a full_tree; " +
+  "nodex_create_workspace / nodex_update_workspace / nodex_delete_workspace manage workspaces; " +
+  "nodex_create_project / nodex_update_project / nodex_delete_project manage projects; " +
   "nodex_find_projects / nodex_find_notes resolve by name or UUID with path (Workspace / Project / Title) and ambiguity hints; " +
   "nodex_resolve_note finds a noteId from workspace+project+title; nodex_get_note reads a note; " +
   "nodex_get_note_title returns only { noteId, title } for composing renames; nodex_note_rename PATCHes the full title (duplicate sibling title → error); " +
   "nodex_execute_note resolves by title or id, returns ambiguity (path + noteId per candidate) for the user to pick, or returns the full note when unique — then the agent follows note.content; " +
   "nodex_create_child_note creates a direct child under a parent given by parentNoteId OR by workspace+project+nested title path OR parentWpnPath string; " +
-  "nodex_write_note patches or creates notes; nodex_write_back_child creates a child under a task note after completing work scoped to that note. " +
+  "nodex_write_note patches or creates notes; nodex_delete_notes bulk-deletes notes by id; nodex_move_note reparents/reorders a note (before/after/into); nodex_duplicate_subtree copies a note branch; " +
+  "nodex_backlinks finds notes referencing a given note id; nodex_export_workspaces / nodex_import_workspaces handle ZIP-based backup and restore; " +
+  "nodex_write_back_child creates a child under a task note after completing work scoped to that note. " +
   "Write-back policy: when you finish work that was driven by a specific Nodex note, call nodex_write_back_child with taskNoteId equal to that note so the outcome is attached as a new direct child (audit trail). " +
   "If that note already has other children, still attach the write-back as a new direct child of the same task note unless the user asked for a different placement. " +
   "Tool overlap is intentional: nodex_execute_note equals find_notes then get_note when unique; nodex_write_back_child equals get_note then write_note create_child when you only have taskNoteId; nodex_create_child_note overlaps write_back when you need path-based parent resolution. " +
@@ -293,12 +362,14 @@ const MCP_INSTRUCTIONS =
   "If any tool returns JSON with error \"unauthenticated\" and suggested_tools, call nodex_login_browser_start first (preferred), complete the browser step, use nodex_login_browser_poll with device_code until authorized, or use nodex_login — do not use nodex_logout for that case. " +
   "nodex_auth_status reports session state without exposing secrets.";
 
-export async function runMcpStdioServer(): Promise<void> {
-  const runtime = loadMcpAuthRuntime();
-  const client = new WpnHttpClient(runtime.baseUrl, runtime.holder, {
-    onTokensUpdated: () => persistIfNeeded(runtime),
-  });
-
+/**
+ * Create a fully-configured McpServer with all Nodex WPN tools registered.
+ * Reusable across transports (stdio, SSE, Streamable HTTP).
+ */
+export function createNodexMcpServer(
+  runtime: McpAuthRuntime,
+  client: WpnHttpClient,
+): McpServer {
   const mcp = new McpServer(
     { name: "nodex-mcp", version: "0.0.0" },
     {
@@ -407,6 +478,246 @@ export async function runMcpStdioServer(): Promise<void> {
           tree.push({ workspace: w, projects: projectBlocks });
         }
         return jsonResult({ scope: "full_tree", tree });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_create_workspace",
+    {
+      description:
+        "Create a new workspace. Returns the workspace id and name.",
+      inputSchema: createWorkspaceInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) {
+        return denied;
+      }
+      try {
+        const workspace = await client.createWorkspace(args.name);
+        return jsonResult({ ok: true as const, workspace });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_update_workspace",
+    {
+      description: "Update a workspace (rename, reorder, change color). Returns the updated workspace.",
+      inputSchema: updateWorkspaceInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) return denied;
+      try {
+        const patch: { name?: string; sort_index?: number; color_token?: string | null } = {};
+        if (args.name !== undefined) patch.name = args.name;
+        if (args.sort_index !== undefined) patch.sort_index = args.sort_index;
+        if (args.color_token !== undefined) patch.color_token = args.color_token;
+        const workspace = await client.updateWorkspace(args.workspaceId, patch);
+        return jsonResult({ ok: true as const, workspace });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_delete_workspace",
+    {
+      description:
+        "Delete a workspace and all its projects and notes. This is irreversible.",
+      inputSchema: deleteWorkspaceInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) return denied;
+      try {
+        await client.deleteWorkspace(args.workspaceId);
+        return jsonResult({ ok: true as const });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_create_project",
+    {
+      description:
+        "Create a new project inside a workspace. Returns the project id and name.",
+      inputSchema: createProjectInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) return denied;
+      try {
+        const project = await client.createProject(args.workspaceId, args.name);
+        return jsonResult({ ok: true as const, project });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_update_project",
+    {
+      description:
+        "Update a project (rename, reorder, change color, move to different workspace). Returns the updated project.",
+      inputSchema: updateProjectInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) return denied;
+      try {
+        const patch: { name?: string; sort_index?: number; color_token?: string | null; workspace_id?: string } = {};
+        if (args.name !== undefined) patch.name = args.name;
+        if (args.sort_index !== undefined) patch.sort_index = args.sort_index;
+        if (args.color_token !== undefined) patch.color_token = args.color_token;
+        if (args.workspace_id !== undefined) patch.workspace_id = args.workspace_id;
+        const project = await client.updateProject(args.projectId, patch);
+        return jsonResult({ ok: true as const, project });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_delete_project",
+    {
+      description:
+        "Delete a project and all its notes. This is irreversible.",
+      inputSchema: deleteProjectInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) return denied;
+      try {
+        await client.deleteProject(args.projectId);
+        return jsonResult({ ok: true as const });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_delete_notes",
+    {
+      description:
+        "Bulk delete notes by id. Descendants of each note are also removed. This is irreversible.",
+      inputSchema: deleteNotesInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) return denied;
+      try {
+        await client.deleteNotes(args.ids);
+        return jsonResult({ ok: true as const, deletedIds: args.ids });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_move_note",
+    {
+      description:
+        "Move a note within its project tree. Placement: 'before' (sibling above target), 'after' (sibling below target), 'into' (first child of target).",
+      inputSchema: moveNoteInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) return denied;
+      try {
+        await client.moveNote(args.projectId, args.draggedId, args.targetId, args.placement);
+        return jsonResult({ ok: true as const });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_duplicate_subtree",
+    {
+      description:
+        "Duplicate a note and all its descendants within the same project. Returns the new root note id.",
+      inputSchema: duplicateSubtreeInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) return denied;
+      try {
+        const result = await client.duplicateSubtree(args.projectId, args.noteId);
+        return jsonResult({ ok: true as const, ...((result && typeof result === "object") ? result : {}) });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_backlinks",
+    {
+      description:
+        "Find all notes that reference a given note id in their content (backlinks / incoming references). Returns source note ids, titles, and project ids.",
+      inputSchema: backlinksInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) return denied;
+      try {
+        const sources = await client.getBacklinks(args.noteId);
+        return jsonResult({ noteId: args.noteId, sources });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_export_workspaces",
+    {
+      description:
+        "Export workspaces as a ZIP archive (base64-encoded). Optionally filter by workspace ids. Returns base64 string of the ZIP.",
+      inputSchema: exportWorkspacesInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) return denied;
+      try {
+        const buf = await client.exportWorkspaces(args.workspaceIds);
+        const b64 = Buffer.from(buf).toString("base64");
+        return jsonResult({ ok: true as const, zipBase64Length: b64.length, zipBase64: b64 });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_import_workspaces",
+    {
+      description:
+        "Import workspaces from a base64-encoded ZIP archive (from a previous nodex_export_workspaces). Merges imported data.",
+      inputSchema: importWorkspacesInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) return denied;
+      try {
+        const buf = Buffer.from(args.zipBase64, "base64");
+        const result = await client.importWorkspaces(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+        return jsonResult({ ok: true as const, result });
       } catch (e) {
         return wpnCatch(e, runtime);
       }
@@ -922,6 +1233,32 @@ export async function runMcpStdioServer(): Promise<void> {
     },
   );
 
+  return mcp;
+}
+
+export async function runMcpStdioServer(): Promise<void> {
+  const runtime = loadMcpAuthRuntime();
+  const client = new WpnHttpClient(runtime.baseUrl, runtime.holder, {
+    onTokensUpdated: () => persistIfNeeded(runtime),
+  });
+
+  const mcp = createNodexMcpServer(runtime, client);
   const transport = new StdioServerTransport();
   await mcp.connect(transport);
+}
+
+/**
+ * Create a runtime + client pair for use by HTTP transports.
+ * Each Streamable HTTP session needs its own McpServer, so callers
+ * use `createNodexMcpServer(runtime, client)` per session.
+ */
+export function loadMcpRuntimeAndClient(): {
+  runtime: McpAuthRuntime;
+  client: WpnHttpClient;
+} {
+  const runtime = loadMcpAuthRuntime();
+  const client = new WpnHttpClient(runtime.baseUrl, runtime.holder, {
+    onTokensUpdated: () => persistIfNeeded(runtime),
+  });
+  return { runtime, client };
 }

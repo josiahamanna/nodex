@@ -4,6 +4,8 @@ import { registerStaticIpcPluginPackagingHandlers } from "./register-static-ipc-
 import { registerStaticIpcPluginWorkspaceHandlers } from "./register-static-ipc-plugin-workspace";
 import { registerRunAppReadyAssetsUndoIpc } from "./register-run-app-ready-assets-undo-ipc";
 import { registerStaticIpcWpnHandlers } from "./register-static-ipc-wpn";
+import { registerMcpClientIpc } from "./register-mcp-client-ipc";
+import { app } from "electron";
 
 export function registerStaticIpcHandlers(): void {
   registerStaticIpcNotesRegistryHandlers();
@@ -13,4 +15,6 @@ export function registerStaticIpcHandlers(): void {
   registerStaticIpcWpnHandlers();
   /** Asset listing/import + undo/redo; registered early so renderer cannot outrace `app.ready` (e.g. HMR). */
   registerRunAppReadyAssetsUndoIpc();
+  /** MCP Client: connect to external MCP servers (tools, resources, prompts). */
+  registerMcpClientIpc(app.getPath("userData"));
 }

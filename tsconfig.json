@@ -7,7 +7,12 @@
     "baseUrl": ".",
     "paths": {
       "@nodex/ui-types": ["./src/shared/nodex-preload-public-types.ts"],
-      "@nodex/platform": ["./packages/nodex-platform/src/index.ts"]
+      "@nodex/platform": ["./packages/nodex-platform/src/index.ts"],
+      "@modelcontextprotocol/sdk/client/index.js": ["./node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.d.ts"],
+      "@modelcontextprotocol/sdk/client/stdio.js": ["./node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.d.ts"],
+      "@modelcontextprotocol/sdk/client/sse.js": ["./node_modules/@modelcontextprotocol/sdk/dist/esm/client/sse.d.ts"],
+      "@modelcontextprotocol/sdk/client/streamableHttp.js": ["./node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.d.ts"],
+      "@modelcontextprotocol/sdk/shared/transport.js": ["./node_modules/@modelcontextprotocol/sdk/dist/esm/shared/transport.d.ts"]
     },
     "strict": true,
     "esModuleInterop": true,

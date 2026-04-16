@@ -1,6 +1,7 @@
 import type { BrowserWindow } from "electron";
 import type { FSWatcher } from "chokidar";
 import type { PluginLoader } from "../core/plugin-loader";
+import type { McpClientManager } from "../core/mcp-client";
 
 /** Mutable main-process state shared across IPC modules (set during `app.ready`). */
 export const ctx = {
@@ -13,6 +14,7 @@ export const ctx = {
   scratchSession: false,
   ideWorkspaceWatch: null as FSWatcher | null,
   ideWorkspaceWatchTimer: null as ReturnType<typeof setTimeout> | null,
+  mcpClientManager: null as McpClientManager | null,
 };
 
 export function getPluginLoader(): PluginLoader {

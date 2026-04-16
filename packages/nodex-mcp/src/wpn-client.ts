@@ -311,6 +311,228 @@ export class WpnHttpClient {
     return note;
   }
 
+  async updateWorkspace(
+    workspaceId: string,
+    patch: { name?: string; sort_index?: number; color_token?: string | null },
+  ): Promise<unknown> {
+    const { res, text, body: parsed } = await this.fetchWpn(
+      `/wpn/workspaces/${encodeURIComponent(workspaceId)}`,
+      "PATCH",
+      "WPN update workspace",
+      patch,
+    );
+    if (!res.ok) {
+      const err = (parsed as { error?: string })?.error ?? text.slice(0, 200);
+      throw new Error(`WPN PATCH workspace failed (${res.status}): ${err}`);
+    }
+    return (parsed as { workspace?: unknown }).workspace ?? parsed;
+  }
+
+  async deleteWorkspace(workspaceId: string): Promise<void> {
+    const { res, text, body: parsed } = await this.fetchWpn(
+      `/wpn/workspaces/${encodeURIComponent(workspaceId)}`,
+      "DELETE",
+      "WPN delete workspace",
+    );
+    if (!res.ok) {
+      const err = (parsed as { error?: string })?.error ?? text.slice(0, 200);
+      throw new Error(`WPN DELETE workspace failed (${res.status}): ${err}`);
+    }
+  }
+
+  async createProject(workspaceId: string, name: string): Promise<{ id: string; name: string }> {
+    const { res, text, body: parsed } = await this.fetchWpn(
+      `/wpn/workspaces/${encodeURIComponent(workspaceId)}/projects`,
+      "POST",
+      "WPN create project",
+      { name },
+    );
+    if (!res.ok) {
+      const err = (parsed as { error?: string })?.error ?? text.slice(0, 200);
+      throw new Error(`WPN POST project failed (${res.status}): ${err}`);
+    }
+    const project = (parsed as { project?: { id: string; name: string } }).project;
+    if (!project || typeof project.id !== "string") {
+      throw new Error("WPN POST project: missing project in response");
+    }
+    this.invalidateNotesWithContextCacheInternal();
+    return project;
+  }
+
+  async updateProject(
+    projectId: string,
+    patch: { name?: string; sort_index?: number; color_token?: string | null; workspace_id?: string },
+  ): Promise<unknown> {
+    const { res, text, body: parsed } = await this.fetchWpn(
+      `/wpn/projects/${encodeURIComponent(projectId)}`,
+      "PATCH",
+      "WPN update project",
+      patch,
+    );
+    if (!res.ok) {
+      const err = (parsed as { error?: string })?.error ?? text.slice(0, 200);
+      throw new Error(`WPN PATCH project failed (${res.status}): ${err}`);
+    }
+    this.invalidateNotesWithContextCacheInternal();
+    return (parsed as { project?: unknown }).project ?? parsed;
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    const { res, text, body: parsed } = await this.fetchWpn(
+      `/wpn/projects/${encodeURIComponent(projectId)}`,
+      "DELETE",
+      "WPN delete project",
+    );
+    if (!res.ok) {
+      const err = (parsed as { error?: string })?.error ?? text.slice(0, 200);
+      throw new Error(`WPN DELETE project failed (${res.status}): ${err}`);
+    }
+    this.invalidateNotesWithContextCacheInternal();
+  }
+
+  async deleteNotes(ids: string[]): Promise<void> {
+    const { res, text, body: parsed } = await this.fetchWpn(
+      "/wpn/notes/delete",
+      "POST",
+      "WPN delete notes",
+      { ids },
+    );
+    if (!res.ok) {
+      const err = (parsed as { error?: string })?.error ?? text.slice(0, 200);
+      throw new Error(`WPN delete notes failed (${res.status}): ${err}`);
+    }
+    this.invalidateNotesWithContextCacheInternal();
+  }
+
+  async moveNote(
+    projectId: string,
+    draggedId: string,
+    targetId: string,
+    placement: "before" | "after" | "into",
+  ): Promise<void> {
+    const { res, text, body: parsed } = await this.fetchWpn(
+      "/wpn/notes/move",
+      "POST",
+      "WPN move note",
+      { projectId, draggedId, targetId, placement },
+    );
+    if (!res.ok) {
+      const err = (parsed as { error?: string })?.error ?? text.slice(0, 200);
+      throw new Error(`WPN move note failed (${res.status}): ${err}`);
+    }
+    this.invalidateNotesWithContextCacheInternal();
+  }
+
+  async duplicateSubtree(
+    projectId: string,
+    noteId: string,
+  ): Promise<unknown> {
+    const { res, text, body: parsed } = await this.fetchWpn(
+      `/wpn/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}/duplicate`,
+      "POST",
+      "WPN duplicate subtree",
+    );
+    if (!res.ok) {
+      const err = (parsed as { error?: string })?.error ?? text.slice(0, 200);
+      throw new Error(`WPN duplicate subtree failed (${res.status}): ${err}`);
+    }
+    this.invalidateNotesWithContextCacheInternal();
+    return parsed;
+  }
+
+  async getBacklinks(noteId: string): Promise<{ id: string; title: string; project_id: string }[]> {
+    const { res, text, body: parsed } = await this.fetchWpn(
+      `/wpn/backlinks/${encodeURIComponent(noteId)}`,
+      "GET",
+      "WPN get backlinks",
+    );
+    if (!res.ok) {
+      const err = (parsed as { error?: string })?.error ?? text.slice(0, 200);
+      throw new Error(`WPN GET backlinks failed (${res.status}): ${err}`);
+    }
+    const sources = (parsed as { sources?: unknown[] }).sources;
+    return Array.isArray(sources)
+      ? (sources as { id: string; title: string; project_id: string }[])
+      : [];
+  }
+
+  async exportWorkspaces(workspaceIds?: string[]): Promise<ArrayBuffer> {
+    const doFetch = () =>
+      fetch(this.url("/wpn/export"), {
+        method: "POST",
+        headers: this.authHeaders(),
+        body: JSON.stringify(workspaceIds ? { workspaceIds } : {}),
+      });
+    let res = await doFetch();
+    if (res.status === 401 && this.holder.refreshToken) {
+      const ok = await this.tryRefresh();
+      if (ok) res = await doFetch();
+    }
+    if (!res.ok) {
+      throw new Error(`WPN export failed (${res.status})`);
+    }
+    return res.arrayBuffer();
+  }
+
+  async importWorkspaces(zipBuffer: ArrayBuffer): Promise<unknown> {
+    const boundary = `----nodex${Date.now()}`;
+    const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="import.zip"\r\nContent-Type: application/zip\r\n\r\n`;
+    const footer = `\r\n--${boundary}--\r\n`;
+    const headerBuf = new TextEncoder().encode(header);
+    const footerBuf = new TextEncoder().encode(footer);
+    const bodyBuf = new Uint8Array(headerBuf.length + zipBuffer.byteLength + footerBuf.length);
+    bodyBuf.set(headerBuf, 0);
+    bodyBuf.set(new Uint8Array(zipBuffer), headerBuf.length);
+    bodyBuf.set(footerBuf, headerBuf.length + zipBuffer.byteLength);
+
+    const h: Record<string, string> = {
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      Accept: "application/json",
+    };
+    if (this.holder.accessToken) {
+      h.Authorization = `Bearer ${this.holder.accessToken}`;
+    }
+    const doFetch = () =>
+      fetch(this.url("/wpn/import"), {
+        method: "POST",
+        headers: h,
+        body: bodyBuf,
+      });
+    let res = await doFetch();
+    if (res.status === 401 && this.holder.refreshToken) {
+      const ok = await this.tryRefresh();
+      if (ok) {
+        h.Authorization = `Bearer ${this.holder.accessToken}`;
+        res = await doFetch();
+      }
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`WPN import failed (${res.status}): ${text.slice(0, 200)}`);
+    }
+    this.invalidateNotesWithContextCacheInternal();
+    return res.json();
+  }
+
+  async createWorkspace(name: string): Promise<{ id: string; name: string }> {
+    const { res, text, body: parsed } = await this.fetchWpn(
+      "/wpn/workspaces",
+      "POST",
+      "WPN create workspace",
+      { name },
+    );
+    if (!res.ok) {
+      const err = (parsed as { error?: string })?.error ?? text.slice(0, 200);
+      throw new Error(`WPN POST workspace failed (${res.status}): ${err}`);
+    }
+    const workspace = (parsed as { workspace?: { id: string; name: string } }).workspace;
+    if (!workspace || typeof workspace.id !== "string") {
+      throw new Error("WPN POST workspace: missing workspace in response");
+    }
+    this.invalidateNotesWithContextCacheInternal();
+    return workspace;
+  }
+
   async createNote(
     projectId: string,
     body: {

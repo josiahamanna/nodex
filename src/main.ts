@@ -10,6 +10,7 @@ import { runAppReady } from "./main/run-app-ready";
 import { registerStaticIpcHandlers } from "./main/register-static-ipc";
 import { createMainWindow } from "./main/create-main-window";
 import { flushWorkspaceStorePendingPersist } from "./core/workspace-store";
+import { ctx } from "./main/main-context";
 
 /**
  * Linux: Align Electron’s temp with `linux-chromium-tmp-env.ts` (TMPDIR before electron
@@ -141,6 +142,10 @@ app.on("ready", () => {
 
 app.on("before-quit", () => {
   flushWorkspaceStorePendingPersist();
+  // Terminate all spawned MCP server child processes
+  if (ctx.mcpClientManager) {
+    ctx.mcpClientManager.disconnectAll().catch(() => {});
+  }
 });
 
 app.on("window-all-closed", () => {

@@ -1,14 +1,15 @@
 {
   "name": "@nodex-studio/mcp",
   "version": "0.0.8",
-  "description": "MCP server (stdio) for Nodex WPN over HTTP — cloud sync-api or Electron loopback",
+  "description": "MCP server (stdio / SSE / Streamable HTTP) for Nodex WPN — cloud sync-api or Electron loopback",
   "type": "module",
   "files": [
     "dist",
     "bin"
   ],
   "bin": {
-    "nodex-mcp": "bin/nodex-mcp.js"
+    "nodex-mcp": "bin/nodex-mcp.js",
+    "nodex-mcp-http": "bin/nodex-mcp-http.js"
   },
   "publishConfig": {
     "access": "public"
@@ -22,6 +23,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
+    "express": "^5.2.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {

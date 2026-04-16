@@ -1,7 +1,19 @@
 #!/usr/bin/env node
-import { runMcpStdioServer } from "./server.js";
 
-void runMcpStdioServer().catch((err) => {
-  console.error("[nodex-mcp]", err);
-  process.exit(1);
-});
+const useHttp = process.argv.includes("--http");
+
+if (useHttp) {
+  import("./http-server.js").then(({ runMcpHttpServer }) =>
+    runMcpHttpServer().catch((err) => {
+      console.error("[nodex-mcp]", err);
+      process.exit(1);
+    }),
+  );
+} else {
+  import("./server.js").then(({ runMcpStdioServer }) =>
+    runMcpStdioServer().catch((err) => {
+      console.error("[nodex-mcp]", err);
+      process.exit(1);
+    }),
+  );
+}
