@@ -5,8 +5,7 @@
       "args": ["@nodex-studio/mcp"],
       "env": {
         "NODEX_SYNC_API_BASE": "https://nodex.studio/api/v1",
-        "NODEX_MCP_CLOUD_SESSION": "1",
-        "NODEX_ACCESS_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OWRiM2VhOTlhYmQ5ZGQ0NzM0NjI5ODEiLCJlbWFpbCI6ImplaHVhbWFubmFAZ21haWwuY29tIiwidHlwIjoiYWNjZXNzIiwiaWF0IjoxNzc2MDk1MzY0LCJleHAiOjE3NzYwOTYyNjR9.6_SsOiIMqOn8sQ6qM7pGMGkVpGwj2mAKHcajr_OhgCM"
+        "NODEX_MCP_CLOUD_SESSION": "1"
       }
     }
   }

@@ -14,7 +14,7 @@ const DEV_CSP = [
   "img-src 'self' data: blob: nodex-asset:",
   "media-src 'self' data: blob: nodex-asset:",
   "font-src 'self' data:",
-  "connect-src 'self' nodex-pdf-worker: ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:* blob:",
+  "connect-src 'self' nodex-pdf-worker: ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:* https://nodex.studio wss://nodex.studio blob:",
   "worker-src 'self' blob:",
   "frame-src 'self' nodex-asset: blob: data: about: https://observablehq.com https://*.observablehq.com",
   "object-src 'self' nodex-asset: blob: data:",
@@ -86,10 +86,14 @@ module.exports = {
   hooks: {
     /** Build the shared Next.js UI (static export) before the packager copies the app tree. */
     prePackage: async () => {
+      const buildEnv = { ...process.env };
+      if (!buildEnv.NEXT_PUBLIC_NODEX_SYNC_API_URL) {
+        buildEnv.NEXT_PUBLIC_NODEX_SYNC_API_URL = "https://nodex.studio/api/v1";
+      }
       execSync("npm run build:web:static", {
         stdio: "inherit",
         cwd: path.resolve(__dirname),
-        env: { ...process.env },
+        env: buildEnv,
       });
     },
     /** After webpack plugin copies `.webpack`; populate `node_modules` for main externals + web UI. */
