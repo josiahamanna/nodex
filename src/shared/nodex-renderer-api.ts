@@ -659,6 +659,17 @@ export type NodexRendererApi = {
     targetId: string;
     placement: NoteMovePlacement;
   }) => Promise<{ ok: true }>;
+  /** Move a note (and its subtree) to a different project, rewriting VFS links. */
+  wpnMoveNoteCrossProject: (payload: {
+    noteId: string;
+    targetProjectId: string;
+    targetParentId?: string;
+  }) => Promise<{ ok: true }>;
+  /** Preview how many notes would have their links rewritten if the note moves to a different project. */
+  wpnPreviewNoteMoveVfsImpact: (
+    noteId: string,
+    targetProjectId: string,
+  ) => Promise<{ dependentNoteCount: number; dependentNoteIds: string[] }>;
   wpnDuplicateNoteSubtree: (
     projectId: string,
     noteId: string,

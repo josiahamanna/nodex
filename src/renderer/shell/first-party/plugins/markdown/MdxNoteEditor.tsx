@@ -10,9 +10,14 @@ import { useAuth } from "../../../../auth/AuthContext";
 import { useTheme } from "../../../../theme/ThemeContext";
 import {
   canonicalVfsPathFromLinkRow,
+  isSameProjectRelativeVfsPath,
   markdownVfsNoteHref,
   markdownVfsNoteHrefSameProjectRelative,
+  resolveSameProjectRelativeVfsToCanonical,
+  resolveTreeRelativeVfsPath,
 } from "../../../../../shared/note-vfs-path";
+import type { WpnNoteWithContextListItem } from "../../../../../shared/wpn-v2-types";
+import type { InternalMarkdownNoteLink } from "../../../../utils/markdown-internal-note-href";
 import { MarkdownNoteLinkPickerModal } from "./MarkdownNoteLinkPickerModal";
 import { MarkdownNoteLinkAutocompletePopover } from "./MarkdownNoteLinkAutocompletePopover";
 import { NODEX_MARKDOWN_OPEN_NOTE_LINK_PICKER_EVENT } from "./markdownNoteLinkEvents";
@@ -68,6 +73,7 @@ export function MdxNoteEditor({
   const cmResizeRafRef = useRef(0);
   const lastCaretRef = useRef({ start: 0, end: 0 });
   const wikiIndexCacheRef = useRef<WpnNoteLinkRow[] | null>(null);
+  const rawNotesCacheRef = useRef<WpnNoteWithContextListItem[] | null>(null);
   const wikiKeymapRef = useRef<MdxNoteWikiKeymapState>({
     readOnly: false,
     active: false,
@@ -172,9 +178,32 @@ export function MdxNoteEditor({
 
   useEffect(() => {
     wikiIndexCacheRef.current = null;
+    rawNotesCacheRef.current = null;
     setWikiRows([]);
     setWikiError(null);
     setWikiDismissed(false);
+  }, [note.id]);
+
+  // Eagerly load the note link index for broken-link detection in the preview.
+  useEffect(() => {
+    if (wikiIndexCacheRef.current) {
+      if (wikiRows.length === 0) setWikiRows(wikiIndexCacheRef.current);
+      return;
+    }
+    let cancelled = false;
+    void fetchWpnNoteLinkIndex()
+      .then(({ rows: list, rawNotes }) => {
+        if (cancelled) return;
+        wikiIndexCacheRef.current = list;
+        rawNotesCacheRef.current = rawNotes;
+        setWikiRows(list);
+      })
+      .catch(() => {
+        /* broken-link detection degrades gracefully — no error shown */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [note.id]);
 
   useEffect(() => {
@@ -187,9 +216,10 @@ export function MdxNoteEditor({
     setWikiLoading(true);
     setWikiError(null);
     void fetchWpnNoteLinkIndex()
-      .then((list) => {
+      .then(({ rows: list, rawNotes }) => {
         if (cancelled) return;
         wikiIndexCacheRef.current = list;
+        rawNotesCacheRef.current = rawNotes;
         setWikiRows(list);
       })
       .catch(() => {
@@ -378,6 +408,33 @@ export function MdxNoteEditor({
     }),
     [note.id, note.metadata, note.title, previewContent],
   );
+
+  const isLinkTargetValid = useMemo(() => {
+    const rows = wikiIndexCacheRef.current;
+    if (!rows || rows.length === 0) return undefined;
+    const noteIdSet = new Set(rows.map((r) => r.noteId));
+    const vfsPathSet = new Set(rows.map((r) => canonicalVfsPathFromLinkRow(r)));
+    const selfRow = rows.find((r) => r.noteId === note.id);
+    return (link: InternalMarkdownNoteLink): boolean => {
+      if (link.kind === "noteId") return noteIdSet.has(link.noteId);
+      const vfs = link.vfsPath;
+      if (vfs.startsWith("..")) {
+        const rawNotes = rawNotesCacheRef.current;
+        if (!rawNotes || rawNotes.length === 0) return true; // can't resolve — assume valid
+        const resolved = resolveTreeRelativeVfsPath(vfs, note.id, rawNotes);
+        return resolved !== null;
+      }
+      if (isSameProjectRelativeVfsPath(vfs)) {
+        if (!selfRow) return true; // can't resolve — assume valid
+        const canonical = resolveSameProjectRelativeVfsToCanonical(vfs, {
+          workspace_name: selfRow.workspaceName,
+          project_name: selfRow.projectName,
+        });
+        return canonical ? vfsPathSet.has(canonical) : true;
+      }
+      return vfsPathSet.has(vfs);
+    };
+  }, [wikiRows, note.id]);
 
   const flushNow = useCallback(() => {
     if (rafRef.current !== 0) {
@@ -661,7 +718,7 @@ export function MdxNoteEditor({
               ref={previewScrollRef}
               data-nodex-md-preview
             >
-              <MdxRenderer note={previewNote} />
+              <MdxRenderer note={previewNote} isLinkTargetValid={isLinkTargetValid} />
             </div>
           </div>
         ) : null}

@@ -3,10 +3,13 @@ import {
   resolveNoteIdByCanonicalVfsPath,
   resolveSameProjectRelativeVfsToCanonical,
   isSameProjectRelativeVfsPath,
+  isTreeRelativeVfsPath,
+  resolveTreeRelativeVfsPath,
 } from "../../shared/note-vfs-path";
 
 /**
- * Resolves explorer-style canonical path `Workspace/Project/Title`, or same-project `./Title` when
+ * Resolves explorer-style canonical path `Workspace/Project/Title`,
+ * same-project relative `./Title`, or tree-relative `../sibling` when
  * `baseNoteId` identifies the referrer note (for relative links in markdown).
  */
 export async function resolveNoteIdFromVfsPath(
@@ -19,7 +22,18 @@ export async function resolveNoteIdFromVfsPath(
     const { notes } = await nodex.wpnListAllNotesWithContext();
     const list = Array.isArray(notes) ? notes : [];
     let canonical = vfsPath.trim();
-    if (isSameProjectRelativeVfsPath(canonical) && baseNoteId) {
+
+    // Tree-relative paths: ../sibling, ../../uncle, ../sibling/child
+    if (isTreeRelativeVfsPath(canonical) && baseNoteId) {
+      const resolved = resolveTreeRelativeVfsPath(canonical, baseNoteId, list);
+      if (resolved) {
+        canonical = resolved;
+      } else {
+        return null; // unresolvable tree path
+      }
+    }
+    // Same-project relative paths: ./Title
+    else if (isSameProjectRelativeVfsPath(canonical) && baseNoteId) {
       const baseRow = list.find((n) => n.id === baseNoteId);
       if (baseRow) {
         const mapped = resolveSameProjectRelativeVfsToCanonical(canonical, baseRow);
@@ -28,6 +42,7 @@ export async function resolveNoteIdFromVfsPath(
         }
       }
     }
+
     return resolveNoteIdByCanonicalVfsPath(list, canonical);
   } catch {
     return null;

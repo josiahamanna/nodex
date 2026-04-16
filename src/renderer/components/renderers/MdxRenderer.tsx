@@ -103,6 +103,7 @@ function DocPageEmbed({ noteId }: { noteId: string }): React.ReactElement {
           onInternalNoteNavigate={shell.onInternalNoteNavigate}
           onNodexCmdLink={shell.onNodexCmdLink}
           onWelcomeShellSegmentClick={shell.onWelcomeShellSegmentClick}
+          isLinkTargetValid={shell.isLinkTargetValid}
         />
       ) : (
         <ReactMarkdownNoteBody
@@ -111,6 +112,7 @@ function DocPageEmbed({ noteId }: { noteId: string }): React.ReactElement {
           onInternalNoteNavigate={shell.onInternalNoteNavigate}
           onNodexCmdLink={shell.onNodexCmdLink}
           onWelcomeShellSegmentClick={shell.onWelcomeShellSegmentClick}
+          isLinkTargetValid={shell.isLinkTargetValid}
         />
       )}
     </div>
@@ -134,6 +136,7 @@ export function MdxRenderer({
   onInternalNoteNavigate,
   onNodexCmdLink,
   onWelcomeShellSegmentClick,
+  isLinkTargetValid,
 }: MdxRendererProps): React.ReactElement {
   const trustMode = isMdxBundledTrust(note) ? "bundled" : "user";
   const trustRemarkPlugin = useMemo(() => remarkNodexMdxTrust(trustMode), [trustMode]);
@@ -148,6 +151,7 @@ export function MdxRenderer({
     onInternalNoteNavigate,
     onNodexCmdLink,
     onWelcomeShellSegmentClick,
+    isLinkTargetValid,
   });
 
   const registry = useNodexContributionRegistryMaybe();
@@ -198,6 +202,7 @@ export function MdxRenderer({
       onInternalNoteNavigate,
       onNodexCmdLink,
       onWelcomeShellSegmentClick,
+      isLinkTargetValid,
     }),
     [
       nestingDepth,
@@ -206,6 +211,7 @@ export function MdxRenderer({
       onInternalNoteNavigate,
       onNodexCmdLink,
       onWelcomeShellSegmentClick,
+      isLinkTargetValid,
     ],
   );
 

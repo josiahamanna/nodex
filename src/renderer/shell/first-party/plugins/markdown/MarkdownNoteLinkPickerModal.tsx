@@ -35,7 +35,7 @@ export function MarkdownNoteLinkPickerModal({
     setLoading(true);
     setError(null);
     void fetchWpnNoteLinkIndex()
-      .then((list) => {
+      .then(({ rows: list }) => {
         if (cancelled) return;
         setRows(list);
       })

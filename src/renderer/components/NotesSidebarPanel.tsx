@@ -10,6 +10,7 @@ import NotesSidebarPanelContextMenu from "../notes-sidebar/NotesSidebarPanelCont
 import NotesSidebarPanelRenameModal from "../notes-sidebar/NotesSidebarPanelRenameModal";
 import NotesSidebarPanelWorkspaceBody from "../notes-sidebar/NotesSidebarPanelWorkspaceBody";
 import { useNotesSidebarPanelCore } from "../notes-sidebar/useNotesSidebarPanelCore";
+import { useVfsDependentTitleRenameChoice } from "../shell/wpn/vfsDependentTitleRenameChoice";
 
 export interface NotesSidebarPanelProps {
   notes: NoteListItem[];
@@ -23,7 +24,7 @@ export interface NotesSidebarPanelProps {
     content?: string;
     title?: string;
   }) => Promise<void>;
-  onRenameNote: (id: string, title: string) => Promise<void>;
+  onRenameNote: (id: string, title: string, options?: { updateVfsDependentLinks?: boolean }) => Promise<void>;
   onMoveNote: (payload: {
     draggedId: string;
     targetId: string;
@@ -79,6 +80,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
   prefixNoteTitleWithType = false,
 }) => {
   const { confirm, alert } = useNodexDialog();
+  const vfsRenameChoice = useVfsDependentTitleRenameChoice();
   const core = useNotesSidebarPanelCore({
     notes,
     registeredTypes,
@@ -88,10 +90,12 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
     onMoveNote,
     onMoveNotesBulk,
     workspaceRoots,
+    vfsRenamePrompt: vfsRenameChoice.prompt,
   });
 
   return (
     <div className="flex h-full min-h-0 min-w-0 w-full flex-col bg-sidebar text-sidebar-foreground">
+      {vfsRenameChoice.portal}
       <NotesSidebarPanelContextMenu
         menu={core.menu}
         menuRef={core.menuRef}
@@ -115,6 +119,7 @@ const NotesSidebarPanel: React.FC<NotesSidebarPanelProps> = ({
         openRename={core.openRename}
         workspaceLabels={workspaceLabels}
         workspaceRoots={workspaceRoots}
+        onMoveComplete={onResyncNotes}
       />
       <NotesSidebarPanelRenameModal
         renameTarget={core.renameTarget}

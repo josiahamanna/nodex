@@ -7,6 +7,10 @@ import type {
 } from "@nodex/ui-types";
 import { buildWorkspaceSidebarSections } from "../../shared/sidebar-assets-rows";
 import {
+  runWpnNoteTitleRenameWithVfsDependentsFlow,
+  type VfsDependentTitleRenameChoice,
+} from "../shell/wpn/vfsDependentTitleRenameChoice";
+import {
   minimalSelectedRoots,
   parentMapFromNotes,
   readCollapsedIds,
@@ -31,7 +35,7 @@ export interface NotesSidebarPanelCoreProps {
   registeredTypes: string[];
   currentNoteId?: string;
   onNoteSelect: (noteId: string) => void;
-  onRenameNote: (id: string, title: string) => Promise<void>;
+  onRenameNote: (id: string, title: string, options?: { updateVfsDependentLinks?: boolean }) => Promise<void>;
   onMoveNote: (payload: {
     draggedId: string;
     targetId: string;
@@ -43,6 +47,7 @@ export interface NotesSidebarPanelCoreProps {
     placement: NoteMovePlacement;
   }) => Promise<void>;
   workspaceRoots: string[];
+  vfsRenamePrompt?: (dependentNoteCount: number) => Promise<VfsDependentTitleRenameChoice>;
 }
 
 export function useNotesSidebarPanelCore({
@@ -54,6 +59,7 @@ export function useNotesSidebarPanelCore({
   onMoveNote,
   onMoveNotesBulk,
   workspaceRoots,
+  vfsRenamePrompt,
 }: NotesSidebarPanelCoreProps) {
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(readCollapsedIds);
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(() => new Set());
@@ -237,7 +243,29 @@ export function useNotesSidebarPanelCore({
     if (!t) {
       return;
     }
-    await onRenameNote(renameTarget.id, t);
+
+    if (vfsRenamePrompt) {
+      const outcome = await runWpnNoteTitleRenameWithVfsDependentsFlow({
+        noteId: renameTarget.id,
+        currentTitle: renameTarget.title,
+        newTitle: t,
+        prompt: vfsRenamePrompt,
+        rename: async (updateVfsDependentLinks) => {
+          await onRenameNote(renameTarget.id, t, { updateVfsDependentLinks });
+        },
+      });
+      if (outcome === "cancelled") {
+        setRenameTarget(null);
+        return;
+      }
+      if (outcome === "unchanged") {
+        setRenameTarget(null);
+        return;
+      }
+    } else {
+      await onRenameNote(renameTarget.id, t);
+    }
+
     setRenameTarget(null);
   };
 

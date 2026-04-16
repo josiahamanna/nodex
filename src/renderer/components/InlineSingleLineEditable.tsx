@@ -39,6 +39,7 @@ export function InlineSingleLineEditable({
   const ref = useRef<HTMLDivElement>(null);
   const initialRef = useRef(value);
   initialRef.current = value;
+  const committedRef = useRef(false);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -72,12 +73,14 @@ export function InlineSingleLineEditable({
 
   const handleBlur = () => {
     if (!commitOnBlur) return;
+    if (committedRef.current) return;
     onCommit();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
+      committedRef.current = true;
       onCommit();
       return;
     }

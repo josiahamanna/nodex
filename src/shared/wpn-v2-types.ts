@@ -65,6 +65,7 @@ export type WpnNoteWithContextListItem = {
   project_name: string;
   workspace_id: string;
   workspace_name: string;
+  parent_id: string | null;
 };
 
 /** Note that links to the target note id in markdown content. */

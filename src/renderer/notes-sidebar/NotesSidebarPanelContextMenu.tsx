@@ -1,5 +1,5 @@
 import { getNodex } from "../../shared/nodex-host-access";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
   CreateNoteRelation,
@@ -20,6 +20,7 @@ import {
   type ContextMenuState,
 } from "./notes-sidebar-utils";
 import NotesSidebarPanelContextMenuPickType from "./NotesSidebarPanelContextMenuPickType";
+import NotesSidebarPanelContextMenuMoveTarget from "./NotesSidebarPanelContextMenuMoveTarget";
 
 export interface NotesSidebarPanelContextMenuProps {
   menu: ContextMenuState | null;
@@ -50,6 +51,7 @@ export interface NotesSidebarPanelContextMenuProps {
   openRename: (id: string, title: string) => void;
   workspaceLabels: Record<string, string>;
   workspaceRoots: string[];
+  onMoveComplete?: () => void;
 }
 
 const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> = ({
@@ -75,6 +77,7 @@ const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> 
   openRename,
   workspaceLabels,
   workspaceRoots,
+  onMoveComplete,
 }) => {
   const { showToast } = useToast();
   if (!menu) {
@@ -271,6 +274,17 @@ const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> 
                     Copy note ID
                   </button>
                 </>
+              ) : null}
+              {multiSelectCount <= 1 ? (
+                <button
+                  type="button"
+                  className={ctxBtn}
+                  onClick={() =>
+                    setMenu({ ...menu, step: "pickMoveTarget" })
+                  }
+                >
+                  Move to…
+                </button>
               ) : null}
               {multiSelectCount <= 1 ? (
                 <button
@@ -505,6 +519,16 @@ const NotesSidebarPanelContextMenu: React.FC<NotesSidebarPanelContextMenuProps> 
             </>
           )}
         </>
+      ) : menu.step === "pickMoveTarget" ? (
+        <NotesSidebarPanelContextMenuMoveTarget
+          noteId={menu.anchorId!}
+          notes={notes}
+          confirm={confirm}
+          closeMenu={closeMenu}
+          setMenu={setMenu}
+          menu={menu}
+          onMoveComplete={onMoveComplete}
+        />
       ) : (
         <NotesSidebarPanelContextMenuPickType
           menu={menu}

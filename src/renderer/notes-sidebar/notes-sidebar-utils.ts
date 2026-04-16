@@ -14,7 +14,7 @@ export type ContextMenuState = {
   y: number;
   anchorId: string | null;
   workspaceProjectRoot?: string | null;
-  step: "main" | "pickType";
+  step: "main" | "pickType" | "pickMoveTarget";
   pickRelation?: CreateNoteRelation;
 };
 

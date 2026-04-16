@@ -21,7 +21,6 @@ test("canonicalVfsPathFromLinkRow joins workspace, project, title", () => {
 });
 
 test("markdownVfsNoteHref and parseVfsNoteHashPath round-trip", () => {
-  /** Last segment must not match heading slug pattern `[a-z0-9-]+` or it is parsed as a slug. */
   const path = "Documentation/Hub/My_Page";
   const href = markdownVfsNoteHref(path);
   assert.match(href, /^#\/w\//);
@@ -30,11 +29,22 @@ test("markdownVfsNoteHref and parseVfsNoteHashPath round-trip", () => {
   assert.deepEqual(parsed, { vfsPath: path });
 });
 
+test("parseVfsNoteHashPath: 3-segment canonical path with slug-like title is NOT treated as heading slug", () => {
+  // "Feature" matches /^[a-z0-9-]+$/i but is the title, not a heading slug
+  const parsed = parseVfsNoteHashPath("MyWs/MyProj/Feature");
+  assert.deepEqual(parsed, { vfsPath: "MyWs/MyProj/Feature" });
+});
+
+test("parseVfsNoteHashPath: 4-segment canonical path with heading slug", () => {
+  const parsed = parseVfsNoteHashPath("MyWs/MyProj/Feature/my-heading");
+  assert.deepEqual(parsed, { vfsPath: "MyWs/MyProj/Feature", markdownHeadingSlug: "my-heading" });
+});
+
 test("markdownVfsNoteHref includes heading slug when valid", () => {
-  const href = markdownVfsNoteHref("A/B", "my-section");
-  assert.equal(href, "#/w/A/B/my-section");
-  const parsed = parseVfsNoteHashPath("A/B/my-section");
-  assert.deepEqual(parsed, { vfsPath: "A/B", markdownHeadingSlug: "my-section" });
+  const href = markdownVfsNoteHref("A/B/Title", "my-section");
+  assert.equal(href, "#/w/A/B/Title/my-section");
+  const parsed = parseVfsNoteHashPath("A/B/Title/my-section");
+  assert.deepEqual(parsed, { vfsPath: "A/B/Title", markdownHeadingSlug: "my-section" });
 });
 
 test("parseVfsNoteHashPath: same-project relative ./Note (two segments) has no false heading slug", () => {
@@ -66,6 +76,7 @@ test("resolveNoteIdByCanonicalVfsPath finds first match", () => {
       project_name: "P",
       workspace_id: "w1",
       workspace_name: "W",
+      parent_id: null,
     },
   ];
   assert.equal(resolveNoteIdByCanonicalVfsPath(notes, "W/P/One"), "n1");

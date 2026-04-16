@@ -64,6 +64,7 @@ function noteWithContextFromBundle(
     project_name: p.name,
     workspace_id: p.workspace_id,
     workspace_name: w.name,
+    parent_id: n.parent_id,
   };
 }
 
@@ -496,6 +497,7 @@ export async function scratchWpnListAllNotesWithContext(): Promise<{
       project_name: p.name,
       workspace_id: p.workspace_id,
       workspace_name: w.name,
+      parent_id: n.parent_id,
     });
   }
   return { notes: out };

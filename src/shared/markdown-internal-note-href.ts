@@ -79,3 +79,16 @@ export function collectReferencedNoteIdsFromMarkdown(text: string): Set<string> 
   }
   return out;
 }
+
+/** Collects VFS paths from markdown link destinations (`#/w/...` links). */
+export function collectReferencedVfsPathsFromMarkdown(text: string): Set<string> {
+  const out = new Set<string>();
+  const re = /\[([^\]]*)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const href = (m[2] ?? "").trim();
+    const parsed = parseInternalMarkdownNoteLink(href);
+    if (parsed?.kind === "vfs") out.add(parsed.vfsPath);
+  }
+  return out;
+}

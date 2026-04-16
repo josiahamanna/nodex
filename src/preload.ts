@@ -521,6 +521,10 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.WPN_DELETE_NOTES, ids),
   wpnMoveNote: (payload) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_MOVE_NOTE, payload),
+  wpnMoveNoteCrossProject: (payload) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_MOVE_NOTE_CROSS_PROJECT, payload),
+  wpnPreviewNoteMoveVfsImpact: (noteId, targetProjectId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WPN_PREVIEW_NOTE_MOVE_VFS_IMPACT, noteId, targetProjectId),
   wpnDuplicateNoteSubtree: (projectId, noteId) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_DUPLICATE_NOTE_SUBTREE, projectId, noteId),
   wpnExportWorkspaces: (workspaceIds) =>

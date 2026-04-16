@@ -96,8 +96,16 @@ export const renameNote = createAsyncThunk<
   { id: string; title: string },
   { id: string; title: string; updateVfsDependentLinks?: boolean },
   NotesThunkConfig
->("notes/renameNote", async ({ id, title, updateVfsDependentLinks }, { extra }) => {
+>("notes/renameNote", async ({ id, title, updateVfsDependentLinks }, { extra, getState, dispatch }) => {
   await extra.localStore.notes.renameNote(id, title, { updateVfsDependentLinks });
+  // After VFS rewrites, re-fetch the current note so the editor picks up rewritten links
+  // before auto-save overwrites them with stale content.
+  if (updateVfsDependentLinks !== false) {
+    const currentNoteId = (getState() as { notes: NotesState }).notes.currentNote?.id;
+    if (currentNoteId && currentNoteId !== id) {
+      void dispatch(fetchNote(currentNoteId));
+    }
+  }
   return { id, title };
 });
 

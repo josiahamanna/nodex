@@ -92,6 +92,94 @@ export function markdownVfsNoteHrefSameProjectRelative(
   return markdownVfsNoteHref(`./${seg}`, markdownHeadingSlug);
 }
 
+/** Tree-relative paths start with `../` (e.g. `../sibling`, `../../uncle`, `../sibling/child`). */
+export function isTreeRelativeVfsPath(vfsPath: string): boolean {
+  const t = vfsPath.trim();
+  return t === ".." || t.startsWith("../");
+}
+
+/**
+ * Resolve a tree-relative path (`../sibling`, `../../uncle`, `../sibling/child`)
+ * by walking the note tree from the base note.
+ *
+ * - Each `..` segment walks up one level via `parent_id`.
+ * - Remaining segments walk down by matching child titles.
+ *
+ * Returns the resolved note's canonical VFS path, or `null` if unresolvable.
+ */
+export function resolveTreeRelativeVfsPath(
+  vfsPath: string,
+  baseNoteId: string,
+  notes: readonly WpnNoteWithContextListItem[],
+): string | null {
+  const t = vfsPath.trim();
+  if (!isTreeRelativeVfsPath(t)) return null;
+
+  const segments = t.split("/").filter((s) => s.length > 0);
+  // Count leading ".." segments
+  let upCount = 0;
+  while (upCount < segments.length && segments[upCount] === "..") {
+    upCount++;
+  }
+  const downSegments = segments.slice(upCount);
+  if (downSegments.length === 0) return null; // bare ".." with no target
+
+  // Build lookup maps
+  const byId = new Map<string, WpnNoteWithContextListItem>();
+  const childrenOf = new Map<string | null, WpnNoteWithContextListItem[]>();
+  for (const n of notes) {
+    byId.set(n.id, n);
+    const key = n.parent_id;
+    const arr = childrenOf.get(key);
+    if (arr) arr.push(n);
+    else childrenOf.set(key, [n]);
+  }
+
+  // Walk up from base note
+  const base = byId.get(baseNoteId);
+  if (!base) return null;
+
+  let currentId: string | null = base.parent_id;
+  const seen = new Set<string>();
+  for (let i = 1; i < upCount; i++) {
+    // First ".." already moves to parent; additional ".." climb further
+    if (!currentId) return null;
+    if (seen.has(currentId)) return null; // cycle
+    seen.add(currentId);
+    const parentNote = byId.get(currentId);
+    if (!parentNote) return null;
+    currentId = parentNote.parent_id;
+  }
+
+  // Walk down by matching child titles
+  for (const seg of downSegments) {
+    const children = childrenOf.get(currentId) ?? [];
+    const normalizedSeg = normalizeVfsSegment(seg, "Untitled");
+    const match = children.find(
+      (c) => normalizeVfsSegment(c.title, "Untitled") === normalizedSeg,
+    );
+    if (!match) return null;
+    currentId = match.id;
+  }
+
+  if (!currentId) return null;
+  const resolved = byId.get(currentId);
+  if (!resolved) return null;
+  return canonicalVfsPathFromNoteContext(resolved);
+}
+
+/** Generate a tree-relative VFS href (e.g. `#/w/../sibling`). */
+export function markdownVfsNoteHrefTreeRelative(
+  treeRelativePath: string,
+  markdownHeadingSlug?: string,
+): string {
+  const parts = treeRelativePath.split("/").filter((p) => p.length > 0);
+  const enc = parts.map((p) => encodeURIComponent(p)).join("/");
+  return markdownHeadingSlug && /^[a-z0-9-]+$/i.test(markdownHeadingSlug)
+    ? `#/w/${enc}/${markdownHeadingSlug}`
+    : `#/w/${enc}`;
+}
+
 export type ParsedVfsNoteHash = {
   vfsPath: string;
   markdownHeadingSlug?: string;
@@ -112,13 +200,26 @@ export function parseVfsNoteHashPath(pathAfterW: string): ParsedVfsNoteHash | nu
   if (parts.length === 0) return null;
   const last = parts[parts.length - 1]!;
   const isRel = parts[0] === ".";
+  const isTreeRel = parts[0] === "..";
+  if (isTreeRel) {
+    // Tree-relative: ../sibling, ../../uncle, ../sibling/child
+    // Count non-".." segments after the leading ".." segments to determine heading slug
+    let upCount = 0;
+    while (upCount < parts.length && parts[upCount] === "..") upCount++;
+    const downParts = parts.slice(upCount);
+    // Need at least one down segment (the target title); heading slug if 2+ down segments and last matches slug pattern
+    if (downParts.length >= 2 && /^[a-z0-9-]+$/i.test(last)) {
+      return { vfsPath: parts.slice(0, -1).join("/"), markdownHeadingSlug: last };
+    }
+    return { vfsPath: parts.join("/") };
+  }
   if (isRel) {
     if (parts.length >= 3 && /^[a-z0-9-]+$/i.test(last)) {
       return { vfsPath: parts.slice(0, -1).join("/"), markdownHeadingSlug: last };
     }
     return { vfsPath: parts.join("/") };
   }
-  if (parts.length >= 2 && /^[a-z0-9-]+$/i.test(last)) {
+  if (parts.length >= 4 && /^[a-z0-9-]+$/i.test(last)) {
     return { vfsPath: parts.slice(0, -1).join("/"), markdownHeadingSlug: last };
   }
   return { vfsPath: parts.join("/") };

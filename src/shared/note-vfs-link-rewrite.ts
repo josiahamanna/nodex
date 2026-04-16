@@ -2,10 +2,37 @@ import { parseInternalMarkdownNoteLink } from "./markdown-internal-note-href";
 import {
   canonicalVfsPathFromLinkRow,
   isSameProjectRelativeVfsPath,
+  isTreeRelativeVfsPath,
   markdownVfsNoteHref,
   normalizeVfsSegment,
+  resolveTreeRelativeVfsPath,
 } from "./note-vfs-path";
 import type { WpnNoteWithContextListItem } from "./wpn-v2-types";
+
+/**
+ * When a note moves to a different workspace/project, its canonical VFS path changes.
+ * Returns old and new canonical paths, or `null` when the path would not change.
+ */
+export function vfsCanonicalPathsForProjectChange(
+  oldWorkspace: string,
+  oldProject: string,
+  newWorkspace: string,
+  newProject: string,
+  title: string,
+): { oldCanonical: string; newCanonical: string } | null {
+  const oldCanonical = canonicalVfsPathFromLinkRow({
+    workspaceName: oldWorkspace,
+    projectName: oldProject,
+    title,
+  });
+  const newCanonical = canonicalVfsPathFromLinkRow({
+    workspaceName: newWorkspace,
+    projectName: newProject,
+    title,
+  });
+  if (oldCanonical === newCanonical) return null;
+  return { oldCanonical, newCanonical };
+}
 
 /**
  * When a note title changes, its canonical VFS path `Workspace/Project/Title` changes.
@@ -64,12 +91,14 @@ export function rewriteVfsCanonicalLinksInMarkdown(
   content: string,
   oldCanonical: string,
   newCanonical: string,
+  oldTitle?: string,
+  newTitle?: string,
 ): string {
   if (oldCanonical === newCanonical) return content;
   const parts = content.split(/(```[\s\S]*?```)/g);
   return parts
     .map((chunk, i) =>
-      i % 2 === 1 ? chunk : rewriteVfsLinksInPlainSegment(chunk, oldCanonical, newCanonical),
+      i % 2 === 1 ? chunk : rewriteVfsLinksInPlainSegment(chunk, oldCanonical, newCanonical, oldTitle, newTitle),
     )
     .join("");
 }
@@ -78,8 +107,10 @@ function rewriteVfsLinksInPlainSegment(
   segment: string,
   oldCanonical: string,
   newCanonical: string,
+  oldTitle?: string,
+  newTitle?: string,
 ): string {
-  let s = rewriteMarkdownLinkHrefs(segment, oldCanonical, newCanonical);
+  let s = rewriteMarkdownLinkHrefs(segment, oldCanonical, newCanonical, oldTitle, newTitle);
   s = rewriteDocLinkToAttrs(s, oldCanonical, newCanonical);
   return s;
 }
@@ -126,7 +157,9 @@ function rewriteMarkdownLinkHrefsRelativeTitle(
         oldTitleSeg,
         newTitleSeg,
       );
-      return nh === null ? match : `${bang}[${label}](${nh}${titlePart ?? ""})`;
+      if (nh === null) return match;
+      const nl = String(label).trim() === oldTitleSeg.trim() ? newTitleSeg.trim() : label;
+      return `${bang}[${nl}](${nh}${titlePart ?? ""})`;
     },
   );
 }
@@ -151,7 +184,57 @@ function rewriteDocLinkRelativeTitle(
   );
 }
 
-/** Applies canonical path rewrites plus same-project `./title` rewrites when `rowProjectId` matches `renamedProjectId`. */
+function replaceTreeRelativeTitleHref(
+  href: string,
+  oldTitleSeg: string,
+  newTitleSeg: string,
+): string | null {
+  const p = parseInternalMarkdownNoteLink(href);
+  if (p?.kind !== "vfs" || !isTreeRelativeVfsPath(p.vfsPath)) return null;
+  // The last non-".." segment is the target title
+  const segments = p.vfsPath.split("/").filter((s) => s.length > 0);
+  const lastSeg = segments[segments.length - 1];
+  if (!lastSeg || lastSeg === "..") return null;
+  const normalized = normalizeVfsSegment(lastSeg, "Untitled");
+  if (normalized !== oldTitleSeg) return null;
+  // Replace the last segment with the new title
+  segments[segments.length - 1] = newTitleSeg;
+  const newPath = segments.join("/");
+  return markdownVfsNoteHref(newPath, p.markdownHeadingSlug);
+}
+
+/**
+ * When a note title changes, rewrite tree-relative `../OldTitle` links in notes that live in the same project.
+ */
+export function rewriteTreeRelativeTitleLinksInMarkdown(
+  content: string,
+  oldTitleSeg: string,
+  newTitleSeg: string,
+): string {
+  if (oldTitleSeg === newTitleSeg) return content;
+  const parts = content.split(/(```[\s\S]*?```)/g);
+  return parts
+    .map((chunk, i) =>
+      i % 2 === 1
+        ? chunk
+        : chunk.replace(
+            /(!?)\[([^\]]*)\]\(([^)\s]+)(\s+["'][^"']*["'])?\)/g,
+            (match, bang, label, href, titlePart) => {
+              const nh = replaceTreeRelativeTitleHref(
+                String(href).trim(),
+                oldTitleSeg,
+                newTitleSeg,
+              );
+              if (nh === null) return match;
+              const nl = String(label).trim() === oldTitleSeg.trim() ? newTitleSeg.trim() : label;
+              return `${bang}[${nl}](${nh}${titlePart ?? ""})`;
+            },
+          ),
+    )
+    .join("");
+}
+
+/** Applies canonical path rewrites plus same-project `./title` and tree-relative `../title` rewrites when `rowProjectId` matches `renamedProjectId`. */
 export function rewriteMarkdownForWpnNoteTitleChange(
   content: string,
   rowProjectId: string,
@@ -161,23 +244,58 @@ export function rewriteMarkdownForWpnNoteTitleChange(
   oldTitleSeg: string,
   newTitleSeg: string,
 ): string {
-  let s = rewriteVfsCanonicalLinksInMarkdown(content, oldCanonical, newCanonical);
+  let s = rewriteVfsCanonicalLinksInMarkdown(content, oldCanonical, newCanonical, oldTitleSeg, newTitleSeg);
   if (rowProjectId === renamedProjectId) {
     s = rewriteRelativeSameProjectTitleLinksInMarkdown(s, oldTitleSeg, newTitleSeg);
+    s = rewriteTreeRelativeTitleLinksInMarkdown(s, oldTitleSeg, newTitleSeg);
   }
   return s;
+}
+
+/**
+ * Converts tree-relative `../...` links in a note's markdown to absolute `#/w/Ws/Proj/Title` links.
+ * Called before a note is moved so that relative links survive the tree position change.
+ */
+export function convertTreeRelativeLinksToAbsolute(
+  content: string,
+  sourceNoteId: string,
+  notes: readonly WpnNoteWithContextListItem[],
+): string {
+  const parts = content.split(/(```[\s\S]*?```)/g);
+  return parts
+    .map((chunk, i) =>
+      i % 2 === 1
+        ? chunk
+        : chunk.replace(
+            /(!?)\[([^\]]*)\]\(([^)\s]+)(\s+["'][^"']*["'])?\)/g,
+            (match, bang, label, href, titlePart) => {
+              const trimmed = String(href).trim();
+              const p = parseInternalMarkdownNoteLink(trimmed);
+              if (p?.kind !== "vfs" || !isTreeRelativeVfsPath(p.vfsPath)) return match;
+              const canonical = resolveTreeRelativeVfsPath(p.vfsPath, sourceNoteId, notes);
+              if (!canonical) return match;
+              const nh = markdownVfsNoteHref(canonical, p.markdownHeadingSlug);
+              return `${bang}[${label}](${nh}${titlePart ?? ""})`;
+            },
+          ),
+    )
+    .join("");
 }
 
 function rewriteMarkdownLinkHrefs(
   segment: string,
   oldCanonical: string,
   newCanonical: string,
+  oldTitle?: string,
+  newTitle?: string,
 ): string {
   return segment.replace(
     /(!?)\[([^\]]*)\]\(([^)\s]+)(\s+["'][^"']*["'])?\)/g,
     (match, bang, label, href, titlePart) => {
       const nh = replaceInternalHref(String(href).trim(), oldCanonical, newCanonical);
-      return nh === null ? match : `${bang}[${label}](${nh}${titlePart ?? ""})`;
+      if (nh === null) return match;
+      const nl = oldTitle && newTitle && String(label).trim() === oldTitle.trim() ? newTitle.trim() : label;
+      return `${bang}[${nl}](${nh}${titlePart ?? ""})`;
     },
   );
 }

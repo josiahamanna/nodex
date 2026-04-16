@@ -56,7 +56,7 @@ type Props = {
       x: number;
       y: number;
       anchorId: string | null;
-      step: "main" | "pickType";
+      step: "main" | "pickType" | "pickMoveTarget";
       pickRelation?: CreateNoteRelation;
     } | null>
   >;

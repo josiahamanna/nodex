@@ -24,6 +24,8 @@ export type MarkdownUiLinkCallbacks = {
   onInternalNoteNavigate?: (link: InternalMarkdownNoteLink) => void;
   onNodexCmdLink?: (commandId: string) => void;
   onWelcomeShellSegmentClick?: (segment: "" | WelcomeShellUrlSegment) => void;
+  /** When provided, internal note links whose target is invalid render with broken-link styling. */
+  isLinkTargetValid?: (link: InternalMarkdownNoteLink) => boolean;
 };
 
 type MarkdownHeading = "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
@@ -70,6 +72,7 @@ export function useNodexMarkdownUiComponents(
     onInternalNoteNavigate,
     onNodexCmdLink,
     onWelcomeShellSegmentClick,
+    isLinkTargetValid,
   } = callbacks;
 
   const slugCountsRef = useRef<Map<string, number>>(new Map());
@@ -146,10 +149,13 @@ export function useNodexMarkdownUiComponents(
           internal.kind === "vfs"
             ? markdownVfsNoteHref(internal.vfsPath, internal.markdownHeadingSlug)
             : markdownInternalNoteHref(internal.noteId, internal.markdownHeadingSlug);
+        const isBroken = isLinkTargetValid ? !isLinkTargetValid(internal) : false;
         return (
           <a
             {...rest}
             href={canonical}
+            className={isBroken ? "line-through opacity-60 text-destructive" : rest.className}
+            title={isBroken ? "This note no longer exists" : rest.title}
             onClick={(e) => {
               if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
                 return;
@@ -207,7 +213,7 @@ export function useNodexMarkdownUiComponents(
     };
 
     return base;
-  }, [onInternalNoteNavigate, onNodexCmdLink, onSamePageHeadingClick, onWelcomeShellSegmentClick]);
+  }, [onInternalNoteNavigate, onNodexCmdLink, onSamePageHeadingClick, onWelcomeShellSegmentClick, isLinkTargetValid]);
 
   return { components, mdxComponents: components as unknown as MDXComponents };
 }

@@ -419,6 +419,8 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [isRefreshingExplorer, setIsRefreshingExplorer] = useState(false);
+  const [isCommittingRename, setIsCommittingRename] = useState(false);
+  const [isLoadingTree, setIsLoadingTree] = useState(false);
   const [wpnNoteDropHint, setWpnNoteDropHint] = useState<{
     targetId: string;
     placement: NoteMovePlacement;
@@ -595,6 +597,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   }, [projectOpen, loadWorkspaces]);
 
   const loadProjectTree = useCallback(async (projectId: string) => {
+    setIsLoadingTree(true);
     beginWpnSync();
     try {
       const [{ notes: n }, { expanded_ids }] = await Promise.all([
@@ -614,6 +617,8 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     } catch (e) {
       markWpnSyncError(e);
       throw e;
+    } finally {
+      setIsLoadingTree(false);
     }
   }, []);
 
@@ -1178,6 +1183,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     if (!renaming) return;
     const name = renaming.draft.trim();
     let clearRenaming = true;
+    setIsCommittingRename(true);
     try {
       if (renaming.kind === "ws") {
         await getNodex().wpnUpdateWorkspace(renaming.id, { name: name || "Workspace" });
@@ -1216,12 +1222,15 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
           if (tabInst) {
             tabs.updateTabPresentation(tabInst.instanceId, { title });
           }
-          if (currentNoteId === renaming.id) {
-            void dispatch(fetchNote(renaming.id));
+          // Re-fetch the current note: if it's the renamed note, pick up the new title;
+          // if it's a different note, pick up VFS-rewritten links before auto-save overwrites them.
+          if (currentNoteId) {
+            void dispatch(fetchNote(currentNoteId));
           }
         }
       }
     } finally {
+      setIsCommittingRename(false);
       if (clearRenaming) {
         setRenaming(null);
       }
@@ -1499,6 +1508,9 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                   setRenaming(null);
                 }}
               />
+              {isCommittingRename && (
+                <span className="ml-1 inline-block h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+              )}
             </div>
           ) : (
             <span className="min-w-0 flex-1 truncate text-left">
@@ -1824,7 +1836,12 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                               >
                                 Right-click for new root note or paste.
                               </div>
-                              {renderNoteRows(p.id)}
+                              {isLoadingTree && notes.length === 0 ? (
+                                <div className="flex items-center gap-2 px-6 py-3 text-[11px] text-muted-foreground">
+                                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                                  Loading notes…
+                                </div>
+                              ) : renderNoteRows(p.id)}
                             </div>
                           ) : null}
                         </div>

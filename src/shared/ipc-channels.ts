@@ -156,6 +156,8 @@ export const IPC_CHANNELS = {
   WPN_PATCH_NOTE: "wpn:patch-note",
   WPN_DELETE_NOTES: "wpn:delete-notes",
   WPN_MOVE_NOTE: "wpn:move-note",
+  WPN_MOVE_NOTE_CROSS_PROJECT: "wpn:move-note-cross-project",
+  WPN_PREVIEW_NOTE_MOVE_VFS_IMPACT: "wpn:preview-note-move-vfs-impact",
   WPN_DUPLICATE_NOTE_SUBTREE: "wpn:duplicate-note-subtree",
   WPN_EXPORT_WORKSPACES: "wpn:export-workspaces",
   WPN_IMPORT_WORKSPACES: "wpn:import-workspaces",

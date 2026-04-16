@@ -501,6 +501,7 @@ export async function tryWpnListAllNotesWithContextFromLocalRxdb(
       project_name: p.name,
       workspace_id: p.workspace_id,
       workspace_name: w.name,
+      parent_id: n.parent_id,
     });
   }
   if (out.length === 0) {

@@ -16,6 +16,8 @@ export interface MarkdownRendererProps {
   onInternalNoteNavigate?: (link: InternalMarkdownNoteLink) => void;
   onNodexCmdLink?: (commandId: string) => void;
   onWelcomeShellSegmentClick?: (segment: "" | WelcomeShellUrlSegment) => void;
+  /** When provided, internal note links whose target is invalid render with broken-link styling. */
+  isLinkTargetValid?: (link: InternalMarkdownNoteLink) => boolean;
 }
 
 /**
@@ -27,6 +29,7 @@ export function ReactMarkdownNoteBody({
   onInternalNoteNavigate,
   onNodexCmdLink,
   onWelcomeShellSegmentClick,
+  isLinkTargetValid,
 }: MarkdownRendererProps): React.ReactElement {
   const rehypeSanitizeSchema = useMemo(() => {
     if (!onNodexCmdLink) return defaultSchema;
@@ -45,6 +48,7 @@ export function ReactMarkdownNoteBody({
     onInternalNoteNavigate,
     onNodexCmdLink,
     onWelcomeShellSegmentClick,
+    isLinkTargetValid,
   });
 
   return (

@@ -33,7 +33,7 @@ export type AppShellBodyProps = {
     content?: string;
     title?: string;
   }) => Promise<void>;
-  onRenameNote: (id: string, title: string) => Promise<void>;
+  onRenameNote: (id: string, title: string, options?: { updateVfsDependentLinks?: boolean }) => Promise<void>;
   onMoveNote: (payload: {
     draggedId: string;
     targetId: string;

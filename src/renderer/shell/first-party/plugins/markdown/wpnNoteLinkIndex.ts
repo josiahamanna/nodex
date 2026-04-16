@@ -16,11 +16,34 @@ function trimLabel(s: string, fallback: string): string {
 }
 
 function rowsFromBulk(notes: readonly WpnNoteWithContextListItem[]): WpnNoteLinkRow[] {
+  const byId = new Map<string, WpnNoteWithContextListItem>();
+  for (const n of notes) {
+    byId.set(n.id, n);
+  }
+
+  function ancestorTitles(note: WpnNoteWithContextListItem): string[] {
+    const titles: string[] = [];
+    const seen = new Set<string>();
+    let cur = note.parent_id;
+    while (cur) {
+      if (seen.has(cur)) break;
+      seen.add(cur);
+      const parent = byId.get(cur);
+      if (!parent) break;
+      titles.push(trimLabel(parent.title, "Untitled"));
+      cur = parent.parent_id;
+    }
+    titles.reverse();
+    return titles;
+  }
+
   return notes.map((n) => {
     const wsName = trimLabel(n.workspace_name, "Workspace");
     const projName = trimLabel(n.project_name, "Project");
     const title = trimLabel(n.title, "Untitled");
-    const pathLabel = `${wsName} / ${projName} / ${title}`;
+    const ancestors = ancestorTitles(n);
+    const segments = [wsName, projName, ...ancestors, title];
+    const pathLabel = segments.join(" / ");
     return {
       noteId: n.id,
       title,
@@ -31,21 +54,26 @@ function rowsFromBulk(notes: readonly WpnNoteWithContextListItem[]): WpnNoteLink
   });
 }
 
+export type WpnNoteLinkIndexResult = {
+  rows: WpnNoteLinkRow[];
+  rawNotes: WpnNoteWithContextListItem[];
+};
+
 /**
  * Loads every WPN note (all workspaces and projects, including Documentation) for link insertion.
  * Uses `wpnListAllNotesWithContext` when available; falls back to nested list calls.
  */
-export async function fetchWpnNoteLinkIndex(): Promise<WpnNoteLinkRow[]> {
+export async function fetchWpnNoteLinkIndex(): Promise<WpnNoteLinkIndexResult> {
   const nodex = typeof window !== "undefined" ? getNodex() : undefined;
   if (!nodex?.wpnListWorkspaces) {
-    return [];
+    return { rows: [], rawNotes: [] };
   }
 
   if (nodex.wpnListAllNotesWithContext) {
     try {
       const res = await nodex.wpnListAllNotesWithContext();
       const notes = Array.isArray(res?.notes) ? res.notes : [];
-      return rowsFromBulk(notes);
+      return { rows: rowsFromBulk(notes), rawNotes: notes };
     } catch {
       /* fall through */
     }
@@ -56,7 +84,7 @@ export async function fetchWpnNoteLinkIndex(): Promise<WpnNoteLinkRow[]> {
     const res = await nodex.wpnListWorkspaces();
     workspaces = Array.isArray(res?.workspaces) ? res.workspaces : [];
   } catch {
-    return [];
+    return { rows: [], rawNotes: [] };
   }
 
   const projectTasks: Promise<{
@@ -103,7 +131,7 @@ export async function fetchWpnNoteLinkIndex(): Promise<WpnNoteLinkRow[]> {
   }
 
   const chunks = await Promise.all(noteTasks);
-  return chunks.flat();
+  return { rows: chunks.flat(), rawNotes: [] };
 }
 
 export function filterWpnNoteLinkRows(rows: readonly WpnNoteLinkRow[], query: string): WpnNoteLinkRow[] {

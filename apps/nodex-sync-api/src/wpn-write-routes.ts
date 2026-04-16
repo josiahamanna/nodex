@@ -1,6 +1,11 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { requireAuth } from "./auth.js";
-import { getWpnProjectsCollection, getWpnWorkspacesCollection } from "./db.js";
+import { getWpnNotesCollection, getWpnProjectsCollection, getWpnWorkspacesCollection } from "./db.js";
+import {
+  vfsCanonicalPathsForTitleChange,
+  rewriteMarkdownForWpnNoteTitleChange,
+  normalizeVfsSegment,
+} from "./wpn-vfs-rewrite.js";
 import {
   mongoWpnCreateNote,
   mongoWpnCreateProject,
@@ -196,6 +201,90 @@ export function registerWpnWriteRoutes(
     }
   });
 
+  /** Scan all notes for VFS links that reference the renamed note and return affected note IDs. */
+  async function vfsPreviewTitleChange(
+    userId: string,
+    noteId: string,
+    newTitle: string,
+  ): Promise<{ dependentNoteCount: number; dependentNoteIds: string[] }> {
+    const noteCol = getWpnNotesCollection();
+    const projCol = getWpnProjectsCollection();
+    const wsCol = getWpnWorkspacesCollection();
+    const note = await noteCol.findOne({ id: noteId, userId, deleted: { $ne: true } });
+    if (!note) return { dependentNoteCount: 0, dependentNoteIds: [] };
+    const proj = await projCol.findOne({ id: note.project_id, userId });
+    if (!proj) return { dependentNoteCount: 0, dependentNoteIds: [] };
+    const ws = await wsCol.findOne({ id: proj.workspace_id, userId });
+    if (!ws) return { dependentNoteCount: 0, dependentNoteIds: [] };
+
+    const nextTitle = newTitle.trim() || note.title;
+    const ctx = { workspace_name: ws.name, project_name: proj.name };
+    const paths = await vfsCanonicalPathsForTitleChange(ctx, note.title, nextTitle);
+    if (!paths) return { dependentNoteCount: 0, dependentNoteIds: [] };
+
+    const { oldCanonical, newCanonical } = paths;
+    const oldSeg = await normalizeVfsSegment(note.title, "Untitled");
+    const newSeg = await normalizeVfsSegment(nextTitle, "Untitled");
+    const allNotes = await noteCol.find({ userId, deleted: { $ne: true } }).toArray();
+    const dependentNoteIds: string[] = [];
+    for (const n of allNotes) {
+      const c0 = n.content ?? "";
+      const c1 = await rewriteMarkdownForWpnNoteTitleChange(
+        c0, n.project_id, note.project_id,
+        oldCanonical, newCanonical, oldSeg, newSeg,
+      );
+      if (c1 !== c0) dependentNoteIds.push(n.id);
+    }
+    return { dependentNoteCount: dependentNoteIds.length, dependentNoteIds };
+  }
+
+  /** Apply VFS link rewrites across all notes after a title change. */
+  async function vfsApplyTitleChange(
+    userId: string,
+    noteId: string,
+    oldTitle: string,
+    newTitle: string,
+    renamedProjectId: string,
+    workspaceName: string,
+    projectName: string,
+  ): Promise<number> {
+    const ctx = { workspace_name: workspaceName, project_name: projectName };
+    const paths = await vfsCanonicalPathsForTitleChange(ctx, oldTitle, newTitle);
+    if (!paths) return 0;
+    const { oldCanonical, newCanonical } = paths;
+    const oldSeg = await normalizeVfsSegment(oldTitle, "Untitled");
+    const newSeg = await normalizeVfsSegment(newTitle, "Untitled");
+    const noteCol = getWpnNotesCollection();
+    const allNotes = await noteCol.find({ userId, deleted: { $ne: true } }).toArray();
+    let updatedCount = 0;
+    const now = Date.now();
+    for (const n of allNotes) {
+      const c0 = n.content ?? "";
+      const c1 = await rewriteMarkdownForWpnNoteTitleChange(
+        c0, n.project_id, renamedProjectId,
+        oldCanonical, newCanonical, oldSeg, newSeg,
+      );
+      if (c1 !== c0) {
+        await noteCol.updateOne(
+          { id: n.id, userId },
+          { $set: { content: c1, updated_at_ms: now } },
+        );
+        updatedCount++;
+      }
+    }
+    return updatedCount;
+  }
+
+  app.post("/wpn/notes/:id/preview-title-change", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) return;
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const newTitle = typeof body.title === "string" ? body.title : "";
+    const result = await vfsPreviewTitleChange(auth.sub, id, newTitle);
+    return reply.send(result);
+  });
+
   app.patch("/wpn/notes/:id", async (request, reply) => {
     const auth = await requireAuth(request, reply, jwtSecret);
     if (!auth) {
@@ -203,6 +292,7 @@ export function registerWpnWriteRoutes(
     }
     const { id } = request.params as { id: string };
     const body = (request.body ?? {}) as Record<string, unknown>;
+    const updateVfsDependentLinks = body.updateVfsDependentLinks !== false;
     const patch: {
       title?: string;
       content?: string;
@@ -222,10 +312,52 @@ export function registerWpnWriteRoutes(
       patch.metadata = body.metadata as Record<string, unknown> | null;
     }
     try {
+      // Capture old title + context before update (needed for VFS rewrite)
+      let oldTitle: string | null = null;
+      let renamedProjectId: string | null = null;
+      let workspaceName: string | null = null;
+      let projectName: string | null = null;
+      if (updateVfsDependentLinks && patch.title !== undefined) {
+        const noteCol = getWpnNotesCollection();
+        const before = await noteCol.findOne({ id, userId: auth.sub, deleted: { $ne: true } });
+        if (before) {
+          oldTitle = before.title;
+          renamedProjectId = before.project_id;
+          const projCol = getWpnProjectsCollection();
+          const proj = await projCol.findOne({ id: before.project_id, userId: auth.sub });
+          if (proj) {
+            projectName = proj.name;
+            const wsCol = getWpnWorkspacesCollection();
+            const ws = await wsCol.findOne({ id: proj.workspace_id, userId: auth.sub });
+            if (ws) workspaceName = ws.name;
+          }
+        }
+      }
+
       const note = await mongoWpnUpdateNote(auth.sub, id, patch);
       if (!note) {
         return reply.status(404).send({ error: "Note not found" });
       }
+
+      // Apply VFS link rewrites if title changed
+      if (
+        updateVfsDependentLinks &&
+        oldTitle !== null &&
+        renamedProjectId &&
+        workspaceName &&
+        projectName &&
+        oldTitle !== note.title
+      ) {
+        try {
+          await vfsApplyTitleChange(
+            auth.sub, id, oldTitle, note.title,
+            renamedProjectId, workspaceName, projectName,
+          );
+        } catch (err) {
+          console.error("[PATCH /wpn/notes/:id] VFS rewrite failed:", err);
+        }
+      }
+
       return reply.send({ note });
     } catch (e) {
       if (e instanceof WpnDuplicateSiblingTitleError) {

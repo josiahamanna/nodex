@@ -25,19 +25,24 @@ import {
   wpnJsonDuplicateNoteSubtree,
   wpnJsonGetExplorerExpanded,
   wpnJsonGetNoteById,
+  wpnJsonGetNoteWithContextById,
   wpnJsonListAllNotesWithContext,
   wpnJsonListBacklinksToNote,
   wpnJsonListNotesFlat,
   wpnJsonMoveNote,
+  wpnJsonMoveNoteCrossProject,
   wpnJsonSetExplorerExpanded,
   wpnJsonUpdateNote,
 } from "../core/wpn/wpn-json-notes";
 import {
+  wpnJsonApplyVfsRewritesAfterMove,
   wpnJsonApplyVfsRewritesAfterTitleChange,
+  wpnJsonPreviewVfsRewritesAfterMove,
   wpnJsonPreviewVfsRewritesAfterTitleChange,
 } from "../core/wpn/wpn-rename-vfs-rewrite";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import type { NoteMovePlacement } from "../shared/nodex-renderer-api";
+import { convertTreeRelativeLinksToAbsolute } from "../shared/note-vfs-link-rewrite";
 import { isValidNoteId, isValidNoteType } from "../shared/validators";
 import type {
   WpnProjectPatch,
@@ -402,6 +407,35 @@ export function registerStaticIpcWpnHandlers(): void {
       }
       const db = requireWorkspaceStore();
       const ownerId = getWpnOwnerId();
+
+      // Convert tree-relative `../` links to absolute paths BEFORE the move,
+      // while the old tree position is still valid. Applies to the dragged note and its subtree.
+      {
+        const allNotes = wpnJsonListAllNotesWithContext(db, ownerId);
+        // Collect the full subtree (dragged note + all descendants)
+        const subtreeIds = new Set<string>();
+        const stack = [draggedId];
+        while (stack.length > 0) {
+          const id = stack.pop()!;
+          if (subtreeIds.has(id)) continue;
+          subtreeIds.add(id);
+          for (const n of allNotes) {
+            if (n.parent_id === id && n.project_id === projectId) {
+              stack.push(n.id);
+            }
+          }
+        }
+        // For each note in the subtree, convert tree-relative links
+        for (const sid of subtreeIds) {
+          const detail = wpnJsonGetNoteById(db, ownerId, sid);
+          if (!detail?.content) continue;
+          const rewritten = convertTreeRelativeLinksToAbsolute(detail.content, sid, allNotes);
+          if (rewritten !== detail.content) {
+            wpnJsonUpdateNote(db, ownerId, sid, { content: rewritten });
+          }
+        }
+      }
+
       wpnJsonMoveNote(
         db,
         ownerId,
@@ -410,6 +444,161 @@ export function registerStaticIpcWpnHandlers(): void {
         targetId,
         placement as NoteMovePlacement,
       );
+      return { ok: true as const };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.WPN_PREVIEW_NOTE_MOVE_VFS_IMPACT,
+    async (e, noteId: unknown, targetProjectId: unknown) => {
+      assertElectronFileVaultWindow(e);
+      if (typeof noteId !== "string" || !noteId) {
+        throw new Error("Invalid note id");
+      }
+      if (typeof targetProjectId !== "string" || !targetProjectId) {
+        throw new Error("Invalid target project id");
+      }
+      const db = requireWorkspaceStore();
+      const ownerId = getWpnOwnerId();
+      const noteCtx = wpnJsonGetNoteWithContextById(db, ownerId, noteId);
+      if (!noteCtx) {
+        throw new Error("Note not found");
+      }
+      // Look up target project context (workspace/project names)
+      let targetWorkspaceName = "";
+      let targetProjectName = "";
+      for (const slot of db.slots) {
+        const proj = slot.projects.find((p) => p.id === targetProjectId);
+        if (!proj) continue;
+        const ws = slot.workspaces.find((w) => w.id === proj.workspace_id && w.owner_id === ownerId);
+        if (!ws) continue;
+        targetWorkspaceName = ws.name;
+        targetProjectName = proj.name;
+        break;
+      }
+      if (!targetProjectName) {
+        throw new Error("Target project not found");
+      }
+      const preview = wpnJsonPreviewVfsRewritesAfterMove(
+        db,
+        ownerId,
+        noteId,
+        noteCtx.workspace_name,
+        noteCtx.project_name,
+        targetWorkspaceName,
+        targetProjectName,
+      );
+      return {
+        dependentNoteCount: preview.dependentNoteCount,
+        dependentNoteIds: preview.dependentNoteIds,
+      };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.WPN_MOVE_NOTE_CROSS_PROJECT,
+    async (
+      e,
+      payload: {
+        noteId?: string;
+        targetProjectId?: string;
+        targetParentId?: string;
+      },
+    ) => {
+      assertElectronFileVaultWindow(e);
+      if (!payload || typeof payload !== "object") {
+        throw new Error("Invalid payload");
+      }
+      const { noteId, targetProjectId, targetParentId } = payload;
+      if (typeof noteId !== "string" || !noteId) {
+        throw new Error("noteId required");
+      }
+      if (typeof targetProjectId !== "string" || !targetProjectId) {
+        throw new Error("targetProjectId required");
+      }
+      const db = requireWorkspaceStore();
+      const ownerId = getWpnOwnerId();
+
+      // Capture note context BEFORE the move (for VFS rewrite)
+      const noteCtx = wpnJsonGetNoteWithContextById(db, ownerId, noteId);
+      if (!noteCtx) {
+        throw new Error("Note not found");
+      }
+      const oldProjectId = noteCtx.project_id;
+      const noteTitle = noteCtx.title;
+      const oldWorkspaceName = noteCtx.workspace_name;
+      const oldProjectName = noteCtx.project_name;
+
+      // Convert tree-relative `../` links to absolute paths BEFORE the move,
+      // while the old tree position is still valid. Applies to the note and its subtree.
+      {
+        const allNotes = wpnJsonListAllNotesWithContext(db, ownerId);
+        // Collect the full subtree (note + all descendants)
+        const subtreeIds = new Set<string>();
+        const stack = [noteId];
+        while (stack.length > 0) {
+          const id = stack.pop()!;
+          if (subtreeIds.has(id)) continue;
+          subtreeIds.add(id);
+          for (const n of allNotes) {
+            if (n.parent_id === id && n.project_id === oldProjectId) {
+              stack.push(n.id);
+            }
+          }
+        }
+        // For each note in the subtree, convert tree-relative links
+        for (const sid of subtreeIds) {
+          const detail = wpnJsonGetNoteById(db, ownerId, sid);
+          if (!detail?.content) continue;
+          const rewritten = convertTreeRelativeLinksToAbsolute(detail.content, sid, allNotes);
+          if (rewritten !== detail.content) {
+            wpnJsonUpdateNote(db, ownerId, sid, { content: rewritten });
+          }
+        }
+      }
+
+      // Look up target project workspace/project names
+      let targetWorkspaceName = "";
+      let targetProjectName = "";
+      for (const slot of db.slots) {
+        const proj = slot.projects.find((p) => p.id === targetProjectId);
+        if (!proj) continue;
+        const ws = slot.workspaces.find((w) => w.id === proj.workspace_id && w.owner_id === ownerId);
+        if (!ws) continue;
+        targetWorkspaceName = ws.name;
+        targetProjectName = proj.name;
+        break;
+      }
+      if (!targetProjectName) {
+        throw new Error("Target project not found");
+      }
+
+      // Perform the cross-project move
+      wpnJsonMoveNoteCrossProject(
+        db,
+        ownerId,
+        noteId,
+        targetProjectId,
+        targetParentId ?? null,
+      );
+
+      // Apply VFS link rewrites
+      try {
+        wpnJsonApplyVfsRewritesAfterMove(
+          db,
+          ownerId,
+          oldProjectId,
+          noteTitle,
+          oldWorkspaceName,
+          oldProjectName,
+          targetWorkspaceName,
+          targetProjectName,
+        );
+      } catch (err) {
+        console.error("[WPN_MOVE_NOTE_CROSS_PROJECT] VFS rewrite after move:", err);
+        throw err instanceof Error ? err : new Error(String(err));
+      }
+
       return { ok: true as const };
     },
   );

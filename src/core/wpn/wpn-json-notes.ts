@@ -2,7 +2,17 @@ import * as crypto from "crypto";
 import { normalizeLegacyNoteType } from "../../shared/note-type-legacy";
 import type { NoteListItem, NoteMovePlacement } from "../../shared/nodex-renderer-api";
 import { isWorkspaceMountNoteId } from "../../shared/note-workspace";
-import { collectReferencedNoteIdsFromMarkdown } from "../../shared/markdown-internal-note-href";
+import {
+  collectReferencedNoteIdsFromMarkdown,
+  collectReferencedVfsPathsFromMarkdown,
+} from "../../shared/markdown-internal-note-href";
+import {
+  isSameProjectRelativeVfsPath,
+  isTreeRelativeVfsPath,
+  resolveSameProjectRelativeVfsToCanonical,
+  resolveTreeRelativeVfsPath,
+  resolveNoteIdByCanonicalVfsPath,
+} from "../../shared/note-vfs-path";
 import type {
   WpnBacklinkSourceItem,
   WpnNoteDetail,
@@ -403,6 +413,90 @@ export function wpnJsonMoveNote(
   persist(store);
 }
 
+/**
+ * Move a note (and its subtree) from one project to another.
+ * The note becomes a root-level note in the target project (or a child of `targetParentId`).
+ */
+export function wpnJsonMoveNoteCrossProject(
+  store: WorkspaceStore,
+  ownerId: string,
+  noteId: string,
+  targetProjectId: string,
+  targetParentId?: string | null,
+): void {
+  const note = wpnJsonGetNoteById(store, ownerId, noteId);
+  if (!note) {
+    throw new Error("Note not found");
+  }
+  if (note.project_id === targetProjectId) {
+    throw new Error("Note is already in the target project; use within-project move instead");
+  }
+  if (!wpnJsonProjectOwnedBy(store, ownerId, targetProjectId)) {
+    throw new Error("Target project not found");
+  }
+  const sourceSlot = findSlotForProject(store, note.project_id);
+  if (!sourceSlot) {
+    throw new Error("Source project not found");
+  }
+  const targetSlot = findSlotForProject(store, targetProjectId);
+  if (!targetSlot) {
+    throw new Error("Target project not found");
+  }
+
+  // Collect the full subtree (note + all descendants)
+  const subtreeIds = new Set<string>();
+  const stack = [noteId];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    if (subtreeIds.has(id)) continue;
+    subtreeIds.add(id);
+    for (const n of sourceSlot.notes) {
+      if (n.parent_id === id && n.project_id === note.project_id) {
+        stack.push(n.id);
+      }
+    }
+  }
+
+  // Validate targetParentId is in the target project (if provided)
+  if (targetParentId) {
+    const parentNote = targetSlot.notes.find(
+      (n) => n.id === targetParentId && n.project_id === targetProjectId,
+    );
+    if (!parentNote) {
+      throw new Error("Target parent note not found in target project");
+    }
+  }
+
+  // Compute the sibling_index for the moved note in the target project
+  const newParentId = targetParentId ?? null;
+  const targetSiblings = targetSlot.notes.filter(
+    (n) => n.project_id === targetProjectId && n.parent_id === newParentId,
+  );
+  const maxSibIdx = targetSiblings.reduce((m, n) => Math.max(m, n.sibling_index), -1);
+
+  const t = nowMs();
+
+  // Update all notes in the subtree: change project_id, and for the root note, update parent_id
+  for (const n of sourceSlot.notes) {
+    if (!subtreeIds.has(n.id)) continue;
+    n.project_id = targetProjectId;
+    n.updated_at_ms = t;
+    if (n.id === noteId) {
+      n.parent_id = newParentId;
+      n.sibling_index = maxSibIdx + 1;
+    }
+  }
+
+  // If source and target are in different slots, physically move the note rows
+  if (sourceSlot !== targetSlot) {
+    const movedNotes = sourceSlot.notes.filter((n) => subtreeIds.has(n.id));
+    sourceSlot.notes = sourceSlot.notes.filter((n) => !subtreeIds.has(n.id));
+    targetSlot.notes.push(...movedNotes);
+  }
+
+  persist(store);
+}
+
 function wpnIsDescendantOf(
   store: WorkspaceStore,
   ownerId: string,
@@ -661,6 +755,7 @@ export function wpnJsonListAllNotesWithContext(
         project_name: p.name,
         workspace_id: p.workspace_id,
         workspace_name: w.name,
+        parent_id: n.parent_id,
       });
     }
   }
@@ -748,8 +843,14 @@ export function wpnJsonListBacklinksToNote(
   ownerId: string,
   targetNoteId: string,
 ): WpnBacklinkSourceItem[] {
-  const rows: { id: string; title: string; content: string; project_id: string }[] =
-    [];
+  const rows: {
+    id: string;
+    title: string;
+    content: string;
+    project_id: string;
+    workspace_name: string;
+    project_name: string;
+  }[] = [];
   for (const slot of store.slots) {
     for (const n of slot.notes) {
       const p = slot.projects.find((x) => x.id === n.project_id);
@@ -765,13 +866,62 @@ export function wpnJsonListBacklinksToNote(
         title: n.title,
         content: n.content,
         project_id: n.project_id,
+        workspace_name: w.name,
+        project_name: p.name,
       });
     }
   }
+
+  // Build the full notes-with-context list once for VFS path resolution.
+  let allNotesWithContext: WpnNoteWithContextListItem[] | null = null;
+
   const out: WpnBacklinkSourceItem[] = [];
   for (const r of rows) {
-    const refs = collectReferencedNoteIdsFromMarkdown(r.content ?? "");
-    if (refs.has(targetNoteId)) {
+    const content = r.content ?? "";
+
+    // Check direct note-id references (#/n/<id>).
+    const noteIdRefs = collectReferencedNoteIdsFromMarkdown(content);
+    if (noteIdRefs.has(targetNoteId)) {
+      out.push({ id: r.id, title: r.title, project_id: r.project_id });
+      continue;
+    }
+
+    // Check VFS path references (#/w/...).
+    const vfsPaths = collectReferencedVfsPathsFromMarkdown(content);
+    if (vfsPaths.size === 0) continue;
+
+    // Lazily build the full notes list for resolution.
+    if (allNotesWithContext === null) {
+      allNotesWithContext = wpnJsonListAllNotesWithContext(store, ownerId);
+    }
+
+    let found = false;
+    for (const vfsPath of vfsPaths) {
+      let canonicalPath: string | null;
+      if (isTreeRelativeVfsPath(vfsPath)) {
+        // Resolve ../sibling etc. relative to the source note's position in the tree.
+        canonicalPath = resolveTreeRelativeVfsPath(vfsPath, r.id, allNotesWithContext);
+      } else if (isSameProjectRelativeVfsPath(vfsPath)) {
+        // Resolve ./Title relative to the source note's workspace/project.
+        canonicalPath = resolveSameProjectRelativeVfsToCanonical(vfsPath, {
+          workspace_name: r.workspace_name,
+          project_name: r.project_name,
+        });
+      } else {
+        canonicalPath = vfsPath;
+      }
+      if (!canonicalPath) continue;
+
+      const resolvedId = resolveNoteIdByCanonicalVfsPath(
+        allNotesWithContext,
+        canonicalPath,
+      );
+      if (resolvedId === targetNoteId) {
+        found = true;
+        break;
+      }
+    }
+    if (found) {
       out.push({ id: r.id, title: r.title, project_id: r.project_id });
     }
   }
