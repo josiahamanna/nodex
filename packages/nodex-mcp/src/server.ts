@@ -12,7 +12,8 @@ import { findNotesByQuery, findProjectsByQuery } from "./find-wpn.js";
 import { parseParentWpnPath, resolveParentInTree } from "./resolve-parent-in-tree.js";
 import { resolveNoteFromCatalog } from "./resolve-note.js";
 import { errorResult, jsonResult, type ToolReturn } from "./text-result.js";
-import { WpnHttpClient } from "./wpn-client.js";
+import { WpnHttpClient, type WpnNoteDetail } from "./wpn-client.js";
+import { extractReferencedNoteIdsFromMarkdown } from "./note-link-extract.js";
 
 const resolveInput = z.object({
   workspaceName: z.string().describe("Workspace name (trimmed, case-insensitive match)"),
@@ -26,6 +27,25 @@ const getNoteInput = z.object({
 
 const getNoteTitleInput = z.object({
   noteId: z.string().describe("Canonical note UUID"),
+});
+
+const getNoteWithLinksInput = z.object({
+  noteId: z.string().describe("Canonical note UUID of the target note"),
+  maxNotes: z
+    .number()
+    .int()
+    .min(1)
+    .max(1000)
+    .optional()
+    .describe(
+      "Hard cap on total notes fetched (target + linked). Defaults to 200. When the cap is hit, stats.truncated is true and remaining ids are not fetched.",
+    ),
+  includeBacklinks: z
+    .boolean()
+    .optional()
+    .describe(
+      "When true (default), also include one-hop backlinks for the target note (notes referencing it).",
+    ),
 });
 
 const noteRenameInput = z.object({
@@ -784,6 +804,72 @@ export function createNodexMcpServer(
       try {
         const note = await client.getNote(args.noteId);
         return jsonResult({ note });
+      } catch (e) {
+        return wpnCatch(e, runtime);
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "nodex_get_note_with_links",
+    {
+      description:
+        "Fetch a note plus the full transitive set of notes it links to (forward refs in markdown content), deduped by noteId, with optional one-hop backlinks. " +
+        "Walks `[label](#/n/<id>)` references breadth-first. Skips already-visited ids (cycle-safe). Stops fetching when the hard cap is reached and reports stats.truncated=true. " +
+        "Unresolvable / errored ids are listed in `unresolved` rather than throwing.",
+      inputSchema: getNoteWithLinksInput,
+    },
+    async (args) => {
+      const denied = requireCloudAccess(runtime, client);
+      if (denied) return denied;
+      const cap = args.maxNotes ?? 200;
+      const includeBacklinks = args.includeBacklinks ?? true;
+      try {
+        const seed = await client.getNote(args.noteId);
+        const visited = new Set<string>([seed.id]);
+        const linkedNotes: Record<string, WpnNoteDetail> = {};
+        const unresolved: { id: string; error: string }[] = [];
+        const queue: string[] = extractReferencedNoteIdsFromMarkdown(seed.content ?? "");
+        let truncated = false;
+
+        while (queue.length > 0) {
+          if (visited.size >= cap) {
+            truncated = true;
+            break;
+          }
+          const id = queue.shift()!;
+          if (visited.has(id)) continue;
+          visited.add(id);
+          try {
+            const detail = await client.getNote(id);
+            linkedNotes[id] = detail;
+            for (const next of extractReferencedNoteIdsFromMarkdown(detail.content ?? "")) {
+              if (!visited.has(next)) queue.push(next);
+            }
+          } catch (e) {
+            unresolved.push({
+              id,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+        }
+
+        const backlinks = includeBacklinks
+          ? await client.getBacklinks(args.noteId).catch(() => [])
+          : [];
+
+        return jsonResult({
+          note: seed,
+          linkedNotes,
+          backlinks,
+          unresolved,
+          stats: {
+            fetched: 1 + Object.keys(linkedNotes).length,
+            unresolvedCount: unresolved.length,
+            truncated,
+            cap,
+          },
+        });
       } catch (e) {
         return wpnCatch(e, runtime);
       }
