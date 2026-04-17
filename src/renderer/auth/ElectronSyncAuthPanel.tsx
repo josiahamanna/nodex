@@ -162,6 +162,11 @@ export function ElectronSyncAuthPanel({
             Passwords do not match
           </div>
         ) : null}
+        {auth.error ? (
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+            {auth.error}
+          </div>
+        ) : null}
         <button
           type="submit"
           disabled={auth.busy || !canSubmit}

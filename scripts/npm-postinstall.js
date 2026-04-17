@@ -41,6 +41,19 @@ function applySkipFromRootDotenv() {
 
 applySkipFromRootDotenv();
 
+console.log("[nodex] Building @nodex/sync-api...");
+const buildSyncApi = spawnSync("npm", ["run", "build:lib", "-w", "@nodex/sync-api"], {
+  stdio: "inherit",
+  env: process.env,
+  shell: process.platform === "win32",
+  cwd: path.join(__dirname, ".."),
+});
+
+if (buildSyncApi.status !== 0) {
+  console.error("[nodex] Failed to build @nodex/sync-api");
+  process.exit(buildSyncApi.status ?? 1);
+}
+
 if (process.env.NODEX_SKIP_ELECTRON_REBUILD === "1") {
   console.log(
     "[nodex] Skipping electron-rebuild (NODEX_SKIP_ELECTRON_REBUILD=1). Run `npm run rebuild:electron` before Electron.",
