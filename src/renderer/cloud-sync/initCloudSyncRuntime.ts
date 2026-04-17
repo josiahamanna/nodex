@@ -1,10 +1,10 @@
 import type { NodexPlatformDeps } from "@nodex/platform";
 import type { AppDispatch } from "../store";
-import { cloudRestoreSessionThunk } from "../store/cloudAuthSlice";
 import { runCloudSyncThunk } from "../store/cloudNotesSlice";
 
 /**
- * Hydrate JWT from storage, optional `/auth/me`, initial pull, then wire sync triggers.
+ * Wire up sync triggers for desktop and online events.
+ * Note: Session restoration is handled by AuthContext, not here, to avoid duplicate calls.
  */
 export function initCloudSyncRuntime(
   deps: NodexPlatformDeps,
@@ -13,8 +13,6 @@ export function initCloudSyncRuntime(
   if (typeof window === "undefined") {
     return;
   }
-
-  void dispatch(cloudRestoreSessionThunk());
 
   if (deps.desktopHost.isElectron) {
     deps.desktopHost.onSyncTrigger(() => {

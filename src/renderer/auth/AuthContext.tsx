@@ -275,21 +275,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
         if (cloudLoginThunk.rejected.match(result)) {
           throw new Error(result.error.message ?? "Login failed");
         }
-        const { userId, email: e } = result.payload;
-        await mergeWebScratchCloudNotesAfterAuth(userId);
-        setState({
-          status: "authed",
-          user: authUserFromSyncCredentials(userId, e),
-        });
-        consumePostAuthRedirectAfterSignIn();
+        if (typeof window !== "undefined" && !isElectronUserAgent()) {
+          window.location.reload();
+        }
         return;
       }
       const u = await authLogin({ email, password });
-      await mergeWebScratchCloudNotesAfterAuth(u.id);
-      setState({ status: "authed", user: u });
-      consumePostAuthRedirectAfterSignIn();
+      if (typeof window !== "undefined" && !isElectronUserAgent()) {
+        window.location.reload();
+      }
     },
-    [mergeWebScratchCloudNotesAfterAuth],
+    [],
   );
 
   const signup = useCallback(
@@ -299,23 +295,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
         if (cloudRegisterThunk.rejected.match(result)) {
           throw new Error(result.error.message ?? "Signup failed");
         }
-        const { userId, email: e } = result.payload;
-        await mergeWebScratchCloudNotesAfterAuth(userId);
-        const name =
-          username.trim() || (e.includes("@") ? e.slice(0, e.indexOf("@")) : e) || "user";
-        setState({
-          status: "authed",
-          user: { id: userId, email: e, username: name },
-        });
-        consumePostAuthRedirectAfterSignIn();
+        if (typeof window !== "undefined" && !isElectronUserAgent()) {
+          window.location.reload();
+        }
         return;
       }
       const u = await authSignup({ email, username, password });
-      await mergeWebScratchCloudNotesAfterAuth(u.id);
-      setState({ status: "authed", user: u });
-      consumePostAuthRedirectAfterSignIn();
+      if (typeof window !== "undefined" && !isElectronUserAgent()) {
+        window.location.reload();
+      }
     },
-    [mergeWebScratchCloudNotesAfterAuth],
+    [],
   );
 
   const logout = useCallback(async () => {

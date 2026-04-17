@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { registerGlobalToast, unregisterGlobalToast } from "./toast-service";
 
 export type ToastSeverity = "error" | "warning" | "info" | "log";
 
@@ -79,6 +80,13 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
       };
     });
   }, []);
+
+  useEffect(() => {
+    registerGlobalToast(showToast);
+    return () => {
+      unregisterGlobalToast();
+    };
+  }, [showToast]);
 
   useEffect(() => {
     if (!toast) {

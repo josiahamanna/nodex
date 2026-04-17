@@ -18,6 +18,7 @@ export function AuthScreen({
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialMode) setMode(initialMode);
@@ -40,6 +41,7 @@ export function AuthScreen({
     e.preventDefault();
     if (!canSubmit || submitting) return;
     setSubmitting(true);
+    setError(null);
     try {
       if (mode === "login") {
         await login(email.trim(), password);
@@ -47,6 +49,8 @@ export function AuthScreen({
         await signup(email.trim(), username.trim(), password);
       }
     } catch (err) {
+      const message = err instanceof Error ? err.message : "An error occurred";
+      setError(message);
       if (process.env.NODE_ENV === "development") {
         console.error(err);
       }
@@ -84,6 +88,7 @@ export function AuthScreen({
               onClick={() => {
                 setMode("login");
                 setConfirmPassword("");
+                setError(null);
               }}
             >
               Login
@@ -98,6 +103,7 @@ export function AuthScreen({
               onClick={() => {
                 setMode("signup");
                 setConfirmPassword("");
+                setError(null);
               }}
             >
               Signup
@@ -167,6 +173,12 @@ export function AuthScreen({
           {passwordMismatch ? (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
               Passwords do not match
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+              {error}
             </div>
           ) : null}
 

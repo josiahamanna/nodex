@@ -19,6 +19,7 @@ import {
 } from "./cloudNotesSlice";
 import { clearOrgMembership } from "./orgMembershipSlice";
 import { clearSpaceMembership } from "./spaceMembershipSlice";
+import { showGlobalToast } from "../toast/toast-service";
 
 type CloudAuthThunkExtra = { extra: NodexPlatformDeps };
 
@@ -130,13 +131,61 @@ export const cloudRestoreSessionThunk = createAsyncThunk<
     if (email) {
       writeCloudSyncEmail(email);
     }
-    await migrateWebScratchCloudNotesIfNeeded(me.userId);
-    await dispatch(
-      hydrateCloudNotesFromRxDbThunk({ overrideStorageUserId: me.userId }),
-    );
-    await dispatch(runCloudSyncThunk({ overrideStorageUserId: me.userId }));
-    return { userId: me.userId, email: me.email };
-  } catch {
+    
+    const userData = { userId: me.userId, email: me.email };
+    
+    // Defer heavy operations to macrotask queue to allow UI to render first
+    setTimeout(() => {
+      void (async () => {
+        try {
+          showGlobalToast({
+            severity: "info",
+            message: "Setting up your workspace...",
+            mergeKey: "sync-progress",
+          });
+          
+          await migrateWebScratchCloudNotesIfNeeded(me.userId);
+          
+          showGlobalToast({
+            severity: "info",
+            message: "Loading notes from local storage...",
+            mergeKey: "sync-progress",
+          });
+          
+          await dispatch(
+            hydrateCloudNotesFromRxDbThunk({ overrideStorageUserId: me.userId }),
+          );
+          
+          showGlobalToast({
+            severity: "info",
+            message: "Syncing with server...",
+            mergeKey: "sync-progress",
+          });
+          
+          await dispatch(runCloudSyncThunk({ overrideStorageUserId: me.userId }));
+          
+          showGlobalToast({
+            severity: "info",
+            message: "✓ Sync complete!",
+            mergeKey: "sync-complete",
+          });
+        } catch (err) {
+          console.error("Background sync failed after login:", err);
+          showGlobalToast({
+            severity: "error",
+            message: "Sync failed. You can retry from the sync menu.",
+          });
+        }
+      })();
+    }, 100); // 100ms delay allows browser to render UI first
+    
+    return userData;
+  } catch (err) {
+    console.error("Session restoration failed:", err);
+    showGlobalToast({
+      severity: "error",
+      message: "Failed to restore session",
+    });
     writeCloudSyncToken(null);
     writeCloudSyncRefreshToken(null);
     writeCloudSyncEmail(null);
@@ -150,7 +199,7 @@ export const cloudLoginThunk = createAsyncThunk<
   { userId: string; email: string },
   { email: string; password: string },
   CloudAuthThunkExtra
->("cloudAuth/login", async ({ email, password }, { extra, dispatch }) => {
+>("cloudAuth/login", async ({ email, password }, { extra }) => {
   const { token, refreshToken, userId } = await extra.remoteApi.authLogin(
     email,
     password,
@@ -160,11 +209,6 @@ export const cloudLoginThunk = createAsyncThunk<
   writeCloudSyncEmail(email.toLowerCase());
   extra.remoteApi.setAuthToken(token);
   extra.remoteApi.setRefreshToken(refreshToken);
-  await migrateWebScratchCloudNotesIfNeeded(userId);
-  await dispatch(
-    hydrateCloudNotesFromRxDbThunk({ overrideStorageUserId: userId }),
-  );
-  await dispatch(runCloudSyncThunk({ overrideStorageUserId: userId }));
   return { userId, email: email.toLowerCase() };
 });
 
@@ -172,7 +216,7 @@ export const cloudRegisterThunk = createAsyncThunk<
   { userId: string; email: string },
   { email: string; password: string },
   CloudAuthThunkExtra
->("cloudAuth/register", async ({ email, password }, { extra, dispatch }) => {
+>("cloudAuth/register", async ({ email, password }, { extra }) => {
   const { token, refreshToken, userId } = await extra.remoteApi.authRegister(
     email,
     password,
@@ -182,11 +226,6 @@ export const cloudRegisterThunk = createAsyncThunk<
   writeCloudSyncEmail(email.toLowerCase());
   extra.remoteApi.setAuthToken(token);
   extra.remoteApi.setRefreshToken(refreshToken);
-  await migrateWebScratchCloudNotesIfNeeded(userId);
-  await dispatch(
-    hydrateCloudNotesFromRxDbThunk({ overrideStorageUserId: userId }),
-  );
-  await dispatch(runCloudSyncThunk({ overrideStorageUserId: userId }));
   return { userId, email: email.toLowerCase() };
 });
 
