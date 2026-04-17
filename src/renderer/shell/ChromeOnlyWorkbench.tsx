@@ -66,6 +66,7 @@ import {
   SHELL_SIDEBAR_MIN_EXPANDED_PX,
 } from "./shellResponsiveConstants";
 import { useAuth } from "../auth/AuthContext";
+import { PostAuthChromeOverlay } from "../auth/PostAuthChromeOverlay";
 import { isElectronCloudWpnSession } from "../auth/electron-cloud-session";
 import { resetElectronScratchClearData } from "../auth/electron-scratch";
 import {
@@ -918,6 +919,7 @@ export function ChromeOnlyWorkbench(): React.ReactElement {
                 Close
               </button>
             ) : null}
+            <PostAuthChromeOverlay />
             {cloudAuth.status === "signedIn" ? (
               <button
                 type="button"

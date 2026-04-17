@@ -3,7 +3,6 @@ import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../store";
 import {
   createSpaceThunk,
-  isSpaceMembershipStale,
   loadOrgSpacesThunk,
   switchActiveSpaceThunk,
 } from "../store/spaceMembershipSlice";
@@ -45,10 +44,26 @@ export function SpaceSwitcher(): React.ReactElement | null {
     if (cloudAuth.status !== "signedIn" || !activeOrgId) {
       return;
     }
-    if (isSpaceMembershipStale(spaceState, activeOrgId)) {
+    const wrongOrg = spaceState.loadedForOrgId !== activeOrgId;
+    if (wrongOrg || spaceState.status === "idle") {
+      void dispatch(loadOrgSpacesThunk({ orgId: activeOrgId }));
+      return;
+    }
+    if (
+      spaceState.status === "ready" &&
+      spaceState.loadedAt !== null &&
+      Date.now() - spaceState.loadedAt > 60_000
+    ) {
       void dispatch(loadOrgSpacesThunk({ orgId: activeOrgId }));
     }
-  }, [cloudAuth.status, activeOrgId, dispatch, spaceState]);
+  }, [
+    cloudAuth.status,
+    activeOrgId,
+    dispatch,
+    spaceState.status,
+    spaceState.loadedAt,
+    spaceState.loadedForOrgId,
+  ]);
 
   React.useEffect(() => {
     if (!open) return;

@@ -19,7 +19,6 @@ import { GlobalContextMenuHost } from "./shell/GlobalContextMenuHost";
 import { AcceptInviteScreen } from "./auth/AcceptInviteScreen";
 import { AuthProvider } from "./auth/AuthContext";
 import { AuthGate } from "./auth/AuthGate";
-import { PostAuthChromeOverlay } from "./auth/PostAuthChromeOverlay";
 import { WebPostAuthRedirectBootstrap } from "./auth/WebPostAuthRedirectBootstrap";
 import { isElectronScratchSession } from "./auth/electron-scratch";
 import { isWebScratchSession } from "./auth/web-scratch";
@@ -114,7 +113,6 @@ const App: React.FC = () => {
           <CloudRuntimeBootstrap />
           <WebScratchCloudHydrator />
           <ElectronScratchCloudHydrator />
-          <PostAuthChromeOverlay />
           <div className="flex h-screen min-h-0 flex-col">
             {/* Reserve vertical space for mode line + minibuffer so they do not overlay the workbench. */}
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

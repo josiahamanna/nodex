@@ -3,7 +3,6 @@ import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../store";
 import {
   createOrgThunk,
-  isOrgMembershipStale,
   loadMyOrgsThunk,
   switchActiveOrgThunk,
 } from "../store/orgMembershipSlice";
@@ -39,10 +38,18 @@ export function OrgSwitcher(): React.ReactElement | null {
     if (cloudAuth.status !== "signedIn") {
       return;
     }
-    if (orgState.status === "idle" || isOrgMembershipStale(orgState)) {
+    if (orgState.status === "idle") {
+      void dispatch(loadMyOrgsThunk());
+      return;
+    }
+    if (
+      orgState.status === "ready" &&
+      orgState.loadedAt !== null &&
+      Date.now() - orgState.loadedAt > 60_000
+    ) {
       void dispatch(loadMyOrgsThunk());
     }
-  }, [cloudAuth.status, dispatch, orgState]);
+  }, [cloudAuth.status, dispatch, orgState.status, orgState.loadedAt]);
 
   React.useEffect(() => {
     if (!open) return;

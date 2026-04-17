@@ -10,7 +10,7 @@ import {
   writeCloudSyncToken,
 } from "../cloud-sync/cloud-sync-storage";
 import { clearAllElectronAppPinSettings } from "../auth/electron-app-pin-storage";
-import { setActiveOrgId, setActiveSpaceId } from "../auth/auth-session";
+import { setAccessToken, setActiveOrgId, setActiveSpaceId } from "../auth/auth-session";
 import { clearPersistedWebSyncWpnPreference } from "../nodex-web-shim";
 import {
   hydrateCloudNotesFromRxDbThunk,
@@ -125,6 +125,7 @@ export const cloudRestoreSessionThunk = createAsyncThunk<
   }
   extra.remoteApi.setAuthToken(token);
   extra.remoteApi.setRefreshToken(readCloudSyncRefreshToken());
+  setAccessToken(token);
   try {
     const me = await extra.remoteApi.authMe();
     const email = me.email || readCloudSyncEmail();
@@ -191,6 +192,7 @@ export const cloudRestoreSessionThunk = createAsyncThunk<
     writeCloudSyncEmail(null);
     extra.remoteApi.setAuthToken(null);
     extra.remoteApi.setRefreshToken(null);
+    setAccessToken(null);
     return null;
   }
 });
@@ -209,6 +211,7 @@ export const cloudLoginThunk = createAsyncThunk<
   writeCloudSyncEmail(email.toLowerCase());
   extra.remoteApi.setAuthToken(token);
   extra.remoteApi.setRefreshToken(refreshToken);
+  setAccessToken(token);
   return { userId, email: email.toLowerCase() };
 });
 
@@ -226,6 +229,7 @@ export const cloudRegisterThunk = createAsyncThunk<
   writeCloudSyncEmail(email.toLowerCase());
   extra.remoteApi.setAuthToken(token);
   extra.remoteApi.setRefreshToken(refreshToken);
+  setAccessToken(token);
   return { userId, email: email.toLowerCase() };
 });
 
@@ -238,6 +242,7 @@ export const cloudLogoutThunk = createAsyncThunk<void, void, CloudAuthThunkExtra
     writeCloudSyncEmail(null);
     extra.remoteApi.setAuthToken(null);
     extra.remoteApi.setRefreshToken(null);
+    setAccessToken(null);
     clearAllElectronAppPinSettings();
     setActiveOrgId(null);
     setActiveSpaceId(null);
