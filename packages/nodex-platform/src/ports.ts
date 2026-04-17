@@ -13,13 +13,30 @@ export interface RemoteApi {
   authLogin(
     email: string,
     password: string,
-  ): Promise<{ token: string; refreshToken: string; userId: string }>;
+  ): Promise<{
+    token: string;
+    refreshToken: string;
+    userId: string;
+    mustSetPassword?: boolean;
+  }>;
   authRefresh(refreshToken: string): Promise<{
     token: string;
     refreshToken: string;
   }>;
   /** Validate stored JWT and read profile. */
-  authMe(): Promise<{ userId: string; email: string }>;
+  authMe(): Promise<{
+    userId: string;
+    email: string;
+    mustSetPassword?: boolean;
+  }>;
+  /**
+   * Authenticated password rotation. Required after admin-issued temporary
+   * passwords (mustSetPassword=true on the user doc).
+   */
+  authChangePassword(
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ ok: true; mustSetPassword: false }>;
   syncPush(
     collection: string,
     documents: SyncDocument[],

@@ -39,6 +39,8 @@ export type CloudAuthState = {
   email: string | null;
   error: string | null;
   busy: boolean;
+  /** True when the account was admin-issued a temp password that must be rotated. */
+  mustSetPassword: boolean;
 };
 
 const initialState: CloudAuthState = {
@@ -47,12 +49,18 @@ const initialState: CloudAuthState = {
   email: null,
   error: null,
   busy: false,
+  mustSetPassword: false,
 };
 
 const cloudAuthSlice = createSlice({
   name: "cloudAuth",
   initialState,
-  reducers: {},
+  reducers: {
+    /** Local flip after /auth/change-password succeeds so the gate unmounts without a reload. */
+    clearMustSetPassword(state) {
+      state.mustSetPassword = false;
+    },
+  },
   extraReducers: (builder) => {
     builder
       .addCase(cloudRestoreSessionThunk.pending, (state) => {
@@ -65,10 +73,12 @@ const cloudAuthSlice = createSlice({
           state.status = "signedIn";
           state.userId = action.payload.userId;
           state.email = action.payload.email;
+          state.mustSetPassword = action.payload.mustSetPassword === true;
         } else {
           state.status = "signedOut";
           state.userId = null;
           state.email = null;
+          state.mustSetPassword = false;
         }
       })
       .addCase(cloudRestoreSessionThunk.rejected, (state) => {
@@ -76,6 +86,7 @@ const cloudAuthSlice = createSlice({
         state.status = "signedOut";
         state.userId = null;
         state.email = null;
+        state.mustSetPassword = false;
       })
       .addCase(cloudLoginThunk.pending, (state) => {
         state.busy = true;
@@ -86,6 +97,7 @@ const cloudAuthSlice = createSlice({
         state.status = "signedIn";
         state.userId = action.payload.userId;
         state.email = action.payload.email;
+        state.mustSetPassword = action.payload.mustSetPassword === true;
       })
       .addCase(cloudLoginThunk.rejected, (state, action) => {
         state.busy = false;
@@ -100,6 +112,7 @@ const cloudAuthSlice = createSlice({
         state.status = "signedIn";
         state.userId = action.payload.userId;
         state.email = action.payload.email;
+        state.mustSetPassword = false;
       })
       .addCase(cloudRegisterThunk.rejected, (state, action) => {
         state.busy = false;
@@ -109,8 +122,10 @@ const cloudAuthSlice = createSlice({
   },
 });
 
+export const { clearMustSetPassword } = cloudAuthSlice.actions;
+
 export const cloudRestoreSessionThunk = createAsyncThunk<
-  { userId: string; email: string } | null,
+  { userId: string; email: string; mustSetPassword: boolean } | null,
   void,
   CloudAuthThunkExtra
 >("cloudAuth/restore", async (_, { extra, dispatch }) => {
@@ -133,8 +148,12 @@ export const cloudRestoreSessionThunk = createAsyncThunk<
       writeCloudSyncEmail(email);
     }
     
-    const userData = { userId: me.userId, email: me.email };
-    
+    const userData = {
+      userId: me.userId,
+      email: me.email,
+      mustSetPassword: me.mustSetPassword === true,
+    };
+
     // Defer heavy operations to macrotask queue to allow UI to render first
     setTimeout(() => {
       void (async () => {
@@ -198,21 +217,23 @@ export const cloudRestoreSessionThunk = createAsyncThunk<
 });
 
 export const cloudLoginThunk = createAsyncThunk<
-  { userId: string; email: string },
+  { userId: string; email: string; mustSetPassword: boolean },
   { email: string; password: string },
   CloudAuthThunkExtra
 >("cloudAuth/login", async ({ email, password }, { extra }) => {
-  const { token, refreshToken, userId } = await extra.remoteApi.authLogin(
-    email,
-    password,
-  );
+  const { token, refreshToken, userId, mustSetPassword } =
+    await extra.remoteApi.authLogin(email, password);
   writeCloudSyncToken(token);
   writeCloudSyncRefreshToken(refreshToken);
   writeCloudSyncEmail(email.toLowerCase());
   extra.remoteApi.setAuthToken(token);
   extra.remoteApi.setRefreshToken(refreshToken);
   setAccessToken(token);
-  return { userId, email: email.toLowerCase() };
+  return {
+    userId,
+    email: email.toLowerCase(),
+    mustSetPassword: mustSetPassword === true,
+  };
 });
 
 export const cloudRegisterThunk = createAsyncThunk<

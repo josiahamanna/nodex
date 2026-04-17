@@ -110,6 +110,22 @@ export async function authMe(): Promise<AuthUser> {
   return r.user;
 }
 
+/** Rotate the current user's password; clears mustSetPassword on success. */
+export async function authChangePassword(payload: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<{ ok: true; mustSetPassword: false }> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  return requestJson<{ ok: true; mustSetPassword: false }>("/auth/change-password", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
 type ListOrgsResponse = {
   orgs: AuthUserOrg[];
   activeOrgId: string | null;
@@ -296,6 +312,56 @@ export async function revokeOrgInvite(payload: {
     {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+}
+
+/**
+ * Admin creates a new user + org membership in one call with a temporary
+ * password that the new user must rotate on first login.
+ */
+export async function createOrgMember(payload: {
+  orgId: string;
+  email: string;
+  password: string;
+  role?: OrgRole;
+}): Promise<{
+  userId: string;
+  email: string;
+  role: OrgRole;
+  mustSetPassword: true;
+}> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  return requestJson(`/orgs/${encodeURIComponent(payload.orgId)}/members/create`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      email: payload.email,
+      password: payload.password,
+      role: payload.role ?? "member",
+    }),
+  });
+}
+
+/** Admin resets a member's password. Sets mustSetPassword=true on the user. */
+export async function resetOrgMemberPassword(payload: {
+  orgId: string;
+  userId: string;
+  password: string;
+}): Promise<{ userId: string; mustSetPassword: true }> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  return requestJson(
+    `/orgs/${encodeURIComponent(payload.orgId)}/members/${encodeURIComponent(payload.userId)}/reset-password`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ password: payload.password }),
     },
   );
 }

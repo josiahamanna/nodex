@@ -31,6 +31,7 @@ export function createStubRemoteApi(): RemoteApi {
     authLogin: () => needUrl(),
     authRefresh: () => needUrl(),
     authMe: () => needUrl(),
+    authChangePassword: () => needUrl(),
     syncPush: async (): Promise<SyncPushResponse> => {
       void token;
       return { accepted: [], conflicts: [] };

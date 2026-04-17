@@ -190,6 +190,7 @@ export function createFetchRemoteApi(
         token: string;
         refreshToken: string;
         userId: string;
+        mustSetPassword?: boolean;
       };
     },
     authRefresh: async (rt: string) => {
@@ -216,7 +217,26 @@ export function createFetchRemoteApi(
       if (!res.ok) {
         throw new Error(await readErrorBody(res));
       }
-      return (await res.json()) as { userId: string; email: string };
+      return (await res.json()) as {
+        userId: string;
+        email: string;
+        mustSetPassword?: boolean;
+      };
+    },
+    authChangePassword: async (currentPassword, newPassword) => {
+      requireBase();
+      if (!token) {
+        throw new Error("Not signed in");
+      }
+      const res = await fetchAuthed("/auth/change-password", {
+        method: "POST",
+        headers: jsonHeaders(),
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      if (!res.ok) {
+        throw new Error(await readErrorBody(res));
+      }
+      return (await res.json()) as { ok: true; mustSetPassword: false };
     },
     syncPush: async (
       collection: string,

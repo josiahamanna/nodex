@@ -6,6 +6,7 @@ import { EntryScreen } from "./EntryScreen";
 import { ElectronRunModeGreet } from "./ElectronRunModeGreet";
 import { ElectronAppPinLock, ElectronAppPinOffer } from "./ElectronAppPinOverlays";
 import { ElectronSyncAuthPanel } from "./ElectronSyncAuthPanel";
+import { MustChangePasswordScreen } from "./MustChangePasswordScreen";
 import {
   isElectronAppPinEnabled,
   isPinOfferDismissed,
@@ -86,6 +87,15 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
     electronSyncOverlay,
     openElectronSyncAuth,
   ]);
+
+  /**
+   * Block everything once the account is signed in with an admin-issued temp password.
+   * Placed ahead of Electron/web branches so it applies uniformly; the only earlier
+   * gates are run-mode greet + sync-only sign-in, which precede signedIn.
+   */
+  if (cloudAuth.status === "signedIn" && cloudAuth.mustSetPassword) {
+    return <MustChangePasswordScreen />;
+  }
 
   if (typeof window !== "undefined" && isElectronUserAgent()) {
     if (electronRunMode === "unset") {

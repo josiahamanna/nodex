@@ -162,7 +162,13 @@ export function registerRoutes(
       { _id: user._id },
       { $set: { refreshSessions: nextSessions }, $unset: { activeRefreshJti: "" } },
     );
-    return reply.send({ token, refreshToken, userId, defaultOrgId });
+    return reply.send({
+      token,
+      refreshToken,
+      userId,
+      defaultOrgId,
+      mustSetPassword: (user as UserDoc).mustSetPassword === true,
+    });
   });
 
   app.post("/auth/refresh", async (request, reply) => {
@@ -292,14 +298,66 @@ export function registerRoutes(
     }
     const users = getUsersCollection();
     let email = auth.email;
+    let mustSetPassword = false;
     try {
-      const u = await users.findOne({ _id: new ObjectId(auth.sub) });
+      const u = (await users.findOne({
+        _id: new ObjectId(auth.sub),
+      })) as UserDoc | null;
       if (u) {
         email = u.email;
+        mustSetPassword = u.mustSetPassword === true;
       }
     } catch {
       /* invalid ObjectId */
     }
-    return reply.send({ userId: auth.sub, email });
+    return reply.send({ userId: auth.sub, email, mustSetPassword });
+  });
+
+  /**
+   * Authenticated password change. Required flow for accounts created via the
+   * admin Create-Member path, but also available to any user who wants to
+   * rotate their password. Verifies currentPassword, writes the new hash,
+   * and clears mustSetPassword.
+   */
+  app.post("/auth/change-password", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const parsed = z
+      .object({
+        currentPassword: z.string().min(1).max(256),
+        newPassword: z.string().min(8).max(256),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+    let userOid: ObjectId;
+    try {
+      userOid = new ObjectId(auth.sub);
+    } catch {
+      return reply.status(401).send({ error: "Invalid user id" });
+    }
+    const users = getUsersCollection();
+    const user = (await users.findOne({ _id: userOid })) as UserDoc | null;
+    if (!user) {
+      return reply.status(404).send({ error: "User not found" });
+    }
+    const ok = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
+    if (!ok) {
+      return reply.status(401).send({ error: "Current password is incorrect" });
+    }
+    if (parsed.data.currentPassword === parsed.data.newPassword) {
+      return reply
+        .status(400)
+        .send({ error: "New password must differ from current password" });
+    }
+    const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12);
+    await users.updateOne(
+      { _id: userOid },
+      { $set: { passwordHash, mustSetPassword: false } },
+    );
+    return reply.send({ ok: true, mustSetPassword: false });
   });
 }

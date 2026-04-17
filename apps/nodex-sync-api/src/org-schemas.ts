@@ -149,6 +149,8 @@ export type AuditAction =
   | "org.create"
   | "org.member.role_change"
   | "org.member.remove"
+  | "org.member.create_with_password"
+  | "org.member.password_reset"
   | "org.invite.create"
   | "org.invite.revoke"
   | "org.invite.accept"
@@ -254,6 +256,16 @@ export const setActiveOrgBody = z.object({
 
 export const setMemberRoleBody = z.object({
   role: orgRoleSchema,
+});
+
+export const createOrgMemberBody = z.object({
+  email: z.string().email(),
+  password: z.string().min(8).max(256),
+  role: orgRoleSchema.default("member"),
+});
+
+export const resetMemberPasswordBody = z.object({
+  password: z.string().min(8).max(256),
 });
 
 export type CreateOrgInput = z.infer<typeof createOrgBody>;

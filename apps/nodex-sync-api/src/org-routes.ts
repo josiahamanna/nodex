@@ -17,6 +17,8 @@ import {
   acceptInviteBody,
   createInviteBody,
   createOrgBody,
+  createOrgMemberBody,
+  resetMemberPasswordBody,
   setActiveOrgBody,
   setMemberRoleBody,
   type OrgRole,
@@ -521,6 +523,117 @@ export function registerOrgRoutes(
       metadata: { role: target.role },
     });
     return reply.status(204).send();
+  });
+
+  /**
+   * Admin-only: create a new user + org membership in one call. The admin
+   * supplies a temporary password and shares it out-of-band; the new user is
+   * forced to change it on first login (mustSetPassword=true).
+   */
+  app.post("/orgs/:orgId/members/create", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const { orgId } = request.params as { orgId: string };
+    const ctx = await requireOrgRole(request, reply, auth, orgId, "admin");
+    if (!ctx) {
+      return;
+    }
+    const parsed = createOrgMemberBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+    const email = parsed.data.email.toLowerCase();
+    const users = getUsersCollection();
+    const existing = await users.findOne({ email });
+    if (existing) {
+      return reply.status(409).send({ error: "Email already registered" });
+    }
+    const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+    const ins = await users.insertOne({
+      email,
+      passwordHash,
+      mustSetPassword: true,
+    } as Omit<UserDoc, "_id">);
+    const userIdHex = ins.insertedId.toHexString();
+    await getOrgMembershipsCollection().insertOne({
+      orgId,
+      userId: userIdHex,
+      role: parsed.data.role,
+      joinedAt: new Date(),
+    } as never);
+    await recordAudit({
+      orgId,
+      actorUserId: auth.sub,
+      action: "org.member.create_with_password",
+      targetType: "org_membership",
+      targetId: userIdHex,
+      metadata: { email, role: parsed.data.role },
+    });
+    return reply.send({
+      userId: userIdHex,
+      email,
+      role: parsed.data.role,
+      mustSetPassword: true,
+    });
+  });
+
+  /**
+   * Admin-only: reset a member's password. Sets mustSetPassword=true so the
+   * user must pick a new one on next login. Caller must share the given org
+   * with the target (enforced by requireOrgRole + membership check below).
+   */
+  app.post("/orgs/:orgId/members/:userId/reset-password", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const { orgId, userId } = request.params as {
+      orgId: string;
+      userId: string;
+    };
+    const ctx = await requireOrgRole(request, reply, auth, orgId, "admin");
+    if (!ctx) {
+      return;
+    }
+    const parsed = resetMemberPasswordBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+    const membership = await getOrgMembershipsCollection().findOne({
+      orgId,
+      userId,
+    });
+    if (!membership) {
+      return reply.status(404).send({ error: "Member not found in this org" });
+    }
+    let uoid: ObjectId;
+    try {
+      uoid = new ObjectId(userId);
+    } catch {
+      return reply.status(400).send({ error: "Invalid user id" });
+    }
+    const users = getUsersCollection();
+    const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+    const result = await users.updateOne(
+      { _id: uoid },
+      {
+        $set: { passwordHash, mustSetPassword: true },
+        $unset: { refreshSessions: "", activeRefreshJti: "" },
+      },
+    );
+    if (result.matchedCount === 0) {
+      return reply.status(404).send({ error: "User not found" });
+    }
+    await recordAudit({
+      orgId,
+      actorUserId: auth.sub,
+      action: "org.member.password_reset",
+      targetType: "org_membership",
+      targetId: userId,
+    });
+    return reply.send({ userId, mustSetPassword: true });
   });
 
   /** Validate an invite token without consuming it (for Accept screen prefill). */
