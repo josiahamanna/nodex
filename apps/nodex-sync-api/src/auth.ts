@@ -28,6 +28,10 @@ export type JwtPayload = {
   jti?: string;
   /** MCP-issued tokens carry this so /auth/refresh keeps MCP access + refresh TTLs. */
   mcp?: boolean;
+  /** Active organization context (Phase 1). May be absent on legacy tokens. */
+  activeOrgId?: string;
+  /** Active space context (Phase 2). May be absent on legacy tokens. */
+  activeSpaceId?: string;
 };
 
 export type RefreshJwtPayload = JwtPayload & { typ: "refresh"; jti: string };
@@ -57,7 +61,14 @@ export function signAccessToken(
   const expiresIn = variant === "mcp" ? MCP_ACCESS_EXPIRES : ACCESS_EXPIRES;
   const body: JwtPayload =
     variant === "mcp"
-      ? { sub: payload.sub, email: payload.email, typ: "access", mcp: true }
+      ? {
+          sub: payload.sub,
+          email: payload.email,
+          typ: "access",
+          mcp: true,
+          ...(payload.activeOrgId ? { activeOrgId: payload.activeOrgId } : {}),
+          ...(payload.activeSpaceId ? { activeSpaceId: payload.activeSpaceId } : {}),
+        }
       : { ...payload, typ: "access" };
   return signToken(secret, body, expiresIn);
 }

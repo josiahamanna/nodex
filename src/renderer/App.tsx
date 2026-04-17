@@ -16,8 +16,10 @@ import { useRegisterJsNotebookPlugin } from "./shell/first-party/plugins/js-note
 import { useRegisterNotesShellPlugin } from "./shell/first-party/useRegisterNotesShellPlugin";
 import { useRegisterMarkdownNotePlugin } from "./shell/first-party/plugins/markdown/useRegisterMarkdownNotePlugin";
 import { GlobalContextMenuHost } from "./shell/GlobalContextMenuHost";
+import { AcceptInviteScreen } from "./auth/AcceptInviteScreen";
 import { AuthProvider } from "./auth/AuthContext";
 import { AuthGate } from "./auth/AuthGate";
+import { PostAuthChromeOverlay } from "./auth/PostAuthChromeOverlay";
 import { WebPostAuthRedirectBootstrap } from "./auth/WebPostAuthRedirectBootstrap";
 import { isElectronScratchSession } from "./auth/electron-scratch";
 import { isWebScratchSession } from "./auth/web-scratch";
@@ -27,6 +29,14 @@ import { platformDeps, store } from "./store";
 import { hydrateCloudNotesFromRxDbThunk } from "./store/cloudNotesSlice";
 
 ensureSesLockdown();
+
+function readInviteTokenFromUrl(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const m = window.location.pathname.match(/^\/invite\/([^/?#]+)/);
+  return m ? decodeURIComponent(m[1]!) : null;
+}
 
 function WebScratchCloudHydrator(): null {
   useEffect(() => {
@@ -76,6 +86,26 @@ const App: React.FC = () => {
   useRegisterNotesShellPlugin();
   useRegisterNotesExplorerPlugin();
 
+  const inviteToken = readInviteTokenFromUrl();
+
+  if (inviteToken) {
+    return (
+      <AuthProvider>
+        <div className="min-h-screen w-full" data-testid="nodex-app-root">
+          <AcceptInviteScreen
+            token={inviteToken}
+            onAccepted={() => {
+              if (typeof window !== "undefined") {
+                window.history.replaceState(null, "", "/");
+                window.location.reload();
+              }
+            }}
+          />
+        </div>
+      </AuthProvider>
+    );
+  }
+
   return (
     <AuthProvider>
       <WebPostAuthRedirectBootstrap />
@@ -84,6 +114,7 @@ const App: React.FC = () => {
           <CloudRuntimeBootstrap />
           <WebScratchCloudHydrator />
           <ElectronScratchCloudHydrator />
+          <PostAuthChromeOverlay />
           <div className="flex h-screen min-h-0 flex-col">
             {/* Reserve vertical space for mode line + minibuffer so they do not overlay the workbench. */}
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

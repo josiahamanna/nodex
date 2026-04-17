@@ -79,6 +79,7 @@ async function persistChildMap(
 export async function mongoWpnCreateWorkspace(
   userId: string,
   name: string,
+  scope?: { orgId?: string; spaceId?: string },
 ): Promise<Omit<WpnWorkspaceDoc, "userId" | "settings">> {
   const col = getWpnWorkspacesCollection();
   const t = nowMs();
@@ -89,6 +90,8 @@ export async function mongoWpnCreateWorkspace(
   const doc: WpnWorkspaceDoc = {
     id,
     userId,
+    ...(scope?.orgId ? { orgId: scope.orgId } : {}),
+    ...(scope?.spaceId ? { spaceId: scope.spaceId } : {}),
     name: name.trim() || "Workspace",
     sort_index,
     color_token: null,
@@ -155,7 +158,8 @@ export async function mongoWpnCreateProject(
   name: string,
 ): Promise<Omit<WpnProjectDoc, "userId" | "settings"> | null> {
   const wsCol = getWpnWorkspacesCollection();
-  if (!(await wsCol.findOne({ id: workspaceId, userId }))) {
+  const ws = await wsCol.findOne({ id: workspaceId, userId });
+  if (!ws) {
     return null;
   }
   const col = getWpnProjectsCollection();
@@ -171,6 +175,8 @@ export async function mongoWpnCreateProject(
   const doc: WpnProjectDoc = {
     id,
     userId,
+    ...(ws.orgId ? { orgId: ws.orgId } : {}),
+    ...(ws.spaceId ? { spaceId: ws.spaceId } : {}),
     workspace_id: workspaceId,
     name: name.trim() || "Project",
     sort_index,
@@ -251,9 +257,11 @@ export async function mongoWpnCreateNote(
     title?: string;
     metadata?: Record<string, unknown>;
   },
+  authorship?: { editorUserId?: string },
 ): Promise<{ id: string }> {
   const projCol = getWpnProjectsCollection();
-  if (!(await projCol.findOne({ id: projectId, userId }))) {
+  const project = await projCol.findOne({ id: projectId, userId });
+  if (!project) {
     throw new Error("Project not found");
   }
   const noteCol = getWpnNotesCollection();
@@ -266,6 +274,21 @@ export async function mongoWpnCreateNote(
   const metadata =
     payload.metadata && Object.keys(payload.metadata).length > 0 ? payload.metadata : null;
   const type = normalizeNoteType(payload.type);
+  const scopeFields: {
+    orgId?: string;
+    spaceId?: string;
+    created_by_user_id?: string;
+    updated_by_user_id?: string;
+  } = {};
+  if (project.orgId) {
+    scopeFields.orgId = project.orgId;
+  }
+  if (project.spaceId) {
+    scopeFields.spaceId = project.spaceId;
+  }
+  const editorId = authorship?.editorUserId ?? userId;
+  scopeFields.created_by_user_id = editorId;
+  scopeFields.updated_by_user_id = editorId;
 
   let parent_id: string | null = null;
   let sibling_index = 0;
@@ -277,6 +300,7 @@ export async function mongoWpnCreateNote(
     await noteCol.insertOne({
       id,
       userId,
+      ...scopeFields,
       project_id: projectId,
       parent_id,
       type,
@@ -306,6 +330,7 @@ export async function mongoWpnCreateNote(
     await noteCol.insertOne({
       id,
       userId,
+      ...scopeFields,
       project_id: projectId,
       parent_id,
       type,
@@ -335,6 +360,7 @@ export async function mongoWpnCreateNote(
   await noteCol.insertOne({
     id,
     userId,
+    ...scopeFields,
     project_id: projectId,
     parent_id,
     type,
@@ -363,6 +389,7 @@ export async function mongoWpnUpdateNote(
     metadata?: Record<string, unknown> | null;
     type?: string;
   },
+  authorship?: { editorUserId?: string },
 ): Promise<{
   id: string;
   project_id: string;
@@ -416,10 +443,17 @@ export async function mongoWpnUpdateNote(
     }
   }
   const updated_at_ms = nowMs();
-  await noteCol.updateOne(
-    { id: noteId, userId },
-    { $set: { title, content, type, metadata, updated_at_ms } },
-  );
+  const setFields: Record<string, unknown> = {
+    title,
+    content,
+    type,
+    metadata,
+    updated_at_ms,
+  };
+  if (authorship?.editorUserId) {
+    setFields.updated_by_user_id = authorship.editorUserId;
+  }
+  await noteCol.updateOne({ id: noteId, userId }, { $set: setFields });
   const cur = await noteCol.findOne({ id: noteId, userId });
   if (!cur) {
     return null;
@@ -484,8 +518,16 @@ export async function mongoWpnDuplicateSubtree(
   rootNoteId: string,
 ): Promise<{ newRootId: string }> {
   const projCol = getWpnProjectsCollection();
-  if (!(await projCol.findOne({ id: projectId, userId }))) {
+  const project = await projCol.findOne({ id: projectId, userId });
+  if (!project) {
     throw new Error("Project not found");
+  }
+  const dupScopeFields: { orgId?: string; spaceId?: string } = {};
+  if (project.orgId) {
+    dupScopeFields.orgId = project.orgId;
+  }
+  if (project.spaceId) {
+    dupScopeFields.spaceId = project.spaceId;
   }
   const noteCol = getWpnNotesCollection();
   const rawRows = await noteCol.find({ userId, project_id: projectId }).toArray();
@@ -524,6 +566,7 @@ export async function mongoWpnDuplicateSubtree(
     await noteCol.insertOne({
       id: nid,
       userId,
+      ...dupScopeFields,
       project_id: projectId,
       parent_id: newParent,
       type: r.type,

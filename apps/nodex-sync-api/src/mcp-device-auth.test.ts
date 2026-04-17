@@ -6,23 +6,18 @@ import type { FastifyInstance } from "fastify";
 import { NODEX_SYNC_API_V1_PREFIX } from "./api-v1-prefix.js";
 import { buildSyncApiApp } from "./build-app.js";
 import { closeMongo, connectMongo } from "./db.js";
+import { dropActiveMongoDb, resolveTestMongoUri } from "./test-mongo-helper.js";
 
 const jwtSecret = "dev-only-nodex-sync-secret-min-32-chars!!";
-
-function mongoUriForTest(): string {
-  const base = process.env.MONGODB_URI?.trim() || "mongodb://127.0.0.1:27017";
-  const sep = base.includes("?") ? "&" : "?";
-  return `${base}${sep}serverSelectionTimeoutMS=2500`;
-}
 
 test(
   "MCP device login: start → authorize → token",
   { timeout: 20_000 },
   async (t) => {
-    const dbName = `nodex_mcp_dev_${randomBytes(8).toString("hex")}`;
+    const dbName = `nodex_mcp_dev_it_${randomBytes(8).toString("hex")}`;
     let app: FastifyInstance | undefined;
 
-    const uri = mongoUriForTest();
+    const uri = resolveTestMongoUri();
     try {
       await connectMongo(uri, dbName);
     } catch (err) {
@@ -107,6 +102,7 @@ test(
       if (app) {
         await app.close();
       }
+      await dropActiveMongoDb();
       await closeMongo();
     }
   },
@@ -116,10 +112,10 @@ test(
   "MCP device login: max 5 awaiting_mcp per user",
   { timeout: 30_000 },
   async (t) => {
-    const dbName = `nodex_mcp_cap_${randomBytes(8).toString("hex")}`;
+    const dbName = `nodex_mcp_cap_it_${randomBytes(8).toString("hex")}`;
     let app: FastifyInstance | undefined;
 
-    const uri = mongoUriForTest();
+    const uri = resolveTestMongoUri();
     try {
       await connectMongo(uri, dbName);
     } catch (err) {
@@ -183,6 +179,7 @@ test(
       if (app) {
         await app.close();
       }
+      await dropActiveMongoDb();
       await closeMongo();
     }
   },

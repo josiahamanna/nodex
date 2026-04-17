@@ -1,4 +1,16 @@
-import { getAccessToken, setAccessToken, type AuthUser } from "./auth-session";
+import {
+  getAccessToken,
+  getActiveOrgId,
+  getActiveSpaceId,
+  setAccessToken,
+  setActiveOrgId,
+  setActiveSpaceId,
+  type AuthUser,
+  type AuthUserOrg,
+  type AuthUserSpace,
+  type OrgRole,
+  type SpaceRole,
+} from "./auth-session";
 
 type AuthResponse = { token: string; user: AuthUser };
 
@@ -22,11 +34,21 @@ function errorMessageFromBody(status: number, text: string): string {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const scopeHeaders: Record<string, string> = {};
+  const orgId = getActiveOrgId();
+  if (orgId) {
+    scopeHeaders["X-Nodex-Org"] = orgId;
+  }
+  const spaceId = getActiveSpaceId();
+  if (spaceId) {
+    scopeHeaders["X-Nodex-Space"] = spaceId;
+  }
   const res = await fetch(`/api/v1${path}`, {
     credentials: "include",
     ...(init ?? {}),
     headers: {
       "Content-Type": "application/json",
+      ...scopeHeaders,
       ...(init?.headers ?? {}),
     },
   });
@@ -86,5 +108,637 @@ export async function authMe(): Promise<AuthUser> {
     headers: { Authorization: `Bearer ${token}` },
   });
   return r.user;
+}
+
+type ListOrgsResponse = {
+  orgs: AuthUserOrg[];
+  activeOrgId: string | null;
+  defaultOrgId: string | null;
+};
+
+export async function createOrg(payload: {
+  name: string;
+  slug?: string;
+}): Promise<{ orgId: string; name: string; slug: string }> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  return requestJson<{ orgId: string; name: string; slug: string }>("/orgs", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listMyOrgs(): Promise<ListOrgsResponse> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const r = await requestJson<ListOrgsResponse>("/orgs/me", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (r.activeOrgId) {
+    setActiveOrgId(r.activeOrgId);
+  } else if (r.defaultOrgId) {
+    setActiveOrgId(r.defaultOrgId);
+  }
+  return r;
+}
+
+export async function setActiveOrgRemote(orgId: string): Promise<{ token: string }> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const r = await requestJson<{ token: string; activeOrgId: string }>(
+    "/orgs/active",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ orgId }),
+    },
+  );
+  setAccessToken(r.token);
+  setActiveOrgId(r.activeOrgId);
+  return { token: r.token };
+}
+
+export type OrgInvitePreview = {
+  orgId: string;
+  orgName: string;
+  orgSlug: string;
+  email: string;
+  role: OrgRole;
+  needsPassword: boolean;
+  expiresAt: string;
+};
+
+export async function previewInvite(token: string): Promise<OrgInvitePreview> {
+  return requestJson<OrgInvitePreview>(
+    `/auth/invites/preview?token=${encodeURIComponent(token)}`,
+    { method: "GET" },
+  );
+}
+
+export async function acceptInvite(payload: {
+  token: string;
+  password?: string;
+  displayName?: string;
+}): Promise<{
+  token: string;
+  refreshToken: string;
+  userId: string;
+  orgId: string;
+  role: OrgRole;
+  createdUser: boolean;
+}> {
+  const r = await requestJson<{
+    token: string;
+    refreshToken: string;
+    userId: string;
+    orgId: string;
+    role: OrgRole;
+    createdUser: boolean;
+  }>("/auth/accept-invite", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  setAccessToken(r.token);
+  setActiveOrgId(r.orgId);
+  return r;
+}
+
+export type OrgMember = {
+  userId: string;
+  email: string;
+  displayName: string | null;
+  role: OrgRole;
+  mustSetPassword: boolean;
+  joinedAt: string;
+};
+
+export async function listOrgMembers(orgId: string): Promise<OrgMember[]> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const r = await requestJson<{ members: OrgMember[] }>(
+    `/orgs/${encodeURIComponent(orgId)}/members`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return r.members;
+}
+
+export type OrgInviteRow = {
+  inviteId: string;
+  email: string;
+  role: OrgRole;
+  status: "pending" | "accepted" | "revoked";
+  invitedByUserId: string;
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+};
+
+export async function listOrgInvites(orgId: string): Promise<OrgInviteRow[]> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const r = await requestJson<{ invites: OrgInviteRow[] }>(
+    `/orgs/${encodeURIComponent(orgId)}/invites`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return r.invites;
+}
+
+export async function createOrgInvite(payload: {
+  orgId: string;
+  email: string;
+  role?: OrgRole;
+}): Promise<{
+  inviteId: string;
+  email: string;
+  role: OrgRole;
+  token: string;
+  expiresAt: string;
+}> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  return requestJson(`/orgs/${encodeURIComponent(payload.orgId)}/invites`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ email: payload.email, role: payload.role ?? "member" }),
+  });
+}
+
+export async function revokeOrgInvite(payload: {
+  orgId: string;
+  inviteId: string;
+}): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(
+    `/orgs/${encodeURIComponent(payload.orgId)}/invites/${encodeURIComponent(payload.inviteId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+}
+
+export async function setOrgMemberRole(payload: {
+  orgId: string;
+  userId: string;
+  role: OrgRole;
+}): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(
+    `/orgs/${encodeURIComponent(payload.orgId)}/members/${encodeURIComponent(payload.userId)}/role`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ role: payload.role }),
+    },
+  );
+}
+
+export async function removeOrgMember(payload: {
+  orgId: string;
+  userId: string;
+}): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(
+    `/orgs/${encodeURIComponent(payload.orgId)}/members/${encodeURIComponent(payload.userId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+}
+
+// ----- Phase 2: Spaces -----
+
+export type SpaceRow = {
+  spaceId: string;
+  orgId: string;
+  name: string;
+  kind: "default" | "normal";
+  role: SpaceRole | null;
+  createdAt: string;
+};
+
+export async function listOrgSpaces(orgId: string): Promise<SpaceRow[]> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const r = await requestJson<{ spaces: SpaceRow[] }>(
+    `/orgs/${encodeURIComponent(orgId)}/spaces`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return r.spaces;
+}
+
+export async function createSpace(payload: {
+  orgId: string;
+  name: string;
+}): Promise<{ spaceId: string; orgId: string; name: string; kind: "default" | "normal"; role: SpaceRole }> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  return requestJson(`/orgs/${encodeURIComponent(payload.orgId)}/spaces`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: payload.name }),
+  });
+}
+
+export async function renameSpace(payload: {
+  spaceId: string;
+  name: string;
+}): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(`/spaces/${encodeURIComponent(payload.spaceId)}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: payload.name }),
+  });
+}
+
+export async function deleteSpace(spaceId: string): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(`/spaces/${encodeURIComponent(spaceId)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export type SpaceMember = {
+  userId: string;
+  email: string;
+  displayName: string | null;
+  role: SpaceRole;
+  joinedAt: string;
+};
+
+export async function listSpaceMembers(spaceId: string): Promise<SpaceMember[]> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const r = await requestJson<{ members: SpaceMember[] }>(
+    `/spaces/${encodeURIComponent(spaceId)}/members`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return r.members;
+}
+
+export async function addSpaceMember(payload: {
+  spaceId: string;
+  userId: string;
+  role?: SpaceRole;
+}): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(`/spaces/${encodeURIComponent(payload.spaceId)}/members`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ userId: payload.userId, role: payload.role ?? "member" }),
+  });
+}
+
+export async function setSpaceMemberRole(payload: {
+  spaceId: string;
+  userId: string;
+  role: SpaceRole;
+}): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(
+    `/spaces/${encodeURIComponent(payload.spaceId)}/members/${encodeURIComponent(payload.userId)}/role`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ role: payload.role }),
+    },
+  );
+}
+
+export async function removeSpaceMember(payload: {
+  spaceId: string;
+  userId: string;
+}): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(
+    `/spaces/${encodeURIComponent(payload.spaceId)}/members/${encodeURIComponent(payload.userId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+}
+
+export async function setActiveSpaceRemote(spaceId: string): Promise<{
+  token: string;
+  activeSpaceId: string;
+  activeOrgId: string;
+}> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const r = await requestJson<{
+    token: string;
+    activeSpaceId: string;
+    activeOrgId: string;
+  }>("/spaces/active", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ spaceId }),
+  });
+  setAccessToken(r.token);
+  setActiveSpaceId(r.activeSpaceId);
+  setActiveOrgId(r.activeOrgId);
+  return r;
+}
+
+// ----- Phase 3: Teams -----
+
+export type TeamRow = {
+  teamId: string;
+  orgId: string;
+  name: string;
+  colorToken: string | null;
+  memberCount: number;
+  createdAt: string;
+};
+
+export async function listOrgTeams(orgId: string): Promise<TeamRow[]> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const r = await requestJson<{ teams: TeamRow[] }>(
+    `/orgs/${encodeURIComponent(orgId)}/teams`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return r.teams;
+}
+
+export async function createTeam(payload: {
+  orgId: string;
+  name: string;
+  colorToken?: string;
+}): Promise<{ teamId: string; orgId: string; name: string; colorToken: string | null }> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  return requestJson(`/orgs/${encodeURIComponent(payload.orgId)}/teams`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      name: payload.name,
+      ...(payload.colorToken ? { colorToken: payload.colorToken } : {}),
+    }),
+  });
+}
+
+export async function updateTeam(payload: {
+  teamId: string;
+  name?: string;
+  colorToken?: string | null;
+}): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const body: Record<string, unknown> = {};
+  if (payload.name !== undefined) body.name = payload.name;
+  if (payload.colorToken !== undefined) body.colorToken = payload.colorToken;
+  await requestJson(`/teams/${encodeURIComponent(payload.teamId)}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteTeam(teamId: string): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(`/teams/${encodeURIComponent(teamId)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export type TeamMember = {
+  userId: string;
+  email: string;
+  displayName: string | null;
+  joinedAt: string;
+};
+
+export async function listTeamMembers(teamId: string): Promise<TeamMember[]> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const r = await requestJson<{ members: TeamMember[] }>(
+    `/teams/${encodeURIComponent(teamId)}/members`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return r.members;
+}
+
+export async function addTeamMember(payload: {
+  teamId: string;
+  userId: string;
+}): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(`/teams/${encodeURIComponent(payload.teamId)}/members`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ userId: payload.userId }),
+  });
+}
+
+export async function removeTeamMember(payload: {
+  teamId: string;
+  userId: string;
+}): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(
+    `/teams/${encodeURIComponent(payload.teamId)}/members/${encodeURIComponent(payload.userId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+}
+
+export type TeamGrant = {
+  spaceId: string;
+  spaceName: string;
+  role: SpaceRole;
+  grantedAt: string;
+};
+
+export async function listTeamGrants(teamId: string): Promise<TeamGrant[]> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const r = await requestJson<{ grants: TeamGrant[] }>(
+    `/teams/${encodeURIComponent(teamId)}/grants`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return r.grants;
+}
+
+export async function grantTeamSpace(payload: {
+  teamId: string;
+  spaceId: string;
+  role: SpaceRole;
+}): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(`/teams/${encodeURIComponent(payload.teamId)}/grants`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ spaceId: payload.spaceId, role: payload.role }),
+  });
+}
+
+export async function revokeTeamGrant(payload: {
+  teamId: string;
+  spaceId: string;
+}): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  await requestJson(
+    `/teams/${encodeURIComponent(payload.teamId)}/grants/${encodeURIComponent(payload.spaceId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+}
+
+// ----- Phase 7: Audit log -----
+
+export type AuditEvent = {
+  eventId: string;
+  orgId: string;
+  actorUserId: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  metadata: Record<string, unknown> | null;
+  ts: string;
+};
+
+export async function listOrgAudit(payload: {
+  orgId: string;
+  before?: number;
+  limit?: number;
+}): Promise<{ events: AuditEvent[]; nextBefore: number | null }> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const params = new URLSearchParams();
+  if (payload.before) params.set("before", String(payload.before));
+  if (payload.limit) params.set("limit", String(payload.limit));
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return requestJson<{ events: AuditEvent[]; nextBefore: number | null }>(
+    `/orgs/${encodeURIComponent(payload.orgId)}/audit${qs}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+}
+
+export async function listMySpaces(): Promise<{
+  spaces: AuthUserSpace[];
+  activeSpaceId: string | null;
+}> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  const r = await requestJson<{
+    spaces: AuthUserSpace[];
+    activeSpaceId: string | null;
+  }>("/spaces/me", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (r.activeSpaceId) {
+    setActiveSpaceId(r.activeSpaceId);
+  }
+  return r;
 }
 

@@ -10,12 +10,15 @@ import {
   writeCloudSyncToken,
 } from "../cloud-sync/cloud-sync-storage";
 import { clearAllElectronAppPinSettings } from "../auth/electron-app-pin-storage";
+import { setActiveOrgId, setActiveSpaceId } from "../auth/auth-session";
 import { clearPersistedWebSyncWpnPreference } from "../nodex-web-shim";
 import {
   hydrateCloudNotesFromRxDbThunk,
   resetCloudNotes,
   runCloudSyncThunk,
 } from "./cloudNotesSlice";
+import { clearOrgMembership } from "./orgMembershipSlice";
+import { clearSpaceMembership } from "./spaceMembershipSlice";
 
 type CloudAuthThunkExtra = { extra: NodexPlatformDeps };
 
@@ -197,7 +200,11 @@ export const cloudLogoutThunk = createAsyncThunk<void, void, CloudAuthThunkExtra
     extra.remoteApi.setAuthToken(null);
     extra.remoteApi.setRefreshToken(null);
     clearAllElectronAppPinSettings();
+    setActiveOrgId(null);
+    setActiveSpaceId(null);
     dispatch(resetCloudNotes());
+    dispatch(clearOrgMembership());
+    dispatch(clearSpaceMembership());
     clearPersistedWebSyncWpnPreference();
   },
 );

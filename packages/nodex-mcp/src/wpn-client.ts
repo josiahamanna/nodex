@@ -117,6 +117,12 @@ export class WpnHttpClient {
     if (this.holder.accessToken) {
       h.Authorization = `Bearer ${this.holder.accessToken}`;
     }
+    if (this.holder.activeOrgId) {
+      h["X-Nodex-Org"] = this.holder.activeOrgId;
+    }
+    if (this.holder.activeSpaceId) {
+      h["X-Nodex-Space"] = this.holder.activeSpaceId;
+    }
     return h;
   }
 
@@ -212,6 +218,38 @@ export class WpnHttpClient {
       throw new Error("WPN GET workspaces: missing workspaces array");
     }
     return ws;
+  }
+
+  /** Phase 1 — list orgs the authenticated user belongs to (and active selection). */
+  async listMyOrgs(): Promise<{
+    orgs: Array<{
+      orgId: string;
+      name: string;
+      slug: string;
+      role: "admin" | "member";
+      isDefault: boolean;
+    }>;
+    activeOrgId: string | null;
+    defaultOrgId: string | null;
+  }> {
+    return this.getJson(
+      "/orgs/me",
+      "GET /orgs/me",
+    );
+  }
+
+  /** Phase 2 — list spaces the user belongs to across all orgs. */
+  async listMySpaces(): Promise<{
+    spaces: Array<{
+      spaceId: string;
+      orgId: string | null;
+      name: string;
+      kind: "default" | "normal";
+      role: "owner" | "member";
+    }>;
+    activeSpaceId: string | null;
+  }> {
+    return this.getJson("/spaces/me", "GET /spaces/me");
   }
 
   async getProjects(workspaceId: string): Promise<unknown[]> {
@@ -492,6 +530,12 @@ export class WpnHttpClient {
     if (this.holder.accessToken) {
       h.Authorization = `Bearer ${this.holder.accessToken}`;
     }
+    if (this.holder.activeOrgId) {
+      h["X-Nodex-Org"] = this.holder.activeOrgId;
+    }
+    if (this.holder.activeSpaceId) {
+      h["X-Nodex-Space"] = this.holder.activeSpaceId;
+    }
     const doFetch = () =>
       fetch(this.url("/wpn/import"), {
         method: "POST",
@@ -503,6 +547,12 @@ export class WpnHttpClient {
       const ok = await this.tryRefresh();
       if (ok) {
         h.Authorization = `Bearer ${this.holder.accessToken}`;
+        if (this.holder.activeOrgId) {
+          h["X-Nodex-Org"] = this.holder.activeOrgId;
+        }
+        if (this.holder.activeSpaceId) {
+          h["X-Nodex-Space"] = this.holder.activeSpaceId;
+        }
         res = await doFetch();
       }
     }

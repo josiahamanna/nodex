@@ -6,15 +6,9 @@ import type { FastifyInstance } from "fastify";
 import { NODEX_SYNC_API_V1_PREFIX } from "./api-v1-prefix.js";
 import { buildSyncApiApp } from "./build-app.js";
 import { closeMongo, connectMongo } from "./db.js";
+import { dropActiveMongoDb, resolveTestMongoUri } from "./test-mongo-helper.js";
 
 const jwtSecret = "dev-only-nodex-sync-secret-min-32-chars!!";
-
-function mongoUriForTest(): string {
-  const base = process.env.MONGODB_URI?.trim() || "mongodb://127.0.0.1:27017";
-  const sep = base.includes("?") ? "&" : "?";
-  /** Fail fast when Mongo is not running (default driver timeout is ~30s). */
-  return `${base}${sep}serverSelectionTimeoutMS=2500`;
-}
 
 /**
  * End-to-end HTTP flow against a disposable DB: register → JWT → shell layout,
@@ -28,7 +22,7 @@ test(
     const dbName = `nodex_sync_it_${randomBytes(8).toString("hex")}`;
     let app: FastifyInstance | undefined;
 
-    const uri = mongoUriForTest();
+    const uri = resolveTestMongoUri();
     try {
       await connectMongo(uri, dbName);
     } catch (err) {
@@ -145,6 +139,7 @@ test(
       if (app) {
         await app.close();
       }
+      await dropActiveMongoDb();
       await closeMongo();
     }
   },

@@ -1360,7 +1360,7 @@ export function createNodexMcpServer(
     "nodex_auth_status",
     {
       description:
-        "Diagnostics: mode, authenticated, sync API host, persist file presence, JWT claims (unverified_sub / exp) — never includes raw tokens.",
+        "Diagnostics: mode, authenticated, sync API host, persist file presence, JWT claims (unverified_sub / exp), and org list when authenticated — never includes raw tokens.",
       inputSchema: z.object({}),
     },
     async () => {
@@ -1375,6 +1375,38 @@ export function createNodexMcpServer(
       }
       const access = runtime.holder.accessToken;
       const jwtInfo = access ? parseJwtUnverified(access) : {};
+      let orgs: unknown = undefined;
+      let spaces: unknown = undefined;
+      let active_org_id: string | null = runtime.holder.activeOrgId;
+      let active_space_id: string | null = runtime.holder.activeSpaceId;
+      if (runtime.holder.hasAccess()) {
+        try {
+          const r = await client.listMyOrgs();
+          orgs = r.orgs;
+          if (!active_org_id) {
+            active_org_id = r.activeOrgId ?? r.defaultOrgId ?? null;
+            if (active_org_id) {
+              runtime.holder.setActiveOrg(active_org_id);
+            }
+          }
+        } catch {
+          /* org listing is best-effort; older servers may not have /orgs/me */
+        }
+        try {
+          const sr = await client.listMySpaces();
+          spaces = sr.spaces;
+          if (!active_space_id) {
+            const candidate =
+              sr.spaces.find((s) => s.orgId === active_org_id)?.spaceId ?? null;
+            if (candidate) {
+              active_space_id = candidate;
+              runtime.holder.setActiveSpace(candidate);
+            }
+          }
+        } catch {
+          /* space listing is best-effort; pre-Phase-2 servers don't have /spaces/me */
+        }
+      }
       return jsonResult({
         mode: runtime.mode,
         cloud_session: runtime.cloudSession,
@@ -1382,6 +1414,10 @@ export function createNodexMcpServer(
         sync_base_host,
         persist_file_path: persistPath ?? null,
         persist_file_present,
+        active_org_id,
+        active_space_id,
+        ...(orgs ? { orgs } : {}),
+        ...(spaces ? { spaces } : {}),
         ...jwtInfo,
       });
     },

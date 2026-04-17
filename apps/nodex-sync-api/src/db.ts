@@ -1,10 +1,25 @@
 import {
   MongoClient,
+  ObjectId,
   type Collection,
   type Db,
   type MongoClientOptions,
-  type ObjectId,
 } from "mongodb";
+import type {
+  AuditEventDoc,
+  MigrationDoc,
+  OrgDoc,
+  OrgInviteDoc,
+  OrgMembershipDoc,
+  SpaceAnnouncementDoc,
+  SpaceDoc,
+  SpaceMembershipDoc,
+  TeamDoc,
+  TeamMembershipDoc,
+  TeamSpaceGrantDoc,
+  WorkspaceShareDoc,
+  WorkspaceVisibility,
+} from "./org-schemas.js";
 
 export type SyncNoteDoc = {
   id: string;
@@ -21,6 +36,14 @@ export type SyncNoteDoc = {
 export type WpnWorkspaceDoc = {
   id: string;
   userId: string;
+  /** Phase 2: Organization the workspace belongs to. Backfilled by m_002. */
+  orgId?: string;
+  /** Phase 2: Space the workspace belongs to. Backfilled by m_002. */
+  spaceId?: string;
+  /** Phase 4: visibility within the space. Backfilled by m_004 to "public". */
+  visibility?: WorkspaceVisibility;
+  /** Phase 4: original creator (for `private` and `shared` access checks). */
+  creatorUserId?: string;
   name: string;
   sort_index: number;
   color_token: string | null;
@@ -33,6 +56,8 @@ export type WpnWorkspaceDoc = {
 export type WpnProjectDoc = {
   id: string;
   userId: string;
+  orgId?: string;
+  spaceId?: string;
   workspace_id: string;
   name: string;
   sort_index: number;
@@ -45,6 +70,12 @@ export type WpnProjectDoc = {
 export type WpnNoteDoc = {
   id: string;
   userId: string;
+  orgId?: string;
+  spaceId?: string;
+  /** Phase 6: original creator (backfilled by m_006 from `userId`). */
+  created_by_user_id?: string;
+  /** Phase 6: last editor (backfilled by m_006 from `userId`). */
+  updated_by_user_id?: string;
   project_id: string;
   parent_id: string | null;
   type: string;
@@ -60,6 +91,8 @@ export type WpnNoteDoc = {
 
 export type WpnExplorerStateDoc = {
   userId: string;
+  orgId?: string;
+  spaceId?: string;
   project_id: string;
   expanded_ids: string[];
 };
@@ -164,6 +197,305 @@ async function ensureIndexes(database: Db): Promise<void> {
   await mcpDev.createIndex({ deviceCodeHash: 1 }, { unique: true });
   await mcpDev.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   await mcpDev.createIndex({ boundUserId: 1, status: 1, expiresAt: 1 });
+
+  const orgs = database.collection<OrgDoc>("organizations");
+  await orgs.createIndex({ slug: 1 }, { unique: true });
+  await orgs.createIndex({ ownerUserId: 1 });
+
+  const orgMembers = database.collection<OrgMembershipDoc>("org_memberships");
+  await orgMembers.createIndex({ orgId: 1, userId: 1 }, { unique: true });
+  await orgMembers.createIndex({ userId: 1 });
+
+  const orgInvites = database.collection<OrgInviteDoc>("org_invites");
+  await orgInvites.createIndex(
+    { orgId: 1, email: 1, status: 1 },
+    {
+      unique: true,
+      partialFilterExpression: { status: "pending" },
+    },
+  );
+  await orgInvites.createIndex({ tokenHash: 1 }, { unique: true });
+  await orgInvites.createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0, partialFilterExpression: { status: "pending" } },
+  );
+
+  const spaces = database.collection<SpaceDoc>("spaces");
+  await spaces.createIndex({ orgId: 1 });
+  await spaces.createIndex(
+    { orgId: 1, kind: 1 },
+    { partialFilterExpression: { kind: "default" } },
+  );
+
+  const spaceMembers = database.collection<SpaceMembershipDoc>("space_memberships");
+  await spaceMembers.createIndex({ spaceId: 1, userId: 1 }, { unique: true });
+  await spaceMembers.createIndex({ userId: 1 });
+
+  const teams = database.collection<TeamDoc>("teams");
+  await teams.createIndex({ orgId: 1, name: 1 }, { unique: true });
+
+  const teamMembers = database.collection<TeamMembershipDoc>("team_memberships");
+  await teamMembers.createIndex({ teamId: 1, userId: 1 }, { unique: true });
+  await teamMembers.createIndex({ userId: 1 });
+
+  const teamGrants = database.collection<TeamSpaceGrantDoc>("team_space_grants");
+  await teamGrants.createIndex({ teamId: 1, spaceId: 1 }, { unique: true });
+  await teamGrants.createIndex({ spaceId: 1 });
+
+  // Phase 4
+  const wsShares = database.collection<WorkspaceShareDoc>("workspace_shares");
+  await wsShares.createIndex({ workspaceId: 1, userId: 1 }, { unique: true });
+  await wsShares.createIndex({ userId: 1 });
+
+  // Phase 5
+  const announcements = database.collection<SpaceAnnouncementDoc>("space_announcements");
+  await announcements.createIndex({ spaceId: 1, pinned: -1, createdAt: -1 });
+
+  // Phase 7
+  const audit = database.collection<AuditEventDoc>("audit_events");
+  await audit.createIndex({ orgId: 1, ts: -1 });
+  await audit.createIndex({ targetType: 1, targetId: 1, ts: -1 });
+
+  // Phase 2: compound indexes for org+space scoped reads (alongside legacy userId).
+  await wpnWs.createIndex({ orgId: 1, spaceId: 1, sort_index: 1 });
+  await wpnProj.createIndex({ orgId: 1, spaceId: 1, workspace_id: 1, sort_index: 1 });
+  await wpnNotes.createIndex({ orgId: 1, spaceId: 1, project_id: 1, parent_id: 1, sibling_index: 1 });
+  await wpnEx.createIndex({ orgId: 1, spaceId: 1, project_id: 1 });
+
+  const migrations = database.collection<MigrationDoc>("_migrations");
+  await migrations.createIndex({ key: 1 }, { unique: true });
+
+  await runIdempotentMigrations(database);
+}
+
+/**
+ * Lazy backfills run on every connect; cheap when there's nothing to do.
+ * Only the first execution writes its key to `_migrations` — subsequent runs
+ * skip the bulk scan but new users still get inline org creation via
+ * {@link ensureUserHasDefaultOrg}.
+ */
+async function runIdempotentMigrations(database: Db): Promise<void> {
+  await m_001_default_org_per_user(database);
+  await m_002_default_space_per_org(database);
+  await m_004_workspace_visibility(database);
+  await m_006_note_authorship(database);
+}
+
+async function m_004_workspace_visibility(database: Db): Promise<void> {
+  const key = "m_004_workspace_visibility";
+  const migrations = database.collection<MigrationDoc>("_migrations");
+  const ran = await migrations.findOne({ key });
+  if (ran) {
+    return;
+  }
+  await database
+    .collection<WpnWorkspaceDoc>("wpn_workspaces")
+    .updateMany(
+      { visibility: { $exists: false } },
+      [
+        {
+          $set: {
+            visibility: "public",
+            creatorUserId: { $ifNull: ["$creatorUserId", "$userId"] },
+          },
+        },
+      ],
+    );
+  await migrations.updateOne(
+    { key },
+    { $setOnInsert: { key, ranAt: new Date() } },
+    { upsert: true },
+  );
+}
+
+async function m_006_note_authorship(database: Db): Promise<void> {
+  const key = "m_006_note_authorship";
+  const migrations = database.collection<MigrationDoc>("_migrations");
+  const ran = await migrations.findOne({ key });
+  if (ran) {
+    return;
+  }
+  await database
+    .collection<WpnNoteDoc>("wpn_notes")
+    .updateMany(
+      { created_by_user_id: { $exists: false } },
+      [
+        {
+          $set: {
+            created_by_user_id: "$userId",
+            updated_by_user_id: "$userId",
+          },
+        },
+      ],
+    );
+  await migrations.updateOne(
+    { key },
+    { $setOnInsert: { key, ranAt: new Date() } },
+    { upsert: true },
+  );
+}
+
+async function m_001_default_org_per_user(database: Db): Promise<void> {
+  const key = "m_001_default_org_per_user";
+  const migrations = database.collection<MigrationDoc>("_migrations");
+  const ran = await migrations.findOne({ key });
+  if (ran) {
+    return;
+  }
+  const users = database.collection<UserDoc>("users");
+  const cursor = users.find({
+    $or: [{ defaultOrgId: { $exists: false } }, { defaultOrgId: null }],
+  });
+  for await (const user of cursor) {
+    await ensureUserHasDefaultOrg(database, user._id.toHexString(), user.email);
+  }
+  await migrations.updateOne(
+    { key },
+    { $setOnInsert: { key, ranAt: new Date() } },
+    { upsert: true },
+  );
+}
+
+function deriveSlugCandidate(email: string): string {
+  const local = email.split("@", 1)[0] ?? email;
+  const cleaned = local.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return cleaned.length >= 2 ? cleaned.slice(0, 56) : `org-${cleaned || "x"}`;
+}
+
+/**
+ * Phase 2 backfill: every Org gets one default Space; every space gets the
+ * org owner as Space Owner; every WPN doc owned by the org owner gets stamped
+ * with `orgId` + `spaceId`. Idempotent and gated by `_migrations`.
+ */
+async function m_002_default_space_per_org(database: Db): Promise<void> {
+  const key = "m_002_default_space_per_org";
+  const migrations = database.collection<MigrationDoc>("_migrations");
+  const ran = await migrations.findOne({ key });
+  if (ran) {
+    return;
+  }
+  const orgs = database.collection<OrgDoc>("organizations");
+  const allOrgs = await orgs.find({}).toArray();
+  for (const org of allOrgs) {
+    await ensureDefaultSpaceForOrg(database, org._id.toHexString(), org.ownerUserId);
+  }
+  await migrations.updateOne(
+    { key },
+    { $setOnInsert: { key, ranAt: new Date() } },
+    { upsert: true },
+  );
+}
+
+/**
+ * Idempotent: returns the org's default-kind Space, creating it if missing.
+ * Also ensures `ownerUserId` is enrolled as a Space Owner and that any
+ * existing WPN docs owned by `ownerUserId` are stamped with the resolved
+ * `(orgId, spaceId)`. Subsequent calls are cheap.
+ */
+export async function ensureDefaultSpaceForOrg(
+  database: Db,
+  orgIdHex: string,
+  ownerUserIdHex: string,
+): Promise<{ spaceId: string; created: boolean }> {
+  const spaces = database.collection<SpaceDoc>("spaces");
+  let spaceDoc = await spaces.findOne({ orgId: orgIdHex, kind: "default" });
+  let created = false;
+  if (!spaceDoc) {
+    const ins = await spaces.insertOne({
+      orgId: orgIdHex,
+      name: "Default",
+      kind: "default",
+      createdByUserId: ownerUserIdHex,
+      createdAt: new Date(),
+    } as SpaceDoc);
+    spaceDoc = (await spaces.findOne({ _id: ins.insertedId })) as SpaceDoc;
+    created = true;
+  }
+  const spaceIdHex = spaceDoc._id.toHexString();
+  const spaceMembers = database.collection<SpaceMembershipDoc>("space_memberships");
+  await spaceMembers.updateOne(
+    { spaceId: spaceIdHex, userId: ownerUserIdHex },
+    {
+      $setOnInsert: {
+        spaceId: spaceIdHex,
+        userId: ownerUserIdHex,
+        role: "owner",
+        addedByUserId: ownerUserIdHex,
+        joinedAt: new Date(),
+      },
+    },
+    { upsert: true },
+  );
+  await stampOrgSpaceOnLegacyWpnDocs(database, orgIdHex, spaceIdHex, ownerUserIdHex);
+  return { spaceId: spaceIdHex, created };
+}
+
+/**
+ * One-shot per (org, owner): set `orgId`/`spaceId` on existing WPN docs that
+ * are still missing them. Cheap when nothing matches.
+ */
+async function stampOrgSpaceOnLegacyWpnDocs(
+  database: Db,
+  orgId: string,
+  spaceId: string,
+  userId: string,
+): Promise<void> {
+  const filter = { userId, orgId: { $exists: false } };
+  const set = { $set: { orgId, spaceId } };
+  await database.collection<WpnWorkspaceDoc>("wpn_workspaces").updateMany(filter, set);
+  await database.collection<WpnProjectDoc>("wpn_projects").updateMany(filter, set);
+  await database.collection<WpnNoteDoc>("wpn_notes").updateMany(filter, set);
+  await database
+    .collection<WpnExplorerStateDoc>("wpn_explorer_state")
+    .updateMany(filter, set);
+}
+
+/**
+ * Idempotent: if the user already has a `defaultOrgId`, returns the existing
+ * Org. Otherwise creates an Org + admin membership and stamps the user.
+ * Slug collisions are resolved by appending a random suffix.
+ */
+export async function ensureUserHasDefaultOrg(
+  database: Db,
+  userIdHex: string,
+  email: string,
+): Promise<{ orgId: string; created: boolean }> {
+  const users = database.collection<UserDoc>("users");
+  const userObjectId = new ObjectId(userIdHex);
+  const existing = await users.findOne({ _id: userObjectId });
+  if (existing && typeof existing.defaultOrgId === "string" && existing.defaultOrgId.length > 0) {
+    return { orgId: existing.defaultOrgId, created: false };
+  }
+  const orgs = database.collection<OrgDoc>("organizations");
+  const memberships = database.collection<OrgMembershipDoc>("org_memberships");
+  const baseSlug = deriveSlugCandidate(email);
+  let slug = baseSlug;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const exists = await orgs.findOne({ slug });
+    if (!exists) {
+      break;
+    }
+    slug = `${baseSlug}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+  const orgIns = await orgs.insertOne({
+    name: `${email.split("@", 1)[0] ?? email}'s Org`,
+    slug,
+    ownerUserId: userIdHex,
+    createdAt: new Date(),
+  } as OrgDoc);
+  const orgIdHex = orgIns.insertedId.toHexString();
+  await memberships.insertOne({
+    orgId: orgIdHex,
+    userId: userIdHex,
+    role: "admin",
+    joinedAt: new Date(),
+  } as OrgMembershipDoc);
+  await users.updateOne(
+    { _id: userObjectId },
+    { $set: { defaultOrgId: orgIdHex } },
+  );
+  await ensureDefaultSpaceForOrg(database, orgIdHex, userIdHex);
+  return { orgId: orgIdHex, created: true };
 }
 
 export function getNotesCollection(): Collection<SyncNoteDoc> {
@@ -183,6 +515,15 @@ export type UserDoc = {
   activeRefreshJti?: string | null;
   /** Concurrent refresh token sessions (JTIs). */
   refreshSessions?: RefreshSessionDoc[] | null;
+  /** Default Organization the user lands in after login (Phase 1: Org foundation). */
+  defaultOrgId?: string | null;
+  /** Optional human-friendly name displayed in UI; falls back to email local-part. */
+  displayName?: string | null;
+  /**
+   * Set true for accounts created via admin invite that still need to choose
+   * a password on first sign-in. Cleared by `/auth/accept-invite`.
+   */
+  mustSetPassword?: boolean | null;
 };
 
 export function getUsersCollection(): Collection {
@@ -232,6 +573,90 @@ export function getMcpDeviceSessionsCollection(): Collection<McpDeviceSessionDoc
     throw new Error("MongoDB not connected");
   }
   return db.collection<McpDeviceSessionDoc>("mcp_device_sessions");
+}
+
+export function getOrgsCollection(): Collection<OrgDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<OrgDoc>("organizations");
+}
+
+export function getOrgMembershipsCollection(): Collection<OrgMembershipDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<OrgMembershipDoc>("org_memberships");
+}
+
+export function getOrgInvitesCollection(): Collection<OrgInviteDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<OrgInviteDoc>("org_invites");
+}
+
+export function getSpacesCollection(): Collection<SpaceDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<SpaceDoc>("spaces");
+}
+
+export function getSpaceMembershipsCollection(): Collection<SpaceMembershipDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<SpaceMembershipDoc>("space_memberships");
+}
+
+export function getTeamsCollection(): Collection<TeamDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<TeamDoc>("teams");
+}
+
+export function getTeamMembershipsCollection(): Collection<TeamMembershipDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<TeamMembershipDoc>("team_memberships");
+}
+
+export function getTeamSpaceGrantsCollection(): Collection<TeamSpaceGrantDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<TeamSpaceGrantDoc>("team_space_grants");
+}
+
+export function getWorkspaceSharesCollection(): Collection<WorkspaceShareDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<WorkspaceShareDoc>("workspace_shares");
+}
+
+export function getSpaceAnnouncementsCollection(): Collection<SpaceAnnouncementDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<SpaceAnnouncementDoc>("space_announcements");
+}
+
+export function getAuditEventsCollection(): Collection<AuditEventDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<AuditEventDoc>("audit_events");
+}
+
+export function getActiveDb(): Db {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db;
 }
 
 export async function closeMongo(): Promise<void> {

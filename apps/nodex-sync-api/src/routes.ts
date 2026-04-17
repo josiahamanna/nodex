@@ -10,11 +10,21 @@ import {
   verifyRefreshToken,
 } from "./auth.js";
 import type { SyncNoteDoc, UserDoc } from "./db.js";
-import { getNotesCollection, getUsersCollection } from "./db.js";
+import {
+  ensureUserHasDefaultOrg,
+  getActiveDb,
+  getNotesCollection,
+  getUsersCollection,
+} from "./db.js";
 import { registerBuiltinPluginRoutes } from "./builtin-plugin-routes.js";
 import { registerBundledDocsPublicRoutes } from "./bundled-docs-routes.js";
 import { registerMeAssetsRoutes } from "./me-assets-routes.js";
 import { registerMeRoutes } from "./me-routes.js";
+import { registerAdminRoutes } from "./admin-routes.js";
+import { registerAnnouncementRoutes } from "./announcement-routes.js";
+import { registerOrgRoutes } from "./org-routes.js";
+import { registerSpaceRoutes } from "./space-routes.js";
+import { registerTeamRoutes } from "./team-routes.js";
 import { registerWpnBatchRoutes } from "./wpn-batch-routes.js";
 import { registerWpnReadRoutes } from "./wpn-routes.js";
 import { registerWpnWriteRoutes } from "./wpn-write-routes.js";
@@ -71,6 +81,11 @@ export function registerRoutes(
   registerMeAssetsRoutes(app, { jwtSecret });
   registerBuiltinPluginRoutes(app, { jwtSecret });
   registerMcpDeviceAuthRoutes(app, { jwtSecret });
+  registerOrgRoutes(app, { jwtSecret });
+  registerSpaceRoutes(app, { jwtSecret });
+  registerTeamRoutes(app, { jwtSecret });
+  registerAnnouncementRoutes(app, { jwtSecret });
+  registerAdminRoutes(app, { jwtSecret });
   app.register(
     async (scoped) => registerWpnImportExportRoutes(scoped, { jwtSecret }),
   );
@@ -92,9 +107,15 @@ export function registerRoutes(
       passwordHash,
     });
     const userId = ins.insertedId.toHexString();
+    const { orgId: defaultOrgId } = await ensureUserHasDefaultOrg(
+      getActiveDb(),
+      userId,
+      email.toLowerCase(),
+    );
     const payload = {
       sub: userId,
       email: email.toLowerCase(),
+      activeOrgId: defaultOrgId,
     };
     const jti = randomUUID();
     const token = signAccessToken(jwtSecret, payload);
@@ -103,7 +124,7 @@ export function registerRoutes(
       { _id: ins.insertedId },
       { $set: { refreshSessions: [{ jti, createdAt: new Date() }] } },
     );
-    return reply.send({ token, refreshToken, userId });
+    return reply.send({ token, refreshToken, userId, defaultOrgId });
   });
 
   app.post("/auth/login", async (request, reply) => {
@@ -122,7 +143,16 @@ export function registerRoutes(
       return reply.status(401).send({ error: "Invalid email or password" });
     }
     const userId = user._id.toHexString();
-    const payload = { sub: userId, email: user.email };
+    const { orgId: defaultOrgId } = await ensureUserHasDefaultOrg(
+      getActiveDb(),
+      userId,
+      user.email,
+    );
+    const payload = {
+      sub: userId,
+      email: user.email,
+      activeOrgId: defaultOrgId,
+    };
     const jti = randomUUID();
     const sessionVariant = parsed.data.client === "mcp" ? "mcp" : "default";
     const token = signAccessToken(jwtSecret, payload, sessionVariant);
@@ -132,7 +162,7 @@ export function registerRoutes(
       { _id: user._id },
       { $set: { refreshSessions: nextSessions }, $unset: { activeRefreshJti: "" } },
     );
-    return reply.send({ token, refreshToken, userId });
+    return reply.send({ token, refreshToken, userId, defaultOrgId });
   });
 
   app.post("/auth/refresh", async (request, reply) => {
@@ -163,9 +193,17 @@ export function registerRoutes(
         { $set: { refreshSessions: nextSessions }, $unset: { activeRefreshJti: "" } },
       );
       const sessionVariant = p.mcp === true ? "mcp" : "default";
+      const refreshedActiveOrgId =
+        typeof user.defaultOrgId === "string" && user.defaultOrgId.length > 0
+          ? user.defaultOrgId
+          : undefined;
       const token = signAccessToken(
         jwtSecret,
-        { sub: p.sub, email: p.email },
+        {
+          sub: p.sub,
+          email: p.email,
+          ...(refreshedActiveOrgId ? { activeOrgId: refreshedActiveOrgId } : {}),
+        },
         sessionVariant,
       );
       const refreshToken = signRefreshToken(

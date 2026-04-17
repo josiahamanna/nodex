@@ -1,12 +1,20 @@
 import type { FastifyInstance } from "fastify";
+import { ObjectId } from "mongodb";
 import { requireAuth } from "./auth.js";
 import type { WpnNoteDoc, WpnProjectDoc, WpnWorkspaceDoc } from "./db.js";
 import {
+  getUsersCollection,
   getWpnExplorerStateCollection,
   getWpnNotesCollection,
   getWpnProjectsCollection,
   getWpnWorkspacesCollection,
+  type UserDoc,
 } from "./db.js";
+import {
+  assertCanReadWorkspace,
+  assertCanReadWorkspaceForNote,
+  assertCanReadWorkspaceForProject,
+} from "./permission-resolver.js";
 
 /** Minimal markdown link → note id extraction (mirrors repo `collectReferencedNoteIdsFromMarkdown` for P1 backlinks). */
 function collectReferencedNoteIdsFromMarkdown(text: string): Set<string> {
@@ -188,15 +196,13 @@ export function registerWpnReadRoutes(
       return;
     }
     const { workspaceId } = request.params as { workspaceId: string };
-    const userId = auth.sub;
-    const wsCol = getWpnWorkspacesCollection();
-    const owned = await wsCol.findOne({ id: workspaceId, userId });
-    if (!owned) {
-      return reply.status(404).send({ error: "Workspace not found" });
+    const ws = await assertCanReadWorkspace(reply, auth, workspaceId);
+    if (!ws) {
+      return;
     }
     const col = getWpnProjectsCollection();
     const docs = await col
-      .find({ userId, workspace_id: workspaceId })
+      .find({ userId: ws.userId, workspace_id: workspaceId })
       .sort({ sort_index: 1, name: 1 })
       .toArray();
     const projects = docs.map((d) => projectRow(d));
@@ -209,14 +215,12 @@ export function registerWpnReadRoutes(
       return;
     }
     const { projectId } = request.params as { projectId: string };
-    const userId = auth.sub;
-    const projCol = getWpnProjectsCollection();
-    const project = await projCol.findOne({ id: projectId, userId });
-    if (!project) {
-      return reply.status(404).send({ error: "Project not found" });
+    const ws = await assertCanReadWorkspaceForProject(reply, auth, projectId);
+    if (!ws) {
+      return;
     }
     const noteCol = getWpnNotesCollection();
-    const rows = await noteCol.find({ userId, project_id: projectId }).toArray();
+    const rows = await noteCol.find({ userId: ws.userId, project_id: projectId }).toArray();
     const notes = listNotesFlatPreorder(rows);
     return reply.send({ notes });
   });
@@ -353,22 +357,40 @@ export function registerWpnReadRoutes(
       return;
     }
     const { id } = request.params as { id: string };
-    const userId = auth.sub;
+    const ws = await assertCanReadWorkspaceForNote(reply, auth, id);
+    if (!ws) {
+      return;
+    }
     const noteCol = getWpnNotesCollection();
-    const n = await noteCol.findOne({ id, userId, deleted: { $ne: true } });
+    const n = await noteCol.findOne({ id, deleted: { $ne: true } });
     if (!n) {
       return reply.status(404).send({ error: "Note not found" });
     }
-    const projCol = getWpnProjectsCollection();
-    const p = await projCol.findOne({ id: n.project_id, userId });
-    if (!p) {
-      return reply.status(404).send({ error: "Note not found" });
+    // Phase 6 — resolve display info for created_by / updated_by.
+    const ids = new Set<string>();
+    if (n.created_by_user_id) ids.add(n.created_by_user_id);
+    if (n.updated_by_user_id) ids.add(n.updated_by_user_id);
+    let usersById = new Map<string, UserDoc>();
+    if (ids.size > 0) {
+      const users = (await getUsersCollection()
+        .find({
+          _id: {
+            $in: [...ids].filter((s) => /^[a-f0-9]{24}$/i.test(s)).map((s) => new ObjectId(s)),
+          },
+        })
+        .toArray()) as UserDoc[];
+      usersById = new Map(users.map((u) => [u._id.toHexString(), u]));
     }
-    const wsCol = getWpnWorkspacesCollection();
-    const w = await wsCol.findOne({ id: p.workspace_id, userId });
-    if (!w) {
-      return reply.status(404).send({ error: "Note not found" });
-    }
+    const author = (uid: string | undefined) => {
+      if (!uid) return null;
+      const u = usersById.get(uid);
+      if (!u) return null;
+      return {
+        userId: uid,
+        email: u.email,
+        displayName: u.displayName ?? null,
+      };
+    };
     const note = {
       id: n.id,
       project_id: n.project_id,
@@ -383,6 +405,8 @@ export function registerWpnReadRoutes(
       sibling_index: n.sibling_index,
       created_at_ms: n.created_at_ms,
       updated_at_ms: n.updated_at_ms,
+      created_by: author(n.created_by_user_id),
+      updated_by: author(n.updated_by_user_id),
     };
     return reply.send({ note });
   });

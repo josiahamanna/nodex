@@ -13,7 +13,9 @@ import cloudAuthReducer, { cloudLogoutThunk } from "./cloudAuthSlice";
 import cloudNotesReducer from "./cloudNotesSlice";
 import { cloudNotesRxListener } from "./cloudNotesRxListener";
 import notesReducer from "./notesSlice";
+import orgMembershipReducer from "./orgMembershipSlice";
 import pluginUiReducer from "./pluginUiSlice";
+import spaceMembershipReducer from "./spaceMembershipSlice";
 
 /**
  * Next / browser: other modules may import `store` before any client entry runs; `createNodexPlatformDeps`
@@ -40,6 +42,8 @@ export const store = configureStore({
     pluginUi: pluginUiReducer,
     cloudNotes: cloudNotesReducer,
     cloudAuth: cloudAuthReducer,
+    orgMembership: orgMembershipReducer,
+    spaceMembership: spaceMembershipReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
