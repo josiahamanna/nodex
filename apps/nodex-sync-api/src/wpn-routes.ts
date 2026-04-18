@@ -3,6 +3,8 @@ import { ObjectId } from "mongodb";
 import { requireAuth, type JwtPayload } from "./auth.js";
 import type { WpnNoteDoc, WpnProjectDoc, WpnWorkspaceDoc } from "./db.js";
 import {
+  ensureDefaultSpaceForOrg,
+  getActiveDb,
   getOrgMembershipsCollection,
   getSpacesCollection,
   getUsersCollection,
@@ -125,7 +127,30 @@ async function resolveReadScope(
   request: FastifyRequest,
   auth: JwtPayload,
 ): Promise<{ spaceId: string; role: SpaceRole } | null> {
-  const spaceId = resolveActiveSpaceId(request, auth);
+  let spaceId = resolveActiveSpaceId(request, auth);
+  let user: UserDoc | null = null;
+  try {
+    user = (await getUsersCollection().findOne({
+      _id: new ObjectId(auth.sub),
+    })) as UserDoc | null;
+  } catch {
+    user = null;
+  }
+  // Master admin with no active space in the request falls back to the
+  // default space of their default org so their own tree is always reachable.
+  if (
+    !spaceId &&
+    user?.isMasterAdmin === true &&
+    typeof user.defaultOrgId === "string" &&
+    user.defaultOrgId.length > 0
+  ) {
+    const { spaceId: fallback } = await ensureDefaultSpaceForOrg(
+      getActiveDb(),
+      user.defaultOrgId,
+      auth.sub,
+    );
+    spaceId = fallback;
+  }
   if (!spaceId) {
     return null;
   }
@@ -139,6 +164,12 @@ async function resolveReadScope(
   const space = await getSpacesCollection().findOne({ _id: new ObjectId(spaceId) });
   if (!space) {
     return null;
+  }
+  // Master admins see every existing space as owner — matches the intent of
+  // the Master Console (platform-wide read) without requiring them to be
+  // enrolled as a direct member of every space.
+  if (user?.isMasterAdmin === true) {
+    return { spaceId, role: "owner" };
   }
   const orgMembership = await getOrgMembershipsCollection().findOne({
     orgId: space.orgId,
@@ -165,8 +196,13 @@ async function visibleWorkspacesInScope(
   spaceId: string,
   spaceRole: SpaceRole,
 ): Promise<WpnWorkspaceDoc[]> {
+  // The `$or` legacy clause catches workspaces that pre-date the space
+  // rollout (no `spaceId` set). They remain visible to their original
+  // owner, matching `assertCanReadWorkspace`'s legacy handling.
   const candidates = await getWpnWorkspacesCollection()
-    .find({ spaceId })
+    .find({
+      $or: [{ spaceId }, { userId, spaceId: { $exists: false } }],
+    })
     .sort({ sort_index: 1, name: 1 })
     .toArray();
   const sharedIds = new Set(
@@ -236,7 +272,13 @@ export function registerWpnReadRoutes(
     const wsIds = wsDocs.map((w) => w.id);
     const projDocs = wsIds.length
       ? await projCol
-          .find({ workspace_id: { $in: wsIds }, spaceId: scope.spaceId })
+          .find({
+            workspace_id: { $in: wsIds },
+            $or: [
+              { spaceId: scope.spaceId },
+              { userId, spaceId: { $exists: false } },
+            ],
+          })
           .sort({ sort_index: 1, name: 1 })
           .toArray()
       : [];
@@ -292,7 +334,13 @@ export function registerWpnReadRoutes(
     const wsIds = wsDocs.map((w) => w.id);
     const projDocs = wsIds.length
       ? await getWpnProjectsCollection()
-          .find({ workspace_id: { $in: wsIds }, spaceId: scope.spaceId })
+          .find({
+            workspace_id: { $in: wsIds },
+            $or: [
+              { spaceId: scope.spaceId },
+              { userId: auth.sub, spaceId: { $exists: false } },
+            ],
+          })
           .sort({ sort_index: 1, name: 1 })
           .toArray()
       : [];

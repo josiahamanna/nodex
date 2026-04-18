@@ -11,6 +11,7 @@ import {
 } from "./auth.js";
 import type { SyncNoteDoc, UserDoc } from "./db.js";
 import {
+  ensureDefaultSpaceForOrg,
   ensureUserHasDefaultOrg,
   getActiveDb,
   getNotesCollection,
@@ -116,10 +117,16 @@ export function registerRoutes(
       userId,
       email.toLowerCase(),
     );
+    const { spaceId: defaultSpaceId } = await ensureDefaultSpaceForOrg(
+      getActiveDb(),
+      defaultOrgId,
+      userId,
+    );
     const payload = {
       sub: userId,
       email: email.toLowerCase(),
       activeOrgId: defaultOrgId,
+      activeSpaceId: defaultSpaceId,
     };
     const jti = randomUUID();
     const token = signAccessToken(jwtSecret, payload);
@@ -128,7 +135,7 @@ export function registerRoutes(
       { _id: ins.insertedId },
       { $set: { refreshSessions: [{ jti, createdAt: new Date() }] } },
     );
-    return reply.send({ token, refreshToken, userId, defaultOrgId });
+    return reply.send({ token, refreshToken, userId, defaultOrgId, defaultSpaceId });
   });
 
   app.post("/auth/login", async (request, reply) => {
@@ -156,6 +163,11 @@ export function registerRoutes(
       userId,
       user.email,
     );
+    const { spaceId: defaultSpaceId } = await ensureDefaultSpaceForOrg(
+      getActiveDb(),
+      defaultOrgId,
+      userId,
+    );
     const userDoc = user as UserDoc;
     const lastActiveOrgId =
       typeof userDoc.lastActiveOrgId === "string" && userDoc.lastActiveOrgId.length > 0
@@ -163,16 +175,14 @@ export function registerRoutes(
         : null;
     const loginActiveOrgId = lastActiveOrgId ?? defaultOrgId;
     const loginActiveSpaceId =
-      lastActiveOrgId !== null &&
-      typeof userDoc.lastActiveSpaceId === "string" &&
-      userDoc.lastActiveSpaceId.length > 0
+      typeof userDoc.lastActiveSpaceId === "string" && userDoc.lastActiveSpaceId.length > 0
         ? userDoc.lastActiveSpaceId
-        : undefined;
+        : defaultSpaceId;
     const payload = {
       sub: userId,
       email: user.email,
       activeOrgId: loginActiveOrgId,
-      ...(loginActiveSpaceId ? { activeSpaceId: loginActiveSpaceId } : {}),
+      activeSpaceId: loginActiveSpaceId,
     };
     const jti = randomUUID();
     const sessionVariant = parsed.data.client === "mcp" ? "mcp" : "default";
@@ -188,6 +198,7 @@ export function registerRoutes(
       refreshToken,
       userId,
       defaultOrgId,
+      defaultSpaceId,
       mustSetPassword: (user as UserDoc).mustSetPassword === true,
     });
   });
@@ -232,12 +243,18 @@ export function registerRoutes(
         (typeof user.defaultOrgId === "string" && user.defaultOrgId.length > 0
           ? user.defaultOrgId
           : undefined);
-      const refreshedActiveSpaceId =
-        lastActiveOrgId !== null &&
-        typeof user.lastActiveSpaceId === "string" &&
-        user.lastActiveSpaceId.length > 0
+      let refreshedActiveSpaceId: string | undefined =
+        typeof user.lastActiveSpaceId === "string" && user.lastActiveSpaceId.length > 0
           ? user.lastActiveSpaceId
           : undefined;
+      if (!refreshedActiveSpaceId && refreshedActiveOrgId) {
+        const { spaceId } = await ensureDefaultSpaceForOrg(
+          getActiveDb(),
+          refreshedActiveOrgId,
+          p.sub,
+        );
+        refreshedActiveSpaceId = spaceId;
+      }
       const token = signAccessToken(
         jwtSecret,
         {
