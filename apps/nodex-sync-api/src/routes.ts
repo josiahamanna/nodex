@@ -30,6 +30,8 @@ import { registerWpnReadRoutes } from "./wpn-routes.js";
 import { registerWpnWriteRoutes } from "./wpn-write-routes.js";
 import { registerMcpDeviceAuthRoutes } from "./mcp-device-auth-routes.js";
 import { registerWpnImportExportRoutes } from "./wpn-import-export-routes.js";
+import { registerMasterAdminRoutes } from "./master-admin-routes.js";
+import { maybePromoteMasterAdmin } from "./admin-auth.js";
 import {
   buildSessionsAfterAppend,
   rotateRefreshSession,
@@ -86,6 +88,7 @@ export function registerRoutes(
   registerTeamRoutes(app, { jwtSecret });
   registerAnnouncementRoutes(app, { jwtSecret });
   registerAdminRoutes(app, { jwtSecret });
+  registerMasterAdminRoutes(app, { jwtSecret });
   app.register(
     async (scoped) => registerWpnImportExportRoutes(scoped, { jwtSecret }),
   );
@@ -107,6 +110,7 @@ export function registerRoutes(
       passwordHash,
     });
     const userId = ins.insertedId.toHexString();
+    await maybePromoteMasterAdmin(userId, email.toLowerCase());
     const { orgId: defaultOrgId } = await ensureUserHasDefaultOrg(
       getActiveDb(),
       userId,
@@ -142,16 +146,33 @@ export function registerRoutes(
     if (!ok) {
       return reply.status(401).send({ error: "Invalid email or password" });
     }
+    if ((user as UserDoc).disabled === true) {
+      return reply.status(403).send({ error: "Account disabled" });
+    }
     const userId = user._id.toHexString();
+    await maybePromoteMasterAdmin(userId, user.email);
     const { orgId: defaultOrgId } = await ensureUserHasDefaultOrg(
       getActiveDb(),
       userId,
       user.email,
     );
+    const userDoc = user as UserDoc;
+    const lastActiveOrgId =
+      typeof userDoc.lastActiveOrgId === "string" && userDoc.lastActiveOrgId.length > 0
+        ? userDoc.lastActiveOrgId
+        : null;
+    const loginActiveOrgId = lastActiveOrgId ?? defaultOrgId;
+    const loginActiveSpaceId =
+      lastActiveOrgId !== null &&
+      typeof userDoc.lastActiveSpaceId === "string" &&
+      userDoc.lastActiveSpaceId.length > 0
+        ? userDoc.lastActiveSpaceId
+        : undefined;
     const payload = {
       sub: userId,
       email: user.email,
-      activeOrgId: defaultOrgId,
+      activeOrgId: loginActiveOrgId,
+      ...(loginActiveSpaceId ? { activeSpaceId: loginActiveSpaceId } : {}),
     };
     const jti = randomUUID();
     const sessionVariant = parsed.data.client === "mcp" ? "mcp" : "default";
@@ -189,6 +210,9 @@ export function registerRoutes(
       if (!user || !userHasRefreshJti(user, p.jti)) {
         return reply.status(401).send({ error: "Invalid or expired refresh token" });
       }
+      if (user.disabled === true) {
+        return reply.status(403).send({ error: "Account disabled" });
+      }
       const newJti = randomUUID();
       const nextSessions = rotateRefreshSession(user, p.jti, newJti);
       if (!nextSessions) {
@@ -199,9 +223,20 @@ export function registerRoutes(
         { $set: { refreshSessions: nextSessions }, $unset: { activeRefreshJti: "" } },
       );
       const sessionVariant = p.mcp === true ? "mcp" : "default";
+      const lastActiveOrgId =
+        typeof user.lastActiveOrgId === "string" && user.lastActiveOrgId.length > 0
+          ? user.lastActiveOrgId
+          : null;
       const refreshedActiveOrgId =
-        typeof user.defaultOrgId === "string" && user.defaultOrgId.length > 0
+        lastActiveOrgId ??
+        (typeof user.defaultOrgId === "string" && user.defaultOrgId.length > 0
           ? user.defaultOrgId
+          : undefined);
+      const refreshedActiveSpaceId =
+        lastActiveOrgId !== null &&
+        typeof user.lastActiveSpaceId === "string" &&
+        user.lastActiveSpaceId.length > 0
+          ? user.lastActiveSpaceId
           : undefined;
       const token = signAccessToken(
         jwtSecret,
@@ -209,6 +244,7 @@ export function registerRoutes(
           sub: p.sub,
           email: p.email,
           ...(refreshedActiveOrgId ? { activeOrgId: refreshedActiveOrgId } : {}),
+          ...(refreshedActiveSpaceId ? { activeSpaceId: refreshedActiveSpaceId } : {}),
         },
         sessionVariant,
       );
@@ -299,6 +335,8 @@ export function registerRoutes(
     const users = getUsersCollection();
     let email = auth.email;
     let mustSetPassword = false;
+    let lockedOrgId: string | null = null;
+    let isMasterAdmin = false;
     try {
       const u = (await users.findOne({
         _id: new ObjectId(auth.sub),
@@ -306,11 +344,19 @@ export function registerRoutes(
       if (u) {
         email = u.email;
         mustSetPassword = u.mustSetPassword === true;
+        lockedOrgId = u.lockedOrgId ?? null;
+        isMasterAdmin = u.isMasterAdmin === true;
       }
     } catch {
       /* invalid ObjectId */
     }
-    return reply.send({ userId: auth.sub, email, mustSetPassword });
+    return reply.send({
+      userId: auth.sub,
+      email,
+      mustSetPassword,
+      lockedOrgId,
+      isMasterAdmin,
+    });
   });
 
   /**

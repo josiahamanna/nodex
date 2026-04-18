@@ -21,6 +21,7 @@ import {
 import { recordAudit } from "./audit.js";
 import { getEffectiveSpaceRoles } from "./permission-resolver.js";
 import {
+  requireSpaceManage,
   requireSpaceMember,
   requireSpaceRole,
 } from "./space-auth.js";
@@ -67,14 +68,14 @@ export function registerSpaceRoutes(
     });
   });
 
-  /** Admin-only: create a Space inside an Org. Caller becomes Space Owner. */
+  /** Any org member: create a Space inside an Org. Caller becomes Space Owner. */
   app.post("/orgs/:orgId/spaces", async (request, reply) => {
     const auth = await requireAuth(request, reply, jwtSecret);
     if (!auth) {
       return;
     }
     const { orgId } = request.params as { orgId: string };
-    const ctx = await requireOrgRole(request, reply, auth, orgId, "admin");
+    const ctx = await requireOrgRole(request, reply, auth, orgId, "member");
     if (!ctx) {
       return;
     }
@@ -121,7 +122,7 @@ export function registerSpaceRoutes(
       return;
     }
     const { spaceId } = request.params as { spaceId: string };
-    const ctx = await requireSpaceRole(request, reply, auth, spaceId, "owner");
+    const ctx = await requireSpaceManage(request, reply, auth, spaceId);
     if (!ctx) {
       return;
     }
@@ -154,7 +155,7 @@ export function registerSpaceRoutes(
       return;
     }
     const { spaceId } = request.params as { spaceId: string };
-    const ctx = await requireSpaceRole(request, reply, auth, spaceId, "owner");
+    const ctx = await requireSpaceManage(request, reply, auth, spaceId);
     if (!ctx) {
       return;
     }
@@ -166,7 +167,7 @@ export function registerSpaceRoutes(
       .countDocuments({ spaceId });
     if (wsCount > 0) {
       return reply
-        .status(400)
+        .status(409)
         .send({ error: "Space still has workspaces; move or delete them first" });
     }
     await getSpaceMembershipsCollection().deleteMany({ spaceId });
@@ -214,7 +215,7 @@ export function registerSpaceRoutes(
       return;
     }
     const { spaceId } = request.params as { spaceId: string };
-    const ctx = await requireSpaceRole(request, reply, auth, spaceId, "owner");
+    const ctx = await requireSpaceManage(request, reply, auth, spaceId);
     if (!ctx) {
       return;
     }
@@ -267,7 +268,7 @@ export function registerSpaceRoutes(
         spaceId: string;
         userId: string;
       };
-      const ctx = await requireSpaceRole(request, reply, auth, spaceId, "owner");
+      const ctx = await requireSpaceManage(request, reply, auth, spaceId);
       if (!ctx) {
         return;
       }
@@ -284,7 +285,7 @@ export function registerSpaceRoutes(
       }
       if (
         target.role === "owner" &&
-        parsed.data.role === "member" &&
+        parsed.data.role !== "owner" &&
         target.userId === auth.sub
       ) {
         const ownerCount = await getSpaceMembershipsCollection().countDocuments({
@@ -317,7 +318,7 @@ export function registerSpaceRoutes(
         spaceId: string;
         userId: string;
       };
-      const ctx = await requireSpaceRole(request, reply, auth, spaceId, "owner");
+      const ctx = await requireSpaceManage(request, reply, auth, spaceId);
       if (!ctx) {
         return;
       }
@@ -363,6 +364,15 @@ export function registerSpaceRoutes(
     if (!ctx) {
       return;
     }
+    await getUsersCollection().updateOne(
+      { _id: new ObjectId(auth.sub) },
+      {
+        $set: {
+          lastActiveOrgId: ctx.space.orgId,
+          lastActiveSpaceId: parsed.data.spaceId,
+        },
+      },
+    );
     const token = signAccessToken(jwtSecret, {
       sub: auth.sub,
       email: auth.email,

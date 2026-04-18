@@ -170,6 +170,12 @@ export async function ensureMongoConnected(): Promise<Db> {
 
 async function ensureIndexes(database: Db): Promise<void> {
   await database.collection("users").createIndex({ email: 1 }, { unique: true });
+  await database
+    .collection("users")
+    .createIndex(
+      { isMasterAdmin: 1 },
+      { partialFilterExpression: { isMasterAdmin: true } },
+    );
   const notes = database.collection<SyncNoteDoc>("notes");
   await notes.createIndex({ id: 1, userId: 1 }, { unique: true });
   await notes.createIndex({ userId: 1, updatedAt: 1 });
@@ -517,6 +523,20 @@ export type UserDoc = {
   refreshSessions?: RefreshSessionDoc[] | null;
   /** Default Organization the user lands in after login (Phase 1: Org foundation). */
   defaultOrgId?: string | null;
+  /** Most-recently-selected org; preserved across access-token refresh so reloads don't snap back to default. */
+  lastActiveOrgId?: string | null;
+  /** Most-recently-selected space (scoped to `lastActiveOrgId`); cleared when org changes. */
+  lastActiveSpaceId?: string | null;
+  /** When set, the user was admin-created or admin-invited into this org and may not create new orgs. */
+  lockedOrgId?: string | null;
+  /**
+   * Platform-wide master admin. Can create/demote other master admins and
+   * create/promote org admins. Bootstrapped from `NODEX_MASTER_ADMIN_EMAIL`
+   * on first login. Always at least one master admin must remain on the system.
+   */
+  isMasterAdmin?: boolean | null;
+  /** When true, login + refresh are rejected (soft account suspension). */
+  disabled?: boolean | null;
   /** Optional human-friendly name displayed in UI; falls back to email local-part. */
   displayName?: string | null;
   /**

@@ -11,6 +11,7 @@ import {
   type OrgRole,
   type SpaceRole,
 } from "./auth-session";
+import { writeCloudSyncToken } from "../cloud-sync/cloud-sync-storage";
 
 type AuthResponse = { token: string; user: AuthUser };
 
@@ -130,6 +131,7 @@ type ListOrgsResponse = {
   orgs: AuthUserOrg[];
   activeOrgId: string | null;
   defaultOrgId: string | null;
+  lockedOrgId: string | null;
 };
 
 export async function createOrg(payload: {
@@ -178,6 +180,7 @@ export async function setActiveOrgRemote(orgId: string): Promise<{ token: string
     },
   );
   setAccessToken(r.token);
+  writeCloudSyncToken(r.token);
   setActiveOrgId(r.activeOrgId);
   return { token: r.token };
 }
@@ -563,6 +566,7 @@ export async function setActiveSpaceRemote(spaceId: string): Promise<{
     body: JSON.stringify({ spaceId }),
   });
   setAccessToken(r.token);
+  writeCloudSyncToken(r.token);
   setActiveSpaceId(r.activeSpaceId);
   setActiveOrgId(r.activeOrgId);
   return r;
@@ -806,5 +810,172 @@ export async function listMySpaces(): Promise<{
     setActiveSpaceId(r.activeSpaceId);
   }
   return r;
+}
+
+// ----- Master admin (platform) -----
+
+export type MasterAdminRow = {
+  userId: string;
+  email: string;
+  displayName: string | null;
+};
+
+export type OrgAdminRow = {
+  userId: string;
+  email: string;
+  displayName: string | null;
+  joinedAt: string;
+};
+
+function masterHeaders(): Record<string, string> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  return { Authorization: `Bearer ${token}` };
+}
+
+export type MasterOrgRow = {
+  orgId: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+};
+
+export async function listAllOrgs(): Promise<MasterOrgRow[]> {
+  const r = await requestJson<{ orgs: MasterOrgRow[] }>("/master/orgs", {
+    method: "GET",
+    headers: masterHeaders(),
+  });
+  return r.orgs;
+}
+
+export async function listMasterAdmins(): Promise<MasterAdminRow[]> {
+  const r = await requestJson<{ admins: MasterAdminRow[] }>("/master/admins", {
+    method: "GET",
+    headers: masterHeaders(),
+  });
+  return r.admins;
+}
+
+/**
+ * Create a new master admin. Pass `userId` to promote an existing account, or
+ * `email` (+ optional `password`) to mint a brand-new one. The response
+ * includes a `password` field only when the server generated it.
+ */
+export async function createMasterAdmin(payload: {
+  email?: string;
+  userId?: string;
+  password?: string;
+}): Promise<{
+  userId: string;
+  email: string;
+  isMasterAdmin: true;
+  createdUser: boolean;
+  password?: string;
+}> {
+  return requestJson("/master/admins", {
+    method: "POST",
+    headers: masterHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function removeMasterAdmin(userId: string): Promise<void> {
+  await requestJson(`/master/admins/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    headers: masterHeaders(),
+  });
+}
+
+export async function listOrgAdmins(orgId: string): Promise<OrgAdminRow[]> {
+  const r = await requestJson<{ admins: OrgAdminRow[] }>(
+    `/master/orgs/${encodeURIComponent(orgId)}/admins`,
+    { method: "GET", headers: masterHeaders() },
+  );
+  return r.admins;
+}
+
+export async function createOrgAdmin(payload: {
+  orgId: string;
+  email?: string;
+  userId?: string;
+  password?: string;
+}): Promise<{
+  userId: string;
+  email: string;
+  role: "admin";
+  createdUser: boolean;
+  password?: string;
+}> {
+  const { orgId, ...body } = payload;
+  return requestJson(`/master/orgs/${encodeURIComponent(orgId)}/admins`, {
+    method: "POST",
+    headers: masterHeaders(),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function demoteOrgAdmin(payload: {
+  orgId: string;
+  userId: string;
+}): Promise<void> {
+  await requestJson(
+    `/master/orgs/${encodeURIComponent(payload.orgId)}/admins/${encodeURIComponent(payload.userId)}`,
+    { method: "DELETE", headers: masterHeaders() },
+  );
+}
+
+export type MasterUserRow = {
+  userId: string;
+  email: string;
+  displayName: string | null;
+  isMasterAdmin: boolean;
+  lockedOrgId: string | null;
+  disabled: boolean;
+  mustSetPassword: boolean;
+  orgCount: number;
+};
+
+export async function listAllUsers(params?: {
+  q?: string;
+  cursor?: string;
+  limit?: number;
+}): Promise<{ users: MasterUserRow[]; nextCursor: string | null }> {
+  const qs = new URLSearchParams();
+  if (params?.q) qs.set("q", params.q);
+  if (params?.cursor) qs.set("cursor", params.cursor);
+  if (params?.limit) qs.set("limit", String(params.limit));
+  const tail = qs.toString() ? `?${qs.toString()}` : "";
+  return requestJson(`/master/users${tail}`, {
+    method: "GET",
+    headers: masterHeaders(),
+  });
+}
+
+export async function disableUser(userId: string): Promise<void> {
+  await requestJson(`/master/users/${encodeURIComponent(userId)}/disable`, {
+    method: "POST",
+    headers: masterHeaders(),
+  });
+}
+
+export async function enableUser(userId: string): Promise<void> {
+  await requestJson(`/master/users/${encodeURIComponent(userId)}/enable`, {
+    method: "POST",
+    headers: masterHeaders(),
+  });
+}
+
+export async function deleteUser(userId: string): Promise<{
+  userId: string;
+  deleted: true;
+  reassignedSpaces: number;
+  deletedWorkspaces: number;
+}> {
+  return requestJson(`/master/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    headers: masterHeaders(),
+  });
 }
 

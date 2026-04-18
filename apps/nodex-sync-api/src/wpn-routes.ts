@@ -1,9 +1,12 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ObjectId } from "mongodb";
-import { requireAuth } from "./auth.js";
+import { requireAuth, type JwtPayload } from "./auth.js";
 import type { WpnNoteDoc, WpnProjectDoc, WpnWorkspaceDoc } from "./db.js";
 import {
+  getOrgMembershipsCollection,
+  getSpacesCollection,
   getUsersCollection,
+  getWorkspaceSharesCollection,
   getWpnExplorerStateCollection,
   getWpnNotesCollection,
   getWpnProjectsCollection,
@@ -14,7 +17,10 @@ import {
   assertCanReadWorkspace,
   assertCanReadWorkspaceForNote,
   assertCanReadWorkspaceForProject,
+  effectiveRoleInSpace,
 } from "./permission-resolver.js";
+import { resolveActiveSpaceId } from "./space-auth.js";
+import type { SpaceRole } from "./org-schemas.js";
 
 /** Minimal markdown link → note id extraction (mirrors repo `collectReferencedNoteIdsFromMarkdown` for P1 backlinks). */
 function collectReferencedNoteIdsFromMarkdown(text: string): Set<string> {
@@ -107,6 +113,86 @@ function listNotesFlatPreorder(rows: WpnNoteDoc[]): WpnNoteListItemOut[] {
   return out;
 }
 
+/**
+ * Resolve the active-space scope for a read request. Honors `X-Nodex-Space`
+ * header then the JWT `activeSpaceId` claim. Grants access when the caller is:
+ *   - a direct or team-granted member of the space, OR
+ *   - an `admin` of the space's parent org (org-admin override).
+ * Returns `null` otherwise — callers should respond with an empty tree so
+ * stale data from another space can't leak.
+ */
+async function resolveReadScope(
+  request: FastifyRequest,
+  auth: JwtPayload,
+): Promise<{ spaceId: string; role: SpaceRole } | null> {
+  const spaceId = resolveActiveSpaceId(request, auth);
+  if (!spaceId) {
+    return null;
+  }
+  const directRole = await effectiveRoleInSpace(auth.sub, spaceId);
+  if (directRole) {
+    return { spaceId, role: directRole };
+  }
+  if (!/^[a-f0-9]{24}$/i.test(spaceId)) {
+    return null;
+  }
+  const space = await getSpacesCollection().findOne({ _id: new ObjectId(spaceId) });
+  if (!space) {
+    return null;
+  }
+  const orgMembership = await getOrgMembershipsCollection().findOne({
+    orgId: space.orgId,
+    userId: auth.sub,
+  });
+  if (orgMembership?.role === "admin") {
+    return { spaceId, role: "owner" };
+  }
+  return null;
+}
+
+/**
+ * Workspaces the caller can see in `spaceId`, mirroring the single-id read
+ * rules in `assertCanReadWorkspace`:
+ *   - owner (userId or creator matches caller): always visible
+ *   - public: any space member
+ *   - private: creator + space-owners
+ *   - shared: creator + space-owners + explicit `workspace_shares` allow-list
+ * Sort stays in stored `sort_index` order so co-space-members see a stable
+ * shared ordering.
+ */
+async function visibleWorkspacesInScope(
+  userId: string,
+  spaceId: string,
+  spaceRole: SpaceRole,
+): Promise<WpnWorkspaceDoc[]> {
+  const candidates = await getWpnWorkspacesCollection()
+    .find({ spaceId })
+    .sort({ sort_index: 1, name: 1 })
+    .toArray();
+  const sharedIds = new Set(
+    (await getWorkspaceSharesCollection().find({ userId }).toArray()).map(
+      (r) => r.workspaceId,
+    ),
+  );
+  return candidates.filter((ws) => {
+    const creator = ws.creatorUserId ?? ws.userId;
+    if (ws.userId === userId || creator === userId) {
+      return true;
+    }
+    const visibility = ws.visibility ?? "public";
+    if (visibility === "public") {
+      return true;
+    }
+    if (spaceRole === "owner") {
+      return true;
+    }
+    if (visibility === "shared" && sharedIds.has(ws.id)) {
+      return true;
+    }
+    return false;
+  });
+}
+
 export function registerWpnReadRoutes(
   app: FastifyInstance,
   opts: { jwtSecret: string },
@@ -118,12 +204,11 @@ export function registerWpnReadRoutes(
     if (!auth) {
       return;
     }
-    const userId = auth.sub;
-    const col = getWpnWorkspacesCollection();
-    const docs = await col
-      .find({ userId })
-      .sort({ sort_index: 1, name: 1 })
-      .toArray();
+    const scope = await resolveReadScope(request, auth);
+    if (!scope) {
+      return reply.send({ workspaces: [] });
+    }
+    const docs = await visibleWorkspacesInScope(auth.sub, scope.spaceId, scope.role);
     const workspaces = docs.map((d) => workspaceRow(d));
     return reply.send({ workspaces });
   });
@@ -134,18 +219,40 @@ export function registerWpnReadRoutes(
     if (!auth) {
       return;
     }
+    const scope = await resolveReadScope(request, auth);
+    if (!scope) {
+      return reply.send({
+        workspaces: [],
+        projects: [],
+        notesByProjectId: {},
+        explorerStateByProjectId: {},
+      });
+    }
     const userId = auth.sub;
-    const wsCol = getWpnWorkspacesCollection();
     const projCol = getWpnProjectsCollection();
     const noteCol = getWpnNotesCollection();
     const exCol = getWpnExplorerStateCollection();
-    const [wsDocs, projDocs, noteDocs, exDocs] = await Promise.all([
-      wsCol.find({ userId }).sort({ sort_index: 1, name: 1 }).toArray(),
-      projCol.find({ userId }).sort({ sort_index: 1, name: 1 }).toArray(),
-      noteCol
-        .find({ userId, deleted: { $ne: true } }, { projection: { content: 0, metadata: 0 } })
-        .toArray(),
-      exCol.find({ userId }).toArray(),
+    const wsDocs = await visibleWorkspacesInScope(userId, scope.spaceId, scope.role);
+    const wsIds = wsDocs.map((w) => w.id);
+    const projDocs = wsIds.length
+      ? await projCol
+          .find({ workspace_id: { $in: wsIds }, spaceId: scope.spaceId })
+          .sort({ sort_index: 1, name: 1 })
+          .toArray()
+      : [];
+    const projectIds = projDocs.map((p) => p.id);
+    const [noteDocs, exDocs] = await Promise.all([
+      projectIds.length
+        ? noteCol
+            .find(
+              { project_id: { $in: projectIds }, deleted: { $ne: true } },
+              { projection: { content: 0, metadata: 0 } },
+            )
+            .toArray()
+        : Promise.resolve([] as WpnNoteDoc[]),
+      projectIds.length
+        ? exCol.find({ userId, project_id: { $in: projectIds } }).toArray()
+        : Promise.resolve([]),
     ]);
     const noteGroups = new Map<string, WpnNoteDoc[]>();
     for (const n of noteDocs) {
@@ -177,13 +284,18 @@ export function registerWpnReadRoutes(
     if (!auth) {
       return;
     }
-    const userId = auth.sub;
-    const wsCol = getWpnWorkspacesCollection();
-    const projCol = getWpnProjectsCollection();
-    const [wsDocs, projDocs] = await Promise.all([
-      wsCol.find({ userId }).sort({ sort_index: 1, name: 1 }).toArray(),
-      projCol.find({ userId }).sort({ sort_index: 1, name: 1 }).toArray(),
-    ]);
+    const scope = await resolveReadScope(request, auth);
+    if (!scope) {
+      return reply.send({ workspaces: [], projects: [] });
+    }
+    const wsDocs = await visibleWorkspacesInScope(auth.sub, scope.spaceId, scope.role);
+    const wsIds = wsDocs.map((w) => w.id);
+    const projDocs = wsIds.length
+      ? await getWpnProjectsCollection()
+          .find({ workspace_id: { $in: wsIds }, spaceId: scope.spaceId })
+          .sort({ sort_index: 1, name: 1 })
+          .toArray()
+      : [];
     return reply.send({
       workspaces: wsDocs.map((d) => workspaceRow(d)),
       projects: projDocs.map((d) => projectRow(d)),
@@ -231,24 +343,25 @@ export function registerWpnReadRoutes(
     if (!auth) {
       return;
     }
-    const userId = auth.sub;
-    const wsCol = getWpnWorkspacesCollection();
+    const scope = await resolveReadScope(request, auth);
+    if (!scope) {
+      return reply.send({ notes: [] });
+    }
     const projCol = getWpnProjectsCollection();
     const noteCol = getWpnNotesCollection();
-    const workspaces = await wsCol
-      .find({ userId })
+    const workspaces = await visibleWorkspacesInScope(auth.sub, scope.spaceId, scope.role);
+    const wsIds = workspaces.map((w) => w.id);
+    if (wsIds.length === 0) {
+      return reply.send({ notes: [] });
+    }
+    const projects = await projCol
+      .find({ workspace_id: { $in: wsIds }, spaceId: scope.spaceId })
       .sort({ sort_index: 1, name: 1 })
       .toArray();
     const out: WpnNoteListItemOut[] = [];
-    for (const w of workspaces) {
-      const projects = await projCol
-        .find({ userId, workspace_id: w.id })
-        .sort({ sort_index: 1, name: 1 })
-        .toArray();
-      for (const p of projects) {
-        const rows = await noteCol.find({ userId, project_id: p.id }).toArray();
-        out.push(...listNotesFlatPreorder(rows));
-      }
+    for (const p of projects) {
+      const rows = await noteCol.find({ project_id: p.id }).toArray();
+      out.push(...listNotesFlatPreorder(rows));
     }
     return reply.send({ notes: out });
   });
@@ -258,15 +371,26 @@ export function registerWpnReadRoutes(
     if (!auth) {
       return;
     }
-    const userId = auth.sub;
+    const scope = await resolveReadScope(request, auth);
+    if (!scope) {
+      return reply.send({ notes: [] });
+    }
     const noteCol = getWpnNotesCollection();
     const projCol = getWpnProjectsCollection();
-    const wsCol = getWpnWorkspacesCollection();
-    const [notes, projects, workspaces] = await Promise.all([
-      noteCol.find({ userId, deleted: { $ne: true } }).toArray(),
-      projCol.find({ userId }).toArray(),
-      wsCol.find({ userId }).toArray(),
-    ]);
+    const workspaces = await visibleWorkspacesInScope(auth.sub, scope.spaceId, scope.role);
+    const wsIds = workspaces.map((w) => w.id);
+    if (wsIds.length === 0) {
+      return reply.send({ notes: [] });
+    }
+    const projects = await projCol
+      .find({ workspace_id: { $in: wsIds }, spaceId: scope.spaceId })
+      .toArray();
+    const projectIds = projects.map((p) => p.id);
+    const notes = projectIds.length
+      ? await noteCol
+          .find({ project_id: { $in: projectIds }, deleted: { $ne: true } })
+          .toArray()
+      : [];
     const projMap = new Map(projects.map((p) => [p.id, p]));
     const wsMap = new Map(workspaces.map((w) => [w.id, w]));
     const out: {
@@ -306,11 +430,27 @@ export function registerWpnReadRoutes(
       return;
     }
     const { noteId } = request.params as { noteId: string };
-    const userId = auth.sub;
+    const scope = await resolveReadScope(request, auth);
+    if (!scope) {
+      return reply.send({ sources: [] });
+    }
     const noteCol = getWpnNotesCollection();
     const projCol = getWpnProjectsCollection();
-    const wsCol = getWpnWorkspacesCollection();
-    const candidates = await noteCol.find({ userId, deleted: { $ne: true } }).toArray();
+    const workspaces = await visibleWorkspacesInScope(auth.sub, scope.spaceId, scope.role);
+    const wsIds = workspaces.map((w) => w.id);
+    if (wsIds.length === 0) {
+      return reply.send({ sources: [] });
+    }
+    const projects = await projCol
+      .find({ workspace_id: { $in: wsIds }, spaceId: scope.spaceId })
+      .toArray();
+    const projectIds = new Set(projects.map((p) => p.id));
+    const candidates = await noteCol
+      .find({
+        project_id: { $in: [...projectIds] },
+        deleted: { $ne: true },
+      })
+      .toArray();
     const sources: { id: string; title: string; project_id: string }[] = [];
     for (const n of candidates) {
       if (n.id === noteId) {
@@ -318,14 +458,6 @@ export function registerWpnReadRoutes(
       }
       const refs = collectReferencedNoteIdsFromMarkdown(n.content ?? "");
       if (!refs.has(noteId)) {
-        continue;
-      }
-      const p = await projCol.findOne({ id: n.project_id, userId });
-      if (!p) {
-        continue;
-      }
-      const w = await wsCol.findOne({ id: p.workspace_id, userId });
-      if (!w) {
         continue;
       }
       sources.push({ id: n.id, title: n.title, project_id: n.project_id });
@@ -339,12 +471,11 @@ export function registerWpnReadRoutes(
       return;
     }
     const { projectId } = request.params as { projectId: string };
-    const userId = auth.sub;
-    const projCol = getWpnProjectsCollection();
-    const project = await projCol.findOne({ id: projectId, userId });
-    if (!project) {
-      return reply.status(404).send({ error: "Project not found" });
+    const ws = await assertCanReadWorkspaceForProject(reply, auth, projectId);
+    if (!ws) {
+      return;
     }
+    const userId = auth.sub;
     const exCol = getWpnExplorerStateCollection();
     const doc = await exCol.findOne({ userId, project_id: projectId });
     const expanded_ids = Array.isArray(doc?.expanded_ids) ? doc!.expanded_ids : [];

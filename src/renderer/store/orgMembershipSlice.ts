@@ -8,6 +8,8 @@ export type OrgMembershipState = {
   orgs: AuthUserOrg[];
   activeOrgId: string | null;
   defaultOrgId: string | null;
+  /** When set, the current user cannot create new orgs (admin-provisioned account). */
+  lockedOrgId: string | null;
   status: "idle" | "loading" | "ready" | "error";
   loadedAt: number | null;
   error: string | null;
@@ -17,6 +19,7 @@ const initialState: OrgMembershipState = {
   orgs: [],
   activeOrgId: null,
   defaultOrgId: null,
+  lockedOrgId: null,
   status: "idle",
   loadedAt: null,
   error: null,
@@ -76,6 +79,7 @@ const slice = createSlice({
         state.orgs = action.payload.orgs;
         state.activeOrgId = action.payload.activeOrgId;
         state.defaultOrgId = action.payload.defaultOrgId;
+        state.lockedOrgId = action.payload.lockedOrgId ?? null;
         if (action.payload.activeOrgId) {
           setActiveOrgId(action.payload.activeOrgId);
         } else if (action.payload.defaultOrgId) {

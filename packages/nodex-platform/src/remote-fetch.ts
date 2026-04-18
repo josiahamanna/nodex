@@ -221,6 +221,8 @@ export function createFetchRemoteApi(
         userId: string;
         email: string;
         mustSetPassword?: boolean;
+        isMasterAdmin?: boolean;
+        lockedOrgId?: string | null;
       };
     },
     authChangePassword: async (currentPassword, newPassword) => {

@@ -28,6 +28,10 @@ export interface RemoteApi {
     userId: string;
     email: string;
     mustSetPassword?: boolean;
+    /** Platform-wide master admin flag. */
+    isMasterAdmin?: boolean;
+    /** Org the account is locked to (cannot create new orgs). */
+    lockedOrgId?: string | null;
   }>;
   /**
    * Authenticated password rotation. Required after admin-issued temporary

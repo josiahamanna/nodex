@@ -2,7 +2,7 @@ import type { ObjectId } from "mongodb";
 import { z } from "zod";
 
 export type OrgRole = "admin" | "member";
-export type SpaceRole = "owner" | "member";
+export type SpaceRole = "owner" | "member" | "viewer";
 
 export type SpaceKind = "default" | "normal";
 
@@ -24,7 +24,7 @@ export type SpaceMembershipDoc = {
   joinedAt: Date;
 };
 
-export const spaceRoleSchema = z.enum(["owner", "member"]);
+export const spaceRoleSchema = z.enum(["owner", "member", "viewer"]);
 
 export const createSpaceBody = z.object({
   name: z.string().trim().min(1).max(120),
@@ -172,7 +172,10 @@ export type AuditAction =
   | "workspace.share.remove"
   | "announcement.create"
   | "announcement.update"
-  | "announcement.delete";
+  | "announcement.delete"
+  | "master.org_admin.create_with_password"
+  | "master.org_admin.promote"
+  | "master.org_admin.demote";
 
 export type AuditEventDoc = {
   _id: ObjectId;

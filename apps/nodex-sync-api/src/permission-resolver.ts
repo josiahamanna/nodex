@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { JwtPayload } from "./auth.js";
 import {
+  getOrgMembershipsCollection,
   getSpaceMembershipsCollection,
   getTeamMembershipsCollection,
   getTeamSpaceGrantsCollection,
@@ -65,16 +66,16 @@ export async function effectiveRoleInSpace(
   return roles.get(spaceIdHex) ?? null;
 }
 
+/** Priority when combining role sources: higher wins. */
+const ROLE_RANK: Record<SpaceRole, number> = { owner: 3, member: 2, viewer: 1 };
+
 function upgradeRole(
   out: Map<string, SpaceRole>,
   spaceId: string,
   next: SpaceRole,
 ): void {
   const cur = out.get(spaceId);
-  if (cur === "owner") {
-    return;
-  }
-  if (next === "owner" || cur === undefined) {
+  if (cur === undefined || ROLE_RANK[next] > ROLE_RANK[cur]) {
     out.set(spaceId, next);
   }
 }
@@ -106,6 +107,16 @@ export async function assertCanReadWorkspace(
       return null;
     }
     return ws;
+  }
+  // Org admin of the workspace's org can always read, even without direct space membership.
+  if (ws.orgId) {
+    const orgMembership = await getOrgMembershipsCollection().findOne({
+      orgId: ws.orgId,
+      userId: auth.sub,
+    });
+    if (orgMembership?.role === "admin") {
+      return ws;
+    }
   }
   const roles = await getEffectiveSpaceRoles(auth.sub);
   const spaceRole = roles.get(ws.spaceId);
@@ -142,10 +153,14 @@ export async function assertCanReadWorkspace(
 
 /**
  * Phase 4 — assert the caller can WRITE to the given workspace.
- * Rules: any reader who is a space owner, or the workspace creator. Other
- * shared/public readers cannot mutate. Legacy `userId`-owned workspaces:
- * only the owner. Sends 403 on visibility-failure (after a successful read
- * permission), 404 when the workspace is invisible.
+ * Order of checks:
+ *   1. Org admin of the workspace's org — always writes (admin override).
+ *   2. Space `viewer` — never writes, even if they created the workspace.
+ *   3. Space `owner` — always writes.
+ *   4. Workspace creator — writes their own.
+ * Legacy `userId`-owned workspaces (no `spaceId`): only the legacy owner.
+ * Sends 403 on visibility-failure (after a successful read permission),
+ * 404 when the workspace is invisible.
  */
 export async function assertCanWriteWorkspace(
   reply: FastifyReply,
@@ -159,8 +174,22 @@ export async function assertCanWriteWorkspace(
   if (!ws.spaceId) {
     return ws;
   }
+  if (ws.orgId) {
+    const orgMembership = await getOrgMembershipsCollection().findOne({
+      orgId: ws.orgId,
+      userId: auth.sub,
+    });
+    if (orgMembership?.role === "admin") {
+      return ws;
+    }
+  }
   const roles = await getEffectiveSpaceRoles(auth.sub);
-  if (roles.get(ws.spaceId) === "owner") {
+  const role = roles.get(ws.spaceId);
+  if (role === "viewer") {
+    await reply.status(403).send({ error: "Workspace is read-only for this user" });
+    return null;
+  }
+  if (role === "owner") {
     return ws;
   }
   const creator = ws.creatorUserId ?? ws.userId;

@@ -8,7 +8,7 @@ export type AuthUserOrg = {
   isDefault: boolean;
 };
 
-export type SpaceRole = "owner" | "member";
+export type SpaceRole = "owner" | "member" | "viewer";
 
 export type AuthUserSpace = {
   spaceId: string;
@@ -23,6 +23,8 @@ export type AuthUser = {
   email: string;
   username: string;
   isAdmin?: boolean;
+  /** Platform-wide master admin — distinct from per-org admin. */
+  isMasterAdmin?: boolean;
   orgs?: AuthUserOrg[];
   activeOrgId?: string | null;
 };

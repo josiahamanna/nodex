@@ -148,7 +148,11 @@ export function OrgSwitcher(): React.ReactElement | null {
             })
           )}
           <div className="my-1 border-t border-border/50" />
-          {creating ? (
+          {orgState.lockedOrgId ? (
+            <div className="px-2 py-1.5 text-[11px] text-muted-foreground">
+              Organization creation is disabled for invited members.
+            </div>
+          ) : creating ? (
             <form
               className="flex items-center gap-1 px-2 py-1.5"
               onSubmit={handleCreate}

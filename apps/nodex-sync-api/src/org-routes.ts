@@ -91,10 +91,11 @@ export function registerOrgRoutes(
       }),
       activeOrgId,
       defaultOrgId: userDoc?.defaultOrgId ?? null,
+      lockedOrgId: userDoc?.lockedOrgId ?? null,
     });
   });
 
-  /** Create a new Org. Caller becomes admin and owner. */
+  /** Create a new Org. Caller becomes admin and owner. Blocked for users whose account was admin-provisioned into a specific org (see `UserDoc.lockedOrgId`). */
   app.post("/orgs", async (request, reply) => {
     const auth = await requireAuth(request, reply, jwtSecret);
     if (!auth) {
@@ -103,6 +104,20 @@ export function registerOrgRoutes(
     const parsed = createOrgBody.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+    let callerOid: ObjectId;
+    try {
+      callerOid = new ObjectId(auth.sub);
+    } catch {
+      return reply.status(401).send({ error: "Invalid session" });
+    }
+    const callerDoc = (await getUsersCollection().findOne({
+      _id: callerOid,
+    })) as UserDoc | null;
+    if (callerDoc?.lockedOrgId) {
+      return reply.status(403).send({
+        error: "Organization creation is disabled for invited members",
+      });
     }
     const orgs = getOrgsCollection();
     const memberships = getOrgMembershipsCollection();
@@ -153,6 +168,10 @@ export function registerOrgRoutes(
     if (!ctx) {
       return;
     }
+    await getUsersCollection().updateOne(
+      { _id: new ObjectId(auth.sub) },
+      { $set: { lastActiveOrgId: parsed.data.orgId, lastActiveSpaceId: null } },
+    );
     const token = signAccessToken(jwtSecret, {
       sub: auth.sub,
       email: auth.email,
@@ -315,6 +334,7 @@ export function registerOrgRoutes(
         passwordHash,
         displayName: parsed.data.displayName ?? null,
         mustSetPassword: false,
+        lockedOrgId: invite.orgId,
       } as Omit<UserDoc, "_id">);
       user = (await users.findOne({ _id: ins.insertedId })) as UserDoc;
       createdUser = true;
@@ -555,6 +575,8 @@ export function registerOrgRoutes(
       email,
       passwordHash,
       mustSetPassword: true,
+      lockedOrgId: orgId,
+      defaultOrgId: orgId,
     } as Omit<UserDoc, "_id">);
     const userIdHex = ins.insertedId.toHexString();
     await getOrgMembershipsCollection().insertOne({

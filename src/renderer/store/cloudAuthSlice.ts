@@ -17,11 +17,35 @@ import {
   resetCloudNotes,
   runCloudSyncThunk,
 } from "./cloudNotesSlice";
-import { clearOrgMembership } from "./orgMembershipSlice";
-import { clearSpaceMembership } from "./spaceMembershipSlice";
+import { clearOrgMembership, setLocalActiveOrg } from "./orgMembershipSlice";
+import { clearSpaceMembership, setLocalActiveSpace } from "./spaceMembershipSlice";
 import { showGlobalToast } from "../toast/toast-service";
 
 type CloudAuthThunkExtra = { extra: NodexPlatformDeps };
+
+/**
+ * Decode the JWT payload without verification. We only trust these claims to
+ * seed UI state on startup — every subsequent API call re-verifies the token
+ * server-side. Returns `null` on any parse error.
+ */
+function decodeAccessTokenClaims(
+  token: string,
+): { activeOrgId?: string; activeSpaceId?: string } | null {
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = padded.length % 4 === 0 ? "" : "=".repeat(4 - (padded.length % 4));
+    const json = atob(padded + pad);
+    const obj = JSON.parse(json) as { activeOrgId?: unknown; activeSpaceId?: unknown };
+    return {
+      activeOrgId: typeof obj.activeOrgId === "string" ? obj.activeOrgId : undefined,
+      activeSpaceId: typeof obj.activeSpaceId === "string" ? obj.activeSpaceId : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
 
 async function migrateWebScratchCloudNotesIfNeeded(realUserId: string): Promise<void> {
   if (typeof window === "undefined") return;
@@ -41,6 +65,8 @@ export type CloudAuthState = {
   busy: boolean;
   /** True when the account was admin-issued a temp password that must be rotated. */
   mustSetPassword: boolean;
+  /** Platform-wide master admin flag. Populated from /auth/me on session restore. */
+  isMasterAdmin: boolean;
 };
 
 const initialState: CloudAuthState = {
@@ -50,6 +76,7 @@ const initialState: CloudAuthState = {
   error: null,
   busy: false,
   mustSetPassword: false,
+  isMasterAdmin: false,
 };
 
 const cloudAuthSlice = createSlice({
@@ -74,11 +101,13 @@ const cloudAuthSlice = createSlice({
           state.userId = action.payload.userId;
           state.email = action.payload.email;
           state.mustSetPassword = action.payload.mustSetPassword === true;
+          state.isMasterAdmin = action.payload.isMasterAdmin === true;
         } else {
           state.status = "signedOut";
           state.userId = null;
           state.email = null;
           state.mustSetPassword = false;
+          state.isMasterAdmin = false;
         }
       })
       .addCase(cloudRestoreSessionThunk.rejected, (state) => {
@@ -87,6 +116,7 @@ const cloudAuthSlice = createSlice({
         state.userId = null;
         state.email = null;
         state.mustSetPassword = false;
+        state.isMasterAdmin = false;
       })
       .addCase(cloudLoginThunk.pending, (state) => {
         state.busy = true;
@@ -98,6 +128,7 @@ const cloudAuthSlice = createSlice({
         state.userId = action.payload.userId;
         state.email = action.payload.email;
         state.mustSetPassword = action.payload.mustSetPassword === true;
+        state.isMasterAdmin = action.payload.isMasterAdmin === true;
       })
       .addCase(cloudLoginThunk.rejected, (state, action) => {
         state.busy = false;
@@ -125,7 +156,7 @@ const cloudAuthSlice = createSlice({
 export const { clearMustSetPassword } = cloudAuthSlice.actions;
 
 export const cloudRestoreSessionThunk = createAsyncThunk<
-  { userId: string; email: string; mustSetPassword: boolean } | null,
+  { userId: string; email: string; mustSetPassword: boolean; isMasterAdmin: boolean } | null,
   void,
   CloudAuthThunkExtra
 >("cloudAuth/restore", async (_, { extra, dispatch }) => {
@@ -141,6 +172,13 @@ export const cloudRestoreSessionThunk = createAsyncThunk<
   extra.remoteApi.setAuthToken(token);
   extra.remoteApi.setRefreshToken(readCloudSyncRefreshToken());
   setAccessToken(token);
+  const claims = decodeAccessTokenClaims(token);
+  if (claims?.activeOrgId) {
+    dispatch(setLocalActiveOrg({ orgId: claims.activeOrgId }));
+  }
+  if (claims?.activeSpaceId) {
+    dispatch(setLocalActiveSpace({ spaceId: claims.activeSpaceId }));
+  }
   try {
     const me = await extra.remoteApi.authMe();
     const email = me.email || readCloudSyncEmail();
@@ -152,6 +190,7 @@ export const cloudRestoreSessionThunk = createAsyncThunk<
       userId: me.userId,
       email: me.email,
       mustSetPassword: me.mustSetPassword === true,
+      isMasterAdmin: me.isMasterAdmin === true,
     };
 
     // Defer heavy operations to macrotask queue to allow UI to render first
@@ -217,10 +256,10 @@ export const cloudRestoreSessionThunk = createAsyncThunk<
 });
 
 export const cloudLoginThunk = createAsyncThunk<
-  { userId: string; email: string; mustSetPassword: boolean },
+  { userId: string; email: string; mustSetPassword: boolean; isMasterAdmin: boolean },
   { email: string; password: string },
   CloudAuthThunkExtra
->("cloudAuth/login", async ({ email, password }, { extra }) => {
+>("cloudAuth/login", async ({ email, password }, { extra, dispatch }) => {
   const { token, refreshToken, userId, mustSetPassword } =
     await extra.remoteApi.authLogin(email, password);
   writeCloudSyncToken(token);
@@ -229,10 +268,25 @@ export const cloudLoginThunk = createAsyncThunk<
   extra.remoteApi.setAuthToken(token);
   extra.remoteApi.setRefreshToken(refreshToken);
   setAccessToken(token);
+  const claims = decodeAccessTokenClaims(token);
+  if (claims?.activeOrgId) {
+    dispatch(setLocalActiveOrg({ orgId: claims.activeOrgId }));
+  }
+  if (claims?.activeSpaceId) {
+    dispatch(setLocalActiveSpace({ spaceId: claims.activeSpaceId }));
+  }
+  let isMasterAdmin = false;
+  try {
+    const me = await extra.remoteApi.authMe();
+    isMasterAdmin = me.isMasterAdmin === true;
+  } catch {
+    /* non-fatal */
+  }
   return {
     userId,
     email: email.toLowerCase(),
     mustSetPassword: mustSetPassword === true,
+    isMasterAdmin,
   };
 });
 
@@ -240,7 +294,7 @@ export const cloudRegisterThunk = createAsyncThunk<
   { userId: string; email: string },
   { email: string; password: string },
   CloudAuthThunkExtra
->("cloudAuth/register", async ({ email, password }, { extra }) => {
+>("cloudAuth/register", async ({ email, password }, { extra, dispatch }) => {
   const { token, refreshToken, userId } = await extra.remoteApi.authRegister(
     email,
     password,
@@ -251,6 +305,13 @@ export const cloudRegisterThunk = createAsyncThunk<
   extra.remoteApi.setAuthToken(token);
   extra.remoteApi.setRefreshToken(refreshToken);
   setAccessToken(token);
+  const claims = decodeAccessTokenClaims(token);
+  if (claims?.activeOrgId) {
+    dispatch(setLocalActiveOrg({ orgId: claims.activeOrgId }));
+  }
+  if (claims?.activeSpaceId) {
+    dispatch(setLocalActiveSpace({ spaceId: claims.activeSpaceId }));
+  }
   return { userId, email: email.toLowerCase() };
 });
 

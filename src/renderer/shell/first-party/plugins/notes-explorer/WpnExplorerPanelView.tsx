@@ -398,6 +398,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const currentNoteId = useSelector((s: RootState) => s.notes.currentNote?.id);
   const noteRenameEpoch = useSelector((s: RootState) => s.notes.noteRenameEpoch);
   const noteTitleDraftById = useSelector((s: RootState) => s.notes.noteTitleDraftById);
+  const activeSpaceId = useSelector((s: RootState) => s.spaceMembership.activeSpaceId);
 
   const showFolderBasedWorkspaceCreate = isElectronUserAgent() || rootPath != null;
 
@@ -578,6 +579,26 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   useEffect(() => {
     void loadWorkspaces();
   }, [loadWorkspaces]);
+
+  /**
+   * WPN listings are scoped per space. On switch, drop the cached tree first
+   * so the user never sees the previous space's workspaces flash through, then
+   * refetch against the new scope.
+   */
+  useEffect(() => {
+    if (activeSpaceId === null) {
+      return;
+    }
+    setWorkspaces([]);
+    setProjectsByWs({});
+    setSelectedProjectId(null);
+    setNotes([]);
+    setExpandedWs(new Set());
+    setExpandedProjects(new Set());
+    setExpandedNoteParents(new Set());
+    fullTreeCacheRef.current = null;
+    void loadWorkspaces({ force: true });
+  }, [activeSpaceId, loadWorkspaces]);
 
   useEffect(() => {
     const onWpnTreeChanged = (): void => {
