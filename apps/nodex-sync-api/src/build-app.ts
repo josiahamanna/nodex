@@ -35,6 +35,7 @@ export async function buildSyncApiApp(
       "Accept",
       "X-Requested-With",
     ],
+    maxAge: 86400,
   });
 
   await app.register(

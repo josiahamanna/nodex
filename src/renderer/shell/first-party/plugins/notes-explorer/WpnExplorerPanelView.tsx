@@ -1,6 +1,6 @@
 import { getNodex } from "../../../../../shared/nodex-host-access";
 import { wpnTrace } from "../../../../../shared/wpn-debug-trace";
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type {
   CreateNoteRelation,
@@ -388,6 +388,122 @@ type RenamingState =
     }
   | null;
 
+type SelectionKind = "ws" | "project" | "note";
+
+type SelectionState = {
+  kind: SelectionKind | null;
+  ids: Set<string>;
+  anchorId: string | null;
+  // workspaceId for project selections, projectId for note selections
+  scopeId: string | null;
+};
+
+const EMPTY_SELECTION: SelectionState = {
+  kind: null,
+  ids: new Set(),
+  anchorId: null,
+  scopeId: null,
+};
+
+type SelectionAction =
+  | { type: "replace"; kind: SelectionKind; id: string; scopeId: string | null }
+  | { type: "toggle"; kind: SelectionKind; id: string; scopeId: string | null }
+  | {
+      type: "range";
+      kind: SelectionKind;
+      id: string;
+      orderedIds: string[];
+      scopeId: string | null;
+    }
+  | { type: "clear" };
+
+function selectionReducer(
+  state: SelectionState,
+  action: SelectionAction,
+): SelectionState {
+  switch (action.type) {
+    case "clear":
+      return state.kind == null && state.ids.size === 0 ? state : EMPTY_SELECTION;
+    case "replace":
+      return {
+        kind: action.kind,
+        ids: new Set([action.id]),
+        anchorId: action.id,
+        scopeId: action.scopeId,
+      };
+    case "toggle": {
+      // Different kind or scope → replace, don't merge.
+      if (state.kind !== action.kind || state.scopeId !== action.scopeId) {
+        return {
+          kind: action.kind,
+          ids: new Set([action.id]),
+          anchorId: action.id,
+          scopeId: action.scopeId,
+        };
+      }
+      const next = new Set(state.ids);
+      if (next.has(action.id)) {
+        next.delete(action.id);
+      } else {
+        next.add(action.id);
+      }
+      return {
+        kind: action.kind,
+        ids: next,
+        anchorId: action.id,
+        scopeId: action.scopeId,
+      };
+    }
+    case "range": {
+      if (
+        state.kind !== action.kind ||
+        state.scopeId !== action.scopeId ||
+        !state.anchorId
+      ) {
+        return {
+          kind: action.kind,
+          ids: new Set([action.id]),
+          anchorId: action.id,
+          scopeId: action.scopeId,
+        };
+      }
+      const a = action.orderedIds.indexOf(state.anchorId);
+      const b = action.orderedIds.indexOf(action.id);
+      if (a < 0 || b < 0) {
+        return {
+          kind: action.kind,
+          ids: new Set([action.id]),
+          anchorId: action.id,
+          scopeId: action.scopeId,
+        };
+      }
+      const [lo, hi] = a <= b ? [a, b] : [b, a];
+      const next = new Set(state.ids);
+      for (let i = lo; i <= hi; i++) {
+        const v = action.orderedIds[i];
+        if (v !== undefined) next.add(v);
+      }
+      return {
+        kind: action.kind,
+        ids: next,
+        anchorId: state.anchorId,
+        scopeId: action.scopeId,
+      };
+    }
+    default:
+      return state;
+  }
+}
+
+/** Modifier inspection for selection clicks. */
+function selectionModifier(
+  e: React.MouseEvent,
+): "replace" | "toggle" | "range" {
+  if (e.shiftKey) return "range";
+  if (e.metaKey || e.ctrlKey) return "toggle";
+  return "replace";
+}
+
 export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.ReactElement {
   const { openWebAuth } = useAuth();
   const dispatch = useDispatch<AppDispatch>();
@@ -431,6 +547,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const [menu, setMenu] = useState<MenuState>(null);
   const [typePicker, setTypePicker] = useState<TypePickerState>(null);
   const [renaming, setRenaming] = useState<RenamingState>(null);
+  const [selection, dispatchSelection] = useReducer(selectionReducer, EMPTY_SELECTION);
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  const panelRootRef = useRef<HTMLDivElement | null>(null);
+  const [moveToProjectPicker, setMoveToProjectPicker] = useState<
+    | { noteIds: string[]; sourceProjectId: string }
+    | null
+  >(null);
   const vfsRenameChoice = useVfsDependentTitleRenameChoice();
   const noteClipboardRef = useRef<NoteClipboard | null>(null);
   const explorerNoteDragRef = useRef<{ projectId: string; noteId: string } | null>(null);
@@ -763,6 +887,220 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     [loadProjectTree, persistExpandedNotes],
   );
 
+  /**
+   * Best-effort bulk runner: fires `perItem` for each item with a concurrency cap
+   * and returns the set of succeeded vs failed ids. Never throws.
+   */
+  const runBulk = useCallback(
+    async <T extends string>(
+      items: T[],
+      perItem: (item: T) => Promise<void>,
+      concurrency = 4,
+    ): Promise<{ succeeded: T[]; failed: Array<{ id: T; error: Error }> }> => {
+      const succeeded: T[] = [];
+      const failed: Array<{ id: T; error: Error }> = [];
+      let cursor = 0;
+      const workers: Promise<void>[] = [];
+      const runWorker = async (): Promise<void> => {
+        while (cursor < items.length) {
+          const i = cursor++;
+          const item = items[i]!;
+          try {
+            await perItem(item);
+            succeeded.push(item);
+          } catch (e) {
+            failed.push({ id: item, error: e instanceof Error ? e : new Error(String(e)) });
+          }
+        }
+      };
+      const n = Math.max(1, Math.min(concurrency, items.length));
+      for (let i = 0; i < n; i++) workers.push(runWorker());
+      await Promise.all(workers);
+      return { succeeded, failed };
+    },
+    [],
+  );
+
+  /**
+   * Report bulk-op results to the user via the toast channel already used for
+   * single-item errors. Success cases emit a concise info toast; partial/full
+   * failures include the count plus the first error message so operators can
+   * diagnose without opening devtools.
+   */
+  const reportBulkResult = useCallback(
+    (verb: string, succeeded: number, failed: Array<{ error: Error }>) => {
+      if (failed.length === 0) {
+        if (succeeded > 1) {
+          showToast({ severity: "info", message: `${verb} ${succeeded} items.` });
+        }
+        return;
+      }
+      const firstErr = failed[0]?.error.message ?? "unknown";
+      showToast({
+        severity: "error",
+        message:
+          succeeded === 0
+            ? `Failed to ${verb.toLowerCase()} ${failed.length} item(s): ${firstErr}`
+            : `${verb} ${succeeded}; ${failed.length} failed: ${firstErr}`,
+      });
+    },
+    [showToast],
+  );
+
+  /**
+   * Returns the selected note ids in sibling order (top→bottom) when they form a
+   * contiguous run of siblings under the same parent. Returns null when the
+   * selection is not a clean sibling block — which is when bulk Move up / Down /
+   * Indent / Outdent are disabled.
+   */
+  const contiguousSiblingNoteIds = useCallback(
+    (selectedIds: Set<string>): { ordered: string[]; parentId: string | null } | null => {
+      if (selectedIds.size === 0) return null;
+      const rows = notesRef.current;
+      const selRows = rows.filter((n) => selectedIds.has(n.id));
+      if (selRows.length !== selectedIds.size) return null; // some ids not in tree
+      const parentId = selRows[0]!.parent_id ?? null;
+      for (const r of selRows) {
+        if ((r.parent_id ?? null) !== parentId) return null;
+      }
+      const siblingsInOrder = rows
+        .filter((n) => (n.parent_id ?? null) === parentId)
+        .map((n) => n.id);
+      const positions = selRows
+        .map((r) => siblingsInOrder.indexOf(r.id))
+        .sort((a, b) => a - b);
+      for (let i = 1; i < positions.length; i++) {
+        if (positions[i]! !== positions[i - 1]! + 1) return null;
+      }
+      const lo = positions[0]!;
+      const hi = positions[positions.length - 1]!;
+      return {
+        ordered: siblingsInOrder.slice(lo, hi + 1),
+        parentId,
+      };
+    },
+    [],
+  );
+
+  /**
+   * Cross-project bulk move. Each note is placed at the root (or under
+   * `targetParentId`) of `targetProjectId`. Reuses existing error reporting.
+   */
+  const runMoveNotesToProject = useCallback(
+    async (
+      sourceProjectId: string,
+      ids: string[],
+      targetProjectId: string,
+      targetParentId: string | null,
+    ): Promise<void> => {
+      if (ids.length === 0) return;
+      beginWpnSync();
+      const result = await runBulk(ids, async (noteId) => {
+        await getNodex().wpnMoveNoteCrossProject({
+          noteId,
+          targetProjectId,
+          ...(targetParentId ? { targetParentId } : {}),
+        });
+      });
+      if (result.failed.length === 0) {
+        markWpnSyncOk();
+      } else {
+        markWpnSyncError(result.failed[0]!.error);
+      }
+      reportBulkResult("Moved", result.succeeded.length, result.failed);
+      dispatchSelection({ type: "clear" });
+      // Refresh both source and target projects so the tree reflects reality.
+      await loadWorkspaces();
+      if (sourceProjectId) {
+        void loadProjectTree(sourceProjectId).catch(() => {});
+      }
+    },
+    [runBulk, reportBulkResult, loadWorkspaces, loadProjectTree],
+  );
+
+  const bulkMoveNotes = useCallback(
+    async (
+      projectId: string,
+      selectedIds: Set<string>,
+      op: "up" | "down" | "indent" | "outdent",
+    ) => {
+      const block = contiguousSiblingNoteIds(selectedIds);
+      if (!block) {
+        showToast({
+          severity: "error",
+          message: "Selection must be a contiguous group of siblings for this action.",
+        });
+        return;
+      }
+      const rows = notesRef.current;
+      const ordered = block.ordered;
+      const parentId = block.parentId;
+      const siblingsInOrder = rows
+        .filter((n) => (n.parent_id ?? null) === parentId)
+        .map((n) => n.id);
+      const firstIdx = siblingsInOrder.indexOf(ordered[0]!);
+      const lastIdx = siblingsInOrder.indexOf(ordered[ordered.length - 1]!);
+
+      beginWpnSync();
+      try {
+        if (op === "up") {
+          if (firstIdx <= 0) {
+            showToast({ severity: "info", message: "Already at the top." });
+            return;
+          }
+          const aboveId = siblingsInOrder[firstIdx - 1]!;
+          // Walk top → bottom; each moves before `aboveId` (unchanged ref — server
+          // treats `before aboveId` as "just before it in the parent's child list").
+          for (const id of ordered) {
+            await performWpnNoteMove(projectId, id, aboveId, "before");
+          }
+        } else if (op === "down") {
+          if (lastIdx < 0 || lastIdx >= siblingsInOrder.length - 1) {
+            showToast({ severity: "info", message: "Already at the bottom." });
+            return;
+          }
+          const belowId = siblingsInOrder[lastIdx + 1]!;
+          // Walk bottom → top; each moves after `belowId`.
+          for (let i = ordered.length - 1; i >= 0; i--) {
+            const id = ordered[i]!;
+            await performWpnNoteMove(projectId, id, belowId, "after");
+          }
+        } else if (op === "indent") {
+          if (firstIdx <= 0) {
+            showToast({
+              severity: "info",
+              message: "Nothing to indent under — no previous sibling.",
+            });
+            return;
+          }
+          const prevSiblingId = siblingsInOrder[firstIdx - 1]!;
+          // Walk top → bottom; each becomes last child of `prevSiblingId`.
+          for (const id of ordered) {
+            await performWpnNoteMove(projectId, id, prevSiblingId, "into");
+          }
+        } else if (op === "outdent") {
+          if (parentId == null) {
+            showToast({
+              severity: "info",
+              message: "Already at project root — nothing to outdent.",
+            });
+            return;
+          }
+          // Walk bottom → top; each moves after the shared parent.
+          for (let i = ordered.length - 1; i >= 0; i--) {
+            const id = ordered[i]!;
+            await performWpnNoteMove(projectId, id, parentId, "after");
+          }
+        }
+        markWpnSyncOk();
+      } catch (e) {
+        markWpnSyncError(e);
+        showToast({ severity: "error", message: e instanceof Error ? e.message : String(e) });
+      }
+    },
+    [contiguousSiblingNoteIds, performWpnNoteMove, showToast],
+  );
+
   const refreshExplorer = useCallback(async () => {
     const pid = selectedProjectIdRef.current;
     wpnTrace("refreshExplorer.enter", { projectOpen, pid });
@@ -858,6 +1196,80 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     return m;
   }, [notes]);
 
+  const workspaceOrderedIds = useMemo(() => workspaces.map((w) => w.id), [workspaces]);
+
+  const projectOrderedIdsByWs = useMemo(() => {
+    const m: Record<string, string[]> = {};
+    for (const [wsId, list] of Object.entries(projectsByWs)) {
+      m[wsId] = list.map((p) => p.id);
+    }
+    return m;
+  }, [projectsByWs]);
+
+  const filteredNoteIds = useMemo(() => filteredNotes.map((n) => n.id), [filteredNotes]);
+
+  /**
+   * Unified selection click for rows. Handles plain (replace), cmd/ctrl (toggle), and shift (range).
+   * Returns whether the click consumed the event; callers should short-circuit open-note etc.
+   * on a modified click, and only perform their default action when the click was plain AND
+   * selection was previously empty / matched only this row.
+   */
+  const selectionClick = useCallback(
+    (
+      e: React.MouseEvent,
+      kind: SelectionKind,
+      id: string,
+      scopeId: string | null,
+      orderedIds: string[],
+    ): { modified: boolean } => {
+      const mode = selectionModifier(e);
+      if (mode === "replace") {
+        dispatchSelection({ type: "replace", kind, id, scopeId });
+        return { modified: false };
+      }
+      e.stopPropagation();
+      if (mode === "toggle") {
+        dispatchSelection({ type: "toggle", kind, id, scopeId });
+      } else {
+        dispatchSelection({ type: "range", kind, id, orderedIds, scopeId });
+      }
+      return { modified: true };
+    },
+    [],
+  );
+
+  const isRowSelected = useCallback(
+    (kind: SelectionKind, id: string, scopeId: string | null): boolean =>
+      selection.kind === kind &&
+      selection.scopeId === scopeId &&
+      selection.ids.has(id),
+    [selection],
+  );
+
+  const clearSelection = useCallback(() => {
+    dispatchSelection({ type: "clear" });
+  }, []);
+
+  /**
+   * Effective target ids for a context-menu action bound to `menuId`. If the
+   * right-clicked row is part of the current multi-selection (same kind + scope),
+   * the action applies to the whole selection. Otherwise only `menuId`.
+   */
+  const menuTargetIds = useCallback(
+    (menuKind: SelectionKind, menuId: string, menuScope: string | null): string[] => {
+      if (
+        selection.kind === menuKind &&
+        selection.scopeId === menuScope &&
+        selection.ids.has(menuId) &&
+        selection.ids.size > 1
+      ) {
+        return [...selection.ids];
+      }
+      return [menuId];
+    },
+    [selection],
+  );
+
   useEffect(() => {
     if (!currentNoteId || !selectedProjectId) return;
     if (lastExplorerRevealForNoteIdRef.current === currentNoteId) return;
@@ -924,12 +1336,13 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         return;
       }
       await getNodex().wpnCreateWorkspace("Workspace");
+      await loadWorkspaces();
     } catch (e) {
       window.alert(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [closeAllMenus]);
+  }, [closeAllMenus, loadWorkspaces]);
 
   const onCreateProject = async (workspaceId: string) => {
     await getNodex().wpnCreateProject(workspaceId, "Project");
@@ -991,6 +1404,164 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
     }
     await loadWorkspaces();
   };
+
+  const onDeleteWorkspaces = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      if (
+        !window.confirm(
+          ids.length === 1
+            ? "Delete this workspace and all projects and notes inside it?"
+            : `Delete ${ids.length} workspaces and ALL their projects and notes?`,
+        )
+      )
+        return;
+      lastMutationAtRef.current = Date.now();
+      closeAllMenus();
+      beginWpnSync();
+      // Enumerate notes to close open tabs ONLY for workspaces that have one
+      // — avoids N list calls when nothing's open. Uses in-memory projectsByWs
+      // plus a single wpnListNotes per affected project; the server-side bulk
+      // delete still happens as ONE request.
+      try {
+        const candidateProjectIds = ids.flatMap(
+          (wsId) => (projectsByWs[wsId] ?? []).map((p) => p.id),
+        );
+        const openNoteIds = new Set(
+          tabs
+            .listOpenTabs()
+            .filter((t) => t.tabTypeId === SHELL_TAB_NOTE)
+            .map((t) => (t.state as { noteId?: string } | undefined)?.noteId ?? "")
+            .filter(Boolean),
+        );
+        if (openNoteIds.size > 0 && candidateProjectIds.length > 0) {
+          const noteLists = await Promise.all(
+            candidateProjectIds.map((pid) =>
+              getNodex().wpnListNotes(pid).catch(() => ({ notes: [] })),
+            ),
+          );
+          const noteIds = noteLists
+            .flatMap((r) => r.notes.map((n) => n.id))
+            .filter((id) => openNoteIds.has(id));
+          closeShellTabsForNoteIds(tabs, noteIds);
+        }
+      } catch {
+        /* best-effort tab close; continue with delete */
+      }
+      try {
+        const res = await getNodex().wpnDeleteWorkspaces(ids);
+        if (res.denied.length === 0 && res.notFound.length === 0) {
+          markWpnSyncOk();
+          if (res.deleted.length > 1) {
+            showToast({
+              severity: "info",
+              message: `Deleted ${res.deleted.length} workspaces.`,
+            });
+          }
+        } else {
+          markWpnSyncOk();
+          const parts: string[] = [];
+          parts.push(`Deleted ${res.deleted.length}`);
+          if (res.denied.length) parts.push(`${res.denied.length} denied`);
+          if (res.notFound.length) parts.push(`${res.notFound.length} not found`);
+          showToast({
+            severity: res.deleted.length === 0 ? "error" : "info",
+            message: parts.join("; "),
+          });
+        }
+      } catch (e) {
+        markWpnSyncError(e);
+        showToast({
+          severity: "error",
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+      if (selectedProjectId) {
+        const owningWs = ids.find((wsId) =>
+          (projectsByWs[wsId] ?? []).some((p) => p.id === selectedProjectId),
+        );
+        if (owningWs) {
+          setSelectedProjectId(null);
+          setNotes([]);
+        }
+      }
+      dispatchSelection({ type: "clear" });
+      await loadWorkspaces();
+    },
+    [tabs, selectedProjectId, projectsByWs, loadWorkspaces, closeAllMenus, showToast],
+  );
+
+  const onDeleteProjects = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      if (
+        !window.confirm(
+          ids.length === 1
+            ? "Delete this project and all its notes?"
+            : `Delete ${ids.length} projects and ALL their notes?`,
+        )
+      )
+        return;
+      lastMutationAtRef.current = Date.now();
+      closeAllMenus();
+      beginWpnSync();
+      try {
+        const openNoteIds = new Set(
+          tabs
+            .listOpenTabs()
+            .filter((t) => t.tabTypeId === SHELL_TAB_NOTE)
+            .map((t) => (t.state as { noteId?: string } | undefined)?.noteId ?? "")
+            .filter(Boolean),
+        );
+        if (openNoteIds.size > 0) {
+          const noteLists = await Promise.all(
+            ids.map((pid) => getNodex().wpnListNotes(pid).catch(() => ({ notes: [] }))),
+          );
+          const noteIds = noteLists
+            .flatMap((r) => r.notes.map((n) => n.id))
+            .filter((id) => openNoteIds.has(id));
+          closeShellTabsForNoteIds(tabs, noteIds);
+        }
+      } catch {
+        /* best-effort */
+      }
+      try {
+        const res = await getNodex().wpnDeleteProjects(ids);
+        if (res.denied.length === 0 && res.notFound.length === 0) {
+          markWpnSyncOk();
+          if (res.deleted.length > 1) {
+            showToast({
+              severity: "info",
+              message: `Deleted ${res.deleted.length} projects.`,
+            });
+          }
+        } else {
+          markWpnSyncOk();
+          const parts: string[] = [];
+          parts.push(`Deleted ${res.deleted.length}`);
+          if (res.denied.length) parts.push(`${res.denied.length} denied`);
+          if (res.notFound.length) parts.push(`${res.notFound.length} not found`);
+          showToast({
+            severity: res.deleted.length === 0 ? "error" : "info",
+            message: parts.join("; "),
+          });
+        }
+      } catch (e) {
+        markWpnSyncError(e);
+        showToast({
+          severity: "error",
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+      if (selectedProjectId && ids.includes(selectedProjectId)) {
+        setSelectedProjectId(null);
+        setNotes([]);
+      }
+      dispatchSelection({ type: "clear" });
+      await loadWorkspaces();
+    },
+    [tabs, selectedProjectId, loadWorkspaces, closeAllMenus, showToast],
+  );
 
   const onCreateNote = async (
     projectId: string,
@@ -1095,6 +1666,73 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       closeAllMenus();
     },
     [workspaces, loadWorkspaces, closeAllMenus],
+  );
+
+  /**
+   * Rebuilds sort_index values for a reordered sibling list, sending one
+   * `wpnUpdateWorkspace` or `wpnUpdateProject` per changed row. Used by bulk
+   * Move up / Move down on workspaces and projects — iterative single-item
+   * swaps miss because they rely on stale state between calls.
+   */
+  const bulkReorderWorkspacesOrProjects = useCallback(
+    async (
+      kind: "ws" | "project",
+      workspaceId: string | null,
+      selectedIds: Set<string>,
+      dir: -1 | 1,
+    ) => {
+      const list =
+        kind === "ws"
+          ? workspacesRef.current.slice()
+          : (projectsByWsRef.current[workspaceId ?? ""] ?? []).slice();
+      if (list.length === 0) return;
+      const positions = list
+        .map((x, i) => (selectedIds.has(x.id) ? i : -1))
+        .filter((i) => i >= 0);
+      if (positions.length === 0) return;
+      // Require contiguous selection — else disable.
+      for (let i = 1; i < positions.length; i++) {
+        if (positions[i]! !== positions[i - 1]! + 1) {
+          showToast({
+            severity: "error",
+            message: "Selection must be contiguous to Move up / Move down.",
+          });
+          return;
+        }
+      }
+      const first = positions[0]!;
+      const last = positions[positions.length - 1]!;
+      const next = list.slice();
+      if (dir === -1) {
+        if (first <= 0) return;
+        // Move the item at (first-1) to just after `last`.
+        const above = next.splice(first - 1, 1)[0]!;
+        next.splice(last, 0, above);
+      } else {
+        if (last >= next.length - 1) return;
+        const below = next.splice(last + 1, 1)[0]!;
+        next.splice(first, 0, below);
+      }
+      const updates = next.map((row, i) => ({ id: row.id, sort_index: i }));
+      beginWpnSync();
+      try {
+        if (kind === "ws") {
+          await Promise.all(
+            updates.map((u) => getNodex().wpnUpdateWorkspace(u.id, { sort_index: u.sort_index })),
+          );
+        } else {
+          await Promise.all(
+            updates.map((u) => getNodex().wpnUpdateProject(u.id, { sort_index: u.sort_index })),
+          );
+        }
+        markWpnSyncOk();
+      } catch (e) {
+        markWpnSyncError(e);
+        showToast({ severity: "error", message: e instanceof Error ? e.message : String(e) });
+      }
+      await loadWorkspaces();
+    },
+    [loadWorkspaces, showToast],
   );
 
   const swapProjectOrder = useCallback(
@@ -1377,18 +2015,31 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
       const isRenamingNote = renaming?.kind === "note" && renaming.id === n.id;
       const rowDropHint =
         wpnNoteDropHint?.targetId === n.id ? wpnNoteDropHint.placement : null;
+      const noteSelected = isRowSelected("note", n.id, projectId);
       rows.push(
         <div
           key={n.id}
+          data-wpn-select-row
           data-wpn-explorer-active-note={currentNoteId === n.id ? "" : undefined}
           className={`group relative flex min-h-7 w-full items-center gap-0.5 border-b border-border/30 text-[11px] ${
-            currentNoteId === n.id ? "bg-muted/50" : "hover:bg-muted/25"
+            noteSelected
+              ? ""
+              : currentNoteId === n.id
+                ? "bg-muted/50"
+                : "hover:bg-muted/25"
           }`}
-          style={{ paddingLeft: pad }}
+          style={
+            noteSelected
+              ? { paddingLeft: pad, backgroundColor: "hsl(var(--primary) / 0.32)" }
+              : { paddingLeft: pad }
+          }
+          aria-selected={noteSelected || undefined}
           onClick={(e) => {
             if (isRenamingNote) return;
             const el = e.target as HTMLElement;
             if (el.closest("[data-wpn-note-drag-handle]") || el.closest("[data-wpn-tree-chevron]")) return;
+            const r = selectionClick(e, "note", n.id, projectId, filteredNoteIds);
+            if (r.modified) return;
             scheduleOpenNote(n.id, projectId, noteTitleDraftById[n.id] ?? n.title);
           }}
           onDoubleClick={(e) => {
@@ -1437,6 +2088,9 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
             e.preventDefault();
             e.stopPropagation();
             setTypePicker(null);
+            if (!noteSelected) {
+              dispatchSelection({ type: "replace", kind: "note", id: n.id, scopeId: projectId });
+            }
             setMenu({
               x: e.clientX,
               y: e.clientY,
@@ -1640,10 +2294,176 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   return (
     <>
       {vfsRenameChoice.portal}
+      {moveToProjectPicker ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/60"
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setMoveToProjectPicker(null);
+          }}
+        >
+          <div className="max-h-[70vh] w-[22rem] overflow-hidden rounded-md border border-border bg-popover text-[11px] shadow-lg">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <span className="font-medium">
+                Move {moveToProjectPicker.noteIds.length} note
+                {moveToProjectPicker.noteIds.length > 1 ? "s" : ""} to…
+              </span>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setMoveToProjectPicker(null)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="max-h-[50vh] overflow-y-auto">
+              {workspaces.map((w) => {
+                const wsProjects = projectsByWs[w.id] ?? [];
+                if (wsProjects.length === 0) return null;
+                return (
+                  <div key={w.id}>
+                    <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {w.name}
+                    </p>
+                    {wsProjects.map((p) => {
+                      const isCurrent = p.id === moveToProjectPicker.sourceProjectId;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          disabled={isCurrent}
+                          className="block w-full px-3 py-1 text-left hover:bg-muted/50 disabled:opacity-40"
+                          onClick={async () => {
+                            const payload = moveToProjectPicker;
+                            setMoveToProjectPicker(null);
+                            await runMoveNotesToProject(
+                              payload.sourceProjectId,
+                              payload.noteIds,
+                              p.id,
+                              null,
+                            );
+                          }}
+                        >
+                          {p.name}
+                          {isCurrent ? (
+                            <span className="ml-2 text-[9px] text-muted-foreground">(current)</span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div
-        className="flex h-full min-h-0 min-w-0 w-full flex-col bg-sidebar text-sidebar-foreground"
+        ref={panelRootRef}
+        tabIndex={0}
+        className="flex h-full min-h-0 min-w-0 w-full flex-col bg-sidebar text-sidebar-foreground outline-none"
         data-nodex-own-contextmenu
-        onClick={() => closeAllMenus()}
+        onClick={(e) => {
+          // Bare background click (not on a row) clears selection.
+          const t = e.target as HTMLElement;
+          const isRow =
+            t.closest('[aria-selected="true"]') ||
+            t.closest("[data-wpn-select-row]");
+          if (!isRow && selectionRef.current.kind != null) {
+            clearSelection();
+          }
+          closeAllMenus();
+        }}
+        onKeyDown={(e) => {
+          // Don't hijack keyboard when focus is in a text input / editable region.
+          const target = e.target as HTMLElement | null;
+          if (
+            target &&
+            (target.tagName === "INPUT" ||
+              target.tagName === "TEXTAREA" ||
+              target.isContentEditable)
+          ) {
+            return;
+          }
+          if (e.key === "Escape") {
+            if (selectionRef.current.kind != null) {
+              clearSelection();
+              e.stopPropagation();
+            }
+            return;
+          }
+          const sel = selectionRef.current;
+          if (sel.kind == null || sel.ids.size === 0) return;
+          if (e.key === "Delete" || e.key === "Backspace") {
+            e.preventDefault();
+            const ids = [...sel.ids];
+            if (sel.kind === "ws") {
+              void onDeleteWorkspaces(ids);
+            } else if (sel.kind === "project") {
+              void onDeleteProjects(ids);
+            } else if (sel.kind === "note" && sel.scopeId) {
+              if (window.confirm(`Delete ${ids.length} note(s)?`)) {
+                const pid = sel.scopeId;
+                lastMutationAtRef.current = Date.now();
+                for (const id of ids) markNotePendingDelete(id);
+                closeShellTabsForNoteIds(tabs, ids);
+                beginWpnSync();
+                (async () => {
+                  try {
+                    await getNodex().wpnDeleteNotes(ids);
+                    markWpnSyncOk();
+                  } catch (err) {
+                    markWpnSyncError(err);
+                    for (const id of ids) unmarkNotePendingDelete(id);
+                    showToast({
+                      severity: "error",
+                      message: err instanceof Error ? err.message : String(err),
+                    });
+                  } finally {
+                    for (const id of ids) unmarkNotePendingDelete(id);
+                    void loadProjectTree(pid).catch(() => {});
+                    dispatchSelection({ type: "clear" });
+                  }
+                })();
+              }
+            }
+            return;
+          }
+          if (sel.kind === "note" && sel.scopeId) {
+            const pid = sel.scopeId;
+            if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+              e.preventDefault();
+              void bulkMoveNotes(pid, sel.ids, e.key === "ArrowUp" ? "up" : "down");
+              return;
+            }
+            if (e.key === "Tab") {
+              e.preventDefault();
+              void bulkMoveNotes(pid, sel.ids, e.shiftKey ? "outdent" : "indent");
+              return;
+            }
+          }
+          if (sel.kind === "ws" && (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown"))) {
+            e.preventDefault();
+            void bulkReorderWorkspacesOrProjects("ws", null, sel.ids, e.key === "ArrowUp" ? -1 : 1);
+            return;
+          }
+          if (
+            sel.kind === "project" &&
+            sel.scopeId &&
+            e.altKey &&
+            (e.key === "ArrowUp" || e.key === "ArrowDown")
+          ) {
+            e.preventDefault();
+            void bulkReorderWorkspacesOrProjects(
+              "project",
+              sel.scopeId,
+              sel.ids,
+              e.key === "ArrowUp" ? -1 : 1,
+            );
+            return;
+          }
+        }}
       >
       <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border bg-muted/10 px-2 py-1">
         {wpnOwnerLabel ? (
@@ -1688,6 +2508,145 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
         />
       </div>
 
+      {selection.kind && selection.ids.size > 0 ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border bg-accent/20 px-2 py-1 text-[10px]">
+          <span className="mr-1 font-medium text-foreground">
+            {selection.ids.size} selected
+            {selection.kind === "ws" ? " workspace(s)" : selection.kind === "project" ? " project(s)" : " note(s)"}
+          </span>
+          <button
+            type="button"
+            className="rounded border border-border/60 px-2 py-0.5 hover:bg-destructive/15"
+            onClick={() => {
+              const ids = [...selection.ids];
+              if (selection.kind === "ws") void onDeleteWorkspaces(ids);
+              else if (selection.kind === "project") void onDeleteProjects(ids);
+              else if (selection.kind === "note" && selection.scopeId)
+                void onDeleteNotes(selection.scopeId, ids);
+            }}
+            title="Delete selection (Del)"
+          >
+            Delete
+          </button>
+          {selection.kind === "note" && selection.scopeId ? (
+            <>
+              <button
+                type="button"
+                className="rounded border border-border/60 px-2 py-0.5 hover:bg-muted/40"
+                onClick={() => {
+                  if (!selection.scopeId) return;
+                  void bulkMoveNotes(selection.scopeId, selection.ids, "up");
+                }}
+                title="Move up (Alt+↑)"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className="rounded border border-border/60 px-2 py-0.5 hover:bg-muted/40"
+                onClick={() => {
+                  if (!selection.scopeId) return;
+                  void bulkMoveNotes(selection.scopeId, selection.ids, "down");
+                }}
+                title="Move down (Alt+↓)"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                className="rounded border border-border/60 px-2 py-0.5 hover:bg-muted/40"
+                onClick={() => {
+                  if (!selection.scopeId) return;
+                  void bulkMoveNotes(selection.scopeId, selection.ids, "indent");
+                }}
+                title="Indent (Tab)"
+              >
+                Indent
+              </button>
+              <button
+                type="button"
+                className="rounded border border-border/60 px-2 py-0.5 hover:bg-muted/40"
+                onClick={() => {
+                  if (!selection.scopeId) return;
+                  void bulkMoveNotes(selection.scopeId, selection.ids, "outdent");
+                }}
+                title="Outdent (Shift+Tab)"
+              >
+                Outdent
+              </button>
+              <button
+                type="button"
+                className="rounded border border-border/60 px-2 py-0.5 hover:bg-muted/40"
+                onClick={() => {
+                  if (!selection.scopeId) return;
+                  setMoveToProjectPicker({
+                    noteIds: [...selection.ids],
+                    sourceProjectId: selection.scopeId,
+                  });
+                }}
+                title="Move selected notes to a different project"
+              >
+                Move to…
+              </button>
+            </>
+          ) : null}
+          {selection.kind === "ws" ? (
+            <>
+              <button
+                type="button"
+                className="rounded border border-border/60 px-2 py-0.5 hover:bg-muted/40"
+                onClick={() => void bulkReorderWorkspacesOrProjects("ws", null, selection.ids, -1)}
+                title="Move up (Alt+↑)"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className="rounded border border-border/60 px-2 py-0.5 hover:bg-muted/40"
+                onClick={() => void bulkReorderWorkspacesOrProjects("ws", null, selection.ids, 1)}
+                title="Move down (Alt+↓)"
+              >
+                ↓
+              </button>
+            </>
+          ) : null}
+          {selection.kind === "project" && selection.scopeId ? (
+            <>
+              <button
+                type="button"
+                className="rounded border border-border/60 px-2 py-0.5 hover:bg-muted/40"
+                onClick={() => {
+                  if (!selection.scopeId) return;
+                  void bulkReorderWorkspacesOrProjects("project", selection.scopeId, selection.ids, -1);
+                }}
+                title="Move up (Alt+↑)"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className="rounded border border-border/60 px-2 py-0.5 hover:bg-muted/40"
+                onClick={() => {
+                  if (!selection.scopeId) return;
+                  void bulkReorderWorkspacesOrProjects("project", selection.scopeId, selection.ids, 1);
+                }}
+                title="Move down (Alt+↓)"
+              >
+                ↓
+              </button>
+            </>
+          ) : null}
+          <button
+            type="button"
+            className="ml-auto rounded border border-border/60 px-2 py-0.5 hover:bg-muted/40"
+            onClick={() => clearSelection()}
+            title="Clear selection (Esc)"
+          >
+            Clear
+          </button>
+        </div>
+      ) : null}
+
       <div
         ref={explorerScrollRef}
         className="min-h-0 flex-1 overflow-y-auto text-[11px]"
@@ -1709,12 +2668,34 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
             return (
               <div key={w.id} className="border-b border-border/40">
                 <div
-                  className="flex w-full min-w-0 items-center gap-1 bg-muted/15 px-1 py-0.5"
+                  data-wpn-select-row
+                  className="flex w-full min-w-0 items-center gap-1 px-1 py-0.5 bg-muted/15"
+                  style={
+                    isRowSelected("ws", w.id, null)
+                      ? { backgroundColor: "hsl(var(--primary) / 0.28)" }
+                      : undefined
+                  }
+                  aria-selected={isRowSelected("ws", w.id, null) || undefined}
+                  onClick={(e) => {
+                    const t = e.target as HTMLElement;
+                    if (
+                      t.closest("[data-wpn-tree-chevron]") ||
+                      t.closest("[data-wpn-workspace-add-project]") ||
+                      t.closest("input") ||
+                      t.closest("[contenteditable]")
+                    )
+                      return;
+                    selectionClick(e, "ws", w.id, null, workspaceOrderedIds);
+                  }}
                   onContextMenu={(e) => {
                     if ((e.target as HTMLElement).closest("[data-wpn-tree-chevron]")) return;
                     e.preventDefault();
                     e.stopPropagation();
                     setTypePicker(null);
+                    // Right-click on an unselected row → replace selection with this row.
+                    if (!isRowSelected("ws", w.id, null)) {
+                      dispatchSelection({ type: "replace", kind: "ws", id: w.id, scopeId: null });
+                    }
                     setMenu({ x: e.clientX, y: e.clientY, kind: "ws", id: w.id });
                   }}
                 >
@@ -1771,14 +2752,28 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                   <div className="pl-2">
                     {(projectsByWs[w.id] ?? []).map((p) => {
                       const isRenamingProj = renaming?.kind === "project" && renaming.id === p.id;
+                      const projectSelected = isRowSelected("project", p.id, w.id);
                       return (
                         <div key={p.id}>
                           <div
+                            data-wpn-select-row
                             className="flex w-full items-center gap-1 py-0.5"
+                            style={
+                              projectSelected
+                                ? { backgroundColor: "hsl(var(--primary) / 0.28)" }
+                                : undefined
+                            }
+                            aria-selected={projectSelected || undefined}
                             onClick={(e) => {
                               if (isRenamingProj) return;
                               if ((e.target as HTMLElement).closest("[data-wpn-tree-chevron]")) return;
-                              setSelectedProjectId(p.id);
+                              const orderedIds = projectOrderedIdsByWs[w.id] ?? [];
+                              const r = selectionClick(e, "project", p.id, w.id, orderedIds);
+                              // Plain click: also mark this project as the "open" one so its note
+                              // tree renders below. Modifier click: don't change the open project.
+                              if (!r.modified) {
+                                setSelectedProjectId(p.id);
+                              }
                             }}
                             onDoubleClick={(e) => {
                               if (isRenamingProj) return;
@@ -1791,6 +2786,14 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                               e.preventDefault();
                               e.stopPropagation();
                               setTypePicker(null);
+                              if (!projectSelected) {
+                                dispatchSelection({
+                                  type: "replace",
+                                  kind: "project",
+                                  id: p.id,
+                                  scopeId: w.id,
+                                });
+                              }
                               setMenu({
                                 x: e.clientX,
                                 y: e.clientY,
@@ -1906,17 +2909,39 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                 type="button"
                 disabled={workspaceIndex(menu.id) <= 0}
                 className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40 disabled:opacity-40"
-                onClick={() => void swapWorkspaceOrder(menu.id, -1)}
+                onClick={() => {
+                  const ids = menuTargetIds("ws", menu.id, null);
+                  if (ids.length > 1) {
+                    void bulkReorderWorkspacesOrProjects("ws", null, new Set(ids), -1);
+                    closeAllMenus();
+                  } else {
+                    void swapWorkspaceOrder(menu.id, -1);
+                  }
+                }}
               >
-                Move workspace up
+                {(() => {
+                  const ids = menuTargetIds("ws", menu.id, null);
+                  return ids.length > 1 ? `Move ${ids.length} workspaces up` : "Move workspace up";
+                })()}
               </button>
               <button
                 type="button"
                 disabled={workspaceIndex(menu.id) < 0 || workspaceIndex(menu.id) >= workspaces.length - 1}
                 className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40 disabled:opacity-40"
-                onClick={() => void swapWorkspaceOrder(menu.id, 1)}
+                onClick={() => {
+                  const ids = menuTargetIds("ws", menu.id, null);
+                  if (ids.length > 1) {
+                    void bulkReorderWorkspacesOrProjects("ws", null, new Set(ids), 1);
+                    closeAllMenus();
+                  } else {
+                    void swapWorkspaceOrder(menu.id, 1);
+                  }
+                }}
               >
-                Move workspace down
+                {(() => {
+                  const ids = menuTargetIds("ws", menu.id, null);
+                  return ids.length > 1 ? `Move ${ids.length} workspaces down` : "Move workspace down";
+                })()}
               </button>
               <button
                 type="button"
@@ -1949,9 +2974,19 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
               <button
                 type="button"
                 className="block w-full rounded px-2 py-1 text-left hover:bg-destructive/15"
-                onClick={() => void onDeleteWorkspace(menu.id)}
+                onClick={() => {
+                  const ids = menuTargetIds("ws", menu.id, null);
+                  if (ids.length > 1) {
+                    void onDeleteWorkspaces(ids);
+                  } else {
+                    void onDeleteWorkspace(menu.id);
+                  }
+                }}
               >
-                Delete workspace
+                {(() => {
+                  const ids = menuTargetIds("ws", menu.id, null);
+                  return ids.length > 1 ? `Delete ${ids.length} workspaces` : "Delete workspace";
+                })()}
               </button>
             </>
           ) : null}
@@ -1989,9 +3024,20 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                 type="button"
                 disabled={projectIndex(menu.workspaceId!, menu.id) <= 0}
                 className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40 disabled:opacity-40"
-                onClick={() => void swapProjectOrder(menu.workspaceId!, menu.id, -1)}
+                onClick={() => {
+                  const ids = menuTargetIds("project", menu.id, menu.workspaceId!);
+                  if (ids.length > 1) {
+                    void bulkReorderWorkspacesOrProjects("project", menu.workspaceId!, new Set(ids), -1);
+                    closeAllMenus();
+                  } else {
+                    void swapProjectOrder(menu.workspaceId!, menu.id, -1);
+                  }
+                }}
               >
-                Move project up
+                {(() => {
+                  const ids = menuTargetIds("project", menu.id, menu.workspaceId!);
+                  return ids.length > 1 ? `Move ${ids.length} projects up` : "Move project up";
+                })()}
               </button>
               <button
                 type="button"
@@ -2000,9 +3046,20 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                   projectIndex(menu.workspaceId!, menu.id) >= (projectsByWs[menu.workspaceId!] ?? []).length - 1
                 }
                 className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40 disabled:opacity-40"
-                onClick={() => void swapProjectOrder(menu.workspaceId!, menu.id, 1)}
+                onClick={() => {
+                  const ids = menuTargetIds("project", menu.id, menu.workspaceId!);
+                  if (ids.length > 1) {
+                    void bulkReorderWorkspacesOrProjects("project", menu.workspaceId!, new Set(ids), 1);
+                    closeAllMenus();
+                  } else {
+                    void swapProjectOrder(menu.workspaceId!, menu.id, 1);
+                  }
+                }}
               >
-                Move project down
+                {(() => {
+                  const ids = menuTargetIds("project", menu.id, menu.workspaceId!);
+                  return ids.length > 1 ? `Move ${ids.length} projects down` : "Move project down";
+                })()}
               </button>
               <button
                 type="button"
@@ -2041,9 +3098,19 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
               <button
                 type="button"
                 className="block w-full rounded px-2 py-1 text-left hover:bg-destructive/15"
-                onClick={() => void onDeleteProject(menu.id)}
+                onClick={() => {
+                  const ids = menuTargetIds("project", menu.id, menu.workspaceId!);
+                  if (ids.length > 1) {
+                    void onDeleteProjects(ids);
+                  } else {
+                    void onDeleteProject(menu.id);
+                  }
+                }}
               >
-                Delete project
+                {(() => {
+                  const ids = menuTargetIds("project", menu.id, menu.workspaceId!);
+                  return ids.length > 1 ? `Delete ${ids.length} projects` : "Delete project";
+                })()}
               </button>
             </>
           ) : null}
@@ -2251,57 +3318,142 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
               </button>
               <button
                 type="button"
-                className="block w-full rounded px-2 py-1 text-left hover:bg-destructive/15"
-                onClick={() => void onDeleteNotes(menu.projectId!, [menu.id])}
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
+                onClick={() => {
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  setMoveToProjectPicker({
+                    noteIds: ids,
+                    sourceProjectId: menu.projectId!,
+                  });
+                  closeAllMenus();
+                }}
               >
-                Delete note
+                {(() => {
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  return ids.length > 1
+                    ? `Move ${ids.length} notes to project…`
+                    : "Move to project…";
+                })()}
+              </button>
+              <button
+                type="button"
+                className="block w-full rounded px-2 py-1 text-left hover:bg-destructive/15"
+                onClick={() => {
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  void onDeleteNotes(menu.projectId!, ids);
+                }}
+              >
+                {(() => {
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  return ids.length > 1 ? `Delete ${ids.length} notes` : "Delete note";
+                })()}
               </button>
               <div className="my-1 border-t border-border" />
               <button
                 type="button"
-                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
-                disabled={!prevSiblingSameDepth(notes, menu.id)}
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40 disabled:opacity-40"
+                disabled={(() => {
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  if (ids.length > 1) {
+                    return !contiguousSiblingNoteIds(new Set(ids));
+                  }
+                  return !prevSiblingSameDepth(notes, menu.id);
+                })()}
                 onClick={() => {
-                  const prev = prevSiblingSameDepth(notes, menu.id);
-                  if (prev)
-                    void runMoveNote(menu.projectId!, menu.id, prev.id, "before");
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  if (ids.length > 1) {
+                    void bulkMoveNotes(menu.projectId!, new Set(ids), "up");
+                    closeAllMenus();
+                  } else {
+                    const prev = prevSiblingSameDepth(notes, menu.id);
+                    if (prev) void runMoveNote(menu.projectId!, menu.id, prev.id, "before");
+                  }
                 }}
               >
-                Move up
+                {(() => {
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  return ids.length > 1 ? `Move ${ids.length} notes up` : "Move up";
+                })()}
               </button>
               <button
                 type="button"
-                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
-                disabled={!nextSiblingSameDepth(notes, menu.id)}
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40 disabled:opacity-40"
+                disabled={(() => {
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  if (ids.length > 1) {
+                    return !contiguousSiblingNoteIds(new Set(ids));
+                  }
+                  return !nextSiblingSameDepth(notes, menu.id);
+                })()}
                 onClick={() => {
-                  const next = nextSiblingSameDepth(notes, menu.id);
-                  if (next) void runMoveNote(menu.projectId!, menu.id, next.id, "after");
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  if (ids.length > 1) {
+                    void bulkMoveNotes(menu.projectId!, new Set(ids), "down");
+                    closeAllMenus();
+                  } else {
+                    const next = nextSiblingSameDepth(notes, menu.id);
+                    if (next) void runMoveNote(menu.projectId!, menu.id, next.id, "after");
+                  }
                 }}
               >
-                Move down
+                {(() => {
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  return ids.length > 1 ? `Move ${ids.length} notes down` : "Move down";
+                })()}
               </button>
               <button
                 type="button"
-                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
-                disabled={!prevSiblingSameDepth(notes, menu.id)}
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40 disabled:opacity-40"
+                disabled={(() => {
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  if (ids.length > 1) {
+                    return !contiguousSiblingNoteIds(new Set(ids));
+                  }
+                  return !prevSiblingSameDepth(notes, menu.id);
+                })()}
                 onClick={() => {
-                  const prev = prevSiblingSameDepth(notes, menu.id);
-                  if (prev) void runMoveNote(menu.projectId!, menu.id, prev.id, "into");
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  if (ids.length > 1) {
+                    void bulkMoveNotes(menu.projectId!, new Set(ids), "indent");
+                    closeAllMenus();
+                  } else {
+                    const prev = prevSiblingSameDepth(notes, menu.id);
+                    if (prev) void runMoveNote(menu.projectId!, menu.id, prev.id, "into");
+                  }
                 }}
               >
-                Indent
+                {(() => {
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  return ids.length > 1 ? `Indent ${ids.length} notes` : "Indent";
+                })()}
               </button>
               <button
                 type="button"
-                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
-                disabled={!notes.find((x) => x.id === menu.id)?.parent_id}
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40 disabled:opacity-40"
+                disabled={(() => {
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  if (ids.length > 1) {
+                    const block = contiguousSiblingNoteIds(new Set(ids));
+                    return !block || block.parentId == null;
+                  }
+                  return !notes.find((x) => x.id === menu.id)?.parent_id;
+                })()}
                 onClick={() => {
-                  const n = notes.find((x) => x.id === menu.id);
-                  const pid = n?.parent_id;
-                  if (pid) void runMoveNote(menu.projectId!, menu.id, pid, "after");
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  if (ids.length > 1) {
+                    void bulkMoveNotes(menu.projectId!, new Set(ids), "outdent");
+                    closeAllMenus();
+                  } else {
+                    const n = notes.find((x) => x.id === menu.id);
+                    const pid = n?.parent_id;
+                    if (pid) void runMoveNote(menu.projectId!, menu.id, pid, "after");
+                  }
                 }}
               >
-                Outdent
+                {(() => {
+                  const ids = menuTargetIds("note", menu.id, menu.projectId!);
+                  return ids.length > 1 ? `Outdent ${ids.length} notes` : "Outdent";
+                })()}
               </button>
             </>
           ) : null}

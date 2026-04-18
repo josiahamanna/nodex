@@ -885,6 +885,8 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       wpnReq("PATCH", `/wpn/workspaces/${encodeURIComponent(id)}`, patch),
     wpnDeleteWorkspace: (id) =>
       wpnReq("DELETE", `/wpn/workspaces/${encodeURIComponent(id)}`),
+    wpnDeleteWorkspaces: (ids) =>
+      wpnReq("POST", "/wpn/workspaces/delete", { ids }),
     wpnListProjects: (workspaceId) =>
       wpnReq(
         "GET",
@@ -900,6 +902,8 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       wpnReq("PATCH", `/wpn/projects/${encodeURIComponent(id)}`, patch),
     wpnDeleteProject: (id) =>
       wpnReq("DELETE", `/wpn/projects/${encodeURIComponent(id)}`),
+    wpnDeleteProjects: (ids) =>
+      wpnReq("POST", "/wpn/projects/delete", { ids }),
     wpnListNotes: (projectId) =>
       wpnReq("GET", `/wpn/projects/${encodeURIComponent(projectId)}/notes`),
     wpnListAllNotesWithContext: () => wpnReq("GET", "/wpn/notes-with-context"),
@@ -951,6 +955,12 @@ export function createWebNodexApi(baseUrl: string): NodexRendererApi {
       wpnReq("PATCH", `/wpn/notes/${encodeURIComponent(noteId)}`, patch),
     wpnDeleteNotes: (ids) => wpnReq("POST", "/wpn/notes/delete", { ids }),
     wpnMoveNote: (payload) => wpnReq("POST", "/wpn/notes/move", payload),
+    wpnMoveNoteCrossProject: (payload) =>
+      wpnReq("POST", "/wpn/notes/move-to-project", {
+        noteId: payload.noteId,
+        targetProjectId: payload.targetProjectId,
+        targetParentId: payload.targetParentId ?? null,
+      }),
     wpnDuplicateNoteSubtree: (projectId, noteId) =>
       wpnReq(
         "POST",
@@ -1647,6 +1657,11 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
         "Not available in plain browser — use Electron or ?web=1&api=…",
       );
     },
+    wpnDeleteWorkspaces: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
     wpnListProjects: async () => {
       throw new Error(
         "Not available in plain browser — use Electron or ?web=1&api=…",
@@ -1663,6 +1678,11 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
       );
     },
     wpnDeleteProject: async () => {
+      throw new Error(
+        "Not available in plain browser — use Electron or ?web=1&api=…",
+      );
+    },
+    wpnDeleteProjects: async () => {
       throw new Error(
         "Not available in plain browser — use Electron or ?web=1&api=…",
       );
@@ -1705,6 +1725,7 @@ export function createPlainBrowserDevStub(): NodexRendererApi {
     },
     wpnDeleteNotes: async () => ({ ok: true as const }),
     wpnMoveNote: async () => ({ ok: true as const }),
+    wpnMoveNoteCrossProject: async () => ({ ok: true as const }),
     wpnDuplicateNoteSubtree: async () => ({
       newRootId: "00000000-0000-4000-8000-000000000000",
     }),

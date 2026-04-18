@@ -491,6 +491,21 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.WPN_UPDATE_WORKSPACE, id, patch),
   wpnDeleteWorkspace: (id) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_DELETE_WORKSPACE, id),
+  // Electron bulk delete: iterate single-item IPC under the hood. The sync-api
+  // bulk endpoint is web-only; desktop does not share the same server.
+  wpnDeleteWorkspaces: async (ids) => {
+    const deleted: string[] = [];
+    const denied: string[] = [];
+    for (const id of ids) {
+      try {
+        await ipcRenderer.invoke(IPC_CHANNELS.WPN_DELETE_WORKSPACE, id);
+        deleted.push(id);
+      } catch {
+        denied.push(id);
+      }
+    }
+    return { deleted, denied, notFound: [] };
+  },
   wpnListProjects: (workspaceId) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_LIST_PROJECTS, workspaceId),
   wpnCreateProject: (workspaceId, name) =>
@@ -499,6 +514,19 @@ const api: NodexRendererApi = {
     ipcRenderer.invoke(IPC_CHANNELS.WPN_UPDATE_PROJECT, id, patch),
   wpnDeleteProject: (id) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_DELETE_PROJECT, id),
+  wpnDeleteProjects: async (ids) => {
+    const deleted: string[] = [];
+    const denied: string[] = [];
+    for (const id of ids) {
+      try {
+        await ipcRenderer.invoke(IPC_CHANNELS.WPN_DELETE_PROJECT, id);
+        deleted.push(id);
+      } catch {
+        denied.push(id);
+      }
+    }
+    return { deleted, denied, notFound: [] };
+  },
   wpnListNotes: (projectId) =>
     ipcRenderer.invoke(IPC_CHANNELS.WPN_LIST_NOTES, projectId),
   wpnListAllNotesWithContext: () =>

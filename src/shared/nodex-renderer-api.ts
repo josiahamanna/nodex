@@ -606,6 +606,12 @@ export type NodexRendererApi = {
     patch: WpnWorkspacePatch,
   ) => Promise<{ workspace: WpnWorkspaceRow }>;
   wpnDeleteWorkspace: (id: string) => Promise<{ ok: true }>;
+  /** Bulk delete: server filters by write permission and sweeps in one request. */
+  wpnDeleteWorkspaces: (ids: string[]) => Promise<{
+    deleted: string[];
+    denied: string[];
+    notFound: string[];
+  }>;
   wpnListProjects: (
     workspaceId: string,
   ) => Promise<{ projects: WpnProjectRow[] }>;
@@ -618,6 +624,12 @@ export type NodexRendererApi = {
     patch: WpnProjectPatch,
   ) => Promise<{ project: WpnProjectRow }>;
   wpnDeleteProject: (id: string) => Promise<{ ok: true }>;
+  /** Bulk delete: server filters by write permission and sweeps in one request. */
+  wpnDeleteProjects: (ids: string[]) => Promise<{
+    deleted: string[];
+    denied: string[];
+    notFound: string[];
+  }>;
   wpnListNotes: (projectId: string) => Promise<{ notes: WpnNoteListItem[] }>;
   wpnListAllNotesWithContext: () => Promise<{ notes: WpnNoteWithContextListItem[] }>;
   wpnListBacklinksToNote: (targetNoteId: string) => Promise<{ sources: WpnBacklinkSourceItem[] }>;

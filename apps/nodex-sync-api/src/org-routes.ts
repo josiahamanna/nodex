@@ -7,10 +7,15 @@ import { requireAuth, signAccessToken, signRefreshToken } from "./auth.js";
 import {
   ensureUserHasDefaultOrg,
   getActiveDb,
+  getAuditEventsCollection,
   getOrgInvitesCollection,
   getOrgMembershipsCollection,
   getOrgsCollection,
+  getSpaceMembershipsCollection,
+  getSpacesCollection,
+  getTeamsCollection,
   getUsersCollection,
+  getWpnWorkspacesCollection,
   type UserDoc,
 } from "./db.js";
 import {
@@ -21,9 +26,14 @@ import {
   resetMemberPasswordBody,
   setActiveOrgBody,
   setMemberRoleBody,
+  updateOrgBody,
   type OrgRole,
 } from "./org-schemas.js";
-import { listMembershipsForUser, requireOrgRole } from "./org-auth.js";
+import {
+  listMembershipsForUser,
+  requireOrgAdminOrMaster,
+  requireOrgRole,
+} from "./org-auth.js";
 import { recordAudit } from "./audit.js";
 import { buildSessionsAfterAppend } from "./refresh-sessions.js";
 
@@ -146,6 +156,166 @@ export function registerOrgRoutes(
       joinedAt: new Date(),
     } as never);
     return reply.send({ orgId: orgIdHex, name: parsed.data.name, slug });
+  });
+
+  /**
+   * Rename an Org and/or change its slug. Gated by org-admin OR master-admin.
+   * Slug changes are validated for global uniqueness (excluding self) using
+   * the same regex as `POST /orgs`. At least one field must be provided.
+   */
+  app.patch("/orgs/:orgId", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const { orgId } = request.params as { orgId: string };
+    if (!isValidOrgIdHex(orgId)) {
+      return reply.status(404).send({ error: "Organization not found" });
+    }
+    const ctx = await requireOrgAdminOrMaster(request, reply, auth, orgId);
+    if (!ctx) {
+      return;
+    }
+    const parsed = updateOrgBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+    const patch: Record<string, unknown> = {};
+    if (parsed.data.name !== undefined) {
+      patch.name = parsed.data.name;
+    }
+    if (parsed.data.slug !== undefined) {
+      const existing = await getOrgsCollection().findOne({
+        slug: parsed.data.slug,
+        _id: { $ne: new ObjectId(orgId) },
+      });
+      if (existing) {
+        return reply.status(409).send({ error: "Slug already in use" });
+      }
+      patch.slug = parsed.data.slug;
+    }
+    if (Object.keys(patch).length === 0) {
+      return reply.status(400).send({ error: "No fields to update" });
+    }
+    const result = await getOrgsCollection().updateOne(
+      { _id: new ObjectId(orgId) },
+      { $set: patch },
+    );
+    if (result.matchedCount === 0) {
+      return reply.status(404).send({ error: "Organization not found" });
+    }
+    await recordAudit({
+      orgId,
+      actorUserId: auth.sub,
+      action: "org.update",
+      targetType: "org",
+      targetId: orgId,
+      metadata: patch,
+    });
+    return reply.status(204).send();
+  });
+
+  /**
+   * Delete an Org. Gated by org-admin OR master-admin. Refuses if the org
+   * still has non-default spaces, any WPN workspaces, any teams, or any
+   * members other than the caller (or any members at all if the caller is
+   * a master admin with no direct membership). On success, cascades: the
+   * default space + its memberships, all org memberships, invites, and
+   * audit events for this org; and clears stale `defaultOrgId`,
+   * `lastActiveOrgId`, `lastActiveSpaceId`, and `lockedOrgId` user pointers.
+   */
+  app.delete("/orgs/:orgId", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const { orgId } = request.params as { orgId: string };
+    if (!isValidOrgIdHex(orgId)) {
+      return reply.status(404).send({ error: "Organization not found" });
+    }
+    const ctx = await requireOrgAdminOrMaster(request, reply, auth, orgId);
+    if (!ctx) {
+      return;
+    }
+    const org = await getOrgsCollection().findOne({ _id: new ObjectId(orgId) });
+    if (!org) {
+      return reply.status(404).send({ error: "Organization not found" });
+    }
+    const nonDefaultSpaceCount = await getSpacesCollection().countDocuments({
+      orgId,
+      kind: { $ne: "default" },
+    });
+    if (nonDefaultSpaceCount > 0) {
+      return reply.status(409).send({
+        error: "Organization still has spaces; delete them first",
+      });
+    }
+    const workspaceCount = await getWpnWorkspacesCollection().countDocuments({
+      orgId,
+    });
+    if (workspaceCount > 0) {
+      return reply.status(409).send({
+        error: "Organization still has workspaces; move or delete them first",
+      });
+    }
+    const teamCount = await getTeamsCollection().countDocuments({ orgId });
+    if (teamCount > 0) {
+      return reply.status(409).send({
+        error: "Organization still has teams; delete them first",
+      });
+    }
+    const otherMemberCount = await getOrgMembershipsCollection().countDocuments({
+      orgId,
+      userId: { $ne: auth.sub },
+    });
+    if (otherMemberCount > 0) {
+      return reply.status(409).send({
+        error: "Organization still has other members; remove them first",
+      });
+    }
+    const defaultSpaces = await getSpacesCollection()
+      .find({ orgId, kind: "default" })
+      .toArray();
+    const defaultSpaceIds = defaultSpaces.map((s) => s._id.toHexString());
+    if (defaultSpaceIds.length > 0) {
+      await getSpaceMembershipsCollection().deleteMany({
+        spaceId: { $in: defaultSpaceIds },
+      });
+      await getSpacesCollection().deleteMany({ orgId, kind: "default" });
+    }
+    await getOrgMembershipsCollection().deleteMany({ orgId });
+    await getOrgInvitesCollection().deleteMany({ orgId });
+    // Audit events reference the deleted org; remove them so they don't
+    // dangle. Record the deletion itself BEFORE this sweep would erase it.
+    await recordAudit({
+      orgId,
+      actorUserId: auth.sub,
+      action: "org.delete",
+      targetType: "org",
+      targetId: orgId,
+      metadata: { name: org.name, slug: org.slug },
+    });
+    await getAuditEventsCollection().deleteMany({
+      orgId,
+      action: { $ne: "org.delete" },
+    });
+    await getOrgsCollection().deleteOne({ _id: new ObjectId(orgId) });
+    // Clear dangling user pointers. `lastActiveSpaceId` is cleared for any
+    // user whose `lastActiveOrgId` equals this org, which is sufficient —
+    // the space id only makes sense alongside its parent org.
+    await getUsersCollection().updateMany(
+      { defaultOrgId: orgId },
+      { $unset: { defaultOrgId: "" } },
+    );
+    await getUsersCollection().updateMany(
+      { lastActiveOrgId: orgId },
+      { $unset: { lastActiveOrgId: "", lastActiveSpaceId: "" } },
+    );
+    await getUsersCollection().updateMany(
+      { lockedOrgId: orgId },
+      { $unset: { lockedOrgId: "" } },
+    );
+    return reply.status(204).send();
   });
 
   /** Switch the access-token's `activeOrgId` claim. Re-issues access token. */

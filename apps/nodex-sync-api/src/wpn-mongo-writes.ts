@@ -152,6 +152,42 @@ export async function mongoWpnDeleteWorkspace(userId: string, id: string): Promi
   return true;
 }
 
+/**
+ * Bulk delete: removes every workspace in `ids` that `userId` actually owns,
+ * along with its projects, notes, and explorer state, in one $in sweep per
+ * collection. Callers are expected to have filtered `ids` to those the caller
+ * has write permission for (see route handler).
+ */
+export async function mongoWpnDeleteWorkspaces(
+  userId: string,
+  ids: string[],
+): Promise<{ deletedWorkspaceIds: string[] }> {
+  if (ids.length === 0) {
+    return { deletedWorkspaceIds: [] };
+  }
+  const wsCol = getWpnWorkspacesCollection();
+  const projCol = getWpnProjectsCollection();
+  const noteCol = getWpnNotesCollection();
+  const exCol = getWpnExplorerStateCollection();
+
+  const ownedWorkspaces = await wsCol.find({ userId, id: { $in: ids } }).toArray();
+  const ownedIds = ownedWorkspaces.map((w) => w.id);
+  if (ownedIds.length === 0) {
+    return { deletedWorkspaceIds: [] };
+  }
+  const projects = await projCol
+    .find({ userId, workspace_id: { $in: ownedIds } })
+    .toArray();
+  const projectIds = projects.map((p) => p.id);
+  if (projectIds.length > 0) {
+    await noteCol.deleteMany({ userId, project_id: { $in: projectIds } });
+    await exCol.deleteMany({ userId, project_id: { $in: projectIds } });
+  }
+  await projCol.deleteMany({ userId, workspace_id: { $in: ownedIds } });
+  await wsCol.deleteMany({ userId, id: { $in: ownedIds } });
+  return { deletedWorkspaceIds: ownedIds };
+}
+
 export async function mongoWpnCreateProject(
   userId: string,
   workspaceId: string,
@@ -230,6 +266,32 @@ export async function mongoWpnUpdateProject(
   }
   const { userId: _u, settings: _s, ...pub } = next;
   return pub;
+}
+
+/**
+ * Bulk delete: removes every project in `ids` that `userId` actually owns,
+ * along with its notes and explorer state. Callers must have filtered `ids`
+ * to those the caller has write permission for.
+ */
+export async function mongoWpnDeleteProjects(
+  userId: string,
+  ids: string[],
+): Promise<{ deletedProjectIds: string[] }> {
+  if (ids.length === 0) {
+    return { deletedProjectIds: [] };
+  }
+  const projCol = getWpnProjectsCollection();
+  const noteCol = getWpnNotesCollection();
+  const exCol = getWpnExplorerStateCollection();
+  const owned = await projCol.find({ userId, id: { $in: ids } }).toArray();
+  const ownedIds = owned.map((p) => p.id);
+  if (ownedIds.length === 0) {
+    return { deletedProjectIds: [] };
+  }
+  await noteCol.deleteMany({ userId, project_id: { $in: ownedIds } });
+  await exCol.deleteMany({ userId, project_id: { $in: ownedIds } });
+  await projCol.deleteMany({ userId, id: { $in: ownedIds } });
+  return { deletedProjectIds: ownedIds };
 }
 
 export async function mongoWpnDeleteProject(userId: string, id: string): Promise<boolean> {
@@ -497,6 +559,124 @@ export async function mongoWpnMoveNote(
   const lites = toRowLite(active);
   const childMap = wpnComputeChildMapAfterMove(lites, draggedId, targetId, placement);
   await persistChildMap(userId, projectId, childMap);
+}
+
+/**
+ * Cross-project move: relocate a note subtree to a different project, optionally
+ * nesting under `targetParentId` (or root-level when null). Updates `project_id`,
+ * `orgId`, `spaceId` for every node in the subtree so scope filters continue to
+ * match, reindexes siblings on the source side, and appends the moved root as
+ * the last child of `targetParentId` on the destination side.
+ */
+export async function mongoWpnMoveNoteToProject(
+  userId: string,
+  sourceNoteId: string,
+  targetProjectId: string,
+  targetParentId: string | null,
+): Promise<void> {
+  const noteCol = getWpnNotesCollection();
+  const projCol = getWpnProjectsCollection();
+  const source = await noteCol.findOne({ id: sourceNoteId, userId });
+  if (!source || source.deleted === true) {
+    throw new Error("Note not found");
+  }
+  const sourceProjectId = source.project_id;
+  if (sourceProjectId === targetProjectId && (source.parent_id ?? null) === (targetParentId ?? null)) {
+    return; // no-op
+  }
+  const targetProject = await projCol.findOne({ id: targetProjectId, userId });
+  if (!targetProject) {
+    throw new Error("Target project not found");
+  }
+  if (targetParentId) {
+    const parent = await noteCol.findOne({
+      id: targetParentId,
+      userId,
+      project_id: targetProjectId,
+    });
+    if (!parent || parent.deleted === true) {
+      throw new Error("Target parent note not found in target project");
+    }
+  }
+
+  // Subtree collection (in source project).
+  const sourceRows = await noteCol
+    .find({ userId, project_id: sourceProjectId })
+    .toArray();
+  const subtreeIds = collectSubtreePreorder(
+    sourceRows.filter((r) => r.deleted !== true),
+    sourceNoteId,
+  );
+
+  // Guard against moving a subtree into its own descendant (only possible when
+  // source == target project; cross-project always safe).
+  if (sourceProjectId === targetProjectId && targetParentId && subtreeIds.includes(targetParentId)) {
+    throw new Error("Cannot move a note into its own descendant");
+  }
+
+  // New root position: last child of target parent.
+  const targetSiblings = await noteCol
+    .find({
+      userId,
+      project_id: targetProjectId,
+      parent_id: targetParentId,
+      deleted: { $ne: true },
+    })
+    .toArray();
+  const maxIdx = targetSiblings.reduce(
+    (m, r) => (r.sibling_index > m ? r.sibling_index : m),
+    -1,
+  );
+  const newRootIdx = maxIdx + 1;
+
+  const t = nowMs();
+
+  const setScope: { project_id: string; orgId?: string; spaceId?: string; updated_at_ms: number } = {
+    project_id: targetProjectId,
+    updated_at_ms: t,
+  };
+  if (targetProject.orgId) {
+    setScope.orgId = targetProject.orgId;
+  }
+  if (targetProject.spaceId) {
+    setScope.spaceId = targetProject.spaceId;
+  }
+  await noteCol.updateMany(
+    { userId, id: { $in: subtreeIds } },
+    { $set: setScope },
+  );
+
+  await noteCol.updateOne(
+    { userId, id: sourceNoteId },
+    {
+      $set: {
+        parent_id: targetParentId,
+        sibling_index: newRootIdx,
+        updated_at_ms: t,
+      },
+    },
+  );
+
+  // Reindex source-side siblings (root has been moved out).
+  const sourceParent = source.parent_id ?? null;
+  const sourceSiblings = await noteCol
+    .find({
+      userId,
+      project_id: sourceProjectId,
+      parent_id: sourceParent,
+      deleted: { $ne: true },
+    })
+    .sort({ sibling_index: 1 })
+    .toArray();
+  for (let i = 0; i < sourceSiblings.length; i++) {
+    const s = sourceSiblings[i]!;
+    if (s.sibling_index !== i) {
+      await noteCol.updateOne(
+        { _id: s._id },
+        { $set: { sibling_index: i, updated_at_ms: t } },
+      );
+    }
+  }
 }
 
 function collectSubtreePreorder(rows: WpnNoteDoc[], rootId: string): string[] {

@@ -1,6 +1,11 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { ObjectId } from "mongodb";
 import type { JwtPayload } from "./auth.js";
-import { getOrgMembershipsCollection } from "./db.js";
+import {
+  getOrgMembershipsCollection,
+  getUsersCollection,
+  type UserDoc,
+} from "./db.js";
 import type { OrgMembershipDoc, OrgRole } from "./org-schemas.js";
 
 export type OrgContext = {
@@ -44,6 +49,34 @@ export async function requireOrgRole(
     return null;
   }
   return { orgId, role: membership.role };
+}
+
+/**
+ * Authorize an org-management action that either an org admin of `orgId` OR
+ * a platform master admin may perform. Returns an `OrgContext` on success;
+ * for master admins who are not org members, `role` is reported as `"admin"`.
+ * Sends 404/403 on failure and returns `null`.
+ */
+export async function requireOrgAdminOrMaster(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  auth: JwtPayload,
+  orgId: string,
+): Promise<OrgContext | null> {
+  let userOid: ObjectId;
+  try {
+    userOid = new ObjectId(auth.sub);
+  } catch {
+    await reply.status(401).send({ error: "Invalid session" });
+    return null;
+  }
+  const user = (await getUsersCollection().findOne({
+    _id: userOid,
+  })) as UserDoc | null;
+  if (user?.isMasterAdmin === true) {
+    return { orgId, role: "admin" };
+  }
+  return requireOrgRole(request, reply, auth, orgId, "admin");
 }
 
 /**

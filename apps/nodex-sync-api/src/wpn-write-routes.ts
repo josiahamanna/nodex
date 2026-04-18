@@ -25,6 +25,7 @@ import {
   assertCanWriteWorkspace,
   assertCanWriteWorkspaceForNote,
   assertCanWriteWorkspaceForProject,
+  getEffectiveSpaceRoles,
 } from "./permission-resolver.js";
 import {
   getSpaceMembership,
@@ -41,11 +42,14 @@ import {
   mongoWpnCreateWorkspace,
   mongoWpnDeleteNotes,
   mongoWpnDeleteProject,
+  mongoWpnDeleteProjects,
   mongoWpnDeleteWorkspace,
+  mongoWpnDeleteWorkspaces,
   mongoWpnDuplicateSubtree,
   mongoWpnGetProjectSettings,
   mongoWpnGetWorkspaceSettings,
   mongoWpnMoveNote,
+  mongoWpnMoveNoteToProject,
   mongoWpnPatchProjectSettings,
   mongoWpnPatchWorkspaceSettings,
   mongoWpnSetExplorerExpanded,
@@ -199,6 +203,86 @@ export function registerWpnWriteRoutes(
     }
     await getWorkspaceSharesCollection().deleteMany({ workspaceId: id });
     return reply.send({ ok: true as const });
+  });
+
+  /**
+   * Bulk workspace delete. Body `{ ids: string[] }`. Evaluates write permission
+   * per id in a single pass (cached space roles + one org-membership query) and
+   * then runs a single Mongo sweep per collection. Returns `{ deleted, denied,
+   * notFound }` so the client can report partial results without firing N
+   * separate requests.
+   */
+  app.post("/wpn/workspaces/delete", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const rawIds = Array.isArray(body.ids) ? (body.ids as unknown[]) : [];
+    const ids = rawIds.filter((x): x is string => typeof x === "string" && x.length > 0);
+    if (ids.length === 0) {
+      return reply.send({ deleted: [], denied: [], notFound: [] });
+    }
+
+    // Load candidate workspaces and the caller's role maps once.
+    const wsCol = getWpnWorkspacesCollection();
+    const rows = await wsCol.find({ id: { $in: ids } }).toArray();
+    const seenIds = new Set(rows.map((r) => r.id));
+    const notFound = ids.filter((i) => !seenIds.has(i));
+
+    const spaceRoles = await getEffectiveSpaceRoles(auth.sub);
+    const orgIds = Array.from(
+      new Set(rows.map((r) => r.orgId).filter((x): x is string => typeof x === "string")),
+    );
+    const memberships = orgIds.length
+      ? await getOrgMembershipsCollection()
+          .find({ userId: auth.sub, orgId: { $in: orgIds } })
+          .toArray()
+      : [];
+    const adminOrgs = new Set(
+      memberships.filter((m) => m.role === "admin").map((m) => m.orgId),
+    );
+
+    const deletableByUser = new Map<string, string[]>();
+    const denied: string[] = [];
+    for (const ws of rows) {
+      // Legacy (no spaceId): only the owner userId may delete.
+      if (!ws.spaceId) {
+        if (ws.userId !== auth.sub) {
+          denied.push(ws.id);
+          continue;
+        }
+      } else {
+        const isOrgAdmin = ws.orgId ? adminOrgs.has(ws.orgId) : false;
+        const role = spaceRoles.get(ws.spaceId);
+        const isSpaceOwner = role === "owner";
+        const creator = ws.creatorUserId ?? ws.userId;
+        const isCreator = creator === auth.sub;
+        if (!(isOrgAdmin || isSpaceOwner || isCreator)) {
+          denied.push(ws.id);
+          continue;
+        }
+        if (role === "viewer" && !isOrgAdmin && !isCreator) {
+          denied.push(ws.id);
+          continue;
+        }
+      }
+      const list = deletableByUser.get(ws.userId) ?? [];
+      list.push(ws.id);
+      deletableByUser.set(ws.userId, list);
+    }
+
+    const deleted: string[] = [];
+    for (const [userId, idList] of deletableByUser) {
+      const r = await mongoWpnDeleteWorkspaces(userId, idList);
+      deleted.push(...r.deletedWorkspaceIds);
+    }
+    if (deleted.length > 0) {
+      await getWorkspaceSharesCollection().deleteMany({
+        workspaceId: { $in: deleted },
+      });
+    }
+    return reply.send({ deleted, denied, notFound });
   });
 
   /** Phase 4 — set workspace visibility. Owner-equivalent rights required. */
@@ -429,6 +513,78 @@ export function registerWpnWriteRoutes(
       return reply.status(404).send({ error: "Project not found" });
     }
     return reply.send({ ok: true as const });
+  });
+
+  /** Bulk project delete. See comment on `/wpn/workspaces/delete`. */
+  app.post("/wpn/projects/delete", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const rawIds = Array.isArray(body.ids) ? (body.ids as unknown[]) : [];
+    const ids = rawIds.filter((x): x is string => typeof x === "string" && x.length > 0);
+    if (ids.length === 0) {
+      return reply.send({ deleted: [], denied: [], notFound: [] });
+    }
+    const projCol = getWpnProjectsCollection();
+    const projects = await projCol.find({ id: { $in: ids } }).toArray();
+    const seenIds = new Set(projects.map((p) => p.id));
+    const notFound = ids.filter((i) => !seenIds.has(i));
+    if (projects.length === 0) {
+      return reply.send({ deleted: [], denied: [], notFound });
+    }
+    const wsIds = Array.from(new Set(projects.map((p) => p.workspace_id)));
+    const wsCol = getWpnWorkspacesCollection();
+    const wsRows = await wsCol.find({ id: { $in: wsIds } }).toArray();
+    const wsById = new Map(wsRows.map((w) => [w.id, w] as const));
+    const spaceRoles = await getEffectiveSpaceRoles(auth.sub);
+    const orgIds = Array.from(
+      new Set(wsRows.map((w) => w.orgId).filter((x): x is string => typeof x === "string")),
+    );
+    const memberships = orgIds.length
+      ? await getOrgMembershipsCollection()
+          .find({ userId: auth.sub, orgId: { $in: orgIds } })
+          .toArray()
+      : [];
+    const adminOrgs = new Set(
+      memberships.filter((m) => m.role === "admin").map((m) => m.orgId),
+    );
+
+    const deletableByUser = new Map<string, string[]>();
+    const denied: string[] = [];
+    for (const p of projects) {
+      const ws = wsById.get(p.workspace_id);
+      if (!ws) {
+        denied.push(p.id);
+        continue;
+      }
+      if (!ws.spaceId) {
+        if (ws.userId !== auth.sub) {
+          denied.push(p.id);
+          continue;
+        }
+      } else {
+        const isOrgAdmin = ws.orgId ? adminOrgs.has(ws.orgId) : false;
+        const role = spaceRoles.get(ws.spaceId);
+        const isSpaceOwner = role === "owner";
+        const creator = ws.creatorUserId ?? ws.userId;
+        const isCreator = creator === auth.sub;
+        if (!(isOrgAdmin || isSpaceOwner || isCreator)) {
+          denied.push(p.id);
+          continue;
+        }
+      }
+      const list = deletableByUser.get(ws.userId) ?? [];
+      list.push(p.id);
+      deletableByUser.set(ws.userId, list);
+    }
+    const deleted: string[] = [];
+    for (const [userId, idList] of deletableByUser) {
+      const r = await mongoWpnDeleteProjects(userId, idList);
+      deleted.push(...r.deletedProjectIds);
+    }
+    return reply.send({ deleted, denied, notFound });
   });
 
   app.post("/wpn/projects/:projectId/notes", async (request, reply) => {
@@ -724,6 +880,67 @@ export function registerWpnWriteRoutes(
       if (msg === "Project not found") {
         return reply.status(404).send({ error: msg });
       }
+      return sendWpnError(reply, e, 400);
+    }
+  });
+
+  /**
+   * Cross-project note move. Relocates a note subtree from its current project
+   * into `targetProjectId`, optionally nested under `targetParentId` (root-level
+   * when null). Requires write permission on both the source workspace and the
+   * destination workspace.
+   */
+  app.post("/wpn/notes/move-to-project", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const noteId = typeof body.noteId === "string" ? body.noteId : "";
+    const targetProjectId =
+      typeof body.targetProjectId === "string" ? body.targetProjectId : "";
+    const rawTargetParent = body.targetParentId;
+    const targetParentId =
+      typeof rawTargetParent === "string" && rawTargetParent.length > 0
+        ? rawTargetParent
+        : null;
+    if (!noteId || !targetProjectId) {
+      return reply
+        .status(400)
+        .send({ error: "noteId, targetProjectId required" });
+    }
+    // Source-side permission: find note's current project and assert write.
+    const srcNote = await getWpnNotesCollection().findOne({ id: noteId });
+    if (!srcNote || srcNote.deleted === true) {
+      return reply.status(404).send({ error: "Note not found" });
+    }
+    const srcWs = await assertCanWriteWorkspaceForNote(reply, auth, noteId);
+    if (!srcWs) {
+      return;
+    }
+    // Destination-side permission: write on target project's workspace.
+    const dstWs = await assertCanWriteWorkspaceForProject(
+      reply,
+      auth,
+      targetProjectId,
+    );
+    if (!dstWs) {
+      return;
+    }
+    if (srcWs.userId !== dstWs.userId) {
+      return reply
+        .status(400)
+        .send({ error: "Cross-owner moves are not supported" });
+    }
+    try {
+      await mongoWpnMoveNoteToProject(
+        srcWs.userId,
+        noteId,
+        targetProjectId,
+        targetParentId,
+      );
+      return reply.send({ ok: true as const });
+    } catch (e) {
       return sendWpnError(reply, e, 400);
     }
   });

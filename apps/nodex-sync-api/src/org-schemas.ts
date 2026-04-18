@@ -147,6 +147,8 @@ export const updateAnnouncementBody = z.object({
 
 export type AuditAction =
   | "org.create"
+  | "org.update"
+  | "org.delete"
   | "org.member.role_change"
   | "org.member.remove"
   | "org.member.create_with_password"
@@ -228,6 +230,16 @@ export type MigrationDoc = {
 
 export const createOrgBody = z.object({
   name: z.string().trim().min(1).max(120),
+  slug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9][a-z0-9-]{1,62}$/)
+    .optional(),
+});
+
+export const updateOrgBody = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
   slug: z
     .string()
     .trim()
