@@ -55,6 +55,10 @@ import {
   displayWpnNotePathParts,
 } from "../../../../../shared/note-vfs-path";
 import { useToast } from "../../../../toast/ToastContext";
+import {
+  ADMIN_CMD_OPEN_PROJECT_SHARES,
+  ADMIN_CMD_OPEN_WORKSPACE_SHARES,
+} from "../admin/adminConstants";
 
 type ShellViewComponentProps = {
   viewId: string;
@@ -508,7 +512,7 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
   const { openWebAuth } = useAuth();
   const dispatch = useDispatch<AppDispatch>();
   const { tabs } = useShellRegistries();
-  const { openNoteById } = useShellNavigation();
+  const { openNoteById, invokeCommand } = useShellNavigation();
   const { showToast } = useToast();
   const { workspaceRoots, rootPath } = useShellProjectWorkspace();
   const currentNoteId = useSelector((s: RootState) => s.notes.currentNote?.id);
@@ -2973,6 +2977,25 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
               </button>
               <button
                 type="button"
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
+                onClick={() => {
+                  const w = workspaces.find((x) => x.id === menu.id);
+                  if (w) {
+                    void invokeCommand(ADMIN_CMD_OPEN_WORKSPACE_SHARES, {
+                      workspaceId: w.id,
+                      workspaceName: w.name,
+                      spaceId: activeSpaceId,
+                      initialVisibility: w.visibility ?? "public",
+                      creatorUserId: w.creatorUserId ?? null,
+                    });
+                  }
+                  closeAllMenus();
+                }}
+              >
+                Share…
+              </button>
+              <button
+                type="button"
                 className="block w-full rounded px-2 py-1 text-left hover:bg-destructive/15"
                 onClick={() => {
                   const ids = menuTargetIds("ws", menu.id, null);
@@ -3072,6 +3095,26 @@ export function WpnExplorerPanelView(_props: ShellViewComponentProps): React.Rea
                 }}
               >
                 Copy name
+              </button>
+              <button
+                type="button"
+                className="block w-full rounded px-2 py-1 text-left hover:bg-muted/40"
+                onClick={() => {
+                  const list = projectsByWs[menu.workspaceId!] ?? [];
+                  const pr = list.find((x) => x.id === menu.id);
+                  if (pr) {
+                    void invokeCommand(ADMIN_CMD_OPEN_PROJECT_SHARES, {
+                      projectId: pr.id,
+                      projectName: pr.name,
+                      spaceId: activeSpaceId,
+                      initialVisibility: pr.visibility ?? "public",
+                      creatorUserId: pr.creatorUserId ?? null,
+                    });
+                  }
+                  closeAllMenus();
+                }}
+              >
+                Share…
               </button>
               <div className="px-2 py-1 text-[10px] text-muted-foreground">Move to workspace</div>
               <select

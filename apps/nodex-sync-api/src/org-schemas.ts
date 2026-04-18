@@ -100,10 +100,17 @@ export const grantTeamSpaceBody = z.object({
 
 export type WorkspaceVisibility = "public" | "private" | "shared";
 
+/** Phase 8: per-member role stamped on workspace/project share rows. */
+export type ShareRole = "reader" | "writer";
+
+export const shareRoleSchema = z.enum(["reader", "writer"]);
+
 export type WorkspaceShareDoc = {
   _id: ObjectId;
   workspaceId: string;
   userId: string;
+  /** Phase 8: reader (default) grants read-only; writer grants write. Backfilled by m_007 to "reader". */
+  role: ShareRole;
   addedByUserId: string;
   addedAt: Date;
 };
@@ -116,6 +123,39 @@ export const setWorkspaceVisibilityBody = z.object({
 
 export const addWorkspaceShareBody = z.object({
   userId: z.string().min(1),
+  role: shareRoleSchema.default("reader"),
+});
+
+export const updateWorkspaceShareBody = z.object({
+  role: shareRoleSchema,
+});
+
+// ----- Phase 8: Project visibility + shares -----
+
+export type ProjectVisibility = "public" | "private" | "shared";
+
+export type ProjectShareDoc = {
+  _id: ObjectId;
+  projectId: string;
+  userId: string;
+  role: ShareRole;
+  addedByUserId: string;
+  addedAt: Date;
+};
+
+export const projectVisibilitySchema = z.enum(["public", "private", "shared"]);
+
+export const setProjectVisibilityBody = z.object({
+  visibility: projectVisibilitySchema,
+});
+
+export const addProjectShareBody = z.object({
+  userId: z.string().min(1),
+  role: shareRoleSchema.default("reader"),
+});
+
+export const updateProjectShareBody = z.object({
+  role: shareRoleSchema,
 });
 
 // ----- Phase 5: Announcements -----
@@ -171,7 +211,12 @@ export type AuditAction =
   | "team.grant.revoke"
   | "workspace.visibility.set"
   | "workspace.share.add"
+  | "workspace.share.update"
   | "workspace.share.remove"
+  | "project.visibility.set"
+  | "project.share.add"
+  | "project.share.update"
+  | "project.share.remove"
   | "announcement.create"
   | "announcement.update"
   | "announcement.delete"

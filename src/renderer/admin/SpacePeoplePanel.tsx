@@ -26,7 +26,7 @@ const select =
 
 const ROLE_LABEL: Record<SpaceRole, string> = {
   owner: "Owner",
-  member: "Writer",
+  member: "Member",
   viewer: "Viewer (read-only)",
 };
 

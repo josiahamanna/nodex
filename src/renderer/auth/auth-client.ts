@@ -547,6 +547,163 @@ export async function removeSpaceMember(payload: {
   );
 }
 
+// ----- Phase 4/8: Workspace + Project visibility & shares -----
+
+export type ShareRole = "reader" | "writer";
+export type ResourceVisibility = "public" | "private" | "shared";
+
+export type WorkspaceShareRow = {
+  userId: string;
+  email: string;
+  displayName: string | null;
+  role: ShareRole;
+  addedAt: string;
+};
+
+function bearer(): string {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Unauthorized");
+  }
+  return token;
+}
+
+export async function listWorkspaceShares(
+  workspaceId: string,
+): Promise<WorkspaceShareRow[]> {
+  const r = await requestJson<{ shares: WorkspaceShareRow[] }>(
+    `/wpn/workspaces/${encodeURIComponent(workspaceId)}/shares`,
+    { method: "GET", headers: { Authorization: `Bearer ${bearer()}` } },
+  );
+  return r.shares;
+}
+
+export async function addWorkspaceShare(payload: {
+  workspaceId: string;
+  userId: string;
+  role: ShareRole;
+}): Promise<void> {
+  await requestJson(
+    `/wpn/workspaces/${encodeURIComponent(payload.workspaceId)}/shares`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${bearer()}` },
+      body: JSON.stringify({ userId: payload.userId, role: payload.role }),
+    },
+  );
+}
+
+export async function updateWorkspaceShareRole(payload: {
+  workspaceId: string;
+  userId: string;
+  role: ShareRole;
+}): Promise<void> {
+  await requestJson(
+    `/wpn/workspaces/${encodeURIComponent(payload.workspaceId)}/shares/${encodeURIComponent(payload.userId)}`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${bearer()}` },
+      body: JSON.stringify({ role: payload.role }),
+    },
+  );
+}
+
+export async function removeWorkspaceShare(payload: {
+  workspaceId: string;
+  userId: string;
+}): Promise<void> {
+  await requestJson(
+    `/wpn/workspaces/${encodeURIComponent(payload.workspaceId)}/shares/${encodeURIComponent(payload.userId)}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${bearer()}` } },
+  );
+}
+
+export async function setWorkspaceVisibility(payload: {
+  workspaceId: string;
+  visibility: ResourceVisibility;
+}): Promise<void> {
+  await requestJson(
+    `/wpn/workspaces/${encodeURIComponent(payload.workspaceId)}/visibility`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${bearer()}` },
+      body: JSON.stringify({ visibility: payload.visibility }),
+    },
+  );
+}
+
+export type ProjectShareRow = {
+  userId: string;
+  email: string;
+  displayName: string | null;
+  role: ShareRole;
+  addedAt: string;
+};
+
+export async function listProjectShares(
+  projectId: string,
+): Promise<ProjectShareRow[]> {
+  const r = await requestJson<{ shares: ProjectShareRow[] }>(
+    `/wpn/projects/${encodeURIComponent(projectId)}/shares`,
+    { method: "GET", headers: { Authorization: `Bearer ${bearer()}` } },
+  );
+  return r.shares;
+}
+
+export async function addProjectShare(payload: {
+  projectId: string;
+  userId: string;
+  role: ShareRole;
+}): Promise<void> {
+  await requestJson(
+    `/wpn/projects/${encodeURIComponent(payload.projectId)}/shares`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${bearer()}` },
+      body: JSON.stringify({ userId: payload.userId, role: payload.role }),
+    },
+  );
+}
+
+export async function updateProjectShareRole(payload: {
+  projectId: string;
+  userId: string;
+  role: ShareRole;
+}): Promise<void> {
+  await requestJson(
+    `/wpn/projects/${encodeURIComponent(payload.projectId)}/shares/${encodeURIComponent(payload.userId)}`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${bearer()}` },
+      body: JSON.stringify({ role: payload.role }),
+    },
+  );
+}
+
+export async function removeProjectShare(payload: {
+  projectId: string;
+  userId: string;
+}): Promise<void> {
+  await requestJson(
+    `/wpn/projects/${encodeURIComponent(payload.projectId)}/shares/${encodeURIComponent(payload.userId)}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${bearer()}` } },
+  );
+}
+
+export async function setProjectVisibility(payload: {
+  projectId: string;
+  visibility: ResourceVisibility;
+}): Promise<void> {
+  await requestJson(
+    `/wpn/projects/${encodeURIComponent(payload.projectId)}/visibility`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${bearer()}` },
+      body: JSON.stringify({ visibility: payload.visibility }),
+    },
+  );
+}
+
 export async function setActiveSpaceRemote(spaceId: string): Promise<{
   token: string;
   activeSpaceId: string;

@@ -6,6 +6,7 @@ import {
   ensureUserHasDefaultOrg,
   getActiveDb,
   getOrgMembershipsCollection,
+  getProjectSharesCollection,
   getSpaceMembershipsCollection,
   getUsersCollection,
   getWorkspaceSharesCollection,
@@ -17,15 +18,23 @@ import {
 import { recordAudit } from "./audit.js";
 import { resolveActiveOrgId } from "./org-auth.js";
 import {
+  addProjectShareBody,
   addWorkspaceShareBody,
+  setProjectVisibilityBody,
   setWorkspaceVisibilityBody,
+  updateProjectShareBody,
+  updateWorkspaceShareBody,
 } from "./org-schemas.js";
 import {
+  assertCanManageProject,
+  assertCanManageWorkspace,
+  assertCanReadProject,
   assertCanReadWorkspace,
+  assertCanWriteProject,
   assertCanWriteWorkspace,
   assertCanWriteWorkspaceForNote,
-  assertCanWriteWorkspaceForProject,
   getEffectiveSpaceRoles,
+  userCanReadWorkspace,
 } from "./permission-resolver.js";
 import {
   getSpaceMembership,
@@ -197,11 +206,19 @@ export function registerWpnWriteRoutes(
     if (!ws) {
       return;
     }
+    const projIds = (
+      await getWpnProjectsCollection()
+        .find({ userId: ws.userId, workspace_id: id }, { projection: { id: 1 } })
+        .toArray()
+    ).map((p) => p.id);
     const ok = await mongoWpnDeleteWorkspace(ws.userId, id);
     if (!ok) {
       return reply.status(404).send({ error: "Workspace not found" });
     }
     await getWorkspaceSharesCollection().deleteMany({ workspaceId: id });
+    if (projIds.length > 0) {
+      await getProjectSharesCollection().deleteMany({ projectId: { $in: projIds } });
+    }
     return reply.send({ ok: true as const });
   });
 
@@ -272,6 +289,20 @@ export function registerWpnWriteRoutes(
       deletableByUser.set(ws.userId, list);
     }
 
+    // Capture project IDs before the workspace delete so we can cascade project_shares.
+    const toDeleteWsIds = Array.from(
+      new Set(Array.from(deletableByUser.values()).flat()),
+    );
+    const projIds = toDeleteWsIds.length
+      ? (
+          await getWpnProjectsCollection()
+            .find(
+              { workspace_id: { $in: toDeleteWsIds } },
+              { projection: { id: 1 } },
+            )
+            .toArray()
+        ).map((p) => p.id)
+      : [];
     const deleted: string[] = [];
     for (const [userId, idList] of deletableByUser) {
       const r = await mongoWpnDeleteWorkspaces(userId, idList);
@@ -282,17 +313,22 @@ export function registerWpnWriteRoutes(
         workspaceId: { $in: deleted },
       });
     }
+    if (projIds.length > 0) {
+      await getProjectSharesCollection().deleteMany({
+        projectId: { $in: projIds },
+      });
+    }
     return reply.send({ deleted, denied, notFound });
   });
 
-  /** Phase 4 — set workspace visibility. Owner-equivalent rights required. */
+  /** Phase 4/8 — set workspace visibility. Manage rights required (creator, space owner, org admin, or master admin). */
   app.patch("/wpn/workspaces/:id/visibility", async (request, reply) => {
     const auth = await requireAuth(request, reply, jwtSecret);
     if (!auth) {
       return;
     }
     const { id } = request.params as { id: string };
-    const ws = await assertCanWriteWorkspace(reply, auth, id);
+    const ws = await assertCanManageWorkspace(reply, auth, id);
     if (!ws) {
       return;
     }
@@ -329,7 +365,7 @@ export function registerWpnWriteRoutes(
     return reply.send({ id, visibility: parsed.data.visibility });
   });
 
-  /** Phase 4 — list shares on a workspace. Reader access required. */
+  /** Phase 4/8 — list shares on a workspace. Reader access required. Returns per-row role. */
   app.get("/wpn/workspaces/:id/shares", async (request, reply) => {
     const auth = await requireAuth(request, reply, jwtSecret);
     if (!auth) {
@@ -357,21 +393,22 @@ export function registerWpnWriteRoutes(
           userId: s.userId,
           email: u?.email ?? "(unknown)",
           displayName: u?.displayName ?? null,
+          role: s.role ?? "reader",
           addedAt: s.addedAt,
         };
       }),
     });
   });
 
-  /** Phase 4 — grant a user explicit read on a `shared` workspace. Target must
-      be a member of the workspace's space. */
+  /** Phase 4/8 — grant a user explicit read or write on a `shared` workspace.
+      Target must be a member of the workspace's space. Manage rights required. */
   app.post("/wpn/workspaces/:id/shares", async (request, reply) => {
     const auth = await requireAuth(request, reply, jwtSecret);
     if (!auth) {
       return;
     }
     const { id } = request.params as { id: string };
-    const ws = await assertCanWriteWorkspace(reply, auth, id);
+    const ws = await assertCanManageWorkspace(reply, auth, id);
     if (!ws) {
       return;
     }
@@ -408,13 +445,62 @@ export function registerWpnWriteRoutes(
           addedByUserId: auth.sub,
           addedAt: new Date(),
         },
+        $set: { role: parsed.data.role },
       },
       { upsert: true },
     );
+    if (ws.orgId) {
+      await recordAudit({
+        orgId: ws.orgId,
+        actorUserId: auth.sub,
+        action: "workspace.share.add",
+        targetType: "workspace",
+        targetId: id,
+        metadata: { userId: parsed.data.userId, role: parsed.data.role },
+      });
+    }
     return reply.status(204).send();
   });
 
-  /** Phase 4 — revoke an explicit share. */
+  /** Phase 8 — change a workspace share's role (reader ↔ writer). Manage rights required. */
+  app.patch(
+    "/wpn/workspaces/:id/shares/:userId",
+    async (request, reply) => {
+      const auth = await requireAuth(request, reply, jwtSecret);
+      if (!auth) {
+        return;
+      }
+      const { id, userId } = request.params as { id: string; userId: string };
+      const ws = await assertCanManageWorkspace(reply, auth, id);
+      if (!ws) {
+        return;
+      }
+      const parsed = updateWorkspaceShareBody.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const result = await getWorkspaceSharesCollection().updateOne(
+        { workspaceId: id, userId },
+        { $set: { role: parsed.data.role } },
+      );
+      if (result.matchedCount === 0) {
+        return reply.status(404).send({ error: "Share not found" });
+      }
+      if (ws.orgId) {
+        await recordAudit({
+          orgId: ws.orgId,
+          actorUserId: auth.sub,
+          action: "workspace.share.update",
+          targetType: "workspace",
+          targetId: id,
+          metadata: { userId, role: parsed.data.role },
+        });
+      }
+      return reply.status(204).send();
+    },
+  );
+
+  /** Phase 4/8 — revoke an explicit workspace share. Manage rights required. */
   app.delete(
     "/wpn/workspaces/:id/shares/:userId",
     async (request, reply) => {
@@ -426,7 +512,7 @@ export function registerWpnWriteRoutes(
         id: string;
         userId: string;
       };
-      const ws = await assertCanWriteWorkspace(reply, auth, id);
+      const ws = await assertCanManageWorkspace(reply, auth, id);
       if (!ws) {
         return;
       }
@@ -436,6 +522,227 @@ export function registerWpnWriteRoutes(
       });
       if (result.deletedCount === 0) {
         return reply.status(404).send({ error: "Share not found" });
+      }
+      if (ws.orgId) {
+        await recordAudit({
+          orgId: ws.orgId,
+          actorUserId: auth.sub,
+          action: "workspace.share.remove",
+          targetType: "workspace",
+          targetId: id,
+          metadata: { userId },
+        });
+      }
+      return reply.status(204).send();
+    },
+  );
+
+  /** Phase 8 — set project visibility. Manage rights required. */
+  app.patch("/wpn/projects/:id/visibility", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const { id } = request.params as { id: string };
+    const manageResult = await assertCanManageProject(reply, auth, id);
+    if (!manageResult) {
+      return;
+    }
+    const { workspace: ws, project } = manageResult;
+    const parsed = setProjectVisibilityBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+    await getWpnProjectsCollection().updateOne(
+      { id },
+      {
+        $set: {
+          visibility: parsed.data.visibility,
+          updated_at_ms: Date.now(),
+          ...(project.creatorUserId ? {} : { creatorUserId: project.userId }),
+        },
+      },
+    );
+    if (parsed.data.visibility !== "shared") {
+      await getProjectSharesCollection().deleteMany({ projectId: id });
+    }
+    if (ws.orgId) {
+      await recordAudit({
+        orgId: ws.orgId,
+        actorUserId: auth.sub,
+        action: "project.visibility.set",
+        targetType: "project",
+        targetId: id,
+        metadata: {
+          from: project.visibility ?? "public",
+          to: parsed.data.visibility,
+        },
+      });
+    }
+    return reply.send({ id, visibility: parsed.data.visibility });
+  });
+
+  /** Phase 8 — list shares on a project. Reader access required. */
+  app.get("/wpn/projects/:id/shares", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const { id } = request.params as { id: string };
+    const readResult = await assertCanReadProject(reply, auth, id);
+    if (!readResult) {
+      return;
+    }
+    const shares = await getProjectSharesCollection()
+      .find({ projectId: id })
+      .toArray();
+    const userIds = shares
+      .map((s) => s.userId)
+      .filter((s) => /^[a-f0-9]{24}$/i.test(s));
+    const users = (await getUsersCollection()
+      .find({ _id: { $in: userIds.map((u) => new ObjectId(u)) } })
+      .toArray()) as UserDoc[];
+    const usersById = new Map(users.map((u) => [u._id.toHexString(), u]));
+    return reply.send({
+      shares: shares.map((s) => {
+        const u = usersById.get(s.userId);
+        return {
+          userId: s.userId,
+          email: u?.email ?? "(unknown)",
+          displayName: u?.displayName ?? null,
+          role: s.role ?? "reader",
+          addedAt: s.addedAt,
+        };
+      }),
+    });
+  });
+
+  /** Phase 8 — grant a user explicit read or write on a `shared` project.
+      Target must already have access to the parent workspace. Manage rights required. */
+  app.post("/wpn/projects/:id/shares", async (request, reply) => {
+    const auth = await requireAuth(request, reply, jwtSecret);
+    if (!auth) {
+      return;
+    }
+    const { id } = request.params as { id: string };
+    const manageResult = await assertCanManageProject(reply, auth, id);
+    if (!manageResult) {
+      return;
+    }
+    const { workspace: ws } = manageResult;
+    const parsed = addProjectShareBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+    if (!ws.spaceId) {
+      return reply
+        .status(400)
+        .send({ error: "Project's workspace is legacy single-tenant" });
+    }
+    const targetReachable = await userCanReadWorkspace(
+      parsed.data.userId,
+      ws.id,
+    );
+    if (!targetReachable) {
+      return reply.status(400).send({
+        error: "Target user must have access to the parent workspace first",
+      });
+    }
+    await getProjectSharesCollection().updateOne(
+      { projectId: id, userId: parsed.data.userId },
+      {
+        $setOnInsert: {
+          projectId: id,
+          userId: parsed.data.userId,
+          addedByUserId: auth.sub,
+          addedAt: new Date(),
+        },
+        $set: { role: parsed.data.role },
+      },
+      { upsert: true },
+    );
+    if (ws.orgId) {
+      await recordAudit({
+        orgId: ws.orgId,
+        actorUserId: auth.sub,
+        action: "project.share.add",
+        targetType: "project",
+        targetId: id,
+        metadata: { userId: parsed.data.userId, role: parsed.data.role },
+      });
+    }
+    return reply.status(204).send();
+  });
+
+  /** Phase 8 — change a project share's role. */
+  app.patch(
+    "/wpn/projects/:id/shares/:userId",
+    async (request, reply) => {
+      const auth = await requireAuth(request, reply, jwtSecret);
+      if (!auth) {
+        return;
+      }
+      const { id, userId } = request.params as { id: string; userId: string };
+      const manageResult = await assertCanManageProject(reply, auth, id);
+      if (!manageResult) {
+        return;
+      }
+      const { workspace: ws } = manageResult;
+      const parsed = updateProjectShareBody.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const result = await getProjectSharesCollection().updateOne(
+        { projectId: id, userId },
+        { $set: { role: parsed.data.role } },
+      );
+      if (result.matchedCount === 0) {
+        return reply.status(404).send({ error: "Share not found" });
+      }
+      if (ws.orgId) {
+        await recordAudit({
+          orgId: ws.orgId,
+          actorUserId: auth.sub,
+          action: "project.share.update",
+          targetType: "project",
+          targetId: id,
+          metadata: { userId, role: parsed.data.role },
+        });
+      }
+      return reply.status(204).send();
+    },
+  );
+
+  /** Phase 8 — revoke an explicit project share. */
+  app.delete(
+    "/wpn/projects/:id/shares/:userId",
+    async (request, reply) => {
+      const auth = await requireAuth(request, reply, jwtSecret);
+      if (!auth) {
+        return;
+      }
+      const { id, userId } = request.params as { id: string; userId: string };
+      const manageResult = await assertCanManageProject(reply, auth, id);
+      if (!manageResult) {
+        return;
+      }
+      const { workspace: ws } = manageResult;
+      const result = await getProjectSharesCollection().deleteOne({
+        projectId: id,
+        userId,
+      });
+      if (result.deletedCount === 0) {
+        return reply.status(404).send({ error: "Share not found" });
+      }
+      if (ws.orgId) {
+        await recordAudit({
+          orgId: ws.orgId,
+          actorUserId: auth.sub,
+          action: "project.share.remove",
+          targetType: "project",
+          targetId: id,
+          metadata: { userId },
+        });
       }
       return reply.status(204).send();
     },
@@ -455,7 +762,9 @@ export function registerWpnWriteRoutes(
       typeof (request.body as { name?: unknown })?.name === "string"
         ? (request.body as { name: string }).name
         : "Project";
-    const project = await mongoWpnCreateProject(ws.userId, workspaceId, name);
+    const project = await mongoWpnCreateProject(ws.userId, workspaceId, name, {
+      creatorUserId: auth.sub,
+    });
     if (!project) {
       return reply.status(404).send({ error: "Workspace not found" });
     }
@@ -468,10 +777,11 @@ export function registerWpnWriteRoutes(
       return;
     }
     const { id } = request.params as { id: string };
-    const ws = await assertCanWriteWorkspaceForProject(reply, auth, id);
-    if (!ws) {
+    const writeResult = await assertCanWriteProject(reply, auth, id);
+    if (!writeResult) {
       return;
     }
+    const { workspace: ws } = writeResult;
     const body = (request.body ?? {}) as Record<string, unknown>;
     const patch: {
       name?: string;
@@ -504,14 +814,16 @@ export function registerWpnWriteRoutes(
       return;
     }
     const { id } = request.params as { id: string };
-    const ws = await assertCanWriteWorkspaceForProject(reply, auth, id);
-    if (!ws) {
+    const writeResult = await assertCanWriteProject(reply, auth, id);
+    if (!writeResult) {
       return;
     }
+    const { workspace: ws } = writeResult;
     const ok = await mongoWpnDeleteProject(ws.userId, id);
     if (!ok) {
       return reply.status(404).send({ error: "Project not found" });
     }
+    await getProjectSharesCollection().deleteMany({ projectId: id });
     return reply.send({ ok: true as const });
   });
 
@@ -584,6 +896,11 @@ export function registerWpnWriteRoutes(
       const r = await mongoWpnDeleteProjects(userId, idList);
       deleted.push(...r.deletedProjectIds);
     }
+    if (deleted.length > 0) {
+      await getProjectSharesCollection().deleteMany({
+        projectId: { $in: deleted },
+      });
+    }
     return reply.send({ deleted, denied, notFound });
   });
 
@@ -593,10 +910,11 @@ export function registerWpnWriteRoutes(
       return;
     }
     const { projectId } = request.params as { projectId: string };
-    const ws = await assertCanWriteWorkspaceForProject(reply, auth, projectId);
-    if (!ws) {
+    const writeResult = await assertCanWriteProject(reply, auth, projectId);
+    if (!writeResult) {
       return;
     }
+    const { workspace: ws } = writeResult;
     const body = (request.body ?? {}) as Record<string, unknown>;
     const type = typeof body.type === "string" ? body.type.trim() : "";
     if (!type) {
@@ -821,10 +1139,11 @@ export function registerWpnWriteRoutes(
     const ownerByIdMap = new Map<string, string>();
     const projectIds = [...new Set(notes.map((n) => n.project_id))];
     for (const projectId of projectIds) {
-      const ws = await assertCanWriteWorkspaceForProject(reply, auth, projectId);
-      if (!ws) {
+      const writeResult = await assertCanWriteProject(reply, auth, projectId);
+      if (!writeResult) {
         return;
       }
+      const { workspace: ws } = writeResult;
       for (const n of notes) {
         if (n.project_id === projectId) {
           ownerByIdMap.set(n.id, ws.userId);
@@ -862,10 +1181,11 @@ export function registerWpnWriteRoutes(
     if (p !== "before" && p !== "after" && p !== "into") {
       return reply.status(400).send({ error: "Invalid placement" });
     }
-    const ws = await assertCanWriteWorkspaceForProject(reply, auth, projectId);
-    if (!ws) {
+    const writeResult = await assertCanWriteProject(reply, auth, projectId);
+    if (!writeResult) {
       return;
     }
+    const { workspace: ws } = writeResult;
     try {
       await mongoWpnMoveNote(
         ws.userId,
@@ -919,14 +1239,11 @@ export function registerWpnWriteRoutes(
       return;
     }
     // Destination-side permission: write on target project's workspace.
-    const dstWs = await assertCanWriteWorkspaceForProject(
-      reply,
-      auth,
-      targetProjectId,
-    );
-    if (!dstWs) {
+    const dstResult = await assertCanWriteProject(reply, auth, targetProjectId);
+    if (!dstResult) {
       return;
     }
+    const { workspace: dstWs } = dstResult;
     if (srcWs.userId !== dstWs.userId) {
       return reply
         .status(400)
@@ -956,10 +1273,11 @@ export function registerWpnWriteRoutes(
         projectId: string;
         noteId: string;
       };
-      const ws = await assertCanWriteWorkspaceForProject(reply, auth, projectId);
-      if (!ws) {
+      const writeResult = await assertCanWriteProject(reply, auth, projectId);
+      if (!writeResult) {
         return;
       }
+      const { workspace: ws } = writeResult;
       try {
         const result = await mongoWpnDuplicateSubtree(ws.userId, projectId, noteId);
         return reply.status(201).send(result);
@@ -979,6 +1297,14 @@ export function registerWpnWriteRoutes(
       return;
     }
     const { projectId } = request.params as { projectId: string };
+    // Explorer state is per-user UI state keyed by `{ userId, project_id }`,
+    // so any user with READ access to the project can persist their own
+    // expansion set — ownership is not required. (Fixes 404 for users who
+    // see the project via a workspace / project share.)
+    const readResult = await assertCanReadProject(reply, auth, projectId);
+    if (!readResult) {
+      return;
+    }
     const raw = (request.body as { expanded_ids?: unknown })?.expanded_ids;
     const expanded_ids = Array.isArray(raw)
       ? raw.filter((x): x is string => typeof x === "string")
@@ -987,10 +1313,6 @@ export function registerWpnWriteRoutes(
       await mongoWpnSetExplorerExpanded(auth.sub, projectId, expanded_ids);
       return reply.send({ expanded_ids });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg === "Project not found") {
-        return reply.status(404).send({ error: msg });
-      }
       return sendWpnError(reply, e);
     }
   });

@@ -79,7 +79,7 @@ async function persistChildMap(
 export async function mongoWpnCreateWorkspace(
   userId: string,
   name: string,
-  scope?: { orgId?: string; spaceId?: string },
+  scope?: { orgId?: string; spaceId?: string; creatorUserId?: string },
 ): Promise<Omit<WpnWorkspaceDoc, "userId" | "settings">> {
   const col = getWpnWorkspacesCollection();
   const t = nowMs();
@@ -92,6 +92,8 @@ export async function mongoWpnCreateWorkspace(
     userId,
     ...(scope?.orgId ? { orgId: scope.orgId } : {}),
     ...(scope?.spaceId ? { spaceId: scope.spaceId } : {}),
+    visibility: "public",
+    creatorUserId: scope?.creatorUserId ?? userId,
     name: name.trim() || "Workspace",
     sort_index,
     color_token: null,
@@ -192,6 +194,7 @@ export async function mongoWpnCreateProject(
   userId: string,
   workspaceId: string,
   name: string,
+  opts?: { creatorUserId?: string },
 ): Promise<Omit<WpnProjectDoc, "userId" | "settings"> | null> {
   const wsCol = getWpnWorkspacesCollection();
   const ws = await wsCol.findOne({ id: workspaceId, userId });
@@ -213,6 +216,8 @@ export async function mongoWpnCreateProject(
     userId,
     ...(ws.orgId ? { orgId: ws.orgId } : {}),
     ...(ws.spaceId ? { spaceId: ws.spaceId } : {}),
+    visibility: "public",
+    creatorUserId: opts?.creatorUserId ?? userId,
     workspace_id: workspaceId,
     name: name.trim() || "Project",
     sort_index,
@@ -788,15 +793,16 @@ export async function mongoWpnDuplicateSubtree(
   return { newRootId };
 }
 
+/**
+ * Upsert the caller's explorer-expansion set for a project. Access control
+ * lives in the route (see `assertCanReadProject`): explorer state is per-user
+ * and scoped by `{ userId, project_id }`, so creator-ownership is not required.
+ */
 export async function mongoWpnSetExplorerExpanded(
   userId: string,
   projectId: string,
   expandedIds: string[],
 ): Promise<void> {
-  const projCol = getWpnProjectsCollection();
-  if (!(await projCol.findOne({ id: projectId, userId }))) {
-    throw new Error("Project not found");
-  }
   const exCol = getWpnExplorerStateCollection();
   const expanded_ids = [...new Set(expandedIds)];
   await exCol.replaceOne(

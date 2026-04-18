@@ -11,10 +11,13 @@ import {
   getOrgInvitesCollection,
   getOrgMembershipsCollection,
   getOrgsCollection,
+  getProjectSharesCollection,
   getSpaceMembershipsCollection,
   getSpacesCollection,
   getTeamsCollection,
   getUsersCollection,
+  getWorkspaceSharesCollection,
+  getWpnProjectsCollection,
   getWpnWorkspacesCollection,
   type UserDoc,
 } from "./db.js";
@@ -704,6 +707,30 @@ export function registerOrgRoutes(
       }
     }
     await memberships.deleteOne({ _id: target._id });
+    // Phase 8: cascade workspace + project share grants held by the removed
+    // user across the entire org.
+    const wsIds = (
+      await getWpnWorkspacesCollection()
+        .find({ orgId }, { projection: { id: 1 } })
+        .toArray()
+    ).map((w) => w.id);
+    if (wsIds.length > 0) {
+      await getWorkspaceSharesCollection().deleteMany({
+        userId,
+        workspaceId: { $in: wsIds },
+      });
+    }
+    const projIds = (
+      await getWpnProjectsCollection()
+        .find({ orgId }, { projection: { id: 1 } })
+        .toArray()
+    ).map((p) => p.id);
+    if (projIds.length > 0) {
+      await getProjectSharesCollection().deleteMany({
+        userId,
+        projectId: { $in: projIds },
+      });
+    }
     await recordAudit({
       orgId,
       actorUserId: auth.sub,

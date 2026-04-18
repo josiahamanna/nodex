@@ -4,9 +4,13 @@ import { requireAuth, signAccessToken } from "./auth.js";
 import {
   getActiveDb,
   getOrgMembershipsCollection,
+  getProjectSharesCollection,
   getSpaceMembershipsCollection,
   getSpacesCollection,
   getUsersCollection,
+  getWorkspaceSharesCollection,
+  getWpnProjectsCollection,
+  getWpnWorkspacesCollection,
   type UserDoc,
 } from "./db.js";
 import { requireOrgRole } from "./org-auth.js";
@@ -341,6 +345,31 @@ export function registerSpaceRoutes(
         }
       }
       await getSpaceMembershipsCollection().deleteOne({ _id: target._id });
+      // Phase 8: cascade — drop any workspace/project share rows the removed
+      // user held within this space, so there are no orphaned grants that
+      // become active if they're re-added later.
+      const wsIds = (
+        await getWpnWorkspacesCollection()
+          .find({ spaceId }, { projection: { id: 1 } })
+          .toArray()
+      ).map((w) => w.id);
+      if (wsIds.length > 0) {
+        await getWorkspaceSharesCollection().deleteMany({
+          userId,
+          workspaceId: { $in: wsIds },
+        });
+      }
+      const projIds = (
+        await getWpnProjectsCollection()
+          .find({ spaceId }, { projection: { id: 1 } })
+          .toArray()
+      ).map((p) => p.id);
+      if (projIds.length > 0) {
+        await getProjectSharesCollection().deleteMany({
+          userId,
+          projectId: { $in: projIds },
+        });
+      }
       return reply.status(204).send();
     },
   );

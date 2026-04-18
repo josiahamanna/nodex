@@ -9,6 +9,7 @@ import { useNodexShell } from "./shell/useNodexShell";
 import { useShellLayoutState } from "./shell/layout/ShellLayoutContext";
 import { useRegisterShellCoreBlocks } from "./shell/first-party/registerShellCoreBlocks";
 import { useRegisterShellDefaultKeybindings } from "./shell/first-party/registerShellDefaultKeybindings";
+import { useRegisterAdminPlugin } from "./shell/first-party/plugins/admin/useRegisterAdminPlugin";
 import { useRegisterDocumentationPlugin } from "./shell/first-party/plugins/documentation/useRegisterDocumentationPlugin";
 import { useRegisterNotesExplorerPlugin } from "./shell/first-party/plugins/notes-explorer/useRegisterNotesExplorerPlugin";
 import { useRegisterJsNoteEditor } from "./shell/first-party/plugins/js-notebook/useRegisterJsNoteEditor";
@@ -84,6 +85,7 @@ const App: React.FC = () => {
   useRegisterDocumentationPlugin();
   useRegisterNotesShellPlugin();
   useRegisterNotesExplorerPlugin();
+  useRegisterAdminPlugin();
 
   const inviteToken = readInviteTokenFromUrl();
 

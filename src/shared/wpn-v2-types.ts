@@ -1,5 +1,8 @@
 /** Workspace → project → note (v2) — DTOs for JSON workspace, Postgres, HTTP, and IPC. */
 
+/** Phase 4/8 visibility applied to both workspaces and projects. */
+export type WpnVisibility = "public" | "private" | "shared";
+
 export type WpnWorkspaceRow = {
   id: string;
   name: string;
@@ -7,6 +10,10 @@ export type WpnWorkspaceRow = {
   color_token: string | null;
   created_at_ms: number;
   updated_at_ms: number;
+  /** Phase 4: visibility within the space. Undefined on legacy rows — treat as "public". */
+  visibility?: WpnVisibility;
+  /** Phase 4: original creator (for `private` and `shared` access checks). */
+  creatorUserId?: string;
 };
 
 export type WpnProjectRow = {
@@ -17,6 +24,10 @@ export type WpnProjectRow = {
   color_token: string | null;
   created_at_ms: number;
   updated_at_ms: number;
+  /** Phase 8: visibility within the parent workspace. */
+  visibility?: WpnVisibility;
+  /** Phase 8: original creator. */
+  creatorUserId?: string;
 };
 
 export type WpnNoteRow = {

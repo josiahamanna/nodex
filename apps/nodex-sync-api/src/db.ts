@@ -11,6 +11,8 @@ import type {
   OrgDoc,
   OrgInviteDoc,
   OrgMembershipDoc,
+  ProjectShareDoc,
+  ProjectVisibility,
   SpaceAnnouncementDoc,
   SpaceDoc,
   SpaceMembershipDoc,
@@ -59,6 +61,10 @@ export type WpnProjectDoc = {
   orgId?: string;
   spaceId?: string;
   workspace_id: string;
+  /** Phase 8: visibility within the parent workspace. Backfilled by m_008 to "public". */
+  visibility?: ProjectVisibility;
+  /** Phase 8: original creator (for `private` and `shared` project access checks). */
+  creatorUserId?: string;
   name: string;
   sort_index: number;
   color_token: string | null;
@@ -253,6 +259,11 @@ async function ensureIndexes(database: Db): Promise<void> {
   await wsShares.createIndex({ workspaceId: 1, userId: 1 }, { unique: true });
   await wsShares.createIndex({ userId: 1 });
 
+  // Phase 8
+  const projShares = database.collection<ProjectShareDoc>("project_shares");
+  await projShares.createIndex({ projectId: 1, userId: 1 }, { unique: true });
+  await projShares.createIndex({ userId: 1 });
+
   // Phase 5
   const announcements = database.collection<SpaceAnnouncementDoc>("space_announcements");
   await announcements.createIndex({ spaceId: 1, pinned: -1, createdAt: -1 });
@@ -285,6 +296,60 @@ async function runIdempotentMigrations(database: Db): Promise<void> {
   await m_002_default_space_per_org(database);
   await m_004_workspace_visibility(database);
   await m_006_note_authorship(database);
+  await m_007_workspace_share_role(database);
+  await m_008_project_visibility(database);
+}
+
+/**
+ * Phase 8: legacy `workspace_shares` rows predate per-member roles. Default to
+ * "reader" so nobody silently gains write — writes only expand on explicit
+ * admin action via PATCH .../shares/:userId.
+ */
+async function m_007_workspace_share_role(database: Db): Promise<void> {
+  const key = "m_007_workspace_share_role";
+  const migrations = database.collection<MigrationDoc>("_migrations");
+  const ran = await migrations.findOne({ key });
+  if (ran) {
+    return;
+  }
+  await database
+    .collection<WorkspaceShareDoc>("workspace_shares")
+    .updateMany({ role: { $exists: false } }, { $set: { role: "reader" } });
+  await migrations.updateOne(
+    { key },
+    { $setOnInsert: { key, ranAt: new Date() } },
+    { upsert: true },
+  );
+}
+
+/**
+ * Phase 8: stamp existing projects with visibility "public" and creatorUserId
+ * (fallback to `userId`) so the new project-ACL checks can short-circuit
+ * cleanly. Mirrors {@link m_004_workspace_visibility}.
+ */
+async function m_008_project_visibility(database: Db): Promise<void> {
+  const key = "m_008_project_visibility";
+  const migrations = database.collection<MigrationDoc>("_migrations");
+  const ran = await migrations.findOne({ key });
+  if (ran) {
+    return;
+  }
+  await database.collection<WpnProjectDoc>("wpn_projects").updateMany(
+    { visibility: { $exists: false } },
+    [
+      {
+        $set: {
+          visibility: "public",
+          creatorUserId: { $ifNull: ["$creatorUserId", "$userId"] },
+        },
+      },
+    ],
+  );
+  await migrations.updateOne(
+    { key },
+    { $setOnInsert: { key, ranAt: new Date() } },
+    { upsert: true },
+  );
 }
 
 async function m_004_workspace_visibility(database: Db): Promise<void> {
@@ -656,6 +721,13 @@ export function getWorkspaceSharesCollection(): Collection<WorkspaceShareDoc> {
     throw new Error("MongoDB not connected");
   }
   return db.collection<WorkspaceShareDoc>("workspace_shares");
+}
+
+export function getProjectSharesCollection(): Collection<ProjectShareDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<ProjectShareDoc>("project_shares");
 }
 
 export function getSpaceAnnouncementsCollection(): Collection<SpaceAnnouncementDoc> {

@@ -42,3 +42,5 @@ deploy/drone/.env
 test-results/
 playwright-report/
 blob-report/
+
+.env.local
