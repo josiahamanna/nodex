@@ -1,6 +1,7 @@
 import React from "react";
 import { useSelector } from "react-redux";
 import { AuditLogPanel } from "../../../../admin/AuditLogPanel";
+import { InvitesPanel } from "../../../../admin/InvitesPanel";
 import { MasterConsolePanel } from "../../../../admin/MasterConsolePanel";
 import { PeoplePanel } from "../../../../admin/PeoplePanel";
 import { ProjectSharePanel } from "../../../../admin/ProjectSharePanel";
@@ -106,6 +107,12 @@ export function AdminMainView(
       return (
         <div className={wrap}>
           <PeoplePanel />
+        </div>
+      );
+    case "org-invites":
+      return (
+        <div className={wrap}>
+          <InvitesPanel />
         </div>
       );
     case "org-teams":

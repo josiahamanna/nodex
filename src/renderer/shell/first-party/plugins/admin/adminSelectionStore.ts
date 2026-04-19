@@ -4,6 +4,7 @@ export type AdminSelection =
   | { kind: "none" }
   | { kind: "master" }
   | { kind: "org-people" }
+  | { kind: "org-invites" }
   | { kind: "org-teams" }
   | { kind: "org-activity" }
   | { kind: "space-members"; spaceId: string }

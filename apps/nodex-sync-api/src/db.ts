@@ -22,6 +22,7 @@ import type {
   WorkspaceShareDoc,
   WorkspaceVisibility,
 } from "./org-schemas.js";
+import type { NotificationDoc } from "./notification-schemas.js";
 
 export type SyncNoteDoc = {
   id: string;
@@ -272,6 +273,12 @@ async function ensureIndexes(database: Db): Promise<void> {
   const audit = database.collection<AuditEventDoc>("audit_events");
   await audit.createIndex({ orgId: 1, ts: -1 });
   await audit.createIndex({ targetType: 1, targetId: 1, ts: -1 });
+
+  // Notifications
+  const notifications = database.collection<NotificationDoc>("notifications");
+  await notifications.createIndex({ userId: 1, createdAt: -1 });
+  await notifications.createIndex({ userId: 1, read: 1, createdAt: -1 });
+  await notifications.createIndex({ orgId: 1, createdAt: -1 });
 
   // Phase 2: compound indexes for org+space scoped reads (alongside legacy userId).
   await wpnWs.createIndex({ orgId: 1, spaceId: 1, sort_index: 1 });
@@ -742,6 +749,13 @@ export function getAuditEventsCollection(): Collection<AuditEventDoc> {
     throw new Error("MongoDB not connected");
   }
   return db.collection<AuditEventDoc>("audit_events");
+}
+
+export function getNotificationsCollection(): Collection<NotificationDoc> {
+  if (!db) {
+    throw new Error("MongoDB not connected");
+  }
+  return db.collection<NotificationDoc>("notifications");
 }
 
 export function getActiveDb(): Db {

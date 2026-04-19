@@ -13,6 +13,7 @@ import cloudAuthReducer, { cloudLogoutThunk } from "./cloudAuthSlice";
 import cloudNotesReducer from "./cloudNotesSlice";
 import { cloudNotesRxListener } from "./cloudNotesRxListener";
 import notesReducer from "./notesSlice";
+import notificationReducer from "./notificationSlice";
 import orgMembershipReducer from "./orgMembershipSlice";
 import pluginUiReducer from "./pluginUiSlice";
 import spaceMembershipReducer from "./spaceMembershipSlice";
@@ -44,6 +45,7 @@ export const store = configureStore({
     cloudAuth: cloudAuthReducer,
     orgMembership: orgMembershipReducer,
     spaceMembership: spaceMembershipReducer,
+    notifications: notificationReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

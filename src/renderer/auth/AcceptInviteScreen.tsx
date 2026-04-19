@@ -147,9 +147,42 @@ export function AcceptInviteScreen({
         ) : (
           <p className={sub}>You already have an account — accepting will add you to this org.</p>
         )}
-        <button type="submit" className={submitBtn} disabled={submitting}>
-          {submitting ? "Joining…" : `Join ${preview.orgName}`}
-        </button>
+        <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#f0f0f0', borderRadius: '8px' }}>
+          <p style={{ marginBottom: '12px', fontSize: '14px', fontWeight: '600', color: '#333' }}>
+            Click the button below to accept the invitation:
+          </p>
+          <button 
+            type="submit" 
+            disabled={submitting}
+            style={{
+              width: '100%',
+              backgroundColor: submitting ? '#999' : '#0066ff',
+              color: 'white',
+              padding: '14px 24px',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: submitting ? 'not-allowed' : 'pointer',
+              fontSize: '16px',
+              fontWeight: '600',
+              boxShadow: '0 2px 8px rgba(0, 102, 255, 0.3)',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              if (!submitting) {
+                e.currentTarget.style.backgroundColor = '#0052cc';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!submitting) {
+                e.currentTarget.style.backgroundColor = '#0066ff';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }
+            }}
+          >
+            {submitting ? "Joining…" : `Join ${preview.orgName}`}
+          </button>
+        </div>
         {error ? (
           <p className="mt-3 text-xs text-red-600 dark:text-red-300">{error}</p>
         ) : null}

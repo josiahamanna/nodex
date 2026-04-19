@@ -8,6 +8,7 @@ import {
   ensureUserHasDefaultOrg,
   getActiveDb,
   getAuditEventsCollection,
+  getNotificationsCollection,
   getOrgInvitesCollection,
   getOrgMembershipsCollection,
   getOrgsCollection,
@@ -428,6 +429,31 @@ export function registerOrgRoutes(
       targetId: ins.insertedId.toHexString(),
       metadata: { email, role: parsed.data.role },
     });
+
+    const inviteeUser = (await getUsersCollection().findOne({ email })) as UserDoc | null;
+    if (inviteeUser) {
+      const org = await getOrgsCollection().findOne({ _id: new ObjectId(orgId) });
+      const inviter = (await getUsersCollection().findOne({ _id: new ObjectId(auth.sub) })) as UserDoc | null;
+      await getNotificationsCollection().insertOne({
+        userId: inviteeUser._id.toHexString(),
+        orgId,
+        type: "org_invite",
+        title: "Organization Invitation",
+        message: `${inviter?.displayName ?? inviter?.email ?? "Someone"} invited you to join ${org?.name ?? "an organization"}`,
+        metadata: {
+          inviteId: ins.insertedId.toHexString(),
+          inviteToken: plain,
+          inviterUserId: auth.sub,
+          inviterEmail: inviter?.email,
+          orgName: org?.name,
+          role: parsed.data.role,
+        },
+        read: false,
+        createdAt: now,
+        actionUrl: `/invite/${plain}`,
+      } as never);
+    }
+
     return reply.send({
       inviteId: ins.insertedId.toHexString(),
       email,
@@ -563,6 +589,26 @@ export function registerOrgRoutes(
       targetId: invite._id.toHexString(),
       metadata: { email, role: invite.role },
     });
+
+    const org = await getOrgsCollection().findOne({ _id: new ObjectId(invite.orgId) });
+    const accepter = (await users.findOne({ _id: user._id })) as UserDoc;
+    await getNotificationsCollection().insertOne({
+      userId: invite.invitedByUserId,
+      orgId: invite.orgId,
+      type: "org_invite_accepted",
+      title: "Invitation Accepted",
+      message: `${accepter?.displayName ?? accepter?.email ?? email} accepted your invitation to join ${org?.name ?? "your organization"}`,
+      metadata: {
+        inviteId: invite._id.toHexString(),
+        acceptedByUserId: userIdHex,
+        acceptedByEmail: email,
+        orgName: org?.name,
+        role: invite.role,
+      },
+      read: false,
+      createdAt: new Date(),
+      actionUrl: `/admin/org-members`,
+    } as never);
     if (createdUser || !user.defaultOrgId) {
       await users.updateOne(
         { _id: user._id, $or: [{ defaultOrgId: { $exists: false } }, { defaultOrgId: null }] },

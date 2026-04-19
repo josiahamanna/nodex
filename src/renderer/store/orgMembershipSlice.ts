@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { createOrg, listMyOrgs, setActiveOrgRemote } from "../auth/auth-client";
-import { setActiveOrgId, type AuthUserOrg } from "../auth/auth-session";
+import { setActiveOrgId, setActiveSpaceId, type AuthUserOrg } from "../auth/auth-session";
 
 const STALE_AFTER_MS = 60_000;
 
@@ -92,6 +92,14 @@ const slice = createSlice({
       })
       .addCase(switchActiveOrgThunk.fulfilled, (state, action) => {
         state.activeOrgId = action.payload.activeOrgId;
+        // Clear space ID; spaceMembershipSlice will load and set the default space for the new org
+        setActiveSpaceId(null);
+        // Dispatch WPN tree changed event to trigger data refresh (deferred to avoid reducer dispatch issue)
+        if (typeof window !== "undefined") {
+          setTimeout(() => {
+            window.dispatchEvent(new Event("nodex:wpn-tree-changed"));
+          }, 0);
+        }
       });
   },
 });

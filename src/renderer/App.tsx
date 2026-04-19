@@ -12,6 +12,8 @@ import { useRegisterShellDefaultKeybindings } from "./shell/first-party/register
 import { useRegisterAdminPlugin } from "./shell/first-party/plugins/admin/useRegisterAdminPlugin";
 import { useRegisterDocumentationPlugin } from "./shell/first-party/plugins/documentation/useRegisterDocumentationPlugin";
 import { useRegisterNotesExplorerPlugin } from "./shell/first-party/plugins/notes-explorer/useRegisterNotesExplorerPlugin";
+import { useRegisterNotificationsPlugin } from "./shell/first-party/plugins/notifications/useRegisterNotificationsPlugin";
+import { useNotificationPolling } from "./shell/first-party/plugins/notifications/useNotificationPolling";
 import { useRegisterJsNoteEditor } from "./shell/first-party/plugins/js-notebook/useRegisterJsNoteEditor";
 import { useRegisterJsNotebookPlugin } from "./shell/first-party/plugins/js-notebook/useRegisterJsNotebookPlugin";
 import { useRegisterNotesShellPlugin } from "./shell/first-party/useRegisterNotesShellPlugin";
@@ -86,6 +88,8 @@ const App: React.FC = () => {
   useRegisterNotesShellPlugin();
   useRegisterNotesExplorerPlugin();
   useRegisterAdminPlugin();
+  useRegisterNotificationsPlugin();
+  useNotificationPolling();
 
   const inviteToken = readInviteTokenFromUrl();
 

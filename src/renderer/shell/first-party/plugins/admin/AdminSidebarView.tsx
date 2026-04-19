@@ -278,6 +278,13 @@ export function AdminSidebarView(
                 />
                 <TreeRow
                   depth={1}
+                  icon="✉️"
+                  label="Invites"
+                  active={isActive({ kind: "org-invites" })}
+                  onClick={() => select({ kind: "org-invites" })}
+                />
+                <TreeRow
+                  depth={1}
                   icon="👥"
                   label="Teams"
                   active={isActive({ kind: "org-teams" })}

@@ -32,6 +32,7 @@ import { registerWpnWriteRoutes } from "./wpn-write-routes.js";
 import { registerMcpDeviceAuthRoutes } from "./mcp-device-auth-routes.js";
 import { registerWpnImportExportRoutes } from "./wpn-import-export-routes.js";
 import { registerMasterAdminRoutes } from "./master-admin-routes.js";
+import { registerNotificationRoutes } from "./notification-routes.js";
 import { maybePromoteMasterAdmin } from "./admin-auth.js";
 import {
   buildSessionsAfterAppend,
@@ -90,6 +91,7 @@ export function registerRoutes(
   registerAnnouncementRoutes(app, { jwtSecret });
   registerAdminRoutes(app, { jwtSecret });
   registerMasterAdminRoutes(app, { jwtSecret });
+  registerNotificationRoutes(app, { jwtSecret });
   app.register(
     async (scoped) => registerWpnImportExportRoutes(scoped, { jwtSecret }),
   );

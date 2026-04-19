@@ -34,7 +34,7 @@ function errorMessageFromBody(status: number, text: string): string {
   return raw.length > 500 ? `${raw.slice(0, 500)}…` : raw;
 }
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const scopeHeaders: Record<string, string> = {};
   const orgId = getActiveOrgId();
   if (orgId) {
@@ -44,11 +44,15 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   if (spaceId) {
     scopeHeaders["X-Nodex-Space"] = spaceId;
   }
+  
+  // Only set Content-Type if there's a body
+  const hasBody = init?.body !== undefined;
+  
   const res = await fetch(`/api/v1${path}`, {
     credentials: "include",
     ...(init ?? {}),
     headers: {
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...scopeHeaders,
       ...(init?.headers ?? {}),
     },
