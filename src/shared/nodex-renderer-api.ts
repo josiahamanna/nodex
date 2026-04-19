@@ -25,6 +25,12 @@ export interface Note {
   title: string;
   content: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Server-computed effective write permission for the signed-in user.
+   * `false` → force preview, hide edit affordances. `undefined` (legacy server
+   * or scratch-mode fixture) is treated as writable so older paths keep working.
+   */
+  canWrite?: boolean;
 }
 
 export interface NoteListItem {

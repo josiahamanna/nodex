@@ -162,6 +162,7 @@ function wpnDetailToNote(d: WpnNoteDetail): Note {
     title: d.title,
     content: d.content,
     metadata: d.metadata,
+    canWrite: d.canWrite,
   };
 }
 

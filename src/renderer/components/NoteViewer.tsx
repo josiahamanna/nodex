@@ -45,7 +45,14 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
 }) => {
   const dispatch = useDispatch<AppDispatch>();
   const titleDraft = useSelector((s: RootState) => s.notes.noteTitleDraftById[note.id]);
-  const [hasPlugin, setHasPlugin] = useState(false);
+  // `checking` on first mount so the fallback UI never flashes before the
+  // plugin registry has been queried — the registration hooks in App.tsx run
+  // their effects after the first render, so treating "unknown" as "missing"
+  // produced a visible "No plugin installed" flicker before the editor.
+  const [pluginState, setPluginState] = useState<"checking" | "ok" | "missing">(
+    "checking",
+  );
+  const hasPlugin = pluginState === "ok";
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [titleEditing, setTitleEditing] = useState(false);
   const { showToast } = useToast();
@@ -60,7 +67,7 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
         return;
       }
       const ok = types.includes(note.type);
-      setHasPlugin(ok);
+      setPluginState(ok ? "ok" : "missing");
       if (warnTimer) {
         clearTimeout(warnTimer);
         warnTimer = null;
@@ -109,12 +116,14 @@ const NoteViewer: React.FC<NoteViewerProps> = ({
   }, [note.id, displayTitle, titleEditing]);
 
   const renderNote = () => {
-    if (hasPlugin) {
+    if (pluginState === "checking") {
+      return <div className="min-h-0 flex-1" aria-hidden />;
+    }
+    if (pluginState === "ok") {
       return (
         <NoteTypeReactRenderer note={note} assetProjectRoot={assetProjectRoot} />
       );
     }
-
     return (
       <div className="rounded-sm border border-border bg-muted/50 p-4">
         <p className="text-foreground">

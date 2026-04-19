@@ -21,6 +21,7 @@ import {
   assertCanReadWorkspace,
   assertCanReadWorkspaceForNote,
   effectiveRoleInSpace,
+  userCanWriteProject,
 } from "./permission-resolver.js";
 import { resolveActiveSpaceId } from "./space-auth.js";
 import type { SpaceRole } from "./org-schemas.js";
@@ -629,6 +630,7 @@ export function registerWpnReadRoutes(
         displayName: u.displayName ?? null,
       };
     };
+    const canWrite = await userCanWriteProject(auth, n.project_id);
     const note = {
       id: n.id,
       project_id: n.project_id,
@@ -645,6 +647,7 @@ export function registerWpnReadRoutes(
       updated_at_ms: n.updated_at_ms,
       created_by: author(n.created_by_user_id),
       updated_by: author(n.updated_by_user_id),
+      canWrite,
     };
     return reply.send({ note });
   });

@@ -389,6 +389,77 @@ export async function assertCanWriteProject(
 }
 
 /**
+ * Non-throwing write-permission probe for a project. Mirrors the branch
+ * structure of {@link assertCanWriteProject} but returns a boolean without
+ * touching the reply — used by responses that want to include an advisory
+ * `canWrite` hint (e.g. `GET /wpn/notes/:id`) so the client can disable
+ * edit UI before the user tries to save.
+ */
+export async function userCanWriteProject(
+  auth: JwtPayload,
+  projectId: string,
+): Promise<boolean> {
+  const project = await getWpnProjectsCollection().findOne({ id: projectId });
+  if (!project) return false;
+  const workspace = await getWpnWorkspacesCollection().findOne({
+    id: project.workspace_id,
+  });
+  if (!workspace) return false;
+  // Workspace read prerequisite (same gate used by `assertCanReadWorkspace`).
+  if (!(await userCanReadWorkspace(auth.sub, workspace.id))) return false;
+
+  // Workspace write (mirrors `assertCanWriteWorkspace`).
+  let wsWrite = false;
+  if (!workspace.spaceId) {
+    // Legacy single-tenant: only the legacy owner writes.
+    wsWrite = workspace.userId === auth.sub;
+  } else {
+    if (workspace.orgId) {
+      const orgMembership = await getOrgMembershipsCollection().findOne({
+        orgId: workspace.orgId,
+        userId: auth.sub,
+      });
+      if (orgMembership?.role === "admin") wsWrite = true;
+    }
+    if (!wsWrite) {
+      const roles = await getEffectiveSpaceRoles(auth.sub);
+      if (roles.get(workspace.spaceId) === "owner") wsWrite = true;
+    }
+    if (!wsWrite) {
+      const wsCreator = workspace.creatorUserId ?? workspace.userId;
+      if (wsCreator === auth.sub) wsWrite = true;
+    }
+    if (!wsWrite) {
+      const wsShare = await getWorkspaceSharesCollection().findOne({
+        workspaceId: workspace.id,
+        userId: auth.sub,
+      });
+      if (wsShare?.role === "writer") wsWrite = true;
+    }
+  }
+  if (!wsWrite) return false;
+
+  // Project write (mirrors `assertCanWriteProject` overrides + visibility).
+  if (workspace.spaceId) {
+    if (await isMasterAdmin(auth.sub)) return true;
+    if (await isOrgAdmin(auth.sub, workspace.orgId)) return true;
+    const roles = await getEffectiveSpaceRoles(auth.sub);
+    if (roles.get(workspace.spaceId) === "owner") return true;
+  }
+  const visibility = project.visibility ?? "public";
+  const creator = project.creatorUserId ?? project.userId;
+  if (visibility === "public") return true;
+  if (visibility === "private") return creator === auth.sub;
+  // shared
+  if (creator === auth.sub) return true;
+  const share = await getProjectSharesCollection().findOne({
+    projectId: project.id,
+    userId: auth.sub,
+  });
+  return share?.role === "writer";
+}
+
+/**
  * Phase 8 — assert manage rights on a project (change visibility, mutate
  * shares). Allow: master admin, org admin, space owner, project creator,
  * workspace creator. Writers explicitly cannot manage.

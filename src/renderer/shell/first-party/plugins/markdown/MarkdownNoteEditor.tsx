@@ -101,7 +101,8 @@ export function MarkdownNoteEditor({
   const readOnly =
     meta.docsReadOnly === true ||
     meta.readOnly === true ||
-    (meta.bundledDoc === true && !isAdmin);
+    (meta.bundledDoc === true && !isAdmin) ||
+    note.canWrite === false;
 
   const [viewMode, setViewMode] = useState<MarkdownViewMode>(() => {
     const raw =
@@ -286,7 +287,7 @@ export function MarkdownNoteEditor({
     const next: MarkdownViewMode =
       raw === "editor" || raw === "preview" || raw === "both" ? raw : "both";
     setViewMode(readOnly ? "preview" : next);
-  }, [note.id, note.metadata]);
+  }, [note.id, note.metadata, readOnly]);
 
   useEffect(() => {
     const onOpenPicker = (e: Event): void => {
@@ -644,48 +645,48 @@ export function MarkdownNoteEditor({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      {!readOnly ? (
-        <div className="flex shrink-0 items-center justify-between gap-2 pb-3">
-          <div className="inline-flex overflow-hidden rounded-md border border-border bg-muted/10">
-            {(
-              [
+      <div className="flex shrink-0 items-center justify-between gap-2 pb-3">
+        <div className="inline-flex overflow-hidden rounded-md border border-border bg-muted/10">
+          {(readOnly
+            ? ([["preview", "Preview"]] as const)
+            : ([
                 ["editor", "Editor"],
                 ["preview", "Preview"],
                 ["both", "Both"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                className={`px-3 py-1.5 text-[11px] font-medium outline-none transition-colors ${
-                  viewMode === id
-                    ? "bg-background text-foreground"
-                    : "text-muted-foreground hover:bg-muted/30 hover:text-foreground"
-                }`}
-                onClick={() => setAndPersistViewMode(id)}
-                aria-pressed={viewMode === id}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
+              ] as const)
+          ).map(([id, label]) => (
             <button
+              key={id}
               type="button"
-              className="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted/40"
-              onClick={() => setLinkPickerOpen(true)}
+              className={`px-3 py-1.5 text-[11px] font-medium outline-none transition-colors ${
+                viewMode === id
+                  ? "bg-background text-foreground"
+                  : "text-muted-foreground hover:bg-muted/30 hover:text-foreground"
+              }`}
+              onClick={() => setAndPersistViewMode(id)}
+              aria-pressed={viewMode === id}
             >
-              Link to note
+              {label}
             </button>
-            <div className="text-[11px] text-muted-foreground">Markdown</div>
-          </div>
+          ))}
         </div>
-      ) : (
-        <div className="flex shrink-0 items-center justify-between gap-2 pb-3">
-          <div className="text-[11px] font-medium text-muted-foreground">Preview</div>
-          <div className="text-[11px] text-muted-foreground">Read-only</div>
+        <div className="flex items-center gap-2">
+          {readOnly ? (
+            <div className="text-[11px] text-muted-foreground">Read-only</div>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted/40"
+                onClick={() => setLinkPickerOpen(true)}
+              >
+                Link to note
+              </button>
+              <div className="text-[11px] text-muted-foreground">Markdown</div>
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       <div className="flex h-full min-h-0 w-full flex-col gap-3 md:flex-row">
         {!readOnly && (viewMode === "editor" || viewMode === "both") ? (

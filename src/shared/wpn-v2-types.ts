@@ -65,6 +65,7 @@ export type WpnNoteDetail = {
   sibling_index: number;
   created_at_ms: number;
   updated_at_ms: number;
+  canWrite?: boolean;
 };
 
 /** Flat row for cross-project note listing (link picker, bulk load). */
